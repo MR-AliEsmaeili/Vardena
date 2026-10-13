@@ -1,0 +1,87 @@
+# Task 25 — ADR Reconciliation Matrix
+
+**Audited `main` commit:** `80944ce112dc16fd834585f8a4c2d83906547480` · **Date:** 2026-09-27 ·
+**Status:** READY FOR REVIEW — NOT ACCEPTED
+
+> **No ADR is promoted, demoted, renumbered, moved or rewritten by this audit.** Statuses below
+> are transcribed verbatim from each ADR's own `Status:` line in `docs/adr/`. Task acceptance
+> does not promote an ADR (the established repository convention — ADR-0031 stayed Proposed after
+> Task 12's acceptance; Task 17B/17C/18/20 acceptances promoted none). An ADR being *Accepted*
+> does not make the task that implemented it accepted, and vice versa.
+>
+> **ADR-0027 does not exist.** The gap is recorded; the identifier must not be filled or reused.
+
+---
+
+## 1. Matrix
+
+| ADR | Title | Current Status (verbatim) | Implementation Evidence (on `main`) | Consistency | Acceptance Evidence | Required Owner Action |
+|---|---|---|---|---|---|---|
+| 0001 | Modular Monolith (Not Microservices) | Accepted | 9 modules under `backend/src/modules/` with `api/application/domain/data`; one deployable | **CONSISTENT** | ADR file | none |
+| 0002 | Technology Stack (Fixed Set) | Accepted | NestJS 12 / TS 6 / Prisma 7 / PostgreSQL (`backend/package.json`); React 19 + Vite + Tailwind + shadcn (`frontend/package.json`) | **CONSISTENT** | ADR file | none |
+| 0003 | Legacy ERP Isolation via Adapter Layer | Accepted | **No adapter implemented** (no `integration` module) | **CONSISTENT** — the ADR decides a boundary, not a deliverable | ADR file | none (OQ-04/OQ-05 gate any work) |
+| 0004 | Outbox Pattern for External Synchronization | Accepted | **Not implemented** — no `sync.outbox_events` table, no dispatch loop (`worker.service.ts` defers it) | **CONSISTENT** (decision ≠ implementation) — but see OQ-39 | ADR file | none; OQ-39 gates the first consumer |
+| 0005 | Domain Events for Inventory → Accounting | Accepted | In-memory `kernel/events/domain-event-bus.ts` only; **no module subscribes to another module's events**; Accounting consumes no Inventory event | **CONSISTENT** (unimplemented decision) | ADR file | none; OQ-39 |
+| 0006 | RBAC with Granular Permissions | Accepted | `modules/rbac/**`, 134 code-defined permissions, DB mirror, no wildcard | **CONSISTENT** | ADR file | none |
+| 0007 | Server-Side Opaque Sessions | Accepted | `identity/domain/session-token.service.ts` (256-bit opaque, SHA-256 at rest), idle/absolute expiry, revocation | **CONSISTENT** | ADR file | none |
+| 0008 | Single Database, Schema per Module, ULIDs | Accepted | 8 PostgreSQL schemas, `kernel/ids/ulid.ts`, `backend/prisma/schema/` directory schema | **CONSISTENT** | ADR file | none |
+| 0009 | Reporting via Module Views + Scoped Raw SQL | Accepted | Accounting owns bounded read surfaces (`accounting-read-query.repository.ts`); no generic reporting module | **CONSISTENT** | ADR file | none; OQ-49 governs any builder |
+| 0010 | DB-Backed Job Queue (No External Broker) | Accepted | **Not implemented** — kernel `JobsRegistry` stub only, no `jobs` schema | **CONSISTENT** (unimplemented decision) | ADR file | none |
+| 0011 | Excel Import Workflow | Accepted | **Not implemented** | **CONSISTENT** | ADR file | none |
+| 0012 | Print Template System | Accepted | **Not implemented** | **CONSISTENT** | ADR file | none |
+| 0013 | User Preference Key-Value | Accepted | **Not implemented** (no `customization` module; frontend grid persistence unavailable) | **CONSISTENT** | ADR file | none |
+| 0014 | OpenAPI Contract | Accepted | `/api/v1` + Swagger DTOs, contract at `/api/docs` (`main.ts`, `kernel/http/configure-app.ts`) | **CONSISTENT** | ADR file | none |
+| 0015 | Backend Foundation Conventions | Accepted | layering, error envelope `{code,message,details?,correlationId}`, pagination, correlation id | **CONSISTENT** | ADR file | none |
+| 0016 | RBAC Enforcement and Evaluation | Accepted (refines ADR-0006 — permission caching) | route guard + service re-check, DB read per request, **no cache** | **CONSISTENT** | ADR file | none |
+| **0017** | Inventory Ledger as Source of Truth | **Proposed** (needs accept/reject — gate in `domain-blueprint.md` §21) | **IMPLEMENTED**: `inventory.inventory_movements` / `inventory_balances`; migration `20260911020000_inventory_core` | **IMPLEMENTATION AHEAD OF GOVERNANCE** | none | **Adoption gate required (D-03)** — proposed while implementation already existed |
+| **0018** | Bounded, Versioned Workflow | **Proposed** (same gate) | **IMPLEMENTED**: `modules/workflow/**`; migration `20260912010000_workflow_foundation` | **IMPLEMENTATION AHEAD OF GOVERNANCE** | none | **Adoption gate required (D-03)** |
+| **0019** | Document Foundation and Relations | **Proposed** (same gate) | **IMPLEMENTED**: `modules/documents/**`; migration `20260912000000_documents_foundation`. Note ADR-0023 (Accepted) covers the same area | **IMPLEMENTATION AHEAD OF GOVERNANCE**; partial overlap with the Accepted ADR-0023 | none | **Adoption gate required (D-03)**; clarify the 0019/0023 relationship |
+| **0020** | Organizational Scope and Master Data | **Proposed** (same gate) | **IMPLEMENTED**: organization-scoped rows across all modules; deployment pin (ADR-0025 Accepted) | **IMPLEMENTATION AHEAD OF GOVERNANCE** | none | **Adoption gate required (D-03)** |
+| **0021** | Organization-Scoped Master Data | **Proposed** | **IMPLEMENTED**: `organization.{organizations,branches,departments,employees,parties}`; migration `20260911000000_*` (Task 6) | **IMPLEMENTATION AHEAD OF GOVERNANCE** | none | **Adoption gate required (D-03)** |
+| 0022 | Inventory Core Ledger | Accepted (implemented by Task 9.5; hardening Task 9.6, 2026-09-13) | movements/balances/reservations/transfers present | **CONSISTENT** (ADR accepted; the *task* is not) | ADR file | none |
+| 0023 | Document Foundation Implementation | Accepted (implemented by Task 8; recorded during Task 9.6) | documents module + numbering + relations | **CONSISTENT** | ADR file | none |
+| 0024 | Workflow Foundation | Accepted (implemented by Task 9, 2026-09-12) | workflow module, versions, approvals, automations | **CONSISTENT** | ADR file | none |
+| 0025 | Single-Organization Deployment Pin | Accepted (implemented by Task 9.6, 2026-09-13) | `deployment-scope.guard.ts` **registered globally** (`organization.module.ts:81`) + `assertDeploymentOrganizationPin`; no-op when `DEPLOYMENT_ORGANIZATION_ID` is unset | **CONSISTENT** — but a governance record (Task 24 F-3) wrongly denies the global guard's existence (SEC-02 / DR-02) | ADR file | **Correct F-3 (D-02)** |
+| 0026 | Accounting Bounded Context | Accepted (2026-09-14, from Task 10.1) | accounting module owns its schema, no cross-module table reads | **CONSISTENT** — but `domain-contract.md`'s header still calls itself Proposed/unimplemented (DR-07) | ADR file | **Contract header correction (D-09)** |
+| **0027** | — | **DOES NOT EXIST** | — | gap recorded | — | **Do not fill or renumber** |
+| 0028 | Accounting Configuration Foundation | Accepted (Final 2026-09-18 — Review Fix Round 2, D1–D7) | `accounting_configurations`, levels, freeze; migration `20260920000000_*` | **CONSISTENT** | ADR file; Task 11 ACCEPTED | none |
+| 0029 | Machine API Access Model | Proposed (pending product-owner ratification — not Accepted) | **Not implemented** | **CONSISTENT** | none | ratification gate (not urgent) |
+| 0030 | License Foundation | Proposed (pending ratification — not Accepted) | **Not implemented** | **CONSISTENT** | none | ratification gate (OQ-45) |
+| **0031** | Balance Projection | **Proposed** (2026-09-22 — vertical slice implemented as READY FOR REVIEW, not Accepted) | **IMPLEMENTED**: `account_balance_projections`; migration `20260922000000_*` | **IMPLEMENTATION AHEAD OF GOVERNANCE**; Task 12's own acceptance label is disputed | none | **Adoption gate required (D-03)**; linked to **D-07** |
+| **0032** | Accounting Period Close Enforcement | **Proposed** (2026-09-23 — Task 14 implemented as READY FOR REVIEW, not Accepted) | **IMPLEMENTED**: period gate + locked-row checks inside finalization | **IMPLEMENTATION AHEAD OF GOVERNANCE** | none | **Adoption gate required (D-03)**; linked to **D-06** |
+| 0033 | Account Identity and Code History | Proposed — Task 17C accepted but ADR stays Proposed; **OD-20-4 recorded as an authoritative clarification, Task 20 does not self-accept** | **Not implemented** — no code-history table or producer mechanism on `accounting.accounts` | **CONSISTENT** | none | adoption/implementation gate (D-03) |
+| 0034 | Posting versus Aggregation Accounts | Proposed — **OD-20-5 resolves D-1 in this ADR**; not self-accepted by Task 20 | Partially reflected: leaf-only posting + read-time roll-up are enforced (`planPostabilityChange`, `trial-balance.service.ts`, Base Chart publish/adoption gates). The ADR's broader *configurable non-leaf posting* concept is **not** implemented | **CONSISTENT** — the implemented half matches OD-20-5; nothing contradicts the ADR | none | adoption gate (D-03) |
+| 0035 | Account Code Structure Migration | Proposed — OD-20-4 clarifies the producer-bound requirement; not self-accepted | **Not implemented** — and explicitly **not authorized** | **CONSISTENT** | none | adoption gate; must stay unimplemented until decided |
+| 0036 | Legal Reporting Architecture | Proposed (Owner decisions Q9/Q10/Q11/Q22, documentation only; not Accepted) | **Not implemented** — no legal books, no statutory layouts | **CONSISTENT** | none | adoption gate; **every legal fact requires expert validation (OQ-43)** |
+| 0037 | Accounting Configuration Boundary | Proposed — OD-20-1/2/3/6 recorded here as authoritative documentation; Task 20 does not self-accept | Partially reflected: ODR-1 coherence is implemented (Task 19); configurable dimensions are **not** | **CONSISTENT** | none | adoption gate (D-03); OQ-41 |
+
+---
+
+## 2. Historical backlog highlighted by the roadmap
+
+The task specification names **ADR-0017, 0018, 0019, 0020, 0021, 0031, 0032** for special
+attention. All seven are confirmed at `80944ce` as:
+
+```
+Status            : Proposed
+Subject in main   : IMPLEMENTED
+Acceptance record : none
+Promotion by this task : NONE
+```
+
+Each was **proposed (or left Proposed) while the implementation already existed**. That fact is
+preserved verbatim here as **governance backlog**, classified **F3 — ADR decision required**, and
+carried into the Owner Decision Pack as **D-03**. Four of them (0017, 0018, 0019/0021, 0020) sit
+alongside *Accepted* ADRs covering overlapping ground (0022, 0024, 0023, 0025), which is itself
+part of what the Owner must disentangle — this audit does not do it.
+
+## 3. Counts
+
+| Class | Count |
+|---|---|
+| ADR files present | 37 (`0001`–`0037`, minus `0027`) |
+| Accepted | 22 |
+| Proposed — subject implemented (backlog) | **7** |
+| Proposed — subject not implemented | 8 |
+| Promoted by Task 25 | **0** |
+| Contradictions between an ADR and `main` | **0** (the discrepancies found are between *governance records* and `main`, not between ADRs and `main`) |

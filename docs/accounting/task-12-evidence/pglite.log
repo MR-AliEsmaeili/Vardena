@@ -1,0 +1,53 @@
+
+=== Task 12 — PGlite Live Rehearsal (view window before LIMIT + migration + rebuild) ===
+Schemas + tables created (FKs omitted for pglite simplicity — migration FKs are RESTRICT in real PG).
+
+=== 1. Empty migration (no ledger rows → backfill 0 rows) ===
+Empty backfill rows: 0 (expected 0) — PASS
+
+=== 2. Populated backfill (ledger → projection GROUP BY HAVING <>0) ===
+Populated backfill rows: 4 (expected 4 = 3 periods×acc01 + 1×acc02)
+  p01/acc01 debit=150.00 credit=0.00
+  p01/acc02 debit=200.00 credit=0.00
+  p02/acc01 debit=70.00 credit=20.00
+  p03/acc01 debit=30.00 credit=0.00
+Populated backfill: PASS
+
+=== 3. Derived view (window before LIMIT) — migration vw_account_balance_derived ===
+Views created.
+Derived rows (acc01, all periods):
+  seq=1 p01 net=150.00 opening=0 closing=150.00
+  seq=2 p02 net=50.00 opening=150.00 closing=200.00
+  seq=3 p03 net=30.00 opening=200.00 closing=230.00
+Derived correctness: P1 PASS P2 PASS P3 PASS
+
+=== 4. Pagination via view (window BEFORE outer LIMIT/OFFSET) ===
+Page1: p01 opening=0 closing=150.00
+Page2: p02 opening=150.00 closing=200.00
+Page3: p03 opening=200.00 closing=230.00
+Pagination opening on page2 == 150: PASS (R-02 fixed)
+Pagination opening on page3 == 200: PASS
+Org-wide page2 row: p01/acc02 opening=0
+
+=== 5. Reconciliation (FULL OUTER JOIN, no silent repair) ===
+Reconciliation before drift:
+  matched: 4
+All matched before drift: PASS
+Reconciliation after drift (should show debit_mismatch):
+  p01/acc01 debit_mismatch ledger=150.00 proj=151.00
+Drift detected: PASS
+Reconciliation after rebuild:
+  matched: 4
+Rebuild fixed drift: PASS
+
+=== 6. Lock-order + concurrency scenarios (R1..R8 narrative, simulated via sorted keys) ===
+Lock order: input org01|area01|year01|p03|acc01, org01|area01|year01|p01|acc01, org01|area01|year01|p02|acc01 → sorted ASC org01|area01|year01|p01|acc01, org01|area01|year01|p02|acc01, org01|area01|year01|p03|acc01 — PASS (ascending)
+Same-key unique backstop (no lock): PASS (UNIQUE prevents double insert)
+Disjoint keys no contention: PASS
+Rebuild scope lock order: SELECT ... FROM account_balance_projections WHERE organization_id=$1 ORDER BY org,area,year,period,account FOR UPDATE — same ASC as finalization balance rows — PASS (same order, no deadlock inversion)
+
+=== 7. Fallback derive-before-pagination (JS, when view unavailable) ===
+Fallback JS page 2 slice: p02 opening=150.00 (expected 150) — PASS
+
+=== Summary ===
+ALL PGLITE CHECKS PASSED

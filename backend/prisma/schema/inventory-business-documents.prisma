@@ -1,0 +1,285 @@
+// C-58: Inventory-owned business documents (Receipt / Issue / Transfer).
+//
+// These tables hold the BUSINESS DOCUMENT, never a second stock ledger:
+// `inventory_movements` remains the only source of physical/valuation truth
+// (ADR-0017/ADR-0022). A line records which movement(s) it currently owns so
+// an edit can reverse exactly those facts and re-post the new ones inside one
+// transaction (OQ-54 / ADR-0040); the columns are plain ids, not foreign keys
+// to the ledger, because a reversed-and-re-posted line repoints them while
+// the reversed ledger rows stay forever (AR-13).
+//
+// `number` is NULLABLE on purpose, exactly like `material_requests.number`:
+// the Documents Foundation allocates it at FINALIZE, so drafts never consume
+// a serial and numbers are never reused (OD-54-09, ADR-0023). NULLs do not
+// clash in the `(organization_id, number)` unique index.
+//
+// Decimal precision follows docs/database-strategy.md §6 and the ledger:
+// quantities `numeric(18,4)`, conversion ratios `numeric(18,6)`, money
+// `numeric(18,2)`.
+
+model InventoryBusinessDocument {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  /// Closed, code-defined list (`domain/inventory-business-document.ts`):
+  /// `receipt`, `issue`, `transfer`.
+  kind           String   @db.VarChar(16)
+  /// Allocated at finalize by `NumberingService`; NULL while draft.
+  number         String?  @db.VarChar(64)
+  /// Business DATE — the calendar day the document belongs to (OQ-73 /
+  /// ADR-0042: PostgreSQL `date`, never `timestamptz`). Independent of
+  /// `created_at`: a document may be created today for an earlier business
+  /// day. No time-of-day, no time zone.
+  businessDate   DateTime @map("business_date") @db.Date
+  /// Receipt/Issue warehouse. NULL for a transfer.
+  warehouseId            String? @map("warehouse_id")
+  /// Transfer source/destination. NULL for receipt/issue. The
+  /// source ≠ destination invariant is enforced in the domain layer (Prisma
+  /// cannot express it), exactly like every other value rule in this module.
+  sourceWarehouseId      String? @map("source_warehouse_id")
+  destinationWarehouseId String? @map("destination_warehouse_id")
+  /// OPTIONAL valuation assignment for a receipt (PDR-05 OD-VAL-05); never a
+  /// purchase price, and never present on an issue or a transfer.
+  receiptCost    Decimal? @map("receipt_cost") @db.Decimal(18, 2)
+  /// Closed, code-defined list: `draft`, `operational`, `accounting_posted`,
+  /// `immutable`, `cancelled`.
+  status         String   @db.VarChar(24)
+  description    String?  @db.VarChar(1000)
+  reference      String?  @db.VarChar(128)
+  /// The idempotency key the finalize used (`inventory_operations`), so a
+  /// replay is recognisable from the document itself. NULL while draft.
+  operationKey   String?  @map("operation_key") @db.VarChar(128)
+  /// OD-54-06: the operator explicitly continued WITHOUT repricing, so this
+  /// document's valuation consequence is honestly recorded as stale.
+  valuationStale Boolean  @default(false) @map("valuation_stale")
+
+  // ---- C-62 Accounting posting state (PDR-10 C62-OD-02/OD-05) ------------
+  // Denormalized on the header exactly like `operation_key` above: the
+  // document must be self-describing about its Accounting standing without
+  // joining the posting-operation ledger. The AUTHORITATIVE record stays
+  // `inventory_accounting_posting_operations` (+ its snapshot); these columns
+  // are its projection, never a second truth.
+  //
+  // Closed, code-defined list (`domain/inventory-business-document.ts`):
+  // `not_posted`, `draft_created`, `final_posted`, `draft_cancelled`.
+  // `accounting_posted` is NOT one of them: a draft is never posted
+  // (C62-OD-02), and a cancelled draft leaves the document back in its normal
+  // accounting-eligible lifecycle state.
+  accountingPostingState String @default("not_posted") @map("accounting_posting_state") @db.VarChar(24)
+  /// The durable C-62 posting operation that produced the state above.
+  accountingPostingOperationId String? @map("accounting_posting_operation_id")
+  /// Accounting-owned document reference (opaque to Inventory — a plain id,
+  /// never a foreign key: Accounting owns that table, AR-07).
+  accountingDocumentId     String? @map("accounting_document_id")
+  accountingDocumentNumber String? @map("accounting_document_number") @db.VarChar(64)
+  /// `draft` | `temporary` | `final` — the Accounting phase the reference
+  /// points at, so the header can say "draft" without reading Accounting.
+  accountingDocumentPhase  String? @map("accounting_document_phase") @db.VarChar(16)
+
+  finalizedAt        DateTime? @map("finalized_at") @db.Timestamptz(6)
+  finalizedBy        String?   @map("finalized_by")
+  accountingPostedAt DateTime? @map("accounting_posted_at") @db.Timestamptz(6)
+  accountingPostedBy String?   @map("accounting_posted_by")
+  sealedAt           DateTime? @map("sealed_at") @db.Timestamptz(6)
+  sealedBy           String?   @map("sealed_by")
+  cancelledAt        DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  cancelledBy        String?   @map("cancelled_by")
+  cancellationReason String?   @map("cancellation_reason") @db.VarChar(1000)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse?   @relation("InventoryDocumentWarehouse", fields: [warehouseId], references: [id], onDelete: Restrict)
+  sourceWarehouse      Warehouse? @relation("InventoryDocumentSourceWarehouse", fields: [sourceWarehouseId], references: [id], onDelete: Restrict)
+  destinationWarehouse Warehouse? @relation("InventoryDocumentDestinationWarehouse", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
+  lines InventoryBusinessDocumentLine[]
+
+  // C-62: the durable Accounting posting operations raised for this document.
+  // One operation per (document, action, caller-supplied operation key); a
+  // document may carry several over its life (a cancelled draft is followed
+  // by a new attempt under a NEW key — the old one is never overwritten).
+  accountingPostingOperations InventoryAccountingPostingOperation[]
+  // ...and the ONE immutable snapshot each of those operations froze. Same
+  // projection direction as `operation_key`: the document is self-describing
+  // about what it sent Accounting, without joining the posting ledger.
+  accountingPostingSnapshots InventoryAccountingPostingSnapshot[]
+
+  /// One monotonic numeric series PER DOCUMENT TYPE (Documents Foundation),
+  /// so a receipt and an issue may both be `0001`; uniqueness is per kind.
+  @@unique([organizationId, kind, number], map: "uq_inventory_business_documents_org_kind_number")
+  @@index([organizationId, kind, status], map: "idx_inventory_business_documents_org_kind_status")
+  @@index([organizationId, businessDate], map: "idx_inventory_business_documents_org_business_date")
+  @@map("inventory_business_documents")
+  @@schema("inventory")
+}
+
+model InventoryBusinessDocumentLine {
+  id             String @id
+  documentId     String @map("document_id")
+  /// Denormalized from the parent for directly scoped queries and for the
+  /// organization-safety check the repository asserts on every write — the
+  /// same shape `material_request_lines` uses.
+  organizationId String @map("organization_id")
+  lineNumber     Int    @map("line_number")
+  itemId         String @map("item_id")
+  /// Entered magnitude (always > 0) in `unit_id`.
+  quantity         Decimal @db.Decimal(18, 4)
+  unitId           String  @map("unit_id")
+  /// Base-unit equivalent (always > 0), resolved against the conversion in
+  /// force at the document's business date (D-21/D-26).
+  baseQuantity     Decimal @map("base_quantity") @db.Decimal(18, 4)
+  baseUnitId       String  @map("base_unit_id")
+  conversionFactor Decimal @map("conversion_factor") @db.Decimal(18, 6)
+  /// RETURN KINDS ONLY (C-59D, PDR-08 OD-RET-01): the ledger fact of the
+  /// originating receipt (purchase return) or issue (sales return) this line
+  /// is based on. A plain id, not a foreign key to the ledger, exactly like
+  /// the movement links below: a reversed basis row stays forever (AR-13).
+  /// NULL for receipt/issue/transfer lines and for basis-less returns.
+  basisMovementId String? @map("basis_movement_id")
+  /// The ledger fact this line currently owns (receipt/issue), or NULL while
+  /// the document is a draft / after a cancellation reversed it.
+  movementId    String? @map("movement_id")
+  /// Transfer legs. Both set together or both NULL — a half transfer is
+  /// impossible by construction (one transaction, two legs).
+  outMovementId String? @map("out_movement_id")
+  inMovementId  String? @map("in_movement_id")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  document     InventoryBusinessDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  item         Item                      @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  unit         Unit                      @relation("InventoryDocumentLineEnteredUnit", fields: [unitId], references: [id], onDelete: Restrict)
+  baseUnit     Unit                      @relation("InventoryDocumentLineBaseUnit", fields: [baseUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([documentId, lineNumber], map: "uq_inventory_business_document_lines_document_line_number")
+  @@index([documentId], map: "idx_inventory_business_document_lines_document")
+  @@index([organizationId, itemId], map: "idx_inventory_business_document_lines_org_item")
+  /// The return basis lookup: "which returns are based on this receipt line?"
+  @@index([organizationId, basisMovementId], map: "idx_inventory_business_document_lines_org_basis_movement")
+  @@map("inventory_business_document_lines")
+  @@schema("inventory")
+}
+
+/// C-59E: ONE executed Periodic Pricing Operation batch — or the compensating
+/// batch written by Reverse Pricing (PDR-07 OD-PRC-05…07, PDR-08
+/// OD-PDP-01…05 / OD-RVP-01…08).
+///
+/// This is the AUDIT/REPORTING record of a scoped batch, never a second
+/// ledger and never a second truth (OD-VH-01, OD-DOC-01): current truth stays
+/// `inventory_valuation_states` + `inventory_movements`, and the per-key
+/// arithmetic stays the existing `inventory_valuation_runs` replay. The header
+/// records who scoped what, when, with which outcome per key, and — for a
+/// compensating run — which run it reverses. Rows are insert-only; reversing
+/// marks the original via `reversed_by_run_id` and NEVER deletes it
+/// (OD-RVP-05).
+model InventoryPricingRun {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  /// NULL = all warehouses (OD-PRC-06: "one warehouse or all warehouses").
+  warehouseId    String?  @map("warehouse_id")
+  /// Sorted, de-duplicated inventory document kinds in scope
+  /// (`domain/inventory-business-document.ts`'s closed list). A text[] of a
+  /// code-defined vocabulary — typed enough to query, never an EAV surface.
+  documentKinds  String[] @map("document_kinds")
+  /// Range lower bound over MOVEMENT BUSINESS DATES (EXCLUSIVE day); NULL =
+  /// from the beginning of history. PostgreSQL `date`, like `movement_date`
+  /// itself (OQ-73). AUTOMATIC (OD-PDP-01): the `to_date` of the last
+  /// COMPLETED run for the same scope — the operator never chooses it.
+  /// "Completed" means every key priced (`keys_failed = 0`) and not reversed
+  /// since: a partially-failed or reversed run does not advance the boundary,
+  /// so the next run re-covers its window (failed keys are retried, never
+  /// silently skipped past).
+  fromDate       DateTime? @map("from_date") @db.Date
+  /// Range upper bound over movement business dates (INCLUSIVE day); the
+  /// operator's choice (OD-PDP-01). PostgreSQL `date` (OQ-73).
+  toDate         DateTime @map("to_date") @db.Date
+  /// Closed, code-defined list (`domain/inventory-valuation.ts`):
+  /// `pricing_operation` | `reverse_pricing`.
+  kind           String   @db.VarChar(24)
+  /// Compensating runs only: the run this run reverses (OD-RVP-01/05).
+  /// UNIQUE = a run is reversed AT MOST ONCE, enforced by the database the
+  /// same way the one-reversal-per-movement rule is (the guard decides, the
+  /// index is the backstop).
+  reversesRunId  String?  @unique(map: "uq_inventory_pricing_runs_reverses_run") @map("reverses_run_id")
+  /// Set once this run has been reversed — the run is retained forever.
+  reversedByRunId String? @map("reversed_by_run_id")
+  reversedAt     DateTime? @map("reversed_at") @db.Timestamptz(6)
+  /// OD-PRC-07: the run must report its outcome. Counts are aggregates of
+  /// the per-key outcome rows; a "mostly worked" run says exactly what did
+  /// not through those rows and their named reasons.
+  keysExamined   Int      @default(0) @map("keys_examined")
+  keysPriced     Int      @default(0) @map("keys_priced")
+  keysFailed     Int      @default(0) @map("keys_failed")
+  movementsExamined Int   @default(0) @map("movements_examined")
+  movementsRevalued Int  @default(0) @map("movements_revalued")
+  reason         String?  @db.VarChar(500)
+  /// Echo of the idempotency key (uniqueness enforced by
+  /// `inventory_operations`).
+  operationKey   String   @map("operation_key") @db.VarChar(128)
+  executedBy     String?  @map("executed_by")
+  executedAt     DateTime @map("executed_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse?   @relation("InventoryPricingRunWarehouse", fields: [warehouseId], references: [id], onDelete: Restrict)
+  reverses     InventoryPricingRun?  @relation("InventoryPricingRunReversal", fields: [reversesRunId], references: [id], onDelete: Restrict)
+  reversedBy   InventoryPricingRun?  @relation("InventoryPricingRunReversal")
+  keyOutcomes  InventoryPricingRunKeyOutcome[]
+
+  /// The last completed run for a scope is the one the NEXT run's from-date
+  /// follows (OD-PDP-01); the partial index keeps that lookup honest for the
+  /// "all warehouses" case (warehouse_id IS NULL) too.
+  @@index([organizationId, warehouseId, kind, executedAt], map: "idx_pricing_runs_org_scope_executed_at")
+  @@index([organizationId, executedAt], map: "idx_pricing_runs_org_executed_at")
+  @@index([reversesRunId], map: "idx_pricing_runs_reverses_run_id")
+  @@map("inventory_pricing_runs")
+  @@schema("inventory")
+}
+
+/// Per-key outcome of one pricing run (OD-PRC-07 / OD-PDP-03): one row per
+/// stocking key the batch examined, `priced` or `failed` — with the named
+/// reason and the offending movements when it failed, and the per-key
+/// `inventory_valuation_runs` row it produced when it succeeded.
+model InventoryPricingRunKeyOutcome {
+  id              String   @id
+  pricingRunId    String   @map("pricing_run_id")
+  organizationId  String   @map("organization_id")
+  warehouseId     String   @map("warehouse_id")
+  itemId          String   @map("item_id")
+  /// Closed, code-defined list (`domain/inventory-valuation.ts`):
+  /// `priced` | `failed` | `reversed` (the last on compensating runs).
+  outcome         String   @db.VarChar(16)
+  /// Stable reason code for a failure (e.g.
+  /// `inventory.pricing.unvalued_inbound_in_range`); NULL when priced.
+  reason          String?  @db.VarChar(500)
+  /// The movements that made the key fail (OD-PDP-03 names the offenders).
+  failedMovementIds String[] @map("failed_movement_ids")
+  /// The per-key `inventory_valuation_runs` row this outcome produced
+  /// (priced/reversed), when any.
+  valuationRunId  String?  @map("valuation_run_id")
+  movementsExamined Int    @default(0) @map("movements_examined")
+  movementsRevalued Int    @default(0) @map("movements_revalued")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy       String?  @map("created_by")
+  updatedBy       String?  @map("updated_by")
+
+  pricingRun    InventoryPricingRun @relation(fields: [pricingRunId], references: [id], onDelete: Cascade)
+  organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  valuationRun  InventoryValuationRun? @relation(fields: [valuationRunId], references: [id], onDelete: Restrict)
+
+  @@index([pricingRunId], map: "idx_pricing_run_key_outcomes_run")
+  @@index([organizationId, warehouseId, itemId], map: "idx_pricing_run_key_outcomes_key")
+  @@index([valuationRunId], map: "idx_pricing_run_key_outcomes_valuation_run")
+  @@map("inventory_pricing_run_key_outcomes")
+  @@schema("inventory")
+}

@@ -1,0 +1,26 @@
+== Task 12 migration rehearsal ==
+date: 2026-09-22T18:35:14.654Z
+migration: 20260922000000_accounting_balance_projection
+  sql bytes: 16901
+  checks:
+    ✓ CREATE TABLE "accounting"."account_balance_projections"
+    ✓ UNIQUE org_area_year_period_account
+    ✓ idx_account_balance_projections_org_area_year
+    ✓ idx_account_balance_projections_org_account
+    ✓ idx_account_balance_projections_org_period
+    ✓ INSERT INTO ... SELECT SUM(debit), SUM(credit) GROUP BY key
+    ✓ HAVING SUM <>0 absence=zero
+    ✓ CREATE VIEW vw_account_balance_derived
+    ✓ window PARTITION BY org, area, year, account
+    ✓ CREATE VIEW vw_balance_reconciliation
+    ✓ FULL OUTER JOIN
+    ✓ mismatch_kind CASE
+  empty-install: INSERT ... GROUP BY would insert 0 rows (correct, absence=zero)
+  populated-install: same INSERT re-derives SUMs per key (deterministic, idempotent)
+  rollback: migration is one file; down would be DROP TABLE + DROP VIEW (Prisma never auto-drops, manual). Transactional: CREATE TABLE + INSERT + VIEWs are one transaction in `prisma migrate deploy`? No, each migration file runs in one transaction, so failure rolls back whole file.
+
+  live-PG: skipped (no DATABASE_URL / VARDENA_TEST_DATABASE_URL in this sandbox; see docs/adr/0031-balance-projection.md § Testing)
+  To run live: VARDENA_TEST_DATABASE_URL=postgresql://... node backend/prisma/rehearsal/task-12-balance-projection/rehearse.mjs
+  CI will run live PG suite via `npm run test:e2e:live` gated on that env.
+
+== rehearsal (dry-run) PASSED ==

@@ -1,0 +1,48 @@
+@import 'tailwindcss';
+
+/*
+ * Vardena application styles.
+ *
+ * The product is Persian-first and RTL (`<html dir="rtl" lang="fa">` in
+ * index.html). Layout uses Tailwind's logical utilities (`ms-*`, `me-*`,
+ * `text-start`, `text-end`, `border-s`, …) so a single stylesheet serves RTL
+ * without duplicated direction-specific pages.
+ */
+
+@theme {
+  --font-sans:
+    'Vazirmatn', 'IRANSans', 'IRANYekan', 'Segoe UI', 'Tahoma', system-ui,
+    sans-serif;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+    font-family: var(--font-sans);
+  }
+
+  /* Numbers stay readable (and aligned) inside an RTL document. */
+  .num {
+    font-variant-numeric: tabular-nums;
+    direction: ltr;
+    unicode-bidi: isolate;
+    text-align: end;
+  }
+
+  .code {
+    font-variant-numeric: tabular-nums;
+    direction: ltr;
+    unicode-bidi: isolate;
+    text-align: start;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-indigo-600;
+  }
+}

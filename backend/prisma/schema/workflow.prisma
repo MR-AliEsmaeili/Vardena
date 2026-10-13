@@ -1,0 +1,348 @@
+// Workflow Foundation module schema (Task 9, ADR-0024; bounded part of ADR-0018).
+//
+// Owns: the REUSABLE workflow primitives future business modules consume —
+//   `workflow.workflow_definitions`         — named, organization-scoped templates.
+//   `workflow.workflow_versions`            — immutable-once-active versions (draft →
+//                                             active → superseded); instances pin one.
+//   `workflow.workflow_states`              — the bounded state set of one version.
+//   `workflow.workflow_transitions`         — explicit (source → target) edges with
+//                                             the required RBAC permission and the
+//                                             bounded condition flags.
+//   `workflow.workflow_instances`           — the binding of ONE business entity to
+//                                             one workflow version + its current state.
+//   `workflow.workflow_transition_history`  — append-only transition audit trail.
+//   `workflow.workflow_approvals`           — single-level approval records (v1).
+//   `workflow.workflow_automation_bindings` — transition → registered-action links.
+//
+// There is deliberately NO business document table here: the bound entity is a
+// LOGICAL reference (module + type + id), never a cross-module foreign key —
+// the same decision the Document Foundation makes for numbering references and
+// relation endpoints (ADR-0019). The owning module keeps its tables; Workflow
+// stores the minimum needed to track state, history and approvals.
+//
+// Closed, code-defined lists (version statuses, approval statuses/decisions,
+// automation actions, code formats) are stored as TEXT — the same decision
+// Task 6/7/8 made for `item_kind`, `movement_type`, `relation_kind` and
+// numbering strategies: extending a list is an ordinary change, never an
+// `ALTER TYPE`, and the application layer rejects anything outside the list
+// (AR-24). No CHECK constraints anywhere, for the same reason: every value
+// rule lives in the framework-free domain layer and is unit-tested.
+//
+// Concurrency (docs/database-strategy.md §13, AR-11): a transition locks its
+// instance row (`SELECT … FOR UPDATE`, Prisma cannot express it) and applies
+// the state change + history insert in ONE transaction; the
+// `(instance_id, sequence)` unique index is the hard backstop. Version publish
+// and draft-configuration writes serialize on the locked version/definition
+// rows so an active version can never be mutated by a racing write.
+//
+// All foreign keys are ON DELETE RESTRICT ON UPDATE CASCADE: referenced
+// configuration and runtime facts can never be removed out from under history.
+
+/// A named workflow template owned by one organization (Task 9 §5).
+///
+/// The definition is the stable container future modules bind to
+/// (e.g. an inventory receipt workflow); the behaviour lives in its versions.
+/// `code` is the organization's stable business key for the template and is
+/// immutable after creation. Disabling a definition blocks NEW bindings and
+/// NEW version activations; in-flight instances keep transitioning under
+/// their pinned version (Task 9 §23 — history is never reinterpreted).
+model WorkflowDefinition {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(64)
+  name           String   @db.VarChar(200)
+  description    String?
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  versions     WorkflowVersion[]
+  instances    WorkflowInstance[]
+
+  @@unique([organizationId, code], map: "uq_workflow_definitions_org_code")
+  @@index([organizationId], map: "idx_workflow_definitions_org")
+  @@map("workflow_definitions")
+  @@schema("workflow")
+}
+
+/// One immutable-once-active behaviour revision of a definition (Task 9 §6).
+///
+/// Lifecycle is `draft → active → superseded` (one-way): draft versions are
+/// configuration workspaces; exactly one version per definition is `active`
+/// (new bindings resolve to it); publishing a newer version supersedes the
+/// previous active one. Active and superseded versions are immutable —
+/// behaviour changes ship as a NEW version, never as an edit (Task 9 §23).
+/// Instances store `version_id` at bind time and stay pinned to it.
+model WorkflowVersion {
+  id             String    @id
+  organizationId String    @map("organization_id")
+  definitionId   String    @map("definition_id")
+  /// 1-based per definition, assigned at creation (max + 1).
+  versionNumber  Int       @map("version_number")
+  /// Closed list (`draft` | `active` | `superseded`) — see domain.
+  status         String    @default("draft") @db.VarChar(16)
+  /// Optional business metadata: when the version takes effect. Informational
+  /// in v1 (no scheduled activation — publishing is the explicit act).
+  effectiveFrom  DateTime? @map("effective_from") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+
+  organization Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  definition   WorkflowDefinition         @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+  states       WorkflowState[]
+  transitions  WorkflowTransition[]
+  instances    WorkflowInstance[]
+  history      WorkflowTransitionHistory[]
+  approvals    WorkflowApproval[]
+  automations  WorkflowAutomationBinding[]
+
+  @@unique([definitionId, versionNumber], map: "uq_workflow_versions_definition_number")
+  @@index([organizationId, definitionId, status], map: "idx_workflow_versions_org_definition_status")
+  @@map("workflow_versions")
+  @@schema("workflow")
+}
+
+/// One state in a version's bounded state set (Task 9 §7).
+///
+/// States are data rows, but the CONCEPTS are code-controlled: exactly one
+/// `is_initial` state per publishable version (the deterministic bind target),
+/// terminal states accept no outgoing transitions, and codes are stable
+/// snake_case identifiers. This is orthogonal to the Document Foundation's
+/// draft/temporary/final lifecycle (Task 8 §7/§8): `draft` is a separate
+/// pre-issuance phase, never a workflow state, and workflow stays usable by
+/// entities without any draft concept.
+model WorkflowState {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  versionId      String   @map("version_id")
+  code           String   @db.VarChar(64)
+  name           String   @db.VarChar(200)
+  description    String?
+  isInitial      Boolean  @default(false) @map("is_initial")
+  isTerminal     Boolean  @default(false) @map("is_terminal")
+  isActive       Boolean  @default(true) @map("is_active")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  version      WorkflowVersion      @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  outgoing     WorkflowTransition[] @relation("TransitionSource")
+  incoming     WorkflowTransition[] @relation("TransitionTarget")
+  currentFor   WorkflowInstance[]
+  historyFrom  WorkflowTransitionHistory[] @relation("HistoryFromState")
+  historyTo    WorkflowTransitionHistory[] @relation("HistoryToState")
+
+  @@unique([versionId, code], map: "uq_workflow_states_version_code")
+  @@index([organizationId, versionId], map: "idx_workflow_states_org_version")
+  @@map("workflow_states")
+  @@schema("workflow")
+}
+
+/// One explicit (source → target) edge of a version (Task 9 §8/§17).
+///
+/// A transition is valid only when the instance is bound to this version, its
+/// current state is the source, the transition and both states are enabled,
+/// the caller holds `required_permission` (an RBAC code from the existing
+/// registry — never a second authorization system), and the bounded
+/// conditions hold. There are no arbitrary state jumps and no expression
+/// language: the condition vocabulary is these columns, interpreted by
+/// application code —
+///   `requires_approval` (+ optional `approval_permission`, defaulting to the
+///   transition permission),
+///   `requires_comment`,
+///   `require_different_actor` (separation of duties vs the binding creator).
+model WorkflowTransition {
+  id                  String   @id
+  organizationId      String   @map("organization_id")
+  versionId           String   @map("version_id")
+  code                String   @db.VarChar(64)
+  name                String   @db.VarChar(200)
+  description         String?
+  sourceStateId       String   @map("source_state_id")
+  targetStateId       String   @map("target_state_id")
+  /// RBAC `Module.Entity.Action` code the transition actor must hold.
+  requiredPermission  String   @map("required_permission") @db.VarChar(160)
+  requiresApproval    Boolean  @default(false) @map("requires_approval")
+  /// Permission an approver must hold; NULL = `required_permission`.
+  approvalPermission  String?  @map("approval_permission") @db.VarChar(160)
+  requiresComment     Boolean  @default(false) @map("requires_comment")
+  requireDifferentActor Boolean @default(false) @map("require_different_actor")
+  isActive            Boolean  @default(true) @map("is_active")
+  sortOrder           Int      @default(0) @map("sort_order")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy           String?  @map("created_by")
+  updatedBy           String?  @map("updated_by")
+
+  organization Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  version      WorkflowVersion             @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  source       WorkflowState               @relation("TransitionSource", fields: [sourceStateId], references: [id], onDelete: Restrict)
+  target       WorkflowState               @relation("TransitionTarget", fields: [targetStateId], references: [id], onDelete: Restrict)
+  approvals    WorkflowApproval[]
+  automations  WorkflowAutomationBinding[]
+  history      WorkflowTransitionHistory[]
+
+  @@unique([versionId, code], map: "uq_workflow_transitions_version_code")
+  @@index([organizationId, versionId], map: "idx_workflow_transitions_org_version")
+  @@index([versionId, sourceStateId], map: "idx_workflow_transitions_version_source")
+  @@map("workflow_transitions")
+  @@schema("workflow")
+}
+
+/// The binding of ONE business entity to one workflow version (Task 9 §11/§12).
+///
+/// The entity is a LOGICAL reference (module + type + id) owned by another
+/// module — Workflow never reads the referenced row and holds no FK to it
+/// (AR-07/08). `version_id` is pinned at bind time and never changes;
+/// `current_state_id` changes only through a valid transition inside the
+/// locked transition transaction. One live binding per entity
+/// (`uq_workflow_instances_entity`).
+model WorkflowInstance {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  definitionId   String   @map("definition_id")
+  versionId      String   @map("version_id")
+  entityModule   String   @map("entity_module") @db.VarChar(64)
+  entityType     String   @map("entity_type") @db.VarChar(64)
+  entityId       String   @map("entity_id")
+  currentStateId String   @map("current_state_id")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  definition   WorkflowDefinition          @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+  version      WorkflowVersion             @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  currentState WorkflowState               @relation(fields: [currentStateId], references: [id], onDelete: Restrict)
+  history      WorkflowTransitionHistory[]
+  approvals    WorkflowApproval[]
+
+  @@unique([organizationId, entityModule, entityType, entityId], map: "uq_workflow_instances_entity")
+  @@index([organizationId, definitionId], map: "idx_workflow_instances_org_definition")
+  @@index([organizationId, versionId], map: "idx_workflow_instances_org_version")
+  @@index([versionId, currentStateId], map: "idx_workflow_instances_version_state")
+  @@map("workflow_instances")
+  @@schema("workflow")
+}
+
+/// Append-only transition audit trail (Task 9 §13).
+///
+/// One row per successful transition, written in the SAME transaction as the
+/// state change: `sequence` (1-based per instance) orders an instance's rows.
+/// `approval_id` links the consumed approval when the transition required one;
+/// `correlation_id` carries the ambient request correlation when present.
+/// Failed transitions write nothing. There is no update or delete path.
+model WorkflowTransitionHistory {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  instanceId     String   @map("instance_id")
+  versionId      String   @map("version_id")
+  transitionId   String   @map("transition_id")
+  fromStateId    String   @map("from_state_id")
+  toStateId      String   @map("to_state_id")
+  sequence       Int
+  actorId        String?  @map("actor_id")
+  comment        String?
+  approvalId     String?  @map("approval_id")
+  correlationId  String?  @map("correlation_id") @db.VarChar(64)
+  occurredAt     DateTime @map("occurred_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  instance     WorkflowInstance   @relation(fields: [instanceId], references: [id], onDelete: Restrict)
+  version      WorkflowVersion    @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  transition   WorkflowTransition @relation(fields: [transitionId], references: [id], onDelete: Restrict)
+  fromState    WorkflowState      @relation("HistoryFromState", fields: [fromStateId], references: [id], onDelete: Restrict)
+  toState      WorkflowState      @relation("HistoryToState", fields: [toStateId], references: [id], onDelete: Restrict)
+  approval     WorkflowApproval?  @relation(fields: [approvalId], references: [id], onDelete: Restrict)
+
+  @@unique([instanceId, sequence], map: "uq_workflow_history_instance_sequence")
+  @@index([organizationId, instanceId, sequence], map: "idx_workflow_history_org_instance_sequence")
+  @@map("workflow_transition_history")
+  @@schema("workflow")
+}
+
+/// Single-level approval evidence for one (instance, transition) (Task 9 §16).
+///
+/// v1 is single-level only: one request, one decision, recorded — never a
+/// boolean on the instance. Multi-level chains, delegation and escalation are
+/// explicitly out of scope (OQ-26 tracks the policy). `base_sequence` is the
+/// instance's history length when the request was made: a decision or an
+/// execution is STALE (rejected) when any transition landed since, so an
+/// approval can never authorize a state it was not requested in.
+model WorkflowApproval {
+  id             String    @id
+  organizationId String    @map("organization_id")
+  instanceId     String    @map("instance_id")
+  transitionId   String    @map("transition_id")
+  /// Closed list (`pending` | `approved` | `rejected`) — see domain.
+  status         String    @default("pending") @db.VarChar(16)
+  requestedBy    String?   @map("requested_by")
+  requestedAt    DateTime  @map("requested_at") @db.Timestamptz(6)
+  decidedBy      String?   @map("decided_by")
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(6)
+  comment        String?
+  baseSequence   Int       @map("base_sequence")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+
+  organization Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  instance     WorkflowInstance            @relation(fields: [instanceId], references: [id], onDelete: Restrict)
+  transition   WorkflowTransition          @relation(fields: [transitionId], references: [id], onDelete: Restrict)
+  version      WorkflowVersion             @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  versionId    String                      @map("version_id")
+  history      WorkflowTransitionHistory[]
+
+  @@index([organizationId, instanceId], map: "idx_workflow_approvals_org_instance")
+  @@index([instanceId, transitionId, status], map: "idx_workflow_approvals_instance_transition_status")
+  @@map("workflow_approvals")
+  @@schema("workflow")
+}
+
+/// Transition → registered-automation binding (Task 9 §18).
+///
+/// The binding is the v1 contract: WHICH catalogue action fires for a
+/// transition, with typed parameters. Actions come from the code-defined
+/// `AutomationActionRegistry` — no user scripts, no stored code, no generic
+/// expressions. v1 RECORDS the binding and reports it on the transition event
+/// so future consumers can react; executing external effects through the
+/// outbox/worker is a future automation module, not this task.
+model WorkflowAutomationBinding {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  versionId      String   @map("version_id")
+  transitionId   String   @map("transition_id")
+  /// A code from the AutomationActionRegistry (e.g. `notify`).
+  action         String   @db.VarChar(64)
+  /// Flat JSON object of typed parameters (validated, bounded — see domain).
+  parameters     Json?
+  sortOrder      Int      @default(0) @map("sort_order")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  version      WorkflowVersion    @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  transition   WorkflowTransition @relation(fields: [transitionId], references: [id], onDelete: Restrict)
+
+  @@unique([transitionId, action], map: "uq_workflow_automations_transition_action")
+  @@index([organizationId, versionId], map: "idx_workflow_automations_org_version")
+  @@map("workflow_automation_bindings")
+  @@schema("workflow")
+}

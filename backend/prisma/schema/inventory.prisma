@@ -1,0 +1,1024 @@
+// Inventory module schema — MASTER DATA ONLY
+// (docs/modules.md §Inventory, master-data-strategy.md §1/§3/§4, D-25, D-26).
+//
+// Task 6 lands the master-data half of the Inventory module that
+// master-data-strategy.md §1 assigns to it:
+//   `inventory.units`                  — units of measure (organization scope)
+//   `inventory.unit_conversions`       — GLOBAL unit conversions
+//   `inventory.item_unit_conversions`  — ITEM-SPECIFIC unit conversions
+//   `inventory.item_groups`            — hierarchical classification
+//   `inventory.items`                  — one Item + closed kind + capabilities
+//   `inventory.warehouses`             — stock locations (branch scope)
+//
+// Explicitly NOT here (future Inventory work — ADR-0017, OQ-24):
+// stock movements, stock balances, locations/bins, lots, serial numbers,
+// reservations, valuation. Task 6 must not create them.
+//
+// Item model (D-25, OQ-33): ONE table. `item_kind` is a closed, code-defined
+// list (`domain/item-kind.ts` is the source of truth); the capability flags
+// are the stored truth the code branches on. Kind only supplies defaults,
+// resolved once at creation (master-data-strategy.md §7.2). There is no
+// Product/Service/StockItem table and no EAV/JSONB attribute table.
+//
+// Conversions (D-26, OQ-29): effective-dated rows (`valid_from`/`valid_to`).
+// A change creates a NEW version and closes the previous one — an existing
+// version is never reinterpreted, so quantities already recorded against it
+// keep their meaning. There is deliberately no rounding column: fractional
+// conversion rounding is expert-gated and unresolved (OQ-29).
+//
+// Lifecycle: `is_active` only, same rule as the organization module.
+
+model Unit {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(32)
+  name           String   @db.VarChar(120)
+  symbol         String?  @db.VarChar(16)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  items             Item[]
+  conversionSources UnitConversion[]     @relation("ConversionFromUnit")
+  conversionTargets UnitConversion[]     @relation("ConversionToUnit")
+  itemConvSources   ItemUnitConversion[] @relation("ItemConversionFromUnit")
+  itemConvTargets   ItemUnitConversion[] @relation("ItemConversionToUnit")
+
+  // Back-relations for the inventory core (Task 7, ADR-0022). A movement and a
+  // reservation each reference TWO units — the entered unit and the base-unit
+  // snapshot — so both pairs need explicit relation names.
+  enteredMovements     InventoryMovement[]   @relation("MovementEnteredUnit")
+  baseMovements        InventoryMovement[]   @relation("MovementBaseUnit")
+  enteredReservations  InventoryReservation[] @relation("ReservationEnteredUnit")
+  baseReservations     InventoryReservation[] @relation("ReservationBaseUnit")
+  enteredMaterialRequestLines MaterialRequestLine[] @relation("MaterialRequestLineEnteredUnit")
+  baseMaterialRequestLines    MaterialRequestLine[] @relation("MaterialRequestLineBaseUnit")
+
+  // Back-relations for Inventory Business Documents (C-58). Virtual side
+  // only — the real FK columns stay `inventory.inventory_business_document_lines.*`.
+  enteredInventoryDocumentLines InventoryBusinessDocumentLine[] @relation("InventoryDocumentLineEnteredUnit")
+  baseInventoryDocumentLines    InventoryBusinessDocumentLine[] @relation("InventoryDocumentLineBaseUnit")
+
+  // C-62: the entered/base units captured on an immutable Accounting posting
+  // snapshot movement. Virtual side only.
+  enteredSnapshotMovements InventoryAccountingPostingSnapshotMovement[] @relation("SnapshotMovementEnteredUnit")
+  baseSnapshotMovements    InventoryAccountingPostingSnapshotMovement[] @relation("SnapshotMovementBaseUnit")
+
+  @@unique([organizationId, code], map: "uq_units_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_units_organization_id_is_active")
+  @@map("units")
+  @@schema("inventory")
+}
+
+/// Global conversion for a unit pair, valid for any item
+/// (master-data-strategy.md §3.4). Effective-dated (D-21/D-26).
+model UnitConversion {
+  id             String    @id
+  organizationId String    @map("organization_id")
+  fromUnitId     String    @map("from_unit_id")
+  toUnitId       String    @map("to_unit_id")
+  /// Ratio, `numeric(18,6)` per docs/database-strategy.md §6 (rates/ratios).
+  factor         Decimal   @db.Decimal(18, 6)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  fromUnit     Unit         @relation("ConversionFromUnit", fields: [fromUnitId], references: [id], onDelete: Restrict)
+  toUnit       Unit         @relation("ConversionToUnit", fields: [toUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, fromUnitId, toUnitId, validFrom], map: "uq_unit_conversions_pair_valid_from")
+  @@index([organizationId, fromUnitId, toUnitId], map: "idx_unit_conversions_pair")
+  @@index([organizationId, validFrom], map: "idx_unit_conversions_org_valid_from")
+  @@index([organizationId, validTo], map: "idx_unit_conversions_org_valid_to")
+  @@index([toUnitId], map: "idx_unit_conversions_to_unit_id")
+  @@map("unit_conversions")
+  @@schema("inventory")
+}
+
+/// Item-specific conversion, e.g. `1 BOX of THIS item = 12 PCS`
+/// (master-data-strategy.md §3.4). This is the common case in practice:
+/// item A may be 1 BOX = 10 PCS while item B is 1 BOX = 24 PCS.
+model ItemUnitConversion {
+  id             String    @id
+  organizationId String    @map("organization_id")
+  itemId         String    @map("item_id")
+  fromUnitId     String    @map("from_unit_id")
+  toUnitId       String    @map("to_unit_id")
+  factor         Decimal   @db.Decimal(18, 6)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  fromUnit     Unit         @relation("ItemConversionFromUnit", fields: [fromUnitId], references: [id], onDelete: Restrict)
+  toUnit       Unit         @relation("ItemConversionToUnit", fields: [toUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([itemId, fromUnitId, toUnitId, validFrom], map: "uq_item_unit_conversions_pair_valid_from")
+  @@index([organizationId, itemId, fromUnitId, toUnitId], map: "idx_item_unit_conversions_item_pair")
+  @@index([organizationId, validFrom], map: "idx_item_unit_conversions_org_valid_from")
+  @@index([organizationId, validTo], map: "idx_item_unit_conversions_org_valid_to")
+  @@index([toUnitId], map: "idx_item_unit_conversions_to_unit_id")
+  @@map("item_unit_conversions")
+  @@schema("inventory")
+}
+
+/// Hierarchical classification for reporting and creation-time defaults
+/// (master-data-strategy.md §3.2). Groups never override an existing item at
+/// runtime; defaults are copied onto the item when it is created (§7.2).
+model ItemGroup {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  parentId       String?  @map("parent_id")
+  code           String   @db.VarChar(64)
+  name           String   @db.VarChar(200)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  parent       ItemGroup?   @relation("ItemGroupHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children     ItemGroup[]  @relation("ItemGroupHierarchy")
+  items        Item[]
+
+  @@unique([organizationId, code], map: "uq_item_groups_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_item_groups_organization_id_is_active")
+  @@index([parentId], map: "idx_item_groups_parent_id")
+  @@map("item_groups")
+  @@schema("inventory")
+}
+
+/// The single item master (D-25). Goods, services, consumables and assets are
+/// all Items; they differ by capability, never by table
+/// (master-data-strategy.md §3.3).
+///
+/// `item_kind` is stored as text, NOT a database enum: the list is closed and
+/// code-defined (`domain/item-kind.ts`), and keeping it as text means adding a
+/// kind is one code change plus one ordinary migration instead of an
+/// `ALTER TYPE`. The application layer rejects anything outside the closed
+/// list, so no arbitrary string can reach the column (AR-24).
+model Item {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(64)
+  name           String   @db.VarChar(200)
+  description    String?
+  itemKind       String   @map("item_kind") @db.VarChar(24)
+  itemGroupId    String?  @map("item_group_id")
+  baseUnitId     String   @map("base_unit_id")
+  /// Capability flags — the stored truth the code branches on (D-25).
+  isStockable    Boolean  @map("is_stockable")
+  isPurchasable  Boolean  @map("is_purchasable")
+  isSellable     Boolean  @map("is_sellable")
+  isValued       Boolean  @map("is_valued")
+  requiresLot    Boolean  @default(false) @map("requires_lot")
+  requiresSerial Boolean  @default(false) @map("requires_serial")
+  requiresExpiry Boolean  @default(false) @map("requires_expiry")
+  /// Item-level override of the warehouse negative-stock policy (D-07,
+  /// ADR-0022). NULL (the default) means \"follow the warehouse\"; an explicit
+  /// true/false wins over the warehouse setting.
+  allowNegativeStock Boolean? @map("allow_negative_stock")
+  barcode        String?  @db.VarChar(64)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  itemGroup     ItemGroup?           @relation(fields: [itemGroupId], references: [id], onDelete: Restrict)
+  baseUnit      Unit                 @relation(fields: [baseUnitId], references: [id], onDelete: Restrict)
+  unitConversions ItemUnitConversion[]
+
+  movements    InventoryMovement[]
+  balances     InventoryBalance[]
+  reservations InventoryReservation[]
+  materialRequestLines MaterialRequestLine[]
+  inventoryDocumentLines InventoryBusinessDocumentLine[]
+
+  // Valuation foundation (PDR-05): the valuation METHOD is configured per
+  // organization + item, the valuation STATE per warehouse + item.
+  valuationMethods ItemValuationMethod[]
+  valuationStates  InventoryValuationState[]
+  valuationRuns    InventoryValuationRun[]
+
+  // C-62: the item identity captured on each immutable Accounting posting
+  // snapshot movement.
+  accountingPostingSnapshotMovements InventoryAccountingPostingSnapshotMovement[]
+
+  @@unique([organizationId, code], map: "uq_items_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_items_organization_id_is_active")
+  @@index([organizationId, itemKind], map: "idx_items_organization_id_item_kind")
+  // master-data-strategy.md §8: stock reports filter on is_stockable.
+  @@index([organizationId, isStockable], map: "idx_items_organization_id_is_stockable")
+  @@index([itemGroupId], map: "idx_items_item_group_id")
+  @@index([baseUnitId], map: "idx_items_base_unit_id")
+  @@map("items")
+  @@schema("inventory")
+}
+
+/// Stock location. Belongs to exactly ONE branch — a warehouse never spans
+/// branches (ADR-0020 §1, master-data-strategy.md §1/§4, blueprint §11).
+/// Multiple warehouses per organization/branch are the normal case; a
+/// warehouse is master data, never an enum.
+///
+/// `allowNegativeStock` is the warehouse half of the negative-stock policy
+/// (D-07, OQ-24, ADR-0022): when false (the default), an outbound posting that
+/// would drive on-hand stock below zero is rejected. An item may override it
+/// via `items.allow_negative_stock`; a NULL there means \"follow the warehouse\".
+model Warehouse {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  branchId       String   @map("branch_id")
+  code           String   @db.VarChar(64)
+  name           String   @db.VarChar(200)
+  allowNegativeStock Boolean @default(false) @map("allow_negative_stock")
+  /// Warehouse system setting (C-50, §3.7): whether ACTIVE reservations in
+  /// this warehouse reduce the CALCULATED `available` figure
+  /// (`on_hand − reserved` vs `on_hand`). Reservations NEVER change
+  /// `on_hand` regardless of this setting — only the derived `available`
+  /// read is affected. Defaults to TRUE: this is the behavior every current
+  /// consumer of `availableQuantity`/`resolveEffectivePolicy` already gets
+  /// (ADR-0022's `available` was unconditionally `on_hand − reserved`), so
+  /// turning the setting on for existing warehouses changes nothing. Scope is
+  /// per-warehouse — the same granularity already used for the sibling
+  /// negative-stock policy on this same row, which is the only precedent for
+  /// a "warehouse system setting" in this codebase (no organization-level or
+  /// global settings surface exists to attach this to instead).
+  reservationsReduceAvailable Boolean @default(true) @map("reservations_reduce_available")
+  /// Warehouse Accounting posting mode (C-62, PDR-10 C62-OD-02): how an
+  /// Accounting-eligible Inventory document of THIS warehouse reaches the
+  /// General Ledger — `direct_final` (the Accounting operation produces a
+  /// FINAL voucher / GL effect in the same request) or `draft` (the operation
+  /// produces an Accounting-owned draft that an accountant registers or
+  /// cancels later). A closed, code-defined list
+  /// (`domain/warehouse-posting-mode.ts`), stored as text like every other
+  /// vocabulary column in this module. Defaults to `direct_final`: it is the
+  /// behaviour every existing warehouse already has conceptually (the
+  /// document's accounting boundary is crossed once, in one command), so
+  /// turning the setting on for existing rows changes nothing. Same
+  /// per-warehouse granularity and same deterministic-default convention as
+  /// `reservations_reduce_available` above — there is no organization-level or
+  /// global settings surface to attach it to instead.
+  accountingPostingMode String @default("direct_final") @map("accounting_posting_mode") @db.VarChar(16)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  movements    InventoryMovement[]
+  balances     InventoryBalance[]
+  reservations InventoryReservation[]
+  materialRequestLines MaterialRequestLine[]
+
+  // Back-relations for Inventory Business Documents (C-58).
+  inventoryDocuments            InventoryBusinessDocument[] @relation("InventoryDocumentWarehouse")
+  inventoryDocumentsAsSource    InventoryBusinessDocument[] @relation("InventoryDocumentSourceWarehouse")
+  inventoryDocumentsAsDestination InventoryBusinessDocument[] @relation("InventoryDocumentDestinationWarehouse")
+
+  // Valuation state/runs are keyed by warehouse + item (PDR-05 OD-VAL-04).
+  valuationStates InventoryValuationState[]
+  valuationRuns   InventoryValuationRun[]
+
+  // C-59E Pricing Run batches scoped to this warehouse (all-warehouse runs
+  // keep warehouse_id NULL and do not appear here).
+  pricingRuns InventoryPricingRun[] @relation("InventoryPricingRunWarehouse")
+
+  // C-62: the immutable Accounting posting snapshots captured for documents
+  // of this warehouse (one per posting operation).
+  accountingPostingSnapshots InventoryAccountingPostingSnapshot[]
+
+  @@unique([organizationId, code], map: "uq_warehouses_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_warehouses_organization_id_is_active")
+  @@index([branchId], map: "idx_warehouses_branch_id")
+  @@map("warehouses")
+  @@schema("inventory")
+}
+
+// ---------------------------------------------------------------------------
+// Inventory core — the operational source of truth for quantities (Task 7,
+// ADR-0017, ADR-0022, D-04/D-05/D-07).
+//
+// `inventory_movements` is the immutable ledger: every row is a fact. The
+// balance table is a materialized projection of that ledger, maintained in
+// the SAME transaction as the movement and rebuildable from it at any time.
+// Reservations are claims on availability, never movements. The operations
+// table makes every posting idempotent.
+//
+// Deliberately NOT here (see ADR-0022): cost columns (no Task 7 flow knows a
+// cost, and precision is OQ-03-gated), lot/serial/expiry tracking (fail-closed
+// via the item capability flags), inventory documents, valuation state,
+// accounting postings.
+
+/// One immutable stock fact (D-05).
+///
+/// `quantity` is the ENTERED magnitude (always > 0) in `unit_id`;
+/// `base_quantity` is the SIGNED base-unit effect (+in, −out, never 0) in
+/// `base_unit_id`, computed as sign × quantity × conversion_factor with exact
+/// decimal arithmetic. Balances are `SUM(base_quantity)` by construction.
+///
+/// Corrections are counter-movements (`reversal_of_movement_id`), never
+/// updates: the application exposes no PATCH/DELETE for this table (AR-13).
+/// `movement_type` is a closed, code-defined list
+/// (`domain/movement-type.ts`), stored as text like `item_kind` so that
+/// extending it is an ordinary change instead of an `ALTER TYPE`.
+model InventoryMovement {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  /// Branch snapshot taken from the warehouse at posting time (ADR-0020: the
+  /// branch is a first-class scope column). The warehouse cannot move branches
+  /// once movements exist, so the snapshot never goes stale.
+  branchId       String   @map("branch_id")
+  warehouseId    String   @map("warehouse_id")
+  itemId         String   @map("item_id")
+  movementType   String   @map("movement_type") @db.VarChar(24)
+  /// Entered quantity, `numeric(18,4)` per docs/database-strategy.md §6.
+  quantity       Decimal  @db.Decimal(18, 4)
+  unitId         String   @map("unit_id")
+  /// Signed base-unit effect; the value balances aggregate.
+  baseQuantity   Decimal  @map("base_quantity") @db.Decimal(18, 4)
+  /// Snapshot of the item's base unit at posting time (D-21). The item's base
+  /// unit cannot change once movements exist, so history keeps its meaning.
+  baseUnitId     String   @map("base_unit_id")
+  /// Exact factor applied (`numeric(18,6)` like conversion versions); '1'
+  /// when the entered unit already is the base unit. Together with the entered
+  /// unit, the base unit and `movement_date` it reproduces the resolution, so
+  /// no separate version reference is stored.
+  conversionFactor Decimal @map("conversion_factor") @db.Decimal(18, 6)
+  /// Business DATE — the calendar day this movement occurred on (OQ-73 /
+  /// ADR-0042: a day, not an instant; PostgreSQL `date`, never
+  /// `timestamptz`). Drives period filters; DISTINCT from `created_at`,
+  /// which is the registration instant. No time-of-day, no time zone. Also
+  /// the as-of value conversions are resolved at. No period validation
+  /// exists yet — the fiscal calendar is OQ-23.
+  movementDate   DateTime @map("movement_date") @db.Date
+  /// Shared by the two legs of one transfer; null otherwise.
+  transferId     String?  @map("transfer_id")
+  /// Set when this movement reverses another one. Unique (NULLs do not clash
+  /// in PostgreSQL): each movement admits at most one full reversal, which —
+  /// together with the exact-mirror rule — makes over-reversal impossible.
+  reversalOfMovementId String? @map("reversal_of_movement_id")
+  /// Opaque logical reference (no FK — there is no universal document table).
+  /// Both-or-neither; validated in the application layer.
+  referenceType  String?  @map("reference_type") @db.VarChar(64)
+  referenceId    String?  @map("reference_id")
+  /// Required for adjustments, optional otherwise. Free text — no invented
+  /// reason-code vocabulary.
+  reason         String?  @db.VarChar(500)
+  /// Echo of the idempotency key (uniqueness is enforced by
+  /// `inventory_operations`; transfers share one key across two rows).
+  operationKey   String   @map("operation_key") @db.VarChar(128)
+
+  // ---- Valuation (PDR-05, ADR-0039) ---------------------------------------
+  // The SAME ledger row carries quantity (warehouse operations) and value
+  // (inventory accounting). There is deliberately no second inventory ledger
+  // and no duplicate accounting receipt/issue row.
+  //
+  // `total_cost` is the SIGNED inventory VALUE effect of this movement
+  // (+ inbound, − outbound) in the organization's base currency, exactly
+  // mirroring how `base_quantity` carries the signed quantity effect: stock
+  // value is `SUM(total_cost)` by construction. It is NULLABLE because a
+  // warehouse receipt must be postable WITHOUT any monetary value (Owner
+  // decision OD-VAL-05) — cost is never required to record a quantity fact.
+  //
+  // There is deliberately NO stored `unit_cost`: it would be a second,
+  // ROUNDED truth for the same money. A per-unit figure is derived for
+  // presentation (`total_cost / base_quantity`) by the read layer.
+  //
+  // `total_cost` is NOT the purchase price (PDR-05 §7): it is the value
+  // assigned to inventory for valuation purposes, which Purchasing may later
+  // inform but never owns.
+  totalCost      Decimal? @map("total_cost") @db.Decimal(18, 2)
+  /// Closed, code-defined list (`domain/inventory-valuation.ts`):
+  /// `unvalued` | `provisional` | `valued`. It states FINALITY, not
+  /// completeness: `provisional` carries a real value that an explicit
+  /// recalculation will change (it was derived while the key was backdated
+  /// or partly uncosted). Staleness itself is a property of the KEY (see
+  /// `inventory_valuation_states.status`), never of an individual fact.
+  valuationStatus String  @default("unvalued") @map("valuation_status") @db.VarChar(16)
+  /// Closed, code-defined list: `entered` (supplied by a user holding the
+  /// accounting capability), `average_cost` (derived by the Moving Weighted
+  /// Average strategy), `transfer` (the value the paired leg moved) or
+  /// `reversal` (the value the reversed original carried). Everything except
+  /// `average_cost` is a value the fact carries on its OWN authority and is
+  /// preserved verbatim by a recalculation. NULL while
+  /// `valuation_status = 'unvalued'`.
+  valuationSource String? @map("valuation_source") @db.VarChar(24)
+  /// When the current value was assigned (technical instant, never a
+  /// business date).
+  valuedAt       DateTime? @map("valued_at") @db.Timestamptz(6)
+  /// The recalculation run that last assigned this value, when the value came
+  /// from a run rather than from the posting itself (auditability: a value
+  /// can always be traced to the command that produced it).
+  valuationRunId String?  @map("valuation_run_id")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  unit         Unit         @relation("MovementEnteredUnit", fields: [unitId], references: [id], onDelete: Restrict)
+  baseUnit     Unit         @relation("MovementBaseUnit", fields: [baseUnitId], references: [id], onDelete: Restrict)
+  reversalOf   InventoryMovement?  @relation("MovementReversal", fields: [reversalOfMovementId], references: [id], onDelete: Restrict)
+  reversals    InventoryMovement[] @relation("MovementReversal")
+  valuationRun InventoryValuationRun? @relation(fields: [valuationRunId], references: [id], onDelete: Restrict)
+
+  @@unique([reversalOfMovementId], map: "uq_movements_reversal_of_movement_id")
+  @@index([organizationId, warehouseId, itemId, movementDate], map: "idx_movements_org_warehouse_item_date")
+  @@index([organizationId, movementDate], map: "idx_movements_org_business_date")
+  @@index([organizationId, itemId, movementDate], map: "idx_movements_org_item_date")
+  @@index([organizationId, branchId, movementDate], map: "idx_movements_org_branch_date")
+  @@index([transferId], map: "idx_movements_transfer_id")
+  @@index([organizationId, operationKey], map: "idx_movements_org_operation_key")
+  // The Inventory Accounting worklist: "which facts on this key still carry
+  // no value?" — one index, no table scan.
+  @@index([organizationId, warehouseId, itemId, valuationStatus], map: "idx_movements_org_key_valuation_status")
+  @@index([valuationRunId], map: "idx_movements_valuation_run_id")
+  @@map("inventory_movements")
+  @@schema("inventory")
+}
+
+/// Materialized stock projection: one row per (organization, warehouse, item).
+///
+/// `on_hand` = SUM of base quantities; `reserved_quantity` = SUM of ACTIVE
+/// reservation base quantities. `available` is ALWAYS derived
+/// (on_hand − reserved) and never stored. Both columns are maintained in the
+/// same transaction as the movement/reservation write, under a row lock, and
+/// can be rebuilt from the ledger at any time (ADR-0017).
+model InventoryBalance {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  branchId       String   @map("branch_id")
+  warehouseId    String   @map("warehouse_id")
+  itemId         String   @map("item_id")
+  onHand         Decimal  @default(0) @map("on_hand") @db.Decimal(18, 4)
+  reservedQuantity Decimal @default(0) @map("reserved_quantity") @db.Decimal(18, 4)
+  /// Greatest `movement_date` posted to this key; maintained by postings and
+  /// by rebuilds. NULL only before the first movement. A business DATE
+  /// projection (the day of the newest movement), never an instant (OQ-73).
+  lastMovementDate DateTime? @map("last_movement_date") @db.Date
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, warehouseId, itemId], map: "uq_balances_org_warehouse_item")
+  @@index([organizationId, warehouseId], map: "idx_balances_org_warehouse")
+  @@index([organizationId, itemId], map: "idx_balances_org_item")
+  @@index([organizationId, branchId], map: "idx_balances_org_branch")
+  @@map("inventory_balances")
+  @@schema("inventory")
+}
+
+/// A soft claim on availability (D-07): stock that is promised but has not
+/// moved. Reservations never touch on-hand stock and never enter valuation.
+///
+/// Lifecycle is ACTIVE → RELEASED only. A separate CANCELLED state (voiding a
+/// hold because the owning order died) needs the Sales module to give it
+/// meaning and is deferred (ADR-0022); both would decrement `reserved_quantity`
+/// identically. Terminal rows are kept for audit — never deleted.
+model InventoryReservation {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  branchId       String   @map("branch_id")
+  warehouseId    String   @map("warehouse_id")
+  itemId         String   @map("item_id")
+  /// Entered magnitude, in `unit_id` — unsigned, and strictly > 0 while
+  /// `status = 'active'`. Exactly 0 only once fully CONSUMED by invocation
+  /// (C-50 reservation-consumption), at which point `status` is always
+  /// `'released'` in the SAME write — never ACTIVE with a zero remainder. A
+  /// reservation released by cancellation/approval-reversal instead, never
+  /// having been invoked, keeps whatever positive amount remained, for
+  /// audit (see `material-requests.repository.ts`'s
+  /// `reserveInvocationCapacity` / `releaseActiveReservationsForLines`).
+  quantity       Decimal  @db.Decimal(18, 4)
+  unitId         String   @map("unit_id")
+  /// Base-unit claim — same "unsigned; 0 only once CONSUMED-and-closed"
+  /// shape as `quantity` above, in lockstep with it.
+  baseQuantity   Decimal  @map("base_quantity") @db.Decimal(18, 4)
+  baseUnitId     String   @map("base_unit_id")
+  conversionFactor Decimal @map("conversion_factor") @db.Decimal(18, 6)
+  /// Closed, code-defined list (`domain/inventory-reservation.ts`): today
+  /// `active` and `released`.
+  status         String   @db.VarChar(16)
+  referenceType  String?  @map("reference_type") @db.VarChar(64)
+  referenceId    String?  @map("reference_id")
+  reason         String?  @db.VarChar(500)
+  operationKey   String   @map("operation_key") @db.VarChar(128)
+  releasedAt     DateTime? @map("released_at") @db.Timestamptz(6)
+  releasedBy     String?  @map("released_by")
+  releaseOperationKey String? @map("release_operation_key") @db.VarChar(128)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  unit         Unit         @relation("ReservationEnteredUnit", fields: [unitId], references: [id], onDelete: Restrict)
+  baseUnit     Unit         @relation("ReservationBaseUnit", fields: [baseUnitId], references: [id], onDelete: Restrict)
+  /// Virtual back-relation only (C-50): the real FK is the OTHER direction,
+  /// `material_request_lines.reservation_id` — the owning line references
+  /// its reservation, a reservation never references its owner (same
+  /// one-way-ownership shape as every other `(reference_type, reference_id)`
+  /// consumer of this table; `referenceType`/`referenceId` are ALSO set to
+  /// `'material_request_line'`/the line id for consistency with how every
+  /// other reservation is introspected, e.g. by `listReservations`).
+  materialRequestLine MaterialRequestLine?
+
+  @@index([organizationId, warehouseId, itemId, status], map: "idx_reservations_org_warehouse_item_status")
+  @@index([organizationId, status], map: "idx_reservations_org_status")
+  @@map("inventory_reservations")
+  @@schema("inventory")
+}
+
+/// Idempotency ledger for inventory postings (ADR-0022).
+///
+/// Every mutating inventory-core operation carries a client-supplied
+/// `operation_key`, unique per organization. The row is written in the SAME
+/// transaction as the ledger effect, so a committed effect always has its key
+/// and a failed one never does. `request_hash` (sha256 over the canonical
+/// request) tells a legitimate retry (same bytes → replay the stored result)
+/// from a key reuse with different intent (→ 409, never applied).
+/// `result` stores the created row ids so a replay can re-read and return the
+/// current DTOs; rows are insert-only, never updated.
+model InventoryOperation {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  operationKey   String   @map("operation_key") @db.VarChar(128)
+  /// Closed, code-defined list (`domain/inventory-operation.ts`).
+  operation      String   @db.VarChar(32)
+  /// sha256 hex over the canonical request payload.
+  requestHash    String   @map("request_hash") @db.Char(64)
+  /// Created-row ids, e.g. `{ \"movementIds\": [...] }`. Opaque to the
+  /// database (no query pattern reads inside it).
+  result         Json     @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, operationKey], map: "uq_operations_org_operation_key")
+  @@map("inventory_operations")
+  @@schema("inventory")
+}
+
+// =============================================================================
+// Inventory valuation foundation (PDR-05, ADR-0039, D-06, OQ-24 partial)
+//
+// Three tables, one purpose: let Inventory Accounting put a VALUE on the very
+// movements Warehouse Operations already posted, without a second inventory
+// ledger and without forcing a warehouse operator to know any money.
+//
+//   `item_valuation_methods`     — WHICH method applies (organization + item,
+//                                  effective-dated, D-21);
+//   `inventory_valuation_states` — the Moving Weighted Average STATE of one
+//                                  stocking key (warehouse + item), a
+//                                  materialized, rebuildable projection of the
+//                                  quantity ledger + assigned costs;
+//   `inventory_valuation_runs`   — the audit record of every explicit
+//                                  recalculation (repricing) command.
+//
+// Deliberately NOT here: cost layers (FIFO/LIFO/specific identification are
+// not active MVP methods — PDR-05 §18), landed cost, purchase pricing,
+// accounting journal columns (Inventory owns valuation, Accounting owns
+// posting — PDR-05 §19), and any per-movement valuation history table.
+// =============================================================================
+
+/// Effective-dated valuation-method configuration, scoped to ORGANIZATION +
+/// ITEM (Owner decision OD-VAL-03).
+///
+/// The same versioning mechanism as `unit_conversions` (D-21/D-26): a change
+/// inserts a NEW row and closes the previous open-ended one at the new
+/// `valid_from`; an existing version is never reinterpreted, so historical
+/// valuation stays reproducible. There is deliberately no `is_active` flag
+/// and no in-place edit.
+///
+/// `method` is a closed, code-defined list (`domain/valuation-method.ts`)
+/// stored as text — the same convention as `item_kind`, `movement_type` and
+/// `status` everywhere else in this module. Only `moving_weighted_average`
+/// may be ACTIVATED in the MVP; the vocabulary names the known future
+/// strategies so the architecture does not have to be reshaped later, and
+/// the application rejects configuring any of them (AR-24 fail-closed).
+///
+/// A key with no row at a given business date resolves to the code-defined MVP
+/// default (`moving_weighted_average`) — no per-organization default row is
+/// invented, and no EAV/JSONB configuration table exists.
+model ItemValuationMethod {
+  id             String    @id
+  organizationId String    @map("organization_id")
+  itemId         String    @map("item_id")
+  method         String    @db.VarChar(32)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  /// Why this method applies from this date (audit metadata; free text, no
+  /// invented reason-code vocabulary).
+  note           String?   @db.VarChar(500)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, itemId, validFrom], map: "uq_item_valuation_methods_item_valid_from")
+  @@index([organizationId, itemId], map: "idx_item_valuation_methods_org_item")
+  @@index([organizationId, validFrom], map: "idx_item_valuation_methods_org_valid_from")
+  @@index([organizationId, validTo], map: "idx_item_valuation_methods_org_valid_to")
+  @@map("item_valuation_methods")
+  @@schema("inventory")
+}
+
+/// Moving Weighted Average state of ONE stocking key (Owner decision
+/// OD-VAL-04): organization + warehouse + item — the same key
+/// `inventory_balances` uses, because physical inventory is warehouse-specific
+/// and an item's average cost in one warehouse is not its average cost in
+/// another.
+///
+/// This is a materialized, rebuildable PROJECTION — exactly the shape
+/// ADR-0017/ADR-0022 already use for `inventory_balances`:
+///   * source: `inventory_movements` (quantity) + the costs assigned to them;
+///   * ownership: the Inventory valuation engine ONLY (no other module, and
+///     no human, writes these columns);
+///   * maintained in the SAME transaction as the movement that changes it,
+///     under this row's `FOR UPDATE` lock;
+///   * fully rebuildable by the recalculation command, which replays the
+///     key's ledger in the canonical C-54 order.
+///
+/// Consistency rule (asserted by tests and by the recalculation command):
+///   `inventory_balances.on_hand = valued_quantity + uncosted_quantity`
+/// for the same key. `valued_quantity` is the part of on-hand whose cost is
+/// known and included in `total_value`; `uncosted_quantity` is the SIGNED
+/// remainder the engine refused to guess a cost for (a receipt posted without
+/// cost, a transfer/reversal leg, or a backdated issue).
+///
+/// The average unit cost is NEVER stored: it is `total_value / valued_quantity`,
+/// derived for presentation only — storing it would be a second, rounded truth
+/// (same rule as `available = on_hand − reserved` in ADR-0022).
+model InventoryValuationState {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  branchId       String   @map("branch_id")
+  warehouseId    String   @map("warehouse_id")
+  itemId         String   @map("item_id")
+  /// Snapshot of the valuation method this state was built with, so a state
+  /// can never be read as if it had been produced by another strategy.
+  method         String   @db.VarChar(32)
+  /// Base-unit quantity whose cost is known and included in `total_value`.
+  valuedQuantity Decimal  @default(0) @map("valued_quantity") @db.Decimal(18, 4)
+  /// Base-unit quantity physically on hand that carries NO value yet,
+  /// because it was received without a cost (OD-VAL-05). Always positive or
+  /// zero. It is kept VISIBLE instead of being averaged into
+  /// `valued_quantity` at zero cost, so `valued_quantity +
+  /// uncosted_quantity` always equals the balance row's `on_hand`.
+  uncostedQuantity Decimal @default(0) @map("uncosted_quantity") @db.Decimal(18, 4)
+  /// Inventory value of `valued_quantity`, in the organization's base
+  /// currency (`numeric(18,2)`, docs/database-strategy.md §6).
+  totalValue     Decimal  @default(0) @map("total_value") @db.Decimal(18, 2)
+  /// Closed, code-defined list (`domain/inventory-valuation.ts`):
+  /// `valued` | `pending_cost` | `stale`. Materialized classifier derived
+  /// from (`uncosted_quantity`, `stale_since`) by ONE pure function, stored
+  /// so the accounting worklist is one indexed query.
+  status         String   @default("valued") @db.VarChar(16)
+  /// Instant from which this key's valuation may no longer reflect the
+  /// method — a document was registered BEFORE later activity, or a cost
+  /// arrived after the stock it belongs to was already issued (Owner
+  /// decisions OD-VAL-10/OD-VAL-11: nothing is ever silently repriced, the
+  /// key is honestly marked instead). STICKY: only an explicit
+  /// recalculation clears it, because the values it was computed from are
+  /// still the wrong ones until then.
+  staleSince     DateTime? @map("stale_since") @db.Timestamptz(6)
+  /// Technical instant of the last value assignment on this key.
+  lastValuedAt   DateTime? @map("last_valued_at") @db.Timestamptz(6)
+  /// The last recalculation run that rebuilt this state, when any.
+  lastRecalculationId String? @map("last_recalculation_id")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch            Branch                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse         Warehouse              @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  item              Item                   @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  lastRecalculation InventoryValuationRun? @relation(fields: [lastRecalculationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, warehouseId, itemId], map: "uq_valuation_states_org_warehouse_item")
+  @@index([organizationId, status], map: "idx_valuation_states_org_status")
+  @@index([organizationId, itemId], map: "idx_valuation_states_org_item")
+  @@index([lastRecalculationId], map: "idx_valuation_states_last_recalculation_id")
+  @@map("inventory_valuation_states")
+  @@schema("inventory")
+}
+
+/// One executed recalculation (repricing) command — the audit record of an
+/// EXPLICIT user decision (Owner decisions OD-VAL-11/OD-VAL-12).
+///
+/// Rows are insert-only. Scope is exactly ONE stocking key: there is no
+/// "recalculate everything" command, so an operator can always state what a
+/// run touched. `from_date` records the business date that motivated the run
+/// (typically a backdated document); it never narrows the replay, which
+/// always covers the key's whole ledger because a Moving Weighted Average
+/// cannot be resumed from the middle without an opening-state snapshot
+/// nobody has approved storing.
+model InventoryValuationRun {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  branchId       String   @map("branch_id")
+  warehouseId    String   @map("warehouse_id")
+  itemId         String   @map("item_id")
+  method         String   @db.VarChar(32)
+  /// Closed, code-defined list (`domain/inventory-valuation.ts`):
+  /// `backdated_document`, `cost_assignment`, `manual`, and — C-59E —
+  /// `pricing_operation` (a per-key replay inside a Periodic Pricing
+  /// Operation batch) and `reverse_pricing` (a per-key compensating run
+  /// written by Reverse Pricing).
+  trigger        String   @db.VarChar(24)
+  /// The business date the run was requested for; audit only. A calendar
+  /// day, PostgreSQL `date` (OQ-73) — never an instant.
+  fromDate       DateTime? @map("from_date") @db.Date
+  /// How many ledger facts the replay examined, and how many ended with a
+  /// different value than before.
+  movementsExamined Int   @map("movements_examined")
+  movementsRevalued Int   @map("movements_revalued")
+  /// The state this run produced (snapshotted so a run is readable without
+  /// re-deriving it).
+  resultingValuedQuantity Decimal @map("resulting_valued_quantity") @db.Decimal(18, 4)
+  resultingUncostedQuantity Decimal @map("resulting_uncosted_quantity") @db.Decimal(18, 4)
+  resultingTotalValue     Decimal @map("resulting_total_value") @db.Decimal(18, 2)
+  resultingStatus         String  @map("resulting_status") @db.VarChar(16)
+  /// Echo of the idempotency key (uniqueness enforced by
+  /// `inventory_operations`).
+  operationKey   String   @map("operation_key") @db.VarChar(128)
+  reason         String?  @db.VarChar(500)
+  executedAt     DateTime @map("executed_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  movements InventoryMovement[]
+  states    InventoryValuationState[]
+
+  // C-59E: the pricing-run key outcomes this per-key run was produced by.
+  pricingRunKeyOutcomes InventoryPricingRunKeyOutcome[]
+
+  @@index([organizationId, warehouseId, itemId, executedAt], map: "idx_valuation_runs_org_key_executed_at")
+  @@index([organizationId, executedAt], map: "idx_valuation_runs_org_executed_at")
+  @@map("inventory_valuation_runs")
+  @@schema("inventory")
+}
+
+// =============================================================================
+// Material Request (C-50) — an Inventory-owned business aggregate recording
+// DEMAND for stock. It is NOT a movement, receipt, issue, Purchase Request or
+// accounting document (Owner decision, c-50-material-request-investigation.md
+// §1): draft/submitted/rejected/approved states never touch `on_hand`, and
+// approval creates, at most, a RESERVATION (a claim against future
+// availability) — never a posted ledger effect.
+//
+// Design notes:
+//   * No `cancelled` status: no governance-confirmed rule exists for what a
+//     cancellation must do to an already-created reservation, so the status
+//     list stays `draft | submitted | approved | rejected` (closed,
+//     code-defined list in `domain/material-request.ts`, same convention as
+//     `inventory_reservations.status`). Extending it later is an ordinary
+//     application change, never a migration.
+//   * No header-level `branch_id`/`department_id`: Owner decision 3.2 puts
+//     the warehouse (and therefore the branch it belongs to) at the LINE
+//     level — a single request can span several warehouses/branches by
+//     design (one line each, never an auto-split line, Owner decision 3.2).
+//   * `material_request_lines.branch_id` is DENORMALIZED from
+//     `warehouses.branch_id` at line-creation time — the same thing
+//     `inventory_movements`/`inventory_balances`/`inventory_reservations`
+//     already do, because branch is a first-class reporting scope
+//     (ADR-0020), not a new concept.
+//   * `material_request_lines.reservation_id` is a real FK to
+//     `inventory_reservations` (both tables live in this module) — set only
+//     when that line's `reservation_requested = true` flag was honored by a
+//     successful approval. Non-reservation lines keep it NULL forever
+//     (Owner decision 3.5: a non-reservation line must never reserve stock).
+//     Invocation status/remaining-quantity are DERIVED at read time from
+//     `documents.document_relations` (kind `fulfill`, source module
+//     `inventory`, source document type `inventory_material_request`) —
+//     never stored here, so there is exactly one source of truth for it.
+//   * `material_request_events` is a narrow, append-only, typed-column audit
+//     trail (no JSONB) — the Owner's "preserve audit trail of approval and
+//     rejection" requirement, without binding Material Request to the
+//     Workflow module (no production module consumes Workflow today, see
+//     c-50-material-request-investigation.md) or inventing a generic audit
+//     framework. `inventory_reservations`/`inventory_movements` already
+//     record `created_by`/timestamps per row; this table is for the
+//     REQUEST-level lifecycle narrative that spans many rows.
+//   * All foreign keys are ON DELETE RESTRICT, matching every other table in
+//     this module — history is never silently removed out from under a
+//     deleted master-data row.
+// =============================================================================
+
+/// A request for stock to be made available — demand, not a movement
+/// (C-50 §1). One row per request; `number` is allocated through the
+/// Documents numbering foundation at submission (Task 8), matching the
+/// Accounting documents precedent (`AccountingDocument.number`).
+model MaterialRequest {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  /// Allocated via `documents.numbering_allocations` at (re)submission; NULL
+  /// while still a draft (a draft is not yet a numbered document). The SAME
+  /// number is kept across a return-for-correction/resubmit cycle
+  /// (`NumberingService.allocateNumber` is replayed with the same
+  /// `allocationKey`, never re-allocated).
+  number         String?  @db.VarChar(32)
+  /// Closed, code-defined list (`domain/material-request.ts`): `draft`,
+  /// `submitted`, `returned`, `approved`, `rejected`, `cancelled`.
+  status         String   @default("draft") @db.VarChar(16)
+  description    String?  @db.VarChar(1000)
+  /// The principal that created the draft (no Employee linkage — OQ-37 is
+  /// unresolved; this is the authenticated user id only).
+  requestedBy    String   @map("requested_by")
+  submittedAt    DateTime? @map("submitted_at") @db.Timestamptz(6)
+  submittedBy    String?   @map("submitted_by")
+  /// Set by `Inventory.MaterialRequest.ReturnForCorrection` (Owner decision:
+  /// "the approver can return it to the requester for correction").
+  /// Overwritten on each return — the full cycle history lives in
+  /// `material_request_events`, append-only.
+  returnedAt     DateTime? @map("returned_at") @db.Timestamptz(6)
+  returnedBy     String?   @map("returned_by")
+  /// Required by application logic whenever `status = returned` (same rule
+  /// as `rejectionReason`).
+  returnReason   String?  @map("return_reason") @db.VarChar(1000)
+  approvedAt     DateTime? @map("approved_at") @db.Timestamptz(6)
+  /// The ONLY principal later allowed to reverse this approval (Owner
+  /// decision 3.4: "only the original approver may reverse approval").
+  /// Approving one's own request is explicitly allowed (Owner decision: no
+  /// requester/approver separation is enforced) — this column is simply
+  /// whoever held `Approve` and called it, which MAY be `requestedBy`.
+  approvedBy     String?   @map("approved_by")
+  rejectedAt     DateTime? @map("rejected_at") @db.Timestamptz(6)
+  rejectedBy     String?   @map("rejected_by")
+  /// Required by application logic whenever `status = rejected` (Owner
+  /// decision: "rejection requires a reason"). No CHECK constraint, same
+  /// rule as every other value constraint in this module — Prisma cannot
+  /// express it, so it lives in the framework-free domain layer.
+  rejectionReason String?  @map("rejection_reason") @db.VarChar(1000)
+  approvalReversedAt     DateTime? @map("approval_reversed_at") @db.Timestamptz(6)
+  approvalReversedBy     String?   @map("approval_reversed_by")
+  approvalReversalReason String?   @map("approval_reversal_reason") @db.VarChar(1000)
+  /// Set by `Inventory.MaterialRequest.Cancel` — a DISTINCT, terminal
+  /// transition from approval reversal (Owner decision: "cancellation and
+  /// reversal of approval are distinct operations"). Only ever set once:
+  /// `cancelled` is terminal, never re-entered.
+  cancelledAt     DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  cancelledBy     String?   @map("cancelled_by")
+  cancellationReason String? @map("cancellation_reason") @db.VarChar(1000)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  lines        MaterialRequestLine[]
+  events       MaterialRequestEvent[]
+
+  // NULLs do not clash (same trick as `inventory_movements.transfer_id` /
+  // `reversal_of_movement_id`): any number of NULL (draft) numbers coexist.
+  @@unique([organizationId, number], map: "uq_material_requests_org_number")
+  @@index([organizationId, status], map: "idx_material_requests_org_status")
+  @@index([organizationId, createdAt], map: "idx_material_requests_org_created_at")
+  @@index([organizationId, requestedBy], map: "idx_material_requests_org_requested_by")
+  @@map("material_requests")
+  @@schema("inventory")
+}
+
+/// One requested item × warehouse × quantity (Owner decision 3.2: every line
+/// picks its OWN warehouse; the system never auto-splits a line across
+/// warehouses — a 60/40 split is two lines the user created).
+model MaterialRequestLine {
+  id                String  @id
+  materialRequestId String  @map("material_request_id")
+  /// Denormalized from the parent for direct scoped queries/constraints
+  /// without a join — the same shape `inventory_movements` etc. use.
+  organizationId    String  @map("organization_id")
+  /// Denormalized from `warehouses.branch_id` at creation time (ADR-0020:
+  /// branch is a first-class reporting scope), not a new header concept.
+  branchId          String  @map("branch_id")
+  lineNumber        Int     @map("line_number")
+  itemId            String  @map("item_id")
+  warehouseId       String  @map("warehouse_id")
+  /// Entered magnitude (always > 0) in `unit_id`.
+  quantity          Decimal @db.Decimal(18, 4)
+  unitId            String  @map("unit_id")
+  /// Base-unit equivalent (always > 0) — the same entered/base/factor triple
+  /// `inventory_movements`/`inventory_reservations` already carry.
+  baseQuantity      Decimal @map("base_quantity") @db.Decimal(18, 4)
+  baseUnitId        String  @map("base_unit_id")
+  conversionFactor  Decimal @map("conversion_factor") @db.Decimal(18, 6)
+  /// Owner decision 3.5: reservation is OPTIONAL per line, never implied.
+  reservationRequested Boolean @default(false) @map("reservation_requested")
+  /// Set ONLY when `reservationRequested = true` AND approval succeeded for
+  /// this line; otherwise permanently NULL. `@unique` — a reservation is
+  /// created for exactly one line, never shared.
+  reservationId     String? @unique @map("reservation_id")
+  /// Cumulative base-unit quantity successfully invoked into a downstream
+  /// process (C-50 §3.8). AUTHORITATIVE counter — maintained transactionally
+  /// by `MaterialRequestsRepository.reserveInvocationCapacity` /
+  /// `releaseInvocationCapacity` under this request's own row lock, NOT
+  /// recomputed by reading `documents.document_relations` on every request
+  /// (review finding: that read was both permission-gated — coupling every
+  /// mutation response to `Documents.Relation.View` for no reason — and
+  /// capped at a single page, silently under-counting past 1000 relations).
+  /// The Document Relation itself remains the cross-module traceability
+  /// record; this module simply never reads it back to derive its own state.
+  invokedBaseQuantity Decimal @default(0) @map("invoked_base_quantity") @db.Decimal(18, 4)
+  /// Cumulative count of successful invocations, maintained alongside
+  /// `invokedBaseQuantity` in the same locked update.
+  invocationCount     Int     @default(0) @map("invocation_count")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  materialRequest MaterialRequest     @relation(fields: [materialRequestId], references: [id], onDelete: Restrict)
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch          Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  item            Item                @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  warehouse       Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  unit            Unit                @relation("MaterialRequestLineEnteredUnit", fields: [unitId], references: [id], onDelete: Restrict)
+  baseUnit        Unit                @relation("MaterialRequestLineBaseUnit", fields: [baseUnitId], references: [id], onDelete: Restrict)
+  reservation     InventoryReservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@unique([materialRequestId, lineNumber], map: "uq_material_request_lines_request_line_number")
+  @@index([organizationId, itemId], map: "idx_material_request_lines_org_item")
+  @@index([organizationId, warehouseId], map: "idx_material_request_lines_org_warehouse")
+  @@index([organizationId, branchId], map: "idx_material_request_lines_org_branch")
+  @@map("material_request_lines")
+  @@schema("inventory")
+}
+
+/// Append-only lifecycle narrative for a Material Request — "preserve audit
+/// trail of approval and reversal" without binding to Workflow or a generic
+/// audit framework (see module-level notes above). Rows are never updated or
+/// deleted.
+model MaterialRequestEvent {
+  id                String   @id
+  materialRequestId String   @map("material_request_id")
+  organizationId    String   @map("organization_id")
+  /// Closed, code-defined list (`domain/material-request-event.ts`):
+  /// `created`, `submitted` (also used for a post-return RESUBMISSION,
+  /// distinguished by `fromStatus = 'returned'`), `returned_for_correction`,
+  /// `approved`, `rejected`, `approval_reversed`, `cancelled`,
+  /// `line_invoked`.
+  eventType  String   @map("event_type") @db.VarChar(32)
+  fromStatus String?  @map("from_status") @db.VarChar(16)
+  toStatus   String?  @map("to_status") @db.VarChar(16)
+  /// The acting principal; NULL only for system-raised events (none today).
+  actorId    String?  @map("actor_id")
+  reason     String?  @db.VarChar(1000)
+  /// Opaque pointer to whatever the event is about beyond the request
+  /// itself — a line id, reservation id, or document-relation id. Never a
+  /// foreign key (the referenced row can live in another module, e.g. a
+  /// `line_invoked` event's reference is a `document_relations.id`).
+  referenceId String? @map("reference_id")
+  occurredAt  DateTime @map("occurred_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  materialRequest MaterialRequest @relation(fields: [materialRequestId], references: [id], onDelete: Restrict)
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, materialRequestId, occurredAt], map: "idx_material_request_events_request_time")
+  @@map("material_request_events")
+  @@schema("inventory")
+}

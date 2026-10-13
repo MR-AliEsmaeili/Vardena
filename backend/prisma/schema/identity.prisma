@@ -1,0 +1,25 @@
+// Identity module schema (docs/modules.md §Identity, ADR-0007).
+//
+// Owns: `identity.sessions` — server-side opaque sessions.
+// Only the SHA-256 hash of the token is stored; the raw token travels
+// via httpOnly cookie (never persisted in plaintext).
+
+model Session {
+  id                String    @id
+  userId            String    @map("user_id")
+  tokenHash         String    @unique(map: "uq_sessions_token_hash") @map("token_hash")
+  userAgent         String?   @map("user_agent")
+  ipAddress         String?   @map("ip_address")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastSeenAt        DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz(6)
+  absoluteExpiresAt DateTime  @map("absolute_expires_at") @db.Timestamptz(6)
+  revokedAt         DateTime? @map("revoked_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt], map: "idx_sessions_user_id_revoked_at")
+  @@index([expiresAt], map: "idx_sessions_expires_at")
+  @@map("sessions")
+  @@schema("identity")
+}

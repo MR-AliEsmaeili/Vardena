@@ -1,0 +1,5 @@
+# Local compose environment (never commit real values; see .env.example).
+.env
+
+# Python bytecode from the CI helper scripts in scripts/.
+__pycache__/

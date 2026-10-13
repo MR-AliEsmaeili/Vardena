@@ -1,0 +1,2 @@
+# Prisma migration lockfile — the provider must never change without an ADR.
+provider = "postgresql"

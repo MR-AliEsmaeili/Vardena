@@ -1,0 +1,1345 @@
+// Accounting module schema (docs/modules.md §Accounting, ADR-0026,
+// docs/accounting/domain-contract.md).
+//
+// Task 10.2 — the bookkeeping scope spine:
+//   `accounting.financial_areas`    — bookkeeping scopes (حوزه مالی), one
+//     organization may hold n ≥ 1 (OQ-40 interim: created explicitly, never
+//     seeded; no grants yet — structural scoping like `organizationId`).
+//   `accounting.fiscal_years`       — explicit dated years per area with the
+//     `open → closed → sealed` lifecycle (+ explicit reopen/unseal).
+//   `accounting.accounting_periods` — explicit dated rows inside one year,
+//     never computed months; several may be open at once.
+//
+// Task 10.3 — the coding structure + chart of accounts (§8/§9,
+// AC-D-06…AC-D-10, AC-D-19, AC-I-10/11):
+//   `accounting.coding_structure_versions` — the organization's CONFIGURABLE
+//     coding structure (depth + per-level digit lengths + display-only
+//     separator), versioned `draft → active → superseded` with exactly one
+//     ACTIVE version per organization (§9.4). Nothing about the shape is
+//     hardcoded: `2 + 3 + 3` is one configuration among many.
+//   `accounting.coding_structure_levels`   — one row per level of ONE
+//     VERSION: a published/superseded version is never reinterpreted by a
+//     later structure change (§9.4), so levels belong to the version, not to
+//     a mutable "current structure" row.
+//   `accounting.accounts`                  — the whole chart of accounts in
+//     ONE table: adjacency (`parent_id`) + integer `level` (AC-D-06/07).
+//     There are deliberately no `groups`/`generals`/`subsidiaries`/`details`
+//     tables, and `level_kind` labels are informational only (§8.1).
+//
+// Explicitly NOT here (later Accounting tasks — contract §28.2): control-role
+// mappings, detail dimensions / groups / items (floating details),
+// posting rules and balance projections. Accounting documents + lines and the
+// system-posting idempotency ledger shipped with Task 10.4; the immutable
+// ledger entries shipped with Task 10.7 (see below).
+//
+// Deferred on purpose, with the seam recorded (no speculative columns —
+// AR-29):
+// - Area applicability of accounts (§8.3): the chart is ORGANIZATION-scoped
+//   (AC-D-04), so accounts carry no `financial_area_id` and `code` is unique
+//   per organization (§9.2). An applicability table has no consumer before
+//   posting validation exists (§10.6/§12.5) and its shape is entangled with
+//   OQ-40 (one chart vs per-area charts); if OQ-40 resolves to per-area
+//   charts, uniqueness widens to `(organization_id, financial_area_id, code)`
+//   as an additive change.
+// - `account_type` + `is_temporary` (§8.3): the vocabulary and the
+//   temporary-classification function are EXPERT-GATED (OQ-25) → no column is
+//   invented. `account_nature` (`debit|credit`) IS a decided closed list and
+//   is therefore stored.
+// - `control_role` (§8.7) and coding-structure `reserved_ranges` (§9.1): both
+//   are posting-rule inputs whose purpose vocabulary is OQ-25 → deferred with
+//   the posting task that consumes them.
+//
+// Conventions (docs/database-strategy.md, ADR-0021):
+// - every row carries `organization_id` (NOT NULL, FK RESTRICT): the
+//   tenant/security boundary (AC-D-01, AC-I-01);
+// - periods denormalize `organization_id` + `financial_area_id` so scope
+//   checks and list indexes lead with the scope (ADR-0021 §3);
+// - dates are inclusive date-only ranges (`DATE`, never timestamptz):
+//   `start_date`/`end_date` with the `[start, end]` overlap test living in
+//   `domain/date-range.ts` (AC-I-03);
+// - statuses are closed code-defined lists stored as TEXT (`open`/`closed`/
+//   `sealed`, `domain/fiscal-year.ts` / `domain/accounting-period.ts` are the
+//   source of truth); no CHECK constraints — value rules are enforced and
+//   unit-tested in the domain layer, because constraints Prisma cannot
+//   represent would be dropped by a later `prisma migrate dev` (the same
+//   reason the organization migration gives);
+// - guards that must hold under concurrency (calendar overlap, "exactly one
+//   active coding-structure version", account code placement, the postable-
+//   leaf invariant) are enforced by short `SELECT … FOR UPDATE` transactions
+//   in `data/` (docs/modules.md §Accounting, AR-11), NOT by exclusion
+//   constraints or triggers: both need either a superuser extension
+//   (`btree_gist`) or a PL/pgSQL function — and both are invisible to Prisma,
+//   so the next generated migration would silently `DROP` them and lose the
+//   invariant. Parent-row locks serialize the same writers with no drift
+//   hazard; the unique indexes below stay the hard backstop for identity
+//   races.
+// - lifecycle: `is_active` only (OQ-36 posture); no business row is deleted.
+//   The ONE exception is a coding-structure version's level rows while that
+//   version is still a `draft` — an unreferenced configuration workspace,
+//   deleted-and-replaced atomically (the ADR-0024 draft-configuration rule),
+//   never reachable from an account. `period_kind` carries the OQ-23 seam
+//   (`normal` is the only v1 value).
+
+model FinancialArea {
+  id             String  @id
+  organizationId String  @map("organization_id")
+  code           String  @db.VarChar(64)
+  title          String  @db.VarChar(200)
+  /// Per-organization default area (§5.5): at most one area per organization
+  /// may hold `true`. Enforced in the application transaction
+  /// (`data/financial-areas.repository.ts`) — a partial unique index would
+  /// be invisible to Prisma and dropped by a later generated migration.
+  isDefault      Boolean @default(false) @map("is_default")
+  isActive       Boolean @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  fiscalYears  FiscalYear[]
+
+  // Back-relations for denormalized period scope columns. Virtual side only
+  // (the real FK columns stay `accounting_periods.organization_id` /
+  // `.financial_area_id`) — no migration impact.
+  accountingPeriods AccountingPeriod[]
+
+  // Back-relations for the accounting documents of this area (Task 10.4):
+  // the number series scope (§18) and the denormalized line scope columns.
+  accountingDocuments AccountingDocument[]
+  documentLines       AccountingDocumentLine[]
+
+  // Back-relations for the immutable ledger entries booked in this area
+  // (Task 10.7 — the bookkeeping scope is preserved on every entry).
+  // Virtual side only — no migration impact.
+  ledgerEntries LedgerEntry[]
+
+  // Back-relations for the balance projection (Task 12).
+  // Virtual side only — no migration impact.
+  accountBalanceProjections AccountBalanceProjection[]
+
+
+  // C-62: the source posting mappings that target this area. Virtual side
+  // only — the real FK column is `source_posting_mappings.financial_area_id`.
+  sourcePostingMappings SourcePostingMapping[]
+  @@unique([organizationId, code], map: "uq_financial_areas_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_financial_areas_organization_id_is_active")
+  @@map("financial_areas")
+  @@schema("accounting")
+}
+
+model FiscalYear {
+  id              String   @id
+  organizationId  String   @map("organization_id")
+  financialAreaId String   @map("financial_area_id")
+  code            String   @db.VarChar(64)
+  title           String   @db.VarChar(200)
+  /// Inclusive bounds of the year (contract §6.1). Years of one
+  /// (organization, area) never overlap (AC-I-03).
+  startDate       DateTime @map("start_date") @db.Date
+  endDate         DateTime @map("end_date") @db.Date
+  /// `open` | `closed` | `sealed` (contract §6.3, domain/fiscal-year.ts).
+  status          String   @default("open") @db.VarChar(20)
+  isActive        Boolean  @default(true) @map("is_active")
+  /// Optional link to the previous year of the same (organization, area) —
+  /// the year-transition chain (contract §6.1). Informational only.
+  priorYearId     String?  @map("prior_year_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy       String?  @map("created_by")
+  updatedBy       String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialArea FinancialArea @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
+  priorYear    FiscalYear?  @relation("FiscalYearChain", fields: [priorYearId], references: [id], onDelete: Restrict)
+  followingYears FiscalYear[] @relation("FiscalYearChain")
+  accountingPeriods AccountingPeriod[]
+
+  // Back-relations for the documents/lines that pin this year (Task 10.4,
+  // contract §12.2: the resolved year is stored, never recomputed).
+  accountingDocuments AccountingDocument[]
+  documentLines       AccountingDocumentLine[]
+
+  // Back-relations for the ledger entries resolved into this year (Task 10.7).
+  // Virtual side only — no migration impact.
+  ledgerEntries LedgerEntry[]
+
+  // Back-relations for the balance projection (Task 12).
+  // Virtual side only — no migration impact.
+  accountBalanceProjections AccountBalanceProjection[]
+
+  @@unique([organizationId, financialAreaId, code], map: "uq_fiscal_years_organization_id_financial_area_id_code")
+  @@index([organizationId, financialAreaId], map: "idx_fiscal_years_organization_id_financial_area_id")
+  @@index([organizationId, financialAreaId, status], map: "idx_fiscal_years_organization_id_financial_area_id_status")
+  @@index([priorYearId], map: "idx_fiscal_years_prior_year_id")
+  @@map("fiscal_years")
+  @@schema("accounting")
+}
+
+model AccountingPeriod {
+  id              String   @id
+  organizationId  String   @map("organization_id")
+  financialAreaId String   @map("financial_area_id")
+  fiscalYearId    String   @map("fiscal_year_id")
+  /// 1-based ordinal inside the year; unique per year (contract §7.1).
+  sequence        Int
+  title           String   @db.VarChar(200)
+  /// Inclusive bounds; always inside the year's range (AC-I-03).
+  startDate       DateTime @map("start_date") @db.Date
+  endDate         DateTime @map("end_date") @db.Date
+  /// `open` | `closed` | `sealed` (contract §7.2, domain/accounting-period.ts).
+  status          String   @default("open") @db.VarChar(20)
+  /// v1 vocabulary: `normal` only. An adjustment/special period is an
+  /// EXPERT-GATED addition (OQ-23) — the seam exists, the value does not.
+  periodKind      String   @default("normal") @map("period_kind") @db.VarChar(20)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy       String?  @map("created_by")
+  updatedBy       String?  @map("updated_by")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialArea FinancialArea  @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
+  fiscalYear    FiscalYear     @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+
+  // Back-relations for the documents/lines resolved into this period
+  // (Task 10.4 — the stored period resolution, AC-I-14).
+  accountingDocuments AccountingDocument[]
+  documentLines       AccountingDocumentLine[]
+
+  // Back-relations for the ledger entries resolved into this period
+  // (Task 10.7 — the stored period resolution is preserved, never recomputed).
+  // Virtual side only — no migration impact.
+  ledgerEntries LedgerEntry[]
+
+  // Back-relations for the balance projection (Task 12).
+  // Virtual side only — no migration impact.
+  accountBalanceProjections AccountBalanceProjection[]
+
+  @@unique([fiscalYearId, sequence], map: "uq_accounting_periods_fiscal_year_id_sequence")
+  @@index([organizationId, fiscalYearId], map: "idx_accounting_periods_organization_id_fiscal_year_id")
+  @@index([organizationId, fiscalYearId, status], map: "idx_accounting_periods_organization_id_fiscal_year_id_status")
+  @@map("accounting_periods")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Coding structure + chart of accounts (Task 10.3, contract §8/§9)
+// ---------------------------------------------------------------------------
+
+/// One revision of an organization's coding structure (§9.1, AC-D-10).
+///
+/// `code` names the structure inside the organization (`DEFAULT`, `SIMPLE`, …)
+/// and `versionNumber` counts its revisions — the shape the Workflow
+/// Foundation established for versioned configuration (ADR-0024 §3, which
+/// §9.4 names explicitly): `draft → active → superseded`, one-way.
+///
+/// Exactly ONE version per organization is `active` (§9.4): it is the
+/// structure NEW root accounts are created under, and publishing a version
+/// supersedes the previous active one. Enforced inside a locked transaction
+/// (`data/coding-structures.repository.ts`) rather than by a partial unique
+/// index — a partial index is invisible to Prisma and would be dropped by the
+/// next generated migration (the same reason this file gives for `is_default`
+/// on `financial_areas`).
+///
+/// `maxDepth` + `separator` + the level rows below ARE the structure: no
+/// segment count, digit length or separator is hardcoded anywhere in the
+/// module (`2 + 3 + 3` is one configuration among many).
+model CodingStructureVersion {
+  id             String  @id
+  organizationId String  @map("organization_id")
+  /// Structure identity inside the organization; versions of one structure
+  /// share it. Unique per (organization, code, versionNumber).
+  code           String  @db.VarChar(64)
+  /// 1-based ordinal per (organization, code), assigned at creation.
+  versionNumber  Int     @map("version_number")
+  /// `draft` | `active` | `superseded` (domain/coding-structure.ts).
+  status         String  @default("draft") @db.VarChar(16)
+  /// Number of levels: 1..MAX_CODING_STRUCTURE_DEPTH (architecture cap = 8).
+  maxDepth       Int     @map("max_depth")
+  /// DISPLAY ONLY (§9.1/§9.2): how a code is rendered (`-`, `/`, `.` or
+  /// empty = none). Never part of a stored code, never part of uniqueness.
+  separator      String  @default("") @db.VarChar(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  levels       CodingStructureLevel[]
+  accounts     Account[]
+
+  /// Base Chart adoption records that pinned this version (Task 23).
+  /// Virtual side only — the real FK column stays
+  /// `base_chart_adoptions.coding_structure_version_id`.
+  baseChartAdoptions BaseChartAdoption[]
+
+  /// Two concurrent "create the next version" writes collide HERE (the loser
+  /// retries with the recomputed ordinal — the Workflow version precedent).
+  @@unique([organizationId, code, versionNumber], map: "uq_coding_structure_versions_org_id_code_version_number")
+  /// "the organization's active version" — the resolver every new root
+  /// account and every picker needs; leads with the scope column (ADR-0021 §3).
+  @@index([organizationId, status], map: "idx_coding_structure_versions_organization_id_status")
+  @@index([organizationId, code], map: "idx_coding_structure_versions_organization_id_code")
+  @@map("coding_structure_versions")
+  @@schema("accounting")
+}
+
+/// One level of one coding-structure version (§9.1).
+///
+/// Levels belong to the VERSION (not to a mutable "current structure" row) so
+/// that a later structure change never reinterprets the codes accounts pinned
+/// to this version already carry (§9.4).
+model CodingStructureLevel {
+  id             String  @id
+  organizationId String  @map("organization_id")
+  versionId      String  @map("coding_structure_version_id")
+  /// 1-based ordinal inside the version; every level 1..maxDepth must exist
+  /// before the version can become active (domain/coding-structure.ts).
+  levelIndex     Int     @map("level_index")
+  /// The level title the organization sees (§8.1: level titles are
+  /// organization configuration — `گروه / کل / معین / تفصیلی` are the common
+  /// Iranian vocabulary, not a code constant).
+  title          String  @db.VarChar(200)
+  /// Digits this level's segment contributes. ≥ 1, and the total across the
+  /// version is capped (MAX_ACCOUNT_CODE_LENGTH = 32) — architecture
+  /// constants that bound validation and index widths (§9.1), not policy.
+  digitLength    Int     @map("digit_length")
+  /// Per-level default for new accounts (§14 rule 4). A DEFAULT, not a rule:
+  /// `is_postable` is an account attribute the chart may override.
+  defaultIsPostable Boolean @default(false) @map("default_is_postable")
+  /// Informational label only (`group` | `general` | `subsidiary` | `detail`).
+  /// NOTHING derives behaviour from it (§8.1: the semantic hooks live on the
+  /// account, not on a level name), which is why duplicates across levels are
+  /// allowed and the list may be shorter than `maxDepth`.
+  levelKind      String?  @map("level_kind") @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  version      CodingStructureVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@unique([versionId, levelIndex], map: "uq_coding_structure_levels_version_id_level_index")
+  @@index([organizationId, versionId], map: "idx_coding_structure_levels_organization_id_version_id")
+  @@map("coding_structure_levels")
+  @@schema("accounting")
+}
+
+/// One node of the organization's chart of accounts (§8, AC-D-06…AC-D-08).
+///
+/// ONE table for the whole tree (AC-D-07): `parent_id` + `level` is the
+/// authority, the code prefix is the proof (§9.3). No `path` projection yet
+/// (§8.2 allows one as a rebuildable projection — it belongs with the
+/// reporting task that reads it).
+///
+/// Immutability: `code` is immutable once created (§8.3) — there is no code
+/// field on the update path at all, and nothing reuses a code (§8.6). The
+/// structural fields (`parent_id`, `level`, `account_nature`, `is_postable`)
+/// are immutable once the account has document lines (AC-I-11, §8.4 rule 4);
+/// document lines are Task 10.4+, so the domain rule is implemented behind the
+/// single documented seam in `domain/account.ts` (`isReferencedByDocumentLine`)
+/// — there is NO fake usage table (Task 10.3 §16 forbids inventing one).
+model Account {
+  id             String  @id
+  organizationId String  @map("organization_id")
+  /// Canonical code: digits only, the concatenation of the level segments
+  /// (§9.2). Unique per ORGANIZATION because the chart is organization-scoped
+  /// (AC-D-04, §9.2). Width = MAX_ACCOUNT_CODE_LENGTH (the §9.1 cap), so the
+  /// length rule can never be expressed only in the domain layer.
+  code           String  @db.VarChar(32)
+  /// Persian-capable title (§2.3 C4); editable (titles change, codes do not).
+  title          String  @db.VarChar(200)
+  /// `null` for roots. ON DELETE RESTRICT: nothing is deleted, and the tree
+  /// can never lose an ancestor under a report's feet (§8.6, AR-13).
+  parentId       String? @map("parent_id")
+  /// 1-based depth, ALWAYS derived: root = 1, child = parent.level + 1
+  /// (AC-I-10 rule 1). Never supplied by a client.
+  level          Int
+  /// The structure version this account's code was composed under (§9.4).
+  /// Task 10.3 legacy, untouched in Task 11 per D2 — remains NOT NULL.
+  codingStructureVersionId String @map("coding_structure_version_id")
+  /// Task 11 — canonical configuration scope, sole scope per D1.
+  /// NOT NULL after D3 backfill (orphan handling). See migration 20260920.
+  accountingConfigurationId String @map("accounting_configuration_id")
+  /// Balance direction (`ماهیت`), `debit` | `credit` | `dual` (§8.3, OD-29-01). Reporting
+  /// semantics only — it does NOT restrict which side a future line uses
+  /// (§13.4).
+  accountNature  String   @map("account_nature") @db.VarChar(8)
+  /// Account Type (Task 30 — OD-29-02): `BALANCE_SHEET` | `INCOME_STATEMENT` | `MEMORANDUM`.
+  /// Governs fiscal-period closing, opening balance carry-forward, and statement classification.
+  /// Immutable after first operational use / posting.
+  accountType    String   @default("BALANCE_SHEET") @map("account_type") @db.VarChar(32)
+  /// Optional link to Level-1 Detail Group (Task 30 — OD-29-03).
+  /// Required detail items on posting lines must belong to this Detail Group hierarchy.
+  detailGroupId  String?  @map("detail_group_id")
+  /// §14 (`AC-D-19`): a validated attribute, not a level-name inference.
+  /// Invariant: postable ⇒ leaf, enforced on BOTH write paths (see
+  /// `AccountsRepository`).
+  isPostable     Boolean  @default(false) @map("is_postable")
+  /// `false` blocks new posting lines and new children, and changes nothing
+  /// else: history stays readable (§8.6).
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  parent       Account?               @relation("AccountTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children     Account[]              @relation("AccountTree")
+  codingStructureVersion CodingStructureVersion @relation(fields: [codingStructureVersionId], references: [id], onDelete: Restrict)
+  accountingConfiguration AccountingConfiguration @relation("AccountAccountingConfiguration", fields: [accountingConfigurationId], references: [id], onDelete: Restrict)
+  detailGroup  Detail?                @relation("AccountDetailGroup", fields: [detailGroupId], references: [id], onDelete: Restrict)
+  /// The document lines that reference this account (Task 10.4). The real FK is
+  /// `accounting_document_lines.account_id` (RESTRICT); this is the virtual side.
+  documentLines AccountingDocumentLine[]
+
+  /// The immutable ledger entries posted to this account (Task 10.7). The real
+  /// FK is `ledger_entries.account_id` (RESTRICT); this is the virtual side.
+  ledgerEntries LedgerEntry[]
+
+  /// The balance projections for this account (Task 12). Virtual side only —
+  /// the real FK is `account_balance_projections.account_id` (RESTRICT).
+  accountBalanceProjections AccountBalanceProjection[]
+
+  /// The canonical-code uniqueness (§9.2) — the authoritative duplicate guard
+  /// for concurrent creates (the service pre-check only produces a nicer 409).
+
+  /// C-62: the source posting mappings that post TO this account (debit side)
+  /// and the ones that post the offsetting side (credit side). Virtual side
+  /// only — the real FK columns are `source_posting_mappings.*_account_id`.
+  debitSourcePostingMappings  SourcePostingMapping[] @relation("SourcePostingMappingDebitAccount")
+  creditSourcePostingMappings SourcePostingMapping[] @relation("SourcePostingMappingCreditAccount")
+  @@unique([organizationId, code], map: "uq_accounts_organization_id_code")
+  /// Children of one node (the `hasChildren` guard, the tree walk, the
+  /// direct-children list) — leads with the scope column (ADR-0021 §3).
+  @@index([organizationId, parentId], map: "idx_accounts_organization_id_parent_id")
+  @@index([organizationId, level], map: "idx_accounts_organization_id_level")
+  @@index([organizationId, isActive], map: "idx_accounts_organization_id_is_active")
+  @@index([organizationId, detailGroupId], map: "idx_accounts_organization_id_detail_group_id")
+  /// "which accounts pin this version" — the query a structure-version
+  /// retirement and (later) a structure migration must answer.
+  @@index([codingStructureVersionId], map: "idx_accounts_coding_structure_version_id")
+  @@index([accountingConfigurationId], map: "idx_accounts_accounting_configuration_id")
+  @@map("accounts")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Accounting Configuration Foundation (Task 11)
+// ---------------------------------------------------------------------------
+//
+// The generic, organization-scoped, versioned configuration root that Task 11
+// requires. It is the umbrella for the chart, coding, and future dimensions,
+// posting rules, etc. — without implementing any of those yet (non-goals).
+//
+// `accounting_configurations` — the root, versioned `DRAFT → ACTIVE →
+// SUPERSEDED`, exactly one ACTIVE per organization (same pattern as
+// `coding_structure_versions`). `name` is the human title, `code` is the
+// identity inside the organization (e.g. DEFAULT), `versionNumber` counts
+// revisions, `effective_from` is the effective-from semantics, and
+// `operationally_used_at` marks the freeze point (operational freeze policy).
+//
+// `accounting_configuration_levels` — the configurable level definitions for
+// one configuration version (Group, General, Subsidiary, Detail are example
+// titles, not constants). Levels belong to the VERSION, so a later change
+// never reinterprets existing account codes. This mirrors the coding-structure
+// levels but is owned by the generic configuration root, so future tasks can
+// extend it without touching the legacy coding-structure tables.
+//
+// Accounts are already scoped to organization + configuration version via
+// `coding_structure_version_id`; Task 11 adds `accounting_configuration_id`
+// as the new canonical scope, kept nullable for backward compatibility with
+// existing rows. New accounts MUST pin an accounting configuration; the old
+// column stays for the migration period and for regression safety.
+//
+// Integrity: organization scope, configuration version scope, unique code
+// within organization+code+version, parent-child consistency and version
+// isolation are enforced by the application locks (same pattern as existing
+// guards) plus unique indexes as hard backstops. No triggers.
+//
+// `uq_accounting_configurations_org_active` IS a raw-SQL partial unique index
+// (`WHERE status = 'ACTIVE'`), created only by the Task 11 migration because
+// Prisma cannot declare it; the "exactly one ACTIVE configuration per
+// organization" guarantee therefore has a database backstop, and the
+// drift risk this module otherwise avoids (a later generated migration
+// dropping what Prisma cannot represent) is carried deliberately here and
+// verified by `test/accounting-configuration-live.e2e-spec.ts` and the Task 11
+// migration rehearsal.
+
+model AccountingConfiguration {
+  id             String  @id
+  organizationId String  @map("organization_id")
+  /// Identity inside the organization (e.g. DEFAULT). Unique per
+  /// (organization, code, versionNumber).
+  code           String  @db.VarChar(64)
+  /// Human title (Task 11 — name).
+  name           String  @db.VarChar(200)
+  /// 1-based version ordinal per (organization, code).
+  versionNumber  Int     @map("version_number")
+  /// `DRAFT` | `ACTIVE` | `SUPERSEDED` (domain/accounting-configuration.ts).
+  status         String  @default("DRAFT") @db.VarChar(16)
+  /// Effective-from semantics — when this configuration becomes effective.
+  /// Null = immediately.
+  effectiveFrom  DateTime? @map("effective_from") @db.Timestamptz(6)
+  /// When the configuration was first used operationally (freeze policy).
+  /// Null = not yet used.
+  operationallyUsedAt DateTime? @map("operationally_used_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  levels       AccountingConfigurationLevel[]
+  /// Accounts pinned to this configuration version (canonical scope).
+  /// The real FK is `accounts.accounting_configuration_id`; this is the
+  /// virtual side.
+  accounts     Account[] @relation("AccountAccountingConfiguration")
+
+  /// Base Chart adoption records that pinned this configuration (Task 23).
+  /// Virtual side only — the real FK column stays
+  /// `base_chart_adoptions.accounting_configuration_id`.
+  baseChartAdoptions BaseChartAdoption[]
+
+  @@unique([organizationId, code, versionNumber], map: "uq_accounting_configurations_org_code_version")
+  @@index([organizationId, status], map: "idx_accounting_configurations_org_status")
+  @@index([organizationId, code], map: "idx_accounting_configurations_org_code")
+  @@map("accounting_configurations")
+  @@schema("accounting")
+}
+
+model AccountingConfigurationLevel {
+  id             String  @id
+  organizationId String  @map("organization_id")
+  configurationId String @map("accounting_configuration_id")
+  /// 1-based ordinal inside the configuration version.
+  levelIndex     Int     @map("level_index")
+  /// The level title the organization sees (Group, General, Subsidiary,
+  /// Detail are common Iranian vocabulary, not constants).
+  title          String  @db.VarChar(200)
+  /// Digits this level's segment contributes.
+  digitLength    Int     @map("digit_length")
+  /// Per-level default for new accounts (is_postable default).
+  defaultIsPostable Boolean @default(false) @map("default_is_postable")
+  /// Informational label only (group/general/subsidiary/detail). Nothing
+  /// derives behaviour from it.
+  levelKind      String?  @map("level_kind") @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  configuration AccountingConfiguration @relation(fields: [configurationId], references: [id], onDelete: Restrict)
+
+  @@unique([configurationId, levelIndex], map: "uq_accounting_configuration_levels_config_level")
+  @@index([organizationId, configurationId], map: "idx_accounting_configuration_levels_org_config")
+  @@map("accounting_configuration_levels")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Accounting documents (Task 10.4, contract §12…§18, AC-D-16…AC-D-23)
+// ---------------------------------------------------------------------------
+
+/// The accounting document (voucher, `سند حسابداری`) HEADER — Accounting's own
+/// aggregate, NOT a universal document table (AC-D-16, contract §12.1).
+///
+/// `document_type` is the Document Foundation type code this row was composed
+/// under (`accounting_voucher` in v1; the year-transition types of §6.4 are
+/// planned, code-registered additions). It is stored so that a number's series,
+/// a lifecycle decision and an audit trail stay self-describing — it is NOT a
+/// client-inventable value: the type catalogue is code (`DocumentTypeRegistry`,
+/// ADR-0023 §2), so the column can only ever repeat a registered code.
+///
+/// State/phase: `state ∈ {draft, temporary, final}` where `draft` is the
+/// Foundation's PHASE (pre-issuance), not a third state (AC-D-20). `final` is
+/// structurally immutable — there is no update path in the service and no
+/// repository method that would let a caller reach around it (AC-I-05/06).
+///
+/// Ordering/identity: `document_number` is the numeric-only serial allocated by
+/// the Document Foundation at issuance (§18, AC-D-29) and is NULL while the
+/// document is still a draft. The number's uniqueness scope is the financial
+/// area (`uq_accounting_documents_org_area_number`), matching "one monotonic
+/// series per (organization, type, area)" — PostgreSQL treats NULLs as
+/// distinct, so any number of draft rows may share the NULL number.
+///
+/// `idempotency_reference`/`request_hash` are the SYSTEM-origin evidence
+/// (§12.2/§16.4): the posting-operation key that produced this document and the
+/// sha256 of that operation's canonical client intent. The ledger row itself
+/// lives in `accounting_posting_operations`; these two columns are the
+/// document-side reference the contract asks for. Manual documents leave them
+/// NULL — their evidence is `finalized_at`/`finalized_by` plus the operation
+/// ledger row keyed by the caller's `operationKey`.
+///
+/// Deferred by the contract, so NOT columns here (AR-29): the correction links
+/// and `correction_kind`/`correction_reason` (§15.4, AC-D-22 — the correction
+/// task), currency/exchange rate (§24.1, OQ-03), attachments (§12.6) and the
+/// quantity/statistical column (§12.6).
+model AccountingDocument {
+  id                 String   @id
+  organizationId     String   @map("organization_id")
+  financialAreaId    String   @map("financial_area_id")
+  /// Resolved from `document_date` at composition and re-validated at
+  /// finalization (contract §6.2 rule 4, AC-I-14): reports never recompute a
+  /// period from a date.
+  fiscalYearId       String   @map("fiscal_year_id")
+  accountingPeriodId String   @map("accounting_period_id")
+  /// Registered Document Foundation type code (ADR-0023 §2).
+  documentType       String   @default("accounting_voucher") @map("document_type") @db.VarChar(64)
+  /// Numeric-only serial, NULL until issuance; immutable once the document is
+  /// `final` (§15.2, AC-I-22).
+  documentNumber     String?  @map("document_number") @db.VarChar(32)
+  /// Business/occurrence date, date-only (`DATE`) — drives period resolution
+  /// and chronological reporting (contract §12.3). Never a timestamp.
+  documentDate       DateTime @map("document_date") @db.Date
+  /// Header narration; required and non-blank (contract §12.2).
+  description        String   @db.VarChar(500)
+  /// `draft` | `temporary` | `final` (domain/accounting-document.ts, AC-D-20).
+  state              String   @default("draft") @db.VarChar(16)
+  /// `manual` | `system` (contract §16.1, AC-D-24). Closed, code-defined list.
+  origin             String   @db.VarChar(16)
+  /// Optional operational scope dimension, header-level only (AC-D-17).
+  branchId           String?  @map("branch_id")
+  /// System-origin source identity (§16.3): module, entity type, entity id and
+  /// the operation that produced the posting — logical references, never FKs
+  /// (there is no universal document table, AR-07/08).
+  sourceModule       String?  @map("source_module") @db.VarChar(64)
+  sourceEntityType   String?  @map("source_entity_type") @db.VarChar(64)
+  sourceEntityId     String?  @map("source_entity_id")
+  sourceOperation    String?  @map("source_operation") @db.VarChar(32)
+  /// System-origin idempotency evidence (§16.4) — the ledger key + intent hash.
+  idempotencyReference String? @map("idempotency_reference") @db.VarChar(128)
+  requestHash        String?  @map("request_hash") @db.Char(64)
+  /// Finalization evidence (§15.5, §23).
+  finalizedAt        DateTime? @map("finalized_at") @db.Timestamptz(6)
+  finalizedBy        String?   @map("finalized_by")
+  /// Task 15 — typed reversal (AC-D-22). Kind is `reversal` on the NEW
+  /// document; the original stays `final` and is never rewritten except for
+  /// `reversed_by_document_id`. Reason is mandatory on a reversal.
+  correctionKind     String?  @map("correction_kind")
+  correctionReason   String?  @map("correction_reason") @db.VarChar(500)
+  /// The original this voucher reverses. UNIQUE: at most one reversal document
+  /// per original. NULL for ordinary vouchers (PostgreSQL UNIQUE treats NULLs
+  /// as distinct).
+  reversesDocumentId String?  @unique(map: "uq_accounting_documents_reverses_document_id") @map("reverses_document_id")
+  /// The reversal of this voucher. UNIQUE: at most one successful reverse.
+  reversedByDocumentId String? @unique(map: "uq_accounting_documents_reversed_by_document_id") @map("reversed_by_document_id")
+  /// End-to-end traceability (docs/architecture.md §9): the request that
+  /// created the document.
+  correlationId      String?  @map("correlation_id") @db.VarChar(64)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy          String?  @map("created_by")
+  updatedBy          String?  @map("updated_by")
+
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialArea    FinancialArea    @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
+  fiscalYear       FiscalYear       @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+  accountingPeriod AccountingPeriod @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict)
+  branch           Branch?          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  reversesDocument AccountingDocument? @relation("AccountingDocumentReverses", fields: [reversesDocumentId], references: [id], onDelete: Restrict)
+  reversedByThis   AccountingDocument? @relation("AccountingDocumentReverses")
+  reversedByDocument AccountingDocument? @relation("AccountingDocumentReversedBy", fields: [reversedByDocumentId], references: [id], onDelete: Restrict)
+  reversesThis     AccountingDocument? @relation("AccountingDocumentReversedBy")
+  lines            AccountingDocumentLine[]
+
+  /// The immutable ledger entries materialized from this voucher's lines at
+  /// finalization (Task 10.7, 1 → N). The real FK is
+  /// `ledger_entries.voucher_id` (RESTRICT); this is the virtual side.
+  ledgerEntries LedgerEntry[]
+
+  /// The number's uniqueness scope: the financial area (§18 — one series per
+  /// (organization, type, area)); the `documents.numbering_allocations` ledger
+  /// stays the authoritative allocator, this index is the accounting-side
+  /// backstop that makes a duplicate number impossible to persist.
+  @@unique([organizationId, financialAreaId, documentNumber], map: "uq_accounting_documents_org_area_number")
+  @@index([organizationId, state], map: "idx_accounting_documents_organization_id_state")
+  @@index([organizationId, financialAreaId, documentDate], map: "idx_accounting_documents_org_area_date")
+  @@index([organizationId, accountingPeriodId], map: "idx_accounting_documents_org_period")
+  @@map("accounting_documents")
+  @@schema("accounting")
+}
+
+/// One line of an accounting document (contract §12.5, AC-I-07/08).
+///
+/// Lines are part of the aggregate: they are created/replaced only while the
+/// document is editable, in the SAME transaction as the header, and are never
+/// touched once it is `final` (AC-I-05/06). The scope columns are the
+/// header's, denormalized for indexed period/account reads (ADR-0021 §3); the
+/// write path derives all four from ONE resolved context, so they cannot drift.
+///
+/// `debit_amount`/`credit_amount` are `numeric(18,2)` (AR-12): non-negative
+/// exact decimals, exactly one non-zero per line (§13.2, AC-I-08). Money is
+/// carried as decimal STRINGS through the domain (module convention) and never
+/// compared as a float, and the Σ debit = Σ credit check is exact — no epsilon,
+/// no rounding to force balance (§13.1, AC-I-07).
+///
+/// `source_line_reference` is the optional logical line reference for system
+/// origin (§12.5, §20.3): an opaque `(module, entity, line)` token, never an FK.
+model AccountingDocumentLine {
+  id                 String   @id
+  documentId         String   @map("document_id")
+  organizationId     String   @map("organization_id")
+  financialAreaId    String   @map("financial_area_id")
+  fiscalYearId       String   @map("fiscal_year_id")
+  accountingPeriodId String   @map("accounting_period_id")
+  /// 1-based, unique per document and DENSE (no gaps) — the legal-book
+  /// rendering order (§12.5).
+  lineNo             Int      @map("line_no")
+  accountId          String   @map("account_id")
+  debitAmount        Decimal  @default(0) @map("debit_amount") @db.Decimal(18, 2)
+  creditAmount       Decimal  @default(0) @map("credit_amount") @db.Decimal(18, 2)
+  /// Optional Detail item allocation (Task 30 — OD-29-03).
+  /// Required when the line's account links to a Level-1 Detail Group.
+  detailId           String?  @map("detail_id")
+  description        String?  @db.VarChar(500)
+  sourceLineReference String? @map("source_line_reference") @db.VarChar(128)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy          String?  @map("created_by")
+  updatedBy          String?  @map("updated_by")
+
+  /// CASCADE: a line has no existence outside its document, and deleting a
+  /// pre-final voucher (§15.3, AC-D-21) removes its aggregate parts in one
+  /// statement. `final` is never deletable, so no history row can be lost.
+  document       AccountingDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialArea  FinancialArea      @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
+  fiscalYear     FiscalYear         @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+  accountingPeriod AccountingPeriod  @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict)
+  /// RESTRICT: an account with lines can never disappear (nothing is deleted,
+  /// and §8.6 freezes an account that has been used).
+  account        Account            @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  detail         Detail?            @relation(fields: [detailId], references: [id], onDelete: Restrict)
+  /// The immutable ledger entry materialized from this line at finalization
+  /// (Task 10.7, 1 → 1). The real FK is `ledger_entries.voucher_line_id`
+  /// (RESTRICT + UNIQUE); this is the virtual side.
+  ledgerEntry LedgerEntry?
+
+  @@unique([documentId, lineNo], map: "uq_accounting_document_lines_document_id_line_no")
+  @@index([organizationId, accountId], map: "idx_accounting_document_lines_org_account")
+  @@index([organizationId, detailId], map: "idx_accounting_document_lines_org_detail")
+  @@map("accounting_document_lines")
+  @@schema("accounting")
+}
+
+/// The Accounting-owned posting-operation ledger (contract §16.4, AC-I-12).
+///
+/// One row per completed posting operation, unique on
+/// `(organization_id, operation_key)`; written INSIDE the transaction that
+/// performs the effect (inserted last, like `inventory_operations`), so a
+/// committed effect always has its key and a failed one never does. Same key +
+/// same `request_hash` replays the stored result; the same key with a different
+/// hash is refused with 409 and nothing is applied.
+///
+/// `request_hash` is sha256 over the CANONICAL CLIENT INTENT only: no generated
+/// ids, no server clocks, an omitted optional value hashed as an explicit
+/// `null` (ADR-0022 §4 — the rule that makes a retry hash identically instead
+/// of falsely conflicting).
+///
+/// `operation` is a closed, code-defined list (`document_create`,
+/// `document_finalize` — `domain/accounting-document.ts`). The contract's list
+/// is explicitly illustrative (`§16.4` "e.g."); only the kinds this task
+/// actually performs are declared, and no kind is written that the code does
+/// not enforce (docs/security.md §3 posture).
+///
+/// The ledger is append-only and never deleted, so a pre-final voucher that is
+/// discarded (§15.3) leaves its operation rows behind: the audit trail is
+/// complete, and a replayed key whose document is gone answers 404 rather than
+/// re-creating it (§15.3 + append-only ledger).
+model AccountingPostingOperation {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  /// Caller-supplied idempotency key (opaque, at most 128 chars).
+  operationKey   String   @map("operation_key") @db.VarChar(128)
+  /// Closed, code-defined list of implemented posting operations.
+  operation      String   @db.VarChar(32)
+  /// sha256 hex over the canonical client intent.
+  requestHash    String   @map("request_hash") @db.Char(64)
+  /// Created-row ids, e.g. `{ "documentId": "…" }`. Opaque to the database (no
+  /// query pattern reads inside it) — the same envelope convention as
+  /// `inventory_operations.result`.
+  result         Json     @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, operationKey], map: "uq_accounting_posting_operations_org_key")
+  @@index([organizationId, operation], map: "idx_accounting_posting_operations_org_operation")
+  @@map("accounting_posting_operations")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Immutable ledger entries (Task 10.7, contract §12/§13/§15/§19,
+// AC-D-16…AC-D-23, AC-I-05/06/07/08/14/19)
+// ---------------------------------------------------------------------------
+
+/// One immutable ledger entry — one voucher line posted to the books.
+///
+/// Materialized atomically inside the finalization transaction
+/// (`AccountingDocumentsRepository.finalizeChecked`, §15.5 AC-D-23): the
+/// document state, the N ledger rows (N = stored lines, ≥2) and the
+/// `accounting_posting_operations` evidence row commit together or not at
+/// all. There is deliberately NO separate `posted` state (AC-D-20):
+/// `final` = posted, and the idempotency evidence stays the existing
+/// `document_finalize` row — `accounting_posting_operations` is evidence
+/// infrastructure, NOT the ledger identity and NOT a Posting entity
+/// (Task 10.6 correction).
+///
+/// Identity: the row's own ULID (`id`), never reused, never derived from a
+/// mutable business field. It is NOT `accounting_posting_operations.id`.
+/// Traceability: `voucher_id` (N entries per voucher) + `voucher_line_id`
+/// (exactly ONE entry per line — the UNIQUE backstop below) + `line_no`,
+/// `voucher_number`, the stored scope and the account reference, so every
+/// entry is traceable to organization, area, year, period, voucher, voucher
+/// number, voucher line and account without re-reading mutable state.
+///
+/// Immutability is STRUCTURAL (no update/delete repository method, no API,
+/// §15.2/§15.3 AC-I-05/06): corrections are future counter-documents with
+/// new entries (AC-D-22). No CHECK constraints and no triggers — Prisma
+/// cannot represent them, so a later generated migration would `DROP` them
+/// and silently lose the invariant (the reason every previous migration in
+/// this module records). The amount/side/line-number rules live in the
+/// framework-free domain (`domain/ledger-entry.ts`, `domain/posting.ts`) and
+/// are evaluated inside the finalization transaction from the STORED lines.
+///
+/// Deferred by the contract, so NOT columns here (AR-29): dimension
+/// assignments (the typed child table of §10.6 arrives with OQ-41 — no
+/// `detail_1_id` columns, no EAV, no JSONB), currency/exchange rate (§24.1,
+/// OQ-03), balances/projections (§19.3 — a future rebuildable projection
+/// over these rows, never state maintained here).
+model LedgerEntry {
+  id                 String   @id
+  organizationId     String   @map("organization_id")
+  financialAreaId    String   @map("financial_area_id")
+  /// Stored resolutions copied from the finalized voucher header (AC-I-14):
+  /// reports never recompute a period from a date.
+  fiscalYearId       String   @map("fiscal_year_id")
+  accountingPeriodId String   @map("accounting_period_id")
+  /// Source voucher identity (AC-I-14, traceability).
+  voucherId          String   @map("voucher_id")
+  /// Numeric-only serial snapshot, immutable after final (AC-I-22, §18).
+  voucherNumber      String   @map("voucher_number") @db.VarChar(32)
+  /// Source voucher line identity — the 1:1 traceability key. UNIQUE.
+  voucherLineId      String   @map("voucher_line_id") @unique(map: "uq_ledger_entries_voucher_line_id")
+  /// 1-based dense rendering order snapshot (§12.5, legal-book order).
+  lineNo             Int      @map("line_no")
+  accountId          String   @map("account_id")
+  /// Detail item allocation snapshot (Task 30 — OD-29-03).
+  detailId           String?  @map("detail_id")
+  /// `numeric(18,2)` (AR-12): non-negative exact decimals, exactly one
+  /// non-zero per entry (§13.2, AC-I-08). Carried as decimal STRINGS through
+  /// the domain, never floats, never rounded (§13.1/§13.5, AC-I-07).
+  debitAmount        Decimal  @default(0) @map("debit_amount") @db.Decimal(18, 2)
+  creditAmount       Decimal  @default(0) @map("credit_amount") @db.Decimal(18, 2)
+  /// Line narration snapshot (nullable — the header narration lives on the
+  /// voucher, §12.2/§12.5).
+  description        String?  @db.VarChar(500)
+  /// Business/occurrence date snapshot, date-only (`DATE`, §12.3, Class C3).
+  documentDate       DateTime @map("document_date") @db.Date
+  /// System timestamp snapshot: when the voucher became final (`finalizedAt`,
+  /// §15.5) — the posting timestamp that keeps any entry-timing rule
+  /// measurable together with `document_date` (Class C3).
+  postingTimestamp   DateTime @map("posting_timestamp") @db.Timestamptz(6)
+  /// Operational scope snapshot, header-level (AC-D-17, Class C5).
+  branchId           String?  @map("branch_id")
+  /// `manual` | `system` (contract §16.1, AC-D-24). Closed, code-defined list.
+  origin             String   @db.VarChar(16)
+  /// System-origin source identity snapshot (§16.3): logical references,
+  /// never cross-module FKs (AR-07/08). NULL for `manual`.
+  sourceModule       String?  @map("source_module") @db.VarChar(64)
+  sourceEntityType   String?  @map("source_entity_type") @db.VarChar(64)
+  sourceEntityId     String?  @map("source_entity_id")
+  sourceOperation    String?  @map("source_operation") @db.VarChar(32)
+  /// End-to-end traceability snapshot (docs/architecture.md §9).
+  correlationId      String?  @map("correlation_id") @db.VarChar(64)
+  /// Finalization actor snapshot (audit evidence, §23).
+  finalizedBy        String?  @map("finalized_by")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy          String?  @map("created_by")
+  updatedBy          String?  @map("updated_by")
+
+  organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialArea    FinancialArea          @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
+  fiscalYear       FiscalYear             @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+  accountingPeriod AccountingPeriod       @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict)
+  /// RESTRICT: a voucher with ledger evidence can never disappear (`final`
+  /// is never deletable, so this backstop only speaks for hand-written rows).
+  voucher          AccountingDocument     @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  /// RESTRICT + UNIQUE: exactly one entry per voucher line (1:1), and a line
+  /// with ledger evidence can never disappear.
+  voucherLine      AccountingDocumentLine @relation(fields: [voucherLineId], references: [id], onDelete: Restrict)
+  /// RESTRICT: an account with ledger entries can never disappear (§8.6).
+  account          Account                @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  detail           Detail?                @relation(fields: [detailId], references: [id], onDelete: Restrict)
+  branch           Branch?                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  /// The 1:1 backstop (VoucherLine → LedgerEntry): a second entry for the
+  /// same line is impossible to persist, however many times a finalization
+  /// is retried. The voucher side needs no uniqueness: one voucher yields N
+  /// entries (read via `idx_ledger_entries_org_voucher`).
+  @@index([organizationId, voucherId], map: "idx_ledger_entries_org_voucher")
+  @@index([organizationId, accountId], map: "idx_ledger_entries_org_account")
+  @@index([organizationId, accountingPeriodId], map: "idx_ledger_entries_org_period")
+  @@index([organizationId, detailId], map: "idx_ledger_entries_org_detail")
+  @@map("ledger_entries")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Balance projection — materialized, rebuildable turnover (Task 12,
+// contract §19.3 AC-D-31, §25 AC-I-19, ADR-0031)
+//
+// One row per (organization, financial_area, fiscal_year, accounting_period,
+// account) aggregated from finalized ledger entries. Stored measures are ONLY
+// period turnover (debit/credit) — opening/closing are derived in reporting
+// views (contract §19.2). Absence = zero turnover (no zero-only rows).
+//
+// Deferred by design (AR-29): no branch_id (AC-D-17 — branch is a report
+// filter, not a balance key), no currency_code (OQ-03 — base-currency-only),
+// no detail dimension FKs (OQ-41), no opening/closing columns. Widening the
+// key later is an additive migration with a new ADR.
+//
+// Conventions: AR-12 (id/created_at/updated_at/created_by/updated_by,
+// numeric(18,2) for money), ADR-0021 (organization scope leads indexes),
+// AR-11 (no CHECK — domain-enforced, see domain/balance-projection.ts).
+// ---------------------------------------------------------------------------
+
+model AccountBalanceProjection {
+  id                 String   @id
+  organizationId     String   @map("organization_id")
+  financialAreaId    String   @map("financial_area_id")
+  fiscalYearId       String   @map("fiscal_year_id")
+  accountingPeriodId String   @map("accounting_period_id")
+  accountId          String   @map("account_id")
+
+  /// Period turnover — sum of ledger debit for this key, non-negative exact
+  /// decimal (§13, AC-I-19a). Stored as numeric(18,2) (AR-12).
+  periodDebitAmount  Decimal  @default(0) @map("period_debit_amount")  @db.Decimal(18, 2)
+  /// Period turnover — sum of ledger credit for this key, non-negative exact.
+  periodCreditAmount Decimal  @default(0) @map("period_credit_amount") @db.Decimal(18, 2)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialArea    FinancialArea    @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
+  fiscalYear       FiscalYear       @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+  accountingPeriod AccountingPeriod @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict)
+  account          Account          @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  /// Projection key — one row per (org, area, year, period, account). Hard
+  /// backstop for concurrent UPSERT races (Task 12).
+  @@unique([organizationId, financialAreaId, fiscalYearId, accountingPeriodId, accountId], map: "uq_account_balance_projections_org_area_year_period_account")
+  /// Hot reads — trial balance & area-year list.
+  @@index([organizationId, financialAreaId, fiscalYearId], map: "idx_account_balance_projections_org_area_year")
+  @@index([organizationId, accountId],                map: "idx_account_balance_projections_org_account")
+  @@index([organizationId, accountingPeriodId],        map: "idx_account_balance_projections_org_period")
+  @@map("account_balance_projections")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Task 23 — the Base Chart product template + explicit organization adoption
+// (OD-20-1, Task 21 governance baseline §1…§5/§7/§8/§12; docs/tasks/task-23）。
+//
+//   `accounting.base_chart_templates`          — template identity only. A
+//     versioned, Accounting-owned PRODUCT asset (OD-20-1): it is never
+//     organization data and never ledger identity.
+//   `accounting.base_chart_template_versions`  — version identity + the
+//     `draft → approved → published → superseded` lifecycle (Task 21 §8).
+//     A published/superseded version is IMMUTABLE: its content is the
+//     levels/nodes rows below, guarded by the same draft-workspace rule the
+//     coding structure uses (only `draft` rows are ever edited, inside a
+//     locked transaction, and a draft is never reachable from an adopted
+//     account). `superseded_by_version_id` records which newer version
+//     replaced this one.
+//   `accounting.base_chart_template_levels`    — the template's level SHAPE
+//     (digit lengths + per-level postability defaults, Task 21 §7). It
+//     deliberately mirrors `coding_structure_levels` MINUS `title` and
+//     `level_kind`: level titles/kinds are organization configuration
+//     vocabulary (contract §8.1), not template content.
+//   `accounting.base_chart_template_nodes`     — the template chart tree via
+//     template-internal keys (`node_key`/`parent_node_key`, Task 21 §2) so
+//     hierarchy exists BEFORE any organization `Account.id` exists. Node
+//     codes are canonical digits-only codes relative to the version's own
+//     level shape; VALUES are owner/accountant content (OQ-25 stays OPEN),
+//     never seeded by this module. `level` is stored DERIVED (root = 1),
+//     exactly like `accounts.level`.
+//   `accounting.base_chart_adoptions`          — the only tenant-scoped new
+//     table: the immutable record that organization X explicitly adopted
+//     published template version Y, pinned to the ODR-1 configuration pair
+//     the copied `accounts` rows carry. An adoption is the ONLY path that
+//     materializes organization-owned accounts out of a template (copy, not
+//     reference — there is deliberately NO column on `accounts` pointing at
+//     template rows: account-level provenance stays OPEN, Task 21 §4.2/§8).
+//
+// Tenancy exception (OD-20-1): the schema-level "every row carries
+//   `organization_id`" rule above guards TENANT data. The four template
+//   tables are product/catalog data — organization ids are excluded from
+//   them BY DESIGN (Task 21 §2a), the way `rbac.permissions` is global.
+//   Authorization on the template surface is a module permission; the
+//   adoption surface re-adds the full organization boundary
+//   (`organization_id` NOT NULL + FK RESTRICT + scope-leading indexes).
+//   No `LedgerEntry`/document line/balance may ever reference a template
+//   id: there is no FK from any ledger path to these tables, and adoption
+//   writes ordinary `accounts` rows under the organization's own identity.
+//
+// Deliberately absent (AR-29 / OQ boundary): no `accounts.`
+// base_chart_template_node_id` (provenance — OPEN), no `accounts.`
+// is_mandatory` (mandatoriness is an adoption-time completeness rule, not a
+// post-adoption column), no control-role column anywhere (OD-20-2/3), no
+// dimension/statutory column (OQ-41/OQ-43), no `account_type`/`is_temporary`
+// (OQ-25), no `reserved_ranges`.
+// ---------------------------------------------------------------------------
+
+model BaseChartTemplate {
+  id        String   @id
+  /// Product identity of the template (versions share it — stable identity).
+  code      String   @db.VarChar(64)
+  title     String   @db.VarChar(200)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  versions BaseChartTemplateVersion[]
+
+  @@unique([code], map: "uq_base_chart_templates_code")
+  @@map("base_chart_templates")
+  @@schema("accounting")
+}
+
+model BaseChartTemplateVersion {
+  id            String   @id
+  templateId    String   @map("template_id")
+  /// 1-based ordinal per template, assigned at creation (retry on race, the
+  /// coding-structure version precedent).
+  versionNumber Int      @map("version_number")
+  /// `draft` | `approved` | `published` | `superseded` (closed code-defined
+  /// list, domain/base-chart-template.ts; TEXT with no CHECK — see header).
+  status        String   @default("draft") @db.VarChar(16)
+  /// Levels of the version's own shape: 1..MAX_CODING_STRUCTURE_DEPTH (8).
+  maxDepth      Int      @map("max_depth")
+  /// Lifecycle evidence (published/superseded versions are immutable; these
+  /// stamps are the only columns that may change after `approved`).
+  approvedAt    DateTime? @map("approved_at") @db.Timestamptz(6)
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz(6)
+  supersededAt  DateTime? @map("superseded_at") @db.Timestamptz(6)
+  /// Which newer PUBLISHED version of the same template replaced this one
+  /// (null when superseded without a named successor). RESTRICT: history is
+  /// never removed.
+  supersededByVersionId String? @map("superseded_by_version_id")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy     String?  @map("created_by")
+  updatedBy     String? @map("updated_by")
+
+  template     BaseChartTemplate        @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  supersededBy BaseChartTemplateVersion? @relation("BaseChartSupersession", fields: [supersededByVersionId], references: [id], onDelete: Restrict)
+  supersedes   BaseChartTemplateVersion[] @relation("BaseChartSupersession")
+  levels       BaseChartTemplateLevel[]
+  nodes        BaseChartTemplateNode[]
+  adoptions    BaseChartAdoption[]
+
+  @@unique([templateId, versionNumber], map: "uq_base_chart_template_versions_template_id_version_number")
+  /// "the template's published version" — the resolver the adoption path and
+  /// the publish transition need.
+  @@index([templateId, status], map: "idx_base_chart_template_versions_template_id_status")
+  @@map("base_chart_template_versions")
+  @@schema("accounting")
+}
+
+model BaseChartTemplateLevel {
+  id         String  @id
+  versionId  String  @map("version_id")
+  /// 1-based ordinal inside the version.
+  levelIndex Int     @map("level_index")
+  /// Digits this level's segment contributes (≥ 1; total across the version
+  /// ≤ MAX_ACCOUNT_CODE_LENGTH = 32 — architecture caps, not policy).
+  digitLength Int    @map("digit_length")
+  /// Per-level default for the node's `is_postable` (Task 21 §7) — a default,
+  /// never a rule: leaf-only posting is derived (OD-20-5).
+  defaultIsPostable Boolean @default(false) @map("default_is_postable")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy  String?  @map("created_by")
+  updatedBy  String?  @map("updated_by")
+
+  version BaseChartTemplateVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@unique([versionId, levelIndex], map: "uq_base_chart_template_levels_version_id_level_index")
+  @@map("base_chart_template_levels")
+  @@schema("accounting")
+}
+
+model BaseChartTemplateNode {
+  id            String  @id
+  versionId     String  @map("version_id")
+  /// Template-INTERNAL identity of the node (Task 21 §2): it is never an
+  /// organization `Account.id` and never ledger identity. Authored by the
+  /// template editor; unique within the version.
+  nodeKey       String  @map("node_key") @db.VarChar(64)
+  /// The AUTHORED tree edge, expressed in the template key space (Task 21 §2
+  ///: "node key + parent node key"). Kept next to `parentId` so reads and
+  /// partial-adoption selections never need a join back into the key space;
+  /// the planner writes both from one derivation, so they cannot disagree.
+  parentNodeKey String? @map("parent_node_key") @db.VarChar(64)
+  /// The RESOLVED tree edge — the same adjacency + RESTRICT self-FK the
+  /// `accounts` table uses, so an ancestor can never disappear under its
+  /// subtree. Null for roots.
+  parentId      String? @map("parent_id")
+  /// Canonical digits-only code relative to the version's level shape (the
+  /// same §9.2 semantics `accounts.code` carries).
+  code          String  @db.VarChar(32)
+  /// Persian-capable title (content; authored, never seeded).
+  title         String  @db.VarChar(200)
+  /// `debit` | `credit` | `dual` — the decided closed list (§8.3, OD-29-01).
+  accountNature String  @map("account_nature") @db.VarChar(8)
+  /// Account Type (Task 30 — OD-29-02): `BALANCE_SHEET` | `INCOME_STATEMENT` | `MEMORANDUM`.
+  accountType   String  @default("BALANCE_SHEET") @map("account_type") @db.VarChar(32)
+  /// Per-node postability default (Task 21 §7), seeded from the level's
+  /// `default_is_postable` at authoring; HARD-BOUNDED by leaf-only: the
+  /// publish gate refuses a postable parent and the adoption derivation
+  /// forces `false` on every node that has children in the adopted set
+  /// (OD-20-5), whatever this flag says.
+  isPostable    Boolean @default(false) @map("is_postable")
+  /// Adoption-completeness flag ONLY (Task 21 §5): a mandatory node must be
+  /// part of every adoption of this version. No RBAC/control-role/statutory
+  /// meaning is attached here (§11 of the baseline).
+  isMandatory   Boolean @default(false) @map("is_mandatory")
+  /// Whether the adopted account is created active (Task 21 §2).
+  defaultIsActive Boolean @default(true) @map("default_is_active")
+  /// 1-based depth, ALWAYS derived (root = 1, child = parent.level + 1) —
+  /// stored like `accounts.level`, never client input.
+  level         Int
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy     String? @map("created_by")
+  updatedBy     String? @map("updated_by")
+
+  version  BaseChartTemplateVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  parent   BaseChartTemplateNode?   @relation("BaseChartTemplateNodeTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children BaseChartTemplateNode[]  @relation("BaseChartTemplateNodeTree")
+
+  @@unique([versionId, nodeKey], map: "uq_base_chart_template_nodes_version_id_node_key")
+  /// Code uniqueness within the version (the template-local §9.2 mirror).
+  @@unique([versionId, code], map: "uq_base_chart_template_nodes_version_id_code")
+  @@index([versionId, parentId], map: "idx_base_chart_template_nodes_version_id_parent_id")
+  @@index([versionId, level], map: "idx_base_chart_template_nodes_version_id_level")
+  @@map("base_chart_template_nodes")
+  @@schema("accounting")
+}
+
+model BaseChartAdoption {
+  id               String   @id
+  organizationId   String   @map("organization_id")
+  /// The exact immutable published version this organization adopted.
+  templateVersionId String  @map("template_version_id")
+  /// The ODR-1 configuration pair the adopted accounts are pinned to (the
+  /// organization's ACTIVE pair at adoption time, resolved, never
+  /// recomputed).
+  accountingConfigurationId String @map("accounting_configuration_id")
+  codingStructureVersionId  String @map("coding_structure_version_id")
+  /// Number of `accounts` rows the adoption created (final adoption set
+  /// size — requested ∪ ancestor closure ∪ mandatory).
+  accountCount     Int      @map("account_count")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy        String?  @map("created_by")
+  updatedBy        String?  @map("updated_by")
+
+  organization             Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  templateVersion          BaseChartTemplateVersion @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
+  accountingConfiguration  AccountingConfiguration  @relation(fields: [accountingConfigurationId], references: [id], onDelete: Restrict)
+  codingStructureVersion   CodingStructureVersion   @relation(fields: [codingStructureVersionId], references: [id], onDelete: Restrict)
+
+  /// One adoption of the same version per organization — the idempotency
+  /// backstop: two concurrent adoptions collide HERE, and the loser answers
+  /// a deterministic 409 (never a duplicate chart).
+  @@unique([organizationId, templateVersionId], map: "uq_base_chart_adoptions_organization_id_template_version_id")
+  /// The organization-side listing (scope-leading, ADR-0021 §3).
+  @@index([organizationId], map: "idx_base_chart_adoptions_organization_id")
+  /// "which organizations adopted this version" — the reverse lookup.
+  @@index([templateVersionId], map: "idx_base_chart_adoptions_template_version_id")
+  @@map("base_chart_adoptions")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Detail Hierarchy & Detail Accounts (Task 30, OD-29-03)
+// ---------------------------------------------------------------------------
+
+/// One revision of an organization's detail coding structure (Task 30, OD-29-03).
+///
+/// An organization can define Detail hierarchy levels with configurable
+/// level count, level names, and digit/code lengths.
+/// Exactly ONE version per organization is `active`.
+model DetailStructureVersion {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  /// Structure identity inside the organization (e.g. DEFAULT).
+  code           String   @db.VarChar(64)
+  /// 1-based ordinal per (organization, code).
+  versionNumber  Int      @map("version_number")
+  /// `draft` | `active` | `superseded`
+  status         String   @default("draft") @db.VarChar(16)
+  /// Number of levels: 1..MAX_DETAIL_STRUCTURE_DEPTH (8).
+  maxDepth       Int      @map("max_depth")
+  /// DISPLAY ONLY: display separator (`-`, `/`, `.`, or empty).
+  separator      String   @default("") @db.VarChar(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  levels       DetailStructureLevel[]
+  details      Detail[]
+
+  @@unique([organizationId, code, versionNumber], map: "uq_detail_structure_versions_org_code_version")
+  @@index([organizationId, status], map: "idx_detail_structure_versions_org_status")
+  @@index([organizationId, code], map: "idx_detail_structure_versions_org_code")
+  @@map("detail_structure_versions")
+  @@schema("accounting")
+}
+
+/// One level of one detail-structure version (Task 30, OD-29-03).
+model DetailStructureLevel {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  versionId      String   @map("detail_structure_version_id")
+  /// 1-based ordinal inside the version (1..maxDepth).
+  levelIndex     Int      @map("level_index")
+  /// Configurable level title (e.g. "Detail Group", "Detail Account", "Sub-detail", etc.).
+  title          String   @db.VarChar(200)
+  /// Digits this level contributes (≥ 1; total across levels ≤ 32).
+  digitLength    Int      @map("digit_length")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  version      DetailStructureVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@unique([versionId, levelIndex], map: "uq_detail_structure_levels_version_level")
+  @@index([organizationId, versionId], map: "idx_detail_structure_levels_org_version")
+  @@map("detail_structure_levels")
+  @@schema("accounting")
+}
+
+/// One node of the organization's detail hierarchy (Task 30, OD-29-03).
+///
+/// Level 1 nodes are Level-1 Detail Groups (`گروه تفصیلی`).
+/// Level 2+ nodes are child Details under their respective Level-1 group.
+/// Accounts link to Level-1 Detail Groups (`Account.detailGroupId`), and posting
+/// lines on such accounts must allocate to a valid descendant Detail under that group.
+model Detail {
+  id                       String   @id
+  organizationId           String   @map("organization_id")
+  /// Canonical code: digits only. Unique per organization.
+  code                     String   @db.VarChar(32)
+  /// Detail title (Persian-capable).
+  title                    String   @db.VarChar(200)
+  /// Null for Level-1 Detail Groups. RESTRICT for child details.
+  parentId                 String?  @map("parent_id")
+  /// 1-based depth: 1 for Detail Groups, parent.level + 1 for children.
+  level                    Int
+  detailStructureVersionId String   @map("detail_structure_version_id")
+  isPostable               Boolean  @default(true) @map("is_postable")
+  isActive                 Boolean  @default(true) @map("is_active")
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy                String?  @map("created_by")
+  updatedBy                String?  @map("updated_by")
+
+  organization           Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  parent                 Detail?                @relation("DetailTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children               Detail[]               @relation("DetailTree")
+  detailStructureVersion DetailStructureVersion @relation(fields: [detailStructureVersionId], references: [id], onDelete: Restrict)
+
+  /// Accounts that link to this Detail as their Level-1 Detail Group
+  linkedAccounts         Account[]              @relation("AccountDetailGroup")
+
+  /// Document lines and Ledger entries with detail allocation
+  documentLines          AccountingDocumentLine[]
+  ledgerEntries          LedgerEntry[]
+
+  @@unique([organizationId, code], map: "uq_details_organization_id_code")
+  @@index([organizationId, parentId], map: "idx_details_organization_id_parent_id")
+  @@index([organizationId, level], map: "idx_details_organization_id_level")
+  @@index([organizationId, isActive], map: "idx_details_organization_id_is_active")
+  @@index([organizationId, isPostable], map: "idx_details_organization_id_is_postable")
+  @@index([detailStructureVersionId], map: "idx_details_detail_structure_version_id")
+  @@map("details")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Source posting mappings (C-62, PDR-09 PO-01/PO-04, PDR-10 C62-OD-04)
+// ---------------------------------------------------------------------------
+
+/// The Accounting-owned mapping from a SOURCE fact to the journal an Inventory
+/// business document produces.
+///
+/// This table is the whole reason Inventory can never choose an account: the
+/// only account selection that exists for a system-origin posting is the row
+/// an accountant configures HERE, resolved by the Accounting-owned application
+/// contract and nowhere else. Inventory supplies facts; Accounting owns
+/// mapping and journal policy (PO-01/OD-04).
+///
+/// Scope is `(organization, source module, source document type)`. The C-62
+/// first slice registers exactly one kind of source: module `inventory`,
+/// document type `inventory_receipt`. Other source types arrive with their own
+/// Owner-approved mapping — a missing row is a FAIL-CLOSED configuration
+/// error, never a guessed account (OD-04).
+///
+/// The two sides are deliberately explicit: the DEBIT side is the account the
+/// source document's value is recognised in (for a receipt, the inventory
+/// account), and the CREDIT side is the offsetting account the accountant
+/// chose for it. Vardena does not infer a payable/accrual account from a
+/// supplier, a purchase invoice or a tax code — none of those exists on an
+/// Inventory receipt, and inventing one would decide OQ-24/OQ-25/OQ-30 by
+/// accident.
+model SourcePostingMapping {
+  id             String @id
+  organizationId String @map("organization_id")
+
+  /// Code-defined, lowercase snake_case (`inventory`).
+  sourceModule       String @map("source_module") @db.VarChar(64)
+  /// Code-defined, lowercase snake_case (`inventory_receipt`).
+  sourceDocumentType String @map("source_document_type") @db.VarChar(64)
+
+  /// The financial area the produced voucher belongs to. Chosen by the
+  /// accountant, resolved by Accounting — Inventory never names a financial
+  /// area.
+  financialAreaId String @map("financial_area_id")
+  debitAccountId  String @map("debit_account_id")
+  creditAccountId String @map("credit_account_id")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialArea FinancialArea @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
+  debitAccount  Account       @relation("SourcePostingMappingDebitAccount", fields: [debitAccountId], references: [id], onDelete: Restrict)
+  creditAccount Account       @relation("SourcePostingMappingCreditAccount", fields: [creditAccountId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, sourceModule, sourceDocumentType], map: "uq_source_posting_mappings_org_module_document_type")
+  @@index([organizationId], map: "idx_source_posting_mappings_organization_id")
+  @@map("source_posting_mappings")
+  @@schema("accounting")
+}

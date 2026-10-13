@@ -1,0 +1,135 @@
+# Vardena local stack: PostgreSQL + API + worker.
+#
+# A root .env file is optional: a fresh clone can be started with
+# `docker-compose up` (or `docker compose up`) without any preparation.
+# Override the defaults through .env for a real deployment; never commit that
+# file because it may contain credentials.
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vardena}
+      POSTGRES_USER: ${POSTGRES_USER:-vardena}
+      # The zero-configuration local stack uses trust authentication on the
+      # private Compose network, so no password needs to be committed. Set
+      # POSTGRES_HOST_AUTH_METHOD=scram-sha-256 and POSTGRES_PASSWORD in .env
+      # when password authentication is required.
+      POSTGRES_HOST_AUTH_METHOD: ${POSTGRES_HOST_AUTH_METHOD:-trust}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-vardena} -d ${POSTGRES_DB:-vardena}",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # Run migrations and the idempotent real-user/RBAC bootstrap before either
+  # application process starts.
+  migrate:
+    build:
+      context: ./backend
+      target: build
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://vardena@postgres:5432/vardena}
+      # Optional single-organization pin (ADR-0025). When set, the bootstrap
+      # command below also provisions that organization and the administrator's
+      # ordinary membership of it.
+      DEPLOYMENT_ORGANIZATION_ID: ${DEPLOYMENT_ORGANIZATION_ID:-}
+      CHECKPOINT_DISABLE: "1"
+      NPM_CONFIG_FETCH_RETRIES: "5"
+      NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "15000"
+      NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "120000"
+      NPM_CONFIG_FETCH_TIMEOUT: "900000"
+    # Installation is migration-safe and repeatable: schema first, then the
+    # real Users + RBAC bootstrap records (no auth/authorization bypass).
+    command:
+      [
+        "sh",
+        "-c",
+        "npx prisma migrate deploy && npm run bootstrap:system-admin",
+      ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ./backend
+      target: production
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://vardena@postgres:5432/vardena}
+      APP_VERSION: ${APP_VERSION:-0.0.0-dev}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-300}
+      # Must match the value given to the migrate/bootstrap service (ADR-0025).
+      DEPLOYMENT_ORGANIZATION_ID: ${DEPLOYMENT_ORGANIZATION_ID:-}
+      # Local HTTP is the default; use true when the API is served over HTTPS.
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-vardena_session}
+      AUTH_COOKIE_PATH: ${AUTH_COOKIE_PATH:-/}
+      AUTH_COOKIE_SAME_SITE: ${AUTH_COOKIE_SAME_SITE:-lax}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      AUTH_SESSION_IDLE_TIMEOUT_MS: ${AUTH_SESSION_IDLE_TIMEOUT_MS:-1800000}
+      AUTH_SESSION_ABSOLUTE_TIMEOUT_MS: ${AUTH_SESSION_ABSOLUTE_TIMEOUT_MS:-43200000}
+      AUTH_LOGIN_RATE_LIMIT_WINDOW_MS: ${AUTH_LOGIN_RATE_LIMIT_WINDOW_MS:-900000}
+      # ---- Licensing (ADR-0030, L-02) ----
+      # The installation evaluates its OWN persisted license: the identity and
+      # the activated license live in the `licensing` schema of the database
+      # above, which is why the `pgdata` volume is what makes them survive a
+      # container rebuild. A fresh installation is UNLICENSED until an
+      # authorized administrator calls POST /api/v1/license/activate.
+      LICENSE_PROVIDER: ${LICENSE_PROVIDER:-persistent}
+      # Comma-separated Ed25519 public keys of the trusted license authority
+      # (PEM SPKI or base64 DER). PUBLIC keys only — the signing private key
+      # never belongs on an installation. An empty list rejects every
+      # activation while an already-activated license keeps evaluating.
+      LICENSE_SIGNING_PUBLIC_KEYS: ${LICENSE_SIGNING_PUBLIC_KEYS:-}
+      AUTH_LOGIN_RATE_LIMIT_MAX: ${AUTH_LOGIN_RATE_LIMIT_MAX:-10}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: ./backend
+      target: production
+    restart: unless-stopped
+    command: ["node", "--enable-source-maps", "dist/worker.js"]
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://vardena@postgres:5432/vardena}
+      APP_VERSION: ${APP_VERSION:-0.0.0-dev}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # The worker evaluates the same installation license as the API.
+      LICENSE_PROVIDER: ${LICENSE_PROVIDER:-persistent}
+      LICENSE_SIGNING_PUBLIC_KEYS: ${LICENSE_SIGNING_PUBLIC_KEYS:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  # Installation identity and the activated license are ordinary rows in this
+  # database (licensing schema). Destroying this volume destroys the
+  # installation identity, and the existing license — issued for that identity
+  # — can no longer be activated against the new one.
+  pgdata:

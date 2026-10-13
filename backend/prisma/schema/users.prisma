@@ -1,0 +1,37 @@
+// Users module schema (docs/modules.md §Users).
+//
+// Owns: `users.users` — user authentication records + lifecycle fields.
+// Password hash lives here (Identity reads it via Users public service;
+// cross-module table access is forbidden by AR-07).
+//
+// Profile fields (display name, email, employee info) belong to later
+// sessions; this schema is intentionally minimal for authentication.
+// Role assignments live in `rbac.user_roles` (owned by the RBAC module).
+
+model User {
+  id           String    @id
+  username     String    @db.VarChar(64)
+  passwordHash String    @map("password_hash")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy    String?   @map("created_by")
+  updatedBy    String?   @map("updated_by")
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedBy    String?   @map("deleted_by")
+
+  sessions  Session[]
+  userRoles UserRole[]
+
+  // Back-relation for the principal → organization binding (Task 19, ODR-3).
+  // The membership rows live in the Organization module's schema
+  // (`organization.organization_memberships`) and carry the foreign key; this
+  // is the virtual side Prisma requires. Same cross-schema pattern as
+  // `userRoles` → `rbac.user_roles`.
+  organizationMemberships OrganizationMembership[]
+
+  @@unique([username], map: "uq_users_username")
+  @@index([deletedAt], map: "idx_users_deleted_at")
+  @@map("users")
+  @@schema("users")
+}

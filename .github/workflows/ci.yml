@@ -1,0 +1,452 @@
+# Vardena CI — change-aware, with a stable final gate.
+#
+#    classify             change detection: which jobs this change set needs
+#    docs                 documentation link validation (no dependencies)
+#    backend              Prisma, lint, typecheck, format, unit, build,
+#                         PostgreSQL migrations, bootstrap, live-DB E2E
+#    frontend             lint, typecheck, format, tests, build
+#    generated-api-client OpenAPI dump vs the committed generated client
+#    ci-gate              the always-running aggregate result
+#
+# The workflow always starts (no `paths`/`paths-ignore` filter anywhere: a
+# skipped workflow leaves required checks pending forever). A job skipped by an
+# `if` condition instead reports success, which is why `ci-gate` exists: it
+# fails when a job the classifier marked applicable did not succeed — including
+# one that was skipped, cancelled or missing — and passes when the skipped jobs
+# are genuinely not applicable. See docs/operations/ci-minutes-optimization.md.
+#
+# The classifier fails open (unknown path -> every job); `ci-gate` fails closed.
+# `classify` also unions the decision of the classifier revision already
+# accepted on `main`, so a change set cannot narrow its own verification.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # Superseded pull-request runs are cancelled (a newer push makes the older
+  # result irrelevant); a push to `main` is never cancelled, so the
+  # authoritative post-merge verification is never hidden by a newer run.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  # Revision the change set is compared against: the pull request's base tip,
+  # or the pre-push head for a push to `main`. An absent/zero value (new branch,
+  # forced push) makes the classifier run every job instead of guessing.
+  CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+
+jobs:
+  # Change detection. Runs on every pull request and every push to `main`, and
+  # is the only job with full history (the merge base needs it).
+  classify:
+    name: classify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      docs: ${{ steps.scope.outputs.docs }}
+      backend: ${{ steps.scope.outputs.backend }}
+      frontend: ${{ steps.scope.outputs.frontend }}
+      generated: ${{ steps.scope.outputs.generated }}
+      broad: ${{ steps.scope.outputs.broad }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # full history: the merge base of the change set must be resolvable
+          fetch-depth: 0
+
+      # The classification and the gate decide what a merge needs, so their own
+      # logic is verified before it is trusted (fast, hermetic).
+      - name: Unit-test the CI helper scripts
+        run: python3 -m unittest discover -s scripts/tests -t scripts/tests
+
+      - name: Classify change set
+        id: scope
+        # Fails open (unknown path -> every job) and never exits non-zero for an
+        # unknown change set; the gate fails closed. `--also-run-rev` is the
+        # self-weakening guard: the classifier revision already accepted on
+        # `main` re-evaluates the same change set and its decision is unioned in.
+        run: |
+          python3 scripts/ci-classify-scope.py \
+            --base "$CI_BASE_SHA" \
+            --head HEAD \
+            --also-run-rev "$CI_BASE_SHA" \
+            --github-output "$GITHUB_OUTPUT" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+  # Documentation-only verification: no Node, no PostgreSQL, no build.
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: classify
+    if: needs.classify.outputs.docs == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check documentation links
+        run: python3 scripts/check-docs-links.py
+
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: classify
+    if: needs.classify.outputs.backend == 'true'
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: vardena_test
+          POSTGRES_USER: vardena
+          POSTGRES_PASSWORD: vardena_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vardena -d vardena_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://vardena:invalid@127.0.0.1:1/vardena_test
+      VARDENA_TEST_DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Upgrade npm to v11
+        run: npm install -g npm@11
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci --no-audit --no-fund
+
+      - name: Prisma validate
+        working-directory: backend
+        run: npm run prisma:validate
+
+      - name: Prisma generate
+        working-directory: backend
+        run: npm run prisma:generate
+
+      - name: Lint
+        working-directory: backend
+        run: npm run lint
+
+      - name: Typecheck
+        working-directory: backend
+        run: npm run typecheck
+
+      - name: Format check
+        working-directory: backend
+        run: npm run format:check
+
+      - name: Unit tests
+        working-directory: backend
+        run: npm test
+
+      - name: Build
+        working-directory: backend
+        run: npm run build
+
+      - name: Migrate test database
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
+        run: npm run prisma:deploy
+
+      - name: Bootstrap system administrator
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
+        run: npm run bootstrap:system-admin
+
+      # Exercise actual PrismaPg/PostgreSQL DATE round-trips with a non-UTC
+      # process timezone. BusinessDate must remain the same calendar day in
+      # model reads, raw history queries and write responses; it is not an
+      # instant that can shift with the runner's local timezone.
+      - name: Inventory BusinessDate live suite (Asia/Tehran process timezone)
+        working-directory: backend
+        env:
+          TZ: Asia/Tehran
+          VARDENA_TEST_DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
+        run: npm run test:e2e -- test/inventory-business-date-writes-live.e2e-spec.ts
+
+      # Also run under a negative process offset: a PostgreSQL `date` must not
+      # shift when Prisma materializes it in a process timezone west of UTC.
+      - name: Inventory BusinessDate live suite (America/Los_Angeles process timezone)
+        working-directory: backend
+        env:
+          TZ: America/Los_Angeles
+          VARDENA_TEST_DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
+        run: npm run test:e2e -- test/inventory-business-date-writes-live.e2e-spec.ts
+
+      # The populated pre-Task-11 backfill cannot be observed on a database that
+      # was migrated from empty, so this step proves it the only way possible:
+      # a disposable database created from the service, the 12 pre-Task-11
+      # migrations, the seeded fixture (multi-org, one-level, orphan, draft and
+      # superseded-only organizations), the Task 11 migration applied in one
+      # transaction under a lock probe, then verify.sql's assertions. On success
+      # the database is dropped; on failure it is left in place and the step
+      # fails, so a regression is visible without reading logs.
+      - name: Migration rehearsal (populated pre-Task-11 data)
+        working-directory: backend
+        env:
+          VARDENA_REHEARSAL_ADMIN_URL: postgresql://vardena:vardena_test_password@localhost:5432/postgres
+        run: npm run test:migration-rehearsal
+
+      # This fixture targets the three legacy Inventory effective-dating tables
+      # independently: UTC-day conversion, preserved audit instants, valid
+      # Gregorian history outside the Jalali rendering envelope, and fail-closed
+      # checks for collapsed, duplicate-start, overlapping, and out-of-API-range
+      # BusinessDate windows. Its two-session regression also
+      # verifies the migration drains an existing writer before preflight and
+      # holds new writers until COMMIT. It is not a substitute for
+      # production-snapshot evidence; the migration emits its own endpoint-time
+      # notice and guards.
+      - name: Migration rehearsal (Inventory BusinessDate validity windows)
+        working-directory: backend
+        env:
+          VARDENA_REHEARSAL_ADMIN_URL: postgresql://vardena:vardena_test_password@localhost:5432/postgres
+        run: npm run test:business-date-validity-rehearsal
+
+      # The licensing version-model fixture carries a populated L-02 shape
+      # (current + replaced licenses, entitlements, an unlicensed
+      # installation, a non-ACTIVE status) through migration 20261014000000
+      # and asserts that every fact survives, that the new unique guards hold,
+      # and that unrepresentable data (duplicate artifact hash) is refused with
+      # a clear message instead of a constraint failure. It then applies the
+      # corrective migration 20261015000000 (supersession hand-over instant)
+      # and additionally runs a database that carries the premature-retirement
+      # defect, which the backfill must repair.
+      - name: Migration rehearsal (Licensing version model and import)
+        working-directory: backend
+        env:
+          VARDENA_REHEARSAL_ADMIN_URL: postgresql://vardena:vardena_test_password@localhost:5432/postgres
+        run: npm run test:licensing-version-rehearsal
+
+      - name: E2E tests (incl. live-DB suites)
+        id: e2e-tests
+        working-directory: backend
+        timeout-minutes: 10
+        # Licensing persistence resets its installation/license rows and must
+        # not race other live-DB suites sharing this database. Run the general
+        # E2E set here, then run that one suite alone in the next step.
+        # `pipefail` keeps the test result through tee; the log is uploaded on
+        # failure for diagnosis.
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          timeout 540 npm run test:e2e -- --exclude test/licensing-persistence-live.e2e-spec.ts 2>&1 | tee test-results/e2e.log
+
+      - name: Licensing persistence live PostgreSQL suite (serial)
+        if: always() && (steps.e2e-tests.outcome == 'success' || steps.e2e-tests.outcome == 'failure')
+        working-directory: backend
+        timeout-minutes: 10
+        # This suite deletes/recreates the installation rows it owns. Running
+        # it alone preserves the real PostgreSQL state/transaction evidence
+        # instead of letting other E2E files invalidate its identity mid-test.
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          timeout 540 npm run test:e2e -- --no-file-parallelism test/licensing-persistence-live.e2e-spec.ts 2>&1 | tee -a test-results/e2e.log
+
+      # DIAGNOSTIC ONLY — changes no test, no assertion and no product code.
+      # GitHub auto-detects at most ten annotations per job, so when several
+      # live-DB suites fail at once the rest of the failure inventory is
+      # invisible through the API (the log itself can only be read from the
+      # artifact, whose host is unreachable from the agent sandbox). Emitting
+      # the failure inventory explicitly surfaces every failing suite and test
+      # in one place. Never gates the job: it only runs after a failure.
+      - name: Publish e2e failure inventory
+        if: failure()
+        working-directory: backend
+        run: |
+          python3 - <<'PY' || true
+          import re, sys
+          path = 'test-results/e2e.log'
+          try:
+              lines = open(path, encoding='utf-8', errors='replace').read().splitlines()
+          except OSError:
+              print('no e2e log to summarise')
+              raise SystemExit(0)
+
+          keep = []
+          for i, line in enumerate(lines):
+              if line.startswith(' FAIL ') or line.startswith('FAIL '):
+                  keep.append(line.strip())
+              elif re.search(
+                  r'(AssertionError|Error:|Exception|P2002|P2003|P2010|P2024|'
+                  r'unique constraint|foreign key|duplicate key|deadlock|'
+                  r'timed out|Test Files|Tests  )',
+                  line,
+              ):
+                  keep.append(line.rstrip())
+          if not keep:
+              keep = ['no recognisable failure lines; log tail:']
+              keep += lines[-40:]
+
+          # The vitest summary lines are the most load-bearing: emit them first.
+          def rank(text):
+              return 0 if 'Test Files' in text or re.match(r'^\s*Tests\s', text) else 1
+          keep.sort(key=rank)
+
+          body = '\n'.join(keep)
+          chunks = [body[i:i + 20000] for i in range(0, len(body), 20000)][:8]
+          for n, chunk in enumerate(chunks, 1):
+              print('::error title=E2E failure inventory (%d/%d)::%s'
+                    % (n, len(chunks), chunk.replace('\n', '%0A')))
+
+          # A run killed by `timeout 540` ends without vitest's summary block,
+          # which truncates this inventory and is itself the finding.
+          summary = any('Test Files' in line for line in lines)
+          print('::error title=E2E log shape::%s'
+                % ('lines=%d summary_block=%s' % (len(lines), summary)
+                   ).replace('\n', '%0A'))
+          PY
+
+      - name: Upload backend logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-ci-logs
+          if-no-files-found: ignore
+          path: |
+            backend/**/*.log
+            backend/test-results/**
+            /tmp/vardena-*.log
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: classify
+    if: needs.classify.outputs.frontend == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Upgrade npm to v11
+        run: npm install -g npm@11
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Format check
+        working-directory: frontend
+        run: npm run format:check
+
+      - name: Tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  # F-7: the committed generated TypeScript client must match the OpenAPI
+  # document produced by this checkout. The dump boots Nest far enough to
+  # collect DTO metadata; it does not listen on a port and does not query
+  # Postgres (DATABASE_URL is required only by config validation).
+  generated-api-client:
+    name: generated-api-client
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: classify
+    if: needs.classify.outputs.generated == 'true'
+    env:
+      DATABASE_URL: postgresql://vardena:unused@127.0.0.1:1/vardena_test
+      NODE_ENV: test
+      APP_VERSION: 0.0.0-dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Upgrade npm to v11
+        run: npm install -g npm@11
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci --no-audit --no-fund
+
+      - name: Prisma generate
+        working-directory: backend
+        run: npm run prisma:generate
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Check generated API client is up to date
+        run: bash scripts/check-generated-api-client.sh
+
+  # The stable result of the workflow. `if: always()` is essential: without it a
+  # failed `classify` (or any failed dependency) would skip the gate, and a
+  # skipped job reports success, so a skipped gate could protect nothing.
+  # Skipped jobs that are genuinely not applicable keep it green, so a
+  # documentation-only pull request is not blocked by the PostgreSQL/E2E job.
+  # Keep this job's `needs:` list in sync with the jobs above.
+  ci-gate:
+    name: ci-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs:
+      - classify
+      - docs
+      - backend
+      - frontend
+      - generated-api-client
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify every applicable check passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          printf '%s' "$NEEDS" > needs.json
+          python3 scripts/ci-gate.py --needs-json needs.json

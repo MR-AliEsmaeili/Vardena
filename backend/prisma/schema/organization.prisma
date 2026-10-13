@@ -1,0 +1,361 @@
+// Organization module schema (docs/modules.md §Organization,
+// ADR-0020, docs/architecture/domain/master-data-strategy.md §1/§2/§5).
+//
+// Owns the organization structure and the party master:
+//   `organization.organizations` — the business/tenant root every
+//     organization-scoped record points at.
+//   `organization.branches`      — organizational scope dimension (NOT a
+//     legal entity, NOT a separate set of books — OQ-22).
+//   `organization.departments`   — organizational structure, hierarchical.
+//   `organization.employees`     — minimal business reference data only
+//     (HR/payroll is out of scope — OQ-32).
+//   `organization.parties`       — one counterparty record with explicit
+//     customer/supplier capabilities (no Customer/Supplier tables — D-02).
+//
+// Lifecycle (master-data-strategy.md §7): `is_active` is the single lifecycle
+// mechanism implemented in Task 6 — disable blocks *new* usage and keeps
+// history readable. No `deleted_at` columns exist yet because Task 6
+// implements no delete operation; adding a second, unused lifecycle mechanism
+// is what master-data-strategy §7 and the Task 6 brief both warn against.
+// Deletion semantics stay open (docs/open-questions.md OQ-36).
+//
+// Cross-schema foreign keys: `inventory.*` references `organization.*`
+// (organization_id, branch_id) with ON DELETE RESTRICT. The dependency is
+// strictly one-way (Inventory → Organization) and referential integrity on
+// the isolation boundary matters more than a schema-only boundary; this
+// follows the pattern the repository already uses for `identity.sessions`
+// and `rbac.user_roles` → `users.users` (docs/database-strategy.md §5).
+
+model Organization {
+  id        String   @id
+  code      String   @db.VarChar(64)
+  name      String   @db.VarChar(200)
+  isActive  Boolean  @default(true) @map("is_active")
+  /// Legacy C-63 column retained for schema/data compatibility. The MVP
+  /// display policy is fixed to Jalali; application code neither reads nor
+  /// writes this value, and it cannot be configured per organization.
+  calendarSystem String @default("JALALI") @map("calendar_system") @db.VarChar(16)
+  /// C-63 (ADR-0042 §5): the IANA time zone (e.g. `Asia/Tehran`) used to turn
+  /// an instant into a local date-time for this organization. NEVER a numeric
+  /// offset: offsets have no rules, and Vardena's runtime (tz database) owns
+  /// the historical and future offset rules.
+  timeZone  String   @default("Asia/Tehran") @map("time_zone") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  branches    Branch[]
+  departments Department[]
+  employees   Employee[]
+  parties     Party[]
+
+  // Back-relations for the organization-scoped Inventory master data
+  // (prisma/schema/inventory.prisma). Prisma requires both sides of a
+  // relation to be declared even when only one side carries the foreign key;
+  // these arrays are the virtual (non-schema) side — the real FK columns stay
+  // `inventory.*.organization_id` in the inventory module.
+  units               Unit[]
+  unitConversions     UnitConversion[]
+  itemUnitConversions ItemUnitConversion[]
+  itemGroups          ItemGroup[]
+  items               Item[]
+  warehouses          Warehouse[]
+
+  // Back-relations for the inventory core (Task 7, ADR-0022). Virtual side
+  // only — same rule as above, no migration impact.
+  movements    InventoryMovement[]
+  balances     InventoryBalance[]
+  reservations InventoryReservation[]
+  operations   InventoryOperation[]
+
+  // Back-relations for the Inventory valuation foundation (PDR-05,
+  // ADR-0039). Virtual side only — the real FK columns stay
+  // `inventory.*.organization_id`.
+  itemValuationMethods     ItemValuationMethod[]
+  inventoryValuationStates InventoryValuationState[]
+  inventoryValuationRuns   InventoryValuationRun[]
+
+  // Back-relations for Material Request (C-50). Virtual side only — the real
+  // FK columns stay `inventory.material_request*.organization_id`.
+  materialRequests      MaterialRequest[]
+  materialRequestLines  MaterialRequestLine[]
+  materialRequestEvents MaterialRequestEvent[]
+
+  // Back-relations for Inventory Business Documents (C-58). Virtual side
+  // only — the real FK columns stay `inventory.inventory_business_document*`.
+  inventoryBusinessDocuments      InventoryBusinessDocument[]
+  inventoryBusinessDocumentLines  InventoryBusinessDocumentLine[]
+
+  // Back-relations for the C-59E Pricing Run batch records. Virtual side
+  // only — the real FK columns stay `inventory.inventory_pricing_run*`.
+  inventoryPricingRuns         InventoryPricingRun[]
+  inventoryPricingRunKeyOutcomes InventoryPricingRunKeyOutcome[]
+
+  // Back-relations for the C-62 Accounting posting operations and their
+  // immutable snapshots. Virtual side only — the real FK columns stay
+  // `inventory.inventory_accounting_posting_*`.
+  inventoryAccountingPostingOperations      InventoryAccountingPostingOperation[]
+  inventoryAccountingPostingSnapshots       InventoryAccountingPostingSnapshot[]
+  inventoryAccountingPostingSnapshotMovements InventoryAccountingPostingSnapshotMovement[]
+
+  // Back-relations for the Document Foundation (Task 8, ADR-0023). Virtual
+  // side only — the real FK columns stay `documents.*.organization_id`.
+  documentTypeConfigs  DocumentTypeConfig[]
+  numberingSeries      NumberingSeries[]
+  numberingAllocations NumberingAllocation[]
+  documentRelations    DocumentRelation[]
+
+  // Back-relations for the Workflow Foundation (Task 9, ADR-0024). Virtual
+  // side only — the real FK columns stay `workflow.*.organization_id`.
+  workflowDefinitions  WorkflowDefinition[]
+  workflowVersions     WorkflowVersion[]
+  workflowStates       WorkflowState[]
+  workflowTransitions  WorkflowTransition[]
+  workflowInstances    WorkflowInstance[]
+  workflowHistory      WorkflowTransitionHistory[]
+  workflowApprovals    WorkflowApproval[]
+  workflowAutomations  WorkflowAutomationBinding[]
+
+  // Back-relations for the Accounting foundation (Task 10.2, ADR-0026) and
+  // the coding structure + chart of accounts (Task 10.3) plus the new
+  // Accounting Configuration foundation (Task 11). Virtual side only —
+  // the real FK columns stay `accounting.*.organization_id`.
+  financialAreas            FinancialArea[]
+  fiscalYears               FiscalYear[]
+  accountingPeriods         AccountingPeriod[]
+  codingStructureVersions   CodingStructureVersion[]
+  codingStructureLevels     CodingStructureLevel[]
+  accountingConfigurations  AccountingConfiguration[]
+  accountingConfigurationLevels AccountingConfigurationLevel[]
+  accounts                  Account[]
+
+  // Back-relations for the accounting documents (Task 10.4, contract §12/§16).
+  // Virtual side only — the real FK columns stay
+  // `accounting.*.organization_id`, and the cross-module document references
+  // (source identity) are logical, never FKs.
+  accountingDocuments        AccountingDocument[]
+  accountingDocumentLines    AccountingDocumentLine[]
+  accountingPostingOperations AccountingPostingOperation[]
+
+  // C-62: the Accounting-owned source posting mappings. Virtual side only —
+  // the real FK column is `accounting.source_posting_mappings.organization_id`.
+  sourcePostingMappings SourcePostingMapping[]
+
+  // Back-relations for the immutable ledger entries (Task 10.7).
+  // Virtual side only — the real FK column stays
+  // `accounting.ledger_entries.organization_id`.
+  ledgerEntries LedgerEntry[]
+
+  // Back-relations for the balance projection (Task 12).
+  // Virtual side only — the real FK column stays
+  // `accounting.account_balance_projections.organization_id`.
+  accountBalanceProjections AccountBalanceProjection[]
+
+  // Back-relations for the Base Chart adoption records (Task 23, OD-20-1).
+  // Virtual side only — the real FK column stays
+  // `accounting.base_chart_adoptions.organization_id`. The Base Chart
+  // TEMPLATE tables carry no organization relation by design (product data).
+  baseChartAdoptions BaseChartAdoption[]
+
+  // Back-relations for Detail Structure & Details (Task 30, OD-29-03).
+  // Virtual side only — the real FK columns stay
+  // `accounting.*.organization_id`.
+  detailStructureVersions DetailStructureVersion[]
+  detailStructureLevels   DetailStructureLevel[]
+  details                 Detail[]
+
+  // Back-relation for the principal → organization binding (Task 19, ODR-3).
+  // Unlike the virtual-only back-relations above, this one is REAL: the
+  // membership rows live in THIS schema (`organization.organization_memberships`)
+  // and carry the foreign keys; see `model OrganizationMembership` below.
+  memberships OrganizationMembership[]
+
+  // The organization code is the tenant root's business key: unique
+  // deployment-wide (there is no wider scope to be unique within).
+  @@unique([code], map: "uq_organizations_code")
+  @@index([isActive], map: "idx_organizations_is_active")
+  @@map("organizations")
+  @@schema("organization")
+}
+
+model Branch {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(64)
+  name           String   @db.VarChar(200)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employees    Employee[]
+  warehouses   Warehouse[]
+
+  // Back-relations for the inventory core (Task 7, ADR-0022): branch is a
+  // first-class scope column on movements, balances and reservations.
+  // Virtual side only — no migration impact.
+  movements    InventoryMovement[]
+  balances     InventoryBalance[]
+  reservations InventoryReservation[]
+
+  // Back-relations for the Inventory valuation foundation (PDR-05): branch
+  // is snapshotted onto the valuation state/run exactly like on the ledger.
+  inventoryValuationStates InventoryValuationState[]
+  inventoryValuationRuns   InventoryValuationRun[]
+
+  // Back-relation for Material Request lines (C-50): branch is denormalized
+  // from the line's warehouse, same first-class-scope rule as above.
+  materialRequestLines MaterialRequestLine[]
+
+  // C-62: the branch is the organizational (Legal Entity) context captured on
+  // every immutable Accounting posting snapshot. Virtual side only.
+  inventoryAccountingPostingSnapshots InventoryAccountingPostingSnapshot[]
+
+  // Back-relation for the accounting documents of this branch (Task 10.4,
+  // AC-D-17: branch lives on the voucher header, never on a line).
+  accountingDocuments AccountingDocument[]
+
+  // Back-relation for the ledger entries carrying this branch's operational
+  // scope snapshot (Task 10.7). Virtual side only — no migration impact.
+  ledgerEntries LedgerEntry[]
+
+  // Uniqueness scope is the organization (master-data-strategy.md §7.1).
+  @@unique([organizationId, code], map: "uq_branches_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_branches_organization_id_is_active")
+  @@map("branches")
+  @@schema("organization")
+}
+
+model Department {
+  id                 String   @id
+  organizationId     String   @map("organization_id")
+  parentDepartmentId String?  @map("parent_department_id")
+  code               String   @db.VarChar(64)
+  name               String   @db.VarChar(200)
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy          String?  @map("created_by")
+  updatedBy          String?  @map("updated_by")
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  parent        Department?   @relation("DepartmentHierarchy", fields: [parentDepartmentId], references: [id], onDelete: Restrict)
+  children      Department[]  @relation("DepartmentHierarchy")
+  employees     Employee[]
+
+  @@unique([organizationId, code], map: "uq_departments_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_departments_organization_id_is_active")
+  @@index([parentDepartmentId], map: "idx_departments_parent_department_id")
+  @@map("departments")
+  @@schema("organization")
+}
+
+/// Minimal employee reference data (OQ-32). Deliberately NOT linked to
+/// `users.users`: an Employee is a business record, a User is a login
+/// account, and a person may exist operationally without one. The linkage
+/// mechanism is unresolved — docs/open-questions.md OQ-37.
+model Employee {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  employeeCode   String   @map("employee_code") @db.VarChar(64)
+  firstName      String   @map("first_name") @db.VarChar(120)
+  lastName       String   @map("last_name") @db.VarChar(120)
+  departmentId   String?  @map("department_id")
+  branchId       String?  @map("branch_id")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  branch       Branch?       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, employeeCode], map: "uq_employees_organization_id_employee_code")
+  @@index([organizationId, isActive], map: "idx_employees_organization_id_is_active")
+  @@index([departmentId], map: "idx_employees_department_id")
+  @@index([branchId], map: "idx_employees_branch_id")
+  @@map("employees")
+  @@schema("organization")
+}
+
+/// One counterparty record with explicit capability flags (D-02,
+/// master-data-strategy.md §5). There is no Customer/Supplier table: a
+/// business partner that is both is ONE row with both flags set.
+///
+/// Iranian legal/tax identification (national id, economic code) is
+/// deliberately absent: its semantics and validation rules are unresolved
+/// and expert-gated (OQ-30, OQ-38). Structured addresses, contacts and bank
+/// accounts are children of a party in the target model (ADR-0020 §2) but are
+/// out of Task 6 scope — OQ-38.
+model Party {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(64)
+  displayName    String   @map("display_name") @db.VarChar(200)
+  legalName      String?  @map("legal_name") @db.VarChar(200)
+  partyType      String   @map("party_type") @db.VarChar(20)
+  isCustomer     Boolean  @default(false) @map("is_customer")
+  isSupplier     Boolean  @default(false) @map("is_supplier")
+  email          String?  @db.VarChar(320)
+  phone          String?  @db.VarChar(64)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, code], map: "uq_parties_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_parties_organization_id_is_active")
+  @@index([organizationId, partyType], map: "idx_parties_organization_id_party_type")
+  @@map("parties")
+  @@schema("organization")
+}
+
+// Principal → organization membership — the smallest Organization-owned
+// binding that implements ODR-3 (Task 19): organization authorization is
+// bound to the authenticated principal's authorized organization context, so
+// a module permission alone can no longer cross organizations by supplying an
+// arbitrary `organizationId`.
+//
+// Shape follows the `rbac.user_roles` precedent (the repository's other
+// user-link table):
+// - COMPOSITE primary key (user_id, organization_id): the database itself
+//   makes a duplicate grant impossible, so the application never relies on a
+//   read-then-write check;
+// - `onDelete: Cascade` on the user relation — a membership is not a business
+//   record and must not outlive the user (users are soft-deleted in practice,
+//   so this is a safety net, exactly as in `rbac.user_roles`);
+// - `onDelete: Restrict` on the organization relation — an organization row
+//   can never disappear under its memberships (every other `organization_id`
+//   FK in the repository is RESTRICT too);
+// - presence IS the authorization: there is no `is_active`, no role column
+//   and no validity window. The full membership model (roles per
+//   organization, deactivation, effective dating) remains future work under
+//   OQ-01/OQ-22; adding a second, unused lifecycle mechanism here is what
+//   master-data-strategy.md §7 forbids.
+//
+// Deliberately NOT seeded/backfilled by the migration: which principals may
+// access which existing organizations is an operational grant decision, not a
+// schema fact. Deployments grant memberships explicitly after upgrading
+// (see the Task 19 implementation report for the rollout note).
+model OrganizationMembership {
+  userId         String   @map("user_id")
+  organizationId String   @map("organization_id")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@id([userId, organizationId], map: "pk_organization_memberships_user_organization")
+  @@index([organizationId], map: "idx_organization_memberships_organization_id")
+  @@map("organization_memberships")
+  @@schema("organization")
+}

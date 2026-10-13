@@ -1,0 +1,2 @@
+Failed to load config file "/home/user/Vardena/backend" as a TypeScript/JavaScript module. Error: PrismaConfigEnvError: Cannot resolve environment variable: DATABASE_URL.
+prisma exit:0
