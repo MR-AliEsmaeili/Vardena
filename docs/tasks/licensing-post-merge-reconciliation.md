@@ -485,3 +485,54 @@ amended. The audit that establishes the facts is
   (forced first-login change) and is an **outstanding implementation item** and
   a deployment blocker, with the eight acceptance tests recorded in the audit
   §5.2.
+
+## 18. L-05 implemented — §8.6 reduction control on the renewal path (2026-10-13, dated addendum)
+
+**Scope:** records the corrective implementation of finding G-8.1 (§17 and the
+[acceptance audit](licensing-po-acceptance-audit-2026-10-13.md) §4.4.1, task
+**L-05**). No decision text is rewritten; the historical statements above —
+including this document's earlier "a document that retires nothing has no
+predecessor whose grant could be taken away" boundary and the audit's probe
+evidence — remain as dated records of the state they describe. Product Owner
+acceptance is not recorded or inferred.
+
+- **What changed.** The single conflict authority
+  (`backend/src/modules/licensing/domain/license-version.ts`) gained rule 6c:
+  a candidate that retires nothing (the ordinary contiguous renewal) is
+  measured, after the existing rules accept it, against the **deterministic
+  continuation baseline** — the retained version whose effective window ends
+  exactly at the candidate's `validFrom`, selected by preferring the
+  candidate's `licenseId`, then the installation's bound customer, ties by
+  latest import then id. The shipped `reductionConflicts` usage check runs
+  against that baseline; a conflicting renewal is refused
+  `reduction-requires-resolution` (409, nothing written) with the baseline in
+  `reduction.predecessorVersionId`, and lifts only through the existing
+  authorized `ReductionResolutionIntent`. The legacy `VLIC1` adjacency renewal
+  is guarded by the same rule after its L-02 rules; its transport still cannot
+  carry a resolution. The repository's resolution receipt and the typed
+  `license.import.reduction-resolved` event now name the evaluation's
+  **resolution subject** (retired predecessor, or the baseline) and the
+  baseline is never stamped. Out of scope, unchanged: first license, backwards
+  gap fill, dedicated post-gap recovery; the open-end arm has no continuation
+  case (proof-tested). PDR-12's non-bypass rule is untouched. No schema,
+  migration, OpenAPI contract, generated-client or frontend change; the
+  existing Persian `reduction-requires-resolution` copy applies to the new
+  path unchanged.
+- **Requirement-level status.** With this change the G-8.1 defect's
+  implementation exists; F-8's reduction-control criterion and PR #142's
+  `HOLD` remain as recorded in §17 until the change is merged and verified
+  with exact-SHA CI, and acceptance stays with the Product Owner. The design
+  rule is recorded in
+  [`docs/licensing/version-model-and-file-exchange.md`](../licensing/version-model-and-file-exchange.md)
+  §3.3 and the rule-6b/6c documentation of the conflict authority.
+- **Verification.** Local fast checks (backend unit suite, typecheck, lint,
+  format, build, hermetic route e2e) passed at the implementation head; the
+  live-PostgreSQL and migration verification is delegated to CI per
+  [`docs/testing/test-execution-policy.md`](../testing/test-execution-policy.md)
+  and is recorded with the exact head SHA in the pull request. Local tests are
+  not live-PostgreSQL proof.
+- **Next justified sequence (unchanged from the audit §9).** F-12 (decided,
+  unimplemented, deployment blocker; acceptance tests in the audit §5.2) is
+  independent of Licensing's import path and comes next; L-06 (customer code)
+  follows once the Product Owner records what the customer code IS (audit
+  §4.6 step 1) — neither is a dependency of L-05, and neither is started here.

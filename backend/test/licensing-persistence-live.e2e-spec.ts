@@ -1089,6 +1089,16 @@ describe.skipIf(DATABASE_URL === undefined)(
     }, 60_000);
 
     it('refuses an explicit supersession that reduces capacity, in the transaction too (PDR-11 §8.6)', async () => {
+      // The suite's earlier tests chain adjacent windows and leave retained
+      // coverage ending exactly where this test's first document starts. Since
+      // L-05, a contiguous new-identity candidate is measured against the
+      // deterministic continuation baseline, and this test's deliberately
+      // small grant (5/20, two entitlements — chosen so the successor's
+      // reduction conflicts deterministically) would reduce against the
+      // unlimited chain link. Resetting isolates the test: on a fresh
+      // installation the first document is a first license (no baseline), so
+      // the ONLY reduction in play is the explicit supersession under test.
+      await resetApplicationForFreshInstallation();
       const identity = await app.get(InstallationIdentityService).current();
       const licenseId = '01K7REDUCELICENSE00000000001';
       const governing = licenseFor(
@@ -2154,6 +2164,221 @@ describe.skipIf(DATABASE_URL === undefined)(
             WHERE "event_type" = 'license.import.reduction-resolved'
               AND "operation_id" = $1`,
           reducing.payload.operationId,
+        ),
+      ).toBe(1);
+    }, 120_000);
+
+    it('persists the L-05 renewal-path resolution: refusal writes nothing, the baseline is never stamped, the typed event names it', async () => {
+      await resetApplicationForFreshInstallation();
+      const identity = await app.get(InstallationIdentityService).current();
+      const ordinaryOperator = await createAuditOperator('ordinary', [
+        LICENSING_PERMISSIONS.LICENSE_ACTIVATE,
+      ]);
+      const resolver = await createAuditOperator('resolution', [
+        LICENSING_PERMISSIONS.LICENSE_ACTIVATE,
+        LICENSING_PERMISSIONS.LICENSE_RESOLVE_REDUCTION,
+      ]);
+      const governing = licenseFor(
+        {
+          installationId: identity.installationId,
+          licenseId: generateId(),
+          validFrom: new Date('2026-01-01T00:00:00.000Z'),
+          validUntil: new Date('2034-01-01T00:00:00.000Z'),
+          organizationLimit: null,
+          userLimit: 10_000,
+          moduleEntitlements: ['organization', 'users', 'rbac'],
+        },
+        authority.privateKey,
+      );
+      await app.get(LicenseImportService).importDocument(governing.file);
+      await activateAuditOperators([ordinaryOperator, resolver]);
+
+      const users = app.get(UsersService);
+      for (let index = 0; index < 10; index += 1) {
+        const usageUser = await users.createUser({
+          username: `renewal-usage-${generateId().toLowerCase()}`,
+          password: AUDIT_OPERATOR_PASSWORD,
+        });
+        auditActorUserIds.push(usageUser.id);
+      }
+      const actualUsage = await users.countLicensedActiveUsers();
+      const reducedLimit = 11;
+      expect(actualUsage).toBeGreaterThan(reducedLimit);
+
+      // A contiguous renewal: it starts exactly at the governing window's end
+      // and retires NOTHING (no supersedesOperationId) — the path that had no
+      // reduction check before L-05.
+      const renewal = licenseFor(
+        {
+          installationId: identity.installationId,
+          licenseId: governing.payload.licenseId,
+          validFrom: new Date('2034-01-01T00:00:00.000Z'),
+          validUntil: new Date('2035-06-01T00:00:00.000Z'),
+          organizationLimit: null,
+          userLimit: reducedLimit,
+          moduleEntitlements: ['organization', 'users', 'rbac'],
+        },
+        authority.privateKey,
+      );
+      const governingVersion = await query<{ id: string }>(
+        `SELECT "id" FROM "licensing"."license_versions"
+          WHERE "operation_id" = $1`,
+        governing.payload.operationId,
+      ).then((rows) => rows[0]);
+      expect(governingVersion).toBeDefined();
+
+      const ordinaryAgent = await loginAuditOperator(ordinaryOperator.username);
+      const refused = await ordinaryAgent
+        .post('/api/v1/license/import')
+        .send({ document: renewal.file });
+      expect(refused.status).toBe(409);
+      expect(refused.body.details.reason).toBe('reduction-requires-resolution');
+      expect(refused.body.details.reduction.predecessorVersionId).toBe(
+        governingVersion?.id,
+      );
+      const refusalConflict = (
+        refused.body.details.reduction.conflicts as Array<{
+          kind: string;
+          limit: number;
+          currentUsage: number;
+        }>
+      ).find(({ kind }) => kind === 'user-capacity');
+      expect(refusalConflict).toMatchObject({
+        kind: 'user-capacity',
+        limit: reducedLimit,
+      });
+      expect(refusalConflict?.currentUsage).toBeGreaterThan(reducedLimit);
+      // Nothing was written, and the baseline keeps its unstamped history.
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          renewal.payload.operationId,
+        ),
+      ).toBe(0);
+
+      const denied = await ordinaryAgent
+        .post('/api/v1/license/reduction-resolution')
+        .send({
+          document: renewal.file,
+          reason: 'Renewal confirmed by customer.',
+        })
+        .expect(403);
+      expect(denied.body.code).toBe('PermissionDenied');
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
+            WHERE "event_type" = 'license.import.reduction-resolved'`,
+        ),
+      ).toBe(0);
+
+      const resolutionAgent = await loginAuditOperator(resolver.username);
+      const response = await resolutionAgent
+        .post('/api/v1/license/reduction-resolution')
+        .send({
+          document: renewal.file,
+          reason: 'Renewal confirmed by customer.',
+        });
+      expect(
+        response.status,
+        `HTTP ${response.status}: ${JSON.stringify(response.body)}`,
+      ).toBe(200);
+      expect(response.body).toMatchObject({
+        changed: true,
+        outcome: 'APPLIED',
+        // The receipt names the BASELINE — the version whose grant was
+        // measured — and the renewal retired nothing.
+        resolvedPredecessorVersionId: governingVersion?.id,
+      });
+      const resolvedConflict = (
+        response.body.resolvedConflicts as Array<{
+          kind: string;
+          limit: number;
+          currentUsage: number;
+        }>
+      ).find(({ kind }) => kind === 'user-capacity');
+      expect(resolvedConflict).toMatchObject({
+        kind: 'user-capacity',
+        limit: reducedLimit,
+      });
+
+      const renewalVersion = await query<{
+        id: string;
+        supersedes_version_id: string | null;
+      }>(
+        `SELECT "id", "supersedes_version_id" FROM "licensing"."license_versions"
+          WHERE "operation_id" = $1`,
+        renewal.payload.operationId,
+      ).then((rows) => rows[0]);
+      expect(renewalVersion).toBeDefined();
+      // No retirement was recorded on the renewal: a resolution authorizes a
+      // reduction, it does not retire the version it is measured against.
+      expect(renewalVersion?.supersedes_version_id).toBeNull();
+      const predecessorAfter = await query<{
+        superseded_at: Date | null;
+        governs_until: Date | null;
+        superseded_by_version_id: string | null;
+      }>(
+        `SELECT "superseded_at", "governs_until", "superseded_by_version_id"
+           FROM "licensing"."license_versions"
+          WHERE "operation_id" = $1`,
+        governing.payload.operationId,
+      );
+      expect(predecessorAfter).toEqual([
+        {
+          superseded_at: null,
+          governs_until: null,
+          superseded_by_version_id: null,
+        },
+      ]);
+
+      const resolvedAudit = await query<{
+        detail: string | null;
+        license_id: string | null;
+        version_id: string | null;
+        actor_id: string | null;
+        source: string;
+      }>(
+        `SELECT "detail", "license_id", "version_id", "actor_id", "source"
+           FROM "licensing"."license_audit_events"
+          WHERE "event_type" = 'license.import.reduction-resolved'
+            AND "operation_id" = $1`,
+        renewal.payload.operationId,
+      ).then((rows) => rows[0]);
+      // The typed event names the baseline and the conflicts the transaction
+      // recomputed under the installation and allocation locks.
+      expect(resolvedAudit?.detail).toContain(governingVersion?.id ?? '');
+      expect(resolvedAudit?.detail).toContain('[user-capacity]');
+      expect(resolvedAudit).toMatchObject({
+        license_id: governing.payload.licenseId,
+        version_id: renewalVersion?.id,
+        actor_id: resolver.id,
+        source: 'file',
+      });
+
+      const replay = await resolutionAgent
+        .post('/api/v1/license/reduction-resolution')
+        .send({
+          document: renewal.file,
+          reason: 'Renewal confirmed by customer.',
+        });
+      expect(replay.status).toBe(409);
+      expect(replay.body.details).toMatchObject({
+        reason: 'duplicate-operation',
+      });
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          renewal.payload.operationId,
+        ),
+      ).toBe(1);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
+            WHERE "event_type" = 'license.import.reduction-resolved'
+              AND "operation_id" = $1`,
+          renewal.payload.operationId,
         ),
       ).toBe(1);
     }, 120_000);

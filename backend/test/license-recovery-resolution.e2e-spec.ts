@@ -78,6 +78,8 @@ describe('License gap recovery and reduction resolution (e2e)', () => {
   const AFTER_LAPSE = new Date('2027-06-01T00:00:00.000Z');
   /** A future-dated supersession instant for the resolution flow. */
   const HANDOVER = new Date('2033-01-01T00:00:00.000Z');
+  /** Where the L-05 renewal becomes contiguous with the governing license. */
+  const RENEWAL_START = new Date('2034-01-01T00:00:00.000Z');
   const RECOVERY_REASON =
     'Renewal order 2026-1182 arrived after the previous contract had expired.';
   const RESOLUTION_REASON =
@@ -534,6 +536,134 @@ describe('License gap recovery and reduction resolution (e2e)', () => {
         (event) => event.eventType === 'license.import.reduction-resolved',
       ),
     ).toHaveLength(1);
+  });
+
+  it('resolves a reduction on a renewal that retires nothing (L-05): the baseline is audited, never stamped', async () => {
+    const operator = await app
+      .get(UsersService)
+      .createUser({ username: 'license-operator', password: PASSWORD });
+    const operatorRole = await app.get(RolesService).createRole({
+      name: 'License operator',
+      permissionCodes: [LICENSING_PERMISSIONS.LICENSE_ACTIVATE],
+    });
+    await app
+      .get(UserRolesService)
+      .assignRoleToUser(operatorRole.id, operator.id);
+    const agent = await login('license-operator');
+    const importAs = importDocument(agent);
+    const installationId = (await state(agent)).installationId as string;
+
+    // The governing license ends at RENEWAL_START; the renewal is contiguous
+    // and retires nothing — before L-05 this path had no reduction check.
+    const governing = licenseFile({
+      installationId,
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      validUntil: RENEWAL_START,
+      organizationLimit: 5,
+      userLimit: 20,
+      moduleEntitlements: ['accounting', 'documents', 'users'],
+    });
+    await importAs(governing.file).expect(200);
+
+    const resolveAgent = await createOperatorWith(
+      'resolve-renewal-operator',
+      LICENSING_PERMISSIONS.LICENSE_RESOLVE_REDUCTION,
+    );
+    await seedUsage(5, 19);
+
+    const renewal = licenseFile({
+      installationId,
+      validFrom: RENEWAL_START,
+      validUntil: new Date('2035-01-01T00:00:00.000Z'),
+      organizationLimit: 3,
+      userLimit: 20,
+      moduleEntitlements: ['accounting', 'documents', 'users'],
+    });
+
+    // The ordinary import refuses the renewal and explains it against the
+    // continuation baseline — the governing version, named in the payload.
+    const refused = await importAs(renewal.file).expect(409);
+    expect(refused.body.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        predecessorVersionId: licensing.versions[0]?.versionId,
+        conflicts: [
+          { kind: 'organization-capacity', limit: 3, currentUsage: 5 },
+        ],
+      },
+    });
+    expect(licensing.versions).toHaveLength(1);
+    expect(licensing.versions[0]).toMatchObject({
+      supersededAt: null,
+      governsUntil: null,
+      supersededByVersionId: null,
+    });
+
+    // The route guard refuses the operator who holds only ACTIVATE.
+    const denied = await agent
+      .post('/api/v1/license/reduction-resolution')
+      .send({ document: renewal.file, reason: RESOLUTION_REASON })
+      .expect(403);
+    expect(denied.body.code).toBe('PermissionDenied');
+
+    // Through the dedicated operation: applied in one transaction, the
+    // receipt names the baseline, and the baseline is NOT stamped — a
+    // resolution authorizes a reduction, it does not retire the version it
+    // is measured against.
+    const applied = await resolveAgent
+      .post('/api/v1/license/reduction-resolution')
+      .send({ document: renewal.file, reason: RESOLUTION_REASON })
+      .expect(200);
+    expect(applied.body).toMatchObject({
+      outcome: 'APPLIED',
+      changed: true,
+      resolvedConflicts: [
+        { kind: 'organization-capacity', limit: 3, currentUsage: 5 },
+      ],
+    });
+    expect(applied.body.resolvedPredecessorVersionId).toBe(
+      licensing.versions[0]?.versionId,
+    );
+    expect(licensing.versions).toHaveLength(2);
+    expect(licensing.versions[0]).toMatchObject({
+      supersededAt: null,
+      governsUntil: null,
+      supersededByVersionId: null,
+    });
+    expect(licensing.versions[1]?.supersedesVersionId).toBeNull();
+    const resolved = licensing.auditEvents.find(
+      (event) => event.eventType === 'license.import.reduction-resolved',
+    );
+    expect(String(resolved?.detail)).toContain(
+      `resolved reduction of version ${licensing.versions[0]?.versionId} [organization-capacity]`,
+    );
+
+    // Retrying the applied renewal is a stable replay refusal.
+    const retried = await resolveAgent
+      .post('/api/v1/license/reduction-resolution')
+      .send({ document: renewal.file, reason: RESOLUTION_REASON })
+      .expect(409);
+    expect(retried.body.details).toMatchObject({
+      reason: 'duplicate-operation',
+    });
+
+    // A renewal that does NOT conflict has nothing to resolve.
+    const nonConflicting = licenseFile({
+      installationId,
+      validFrom: new Date('2035-01-01T00:00:00.000Z'),
+      validUntil: new Date('2036-01-01T00:00:00.000Z'),
+      organizationLimit: 5,
+      userLimit: 20,
+      moduleEntitlements: ['accounting', 'documents', 'users'],
+    });
+    const notApplicable = await resolveAgent
+      .post('/api/v1/license/reduction-resolution')
+      .send({ document: nonConflicting.file, reason: RESOLUTION_REASON })
+      .expect(409);
+    expect(notApplicable.body.details).toMatchObject({
+      reason: 'resolution-not-applicable',
+    });
+    expect(licensing.versions).toHaveLength(2);
   });
 
   it('keeps a within-usage reduction on the ordinary import path (no resolution involved)', async () => {

@@ -229,10 +229,13 @@ export function createLicensingStores(
       const resolution =
         command.reductionResolution != null
           ? (() => {
-              const predecessor = evaluation.supersedes;
+              // The evaluation's resolution subject: the retired predecessor,
+              // or — L-05 — the continuation baseline of a renewal that
+              // retires nothing. Never stamped (see the real repository).
+              const predecessor = evaluation.resolutionSubject;
               if (predecessor === null) {
                 throw new Error(
-                  'A reduction resolution must supersede a retained version.',
+                  'A reduction resolution was applied without a resolution subject.',
                 );
               }
               return {
