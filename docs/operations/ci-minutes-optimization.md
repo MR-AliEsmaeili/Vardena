@@ -127,15 +127,17 @@ small runner jobs that exist only to keep the required checks safe.
 
 ## 6. Estimated savings by change category
 
-Estimates for the **new** jobs are labelled as estimates — they have not been measured on
-GitHub yet (§7). Savings are the difference against the measured baseline in §1, expressed in
-billed minutes (per-job rounding up).
+Savings are the difference against the measured baseline in §1, expressed in billed minutes
+(per-job rounding up). The **new** jobs' own durations *are* measured: the first run of this
+workflow (PR #145, run `38394588059`, head `d8c6632`) exercised the broad path and reported
+`classify` **7s**, `docs` **7s**, `ci-gate` **5s**; per-category totals remain estimates until
+a real run of each category exists (§7).
 
 | Change category | Before | After (estimated) | Estimated saving |
 | --- | --- | --- | --- |
-| Documentation-only (PR #144 shaped) | 12 billed min | `classify` ~1 + `docs` ~1 + `ci-gate` ~1 = **~3 min** | **~9 min (~75%)** |
-| Frontend-only | ~12 billed min | `classify` + `frontend` (~3) + `ci-gate` = **~5 min** | **~7 min (~58%)** |
-| Backend-only | ~12 billed min | `classify` + `backend` (~7) + `generated` (~2) + `ci-gate` = **~11 min** | **~1 min (~8%)** |
+| Documentation-only (PR #144 shaped) | 12 billed min | `classify` 1 + `docs` 1 + `ci-gate` 1 = **3 min** (19s of job time) | **~9 min (~75%)** |
+| Frontend-only | ~12 billed min | `classify` 1 + `frontend` ~3 + `ci-gate` 1 = **~5 min** | **~7 min (~58%)** |
+| Backend-only | ~12 billed min | `classify` 1 + `backend` ~7 + `generated` ~2 + `ci-gate` 1 = **~11 min** | **~1 min (~8%)** |
 | Prisma schema / migration | ~12 billed min | **unchanged** (full backend integration coverage retained) | ~0 |
 | Generated client / API contract | ~12 billed min | `classify` + `backend` + `generated` + `ci-gate` | ~1 min |
 | Workflow, root config, unclassifiable | ~12 billed min | **unchanged** (every job) | 0 |
@@ -182,6 +184,7 @@ subsequent runs (compare `gh run view <id> --json jobs` totals per category). On
 | Path classification, gate contract, link checker, workflow wiring | `python3 -m unittest discover -s scripts/tests -t scripts/tests` (80 tests) |
 | Workflow invariants (no path filters, `if: always()` gate, gate wiring, scope conditions, output declarations, `main`-safe concurrency) | `scripts/check-ci-workflow.py` (also asserted by the test suite shell above, including mutations that must fail) |
 | Change detection against real history | `scripts/ci-classify-scope.py --base <base> --head HEAD` |
+| First full run of this workflow (broad path) | [PR #145](https://github.com/MR-AliEsmaeili/Vardena/pull/145), run `38394588059`, head `d8c6632`: `classify` 7s, `docs` 7s, `backend` 6m45s, `frontend` 2m41s, `generated-api-client` 1m06s, `ci-gate` 5s — all six `success`, including Prisma validate/generate, `migrate deploy`, system-admin bootstrap, both timezone live suites, all three rehearsals and the E2E suite incl. live-DB. The classifier annotation recorded the decision ("broad change detected — running every job") and the `docs` job reported only the three pre-existing broken links as warnings |
 | Documentation links | `scripts/check-docs-links.py --base <base>` |
 
 Run all of it locally in one line:
