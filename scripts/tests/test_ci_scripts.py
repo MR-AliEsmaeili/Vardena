@@ -440,8 +440,9 @@ class SelfWeakeningGuardTest(unittest.TestCase):
         self.assertIn("decision      : frontend", out)
 
     def test_guard_reports_a_previous_revision_without_a_classifier(self):
-        empty = Path(tempfile.mkdtemp())
-        self.addCleanup(lambda: None)
+        empty_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(empty_tmp.cleanup)
+        empty = Path(empty_tmp.name)
         try:
             git(empty, "init", "-q", "-b", "main")
             write(empty / "docs" / "a.md", "# A\n")
