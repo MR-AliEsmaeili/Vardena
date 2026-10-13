@@ -188,7 +188,7 @@ protection and migration before any code changes (G-10, AR-29).
   term: closing an open end is a reduction where the document does not name the
   version it retires. **Decision 3's explicit supersession is the one path that
   may change the term**: by the Product Owner's final decision of 2026-10-12
-  (**OD-LIC-01**, [PDR-12](../../decisions/product/PDR-12-license-term-supersession.md))
+  (**OD-LIC-01**, [PDR-12](../decisions/product/PDR-12-license-term-supersession.md))
   a perpetual grant (`validUntil = null`) may be replaced by a time-limited one
   through an explicit, valid, signed supersession — and *only* that: the
   retired version's `organizationLimit`, `userLimit` and granted entitlements

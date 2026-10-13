@@ -1,59 +1,23 @@
 # Vardena CI — change-aware, with a stable final gate.
 #
-# Jobs:
-# `classify`             — change detection: which jobs this change set needs.
-# `docs`                 — documentation link validation (no dependencies).
-# `backend`              — quality gates + unit tests + build + e2e (incl.
-#                          live-DB suites; licensing persistence is serial).
-# `frontend`             — quality gates + component/logic tests + build.
-# `generated-api-client` — generated-client drift check (OpenAPI vs client).
-# `ci-gate`              — the always-running aggregate check (see below).
+#    classify             change detection: which jobs this change set needs
+#    docs                 documentation link validation (no dependencies)
+#    backend              Prisma, lint, typecheck, format, unit, build,
+#                         PostgreSQL migrations, bootstrap, live-DB E2E
+#    frontend             lint, typecheck, format, tests, build
+#    generated-api-client OpenAPI dump vs the committed generated client
+#    ci-gate              the always-running aggregate result
 #
-# CHANGE-AWARE EXECUTION (agent/CI minutes):
-# The workflow always starts for every pull request and every push to `main`;
-# it deliberately uses no workflow-level `paths`/`paths-ignore` filter, because
-# a skipped *workflow* leaves its required checks "Pending" forever and blocks
-# the pull request. Instead, `classify` (scripts/ci-classify-scope.py) inspects
-# the change set against the merge base and the other jobs are conditional.
-# A job skipped by a job-level `if` reports success to branch protection, which
-# is exactly why `ci-gate` exists: it always runs, requires `success` from every
-# job the classifier marked as applicable (a skipped or cancelled required job
-# fails it), and fails closed when the classification itself is unavailable.
+# The workflow always starts (no `paths`/`paths-ignore` filter anywhere: a
+# skipped workflow leaves required checks pending forever). A job skipped by an
+# `if` condition instead reports success, which is why `ci-gate` exists: it
+# fails when a job the classifier marked applicable did not succeed — including
+# one that was skipped, cancelled or missing — and passes when the skipped jobs
+# are genuinely not applicable. See docs/operations/ci-minutes-optimization.md.
 #
-# Scope rules (docs/operations/ci-minutes-optimization.md, tested by
-# scripts/tests/test_ci_scripts.py):
-#   documentation (`*.md`, `docs/**`, `.vardena/**` docs)      -> docs
-#   frontend workspace (`frontend/**`)                          -> frontend
-#   backend workspace incl. Prisma, migrations, manifests       -> backend,
-#                                                                 generated
-#   generated client paths / `scripts/check-generated-api-client.sh`
-#                                                               -> generated
-#   anything unclassifiable (`.github/**`, other `scripts/**`, root files)
-#                                                               -> every job
-# The change set cannot narrow its own verification: the classifier revision
-# already accepted on `main` re-evaluates the same paths and its decision is
-# unioned in (scripts/ci-classify-scope.py --also-run-rev).
-#
-# The frontend job deliberately does NOT duplicate the backend's live-DB
-# integration coverage: it never starts Postgres and never boots the API.
-# Frontend verification is hermetic (the `src/api/*` modules are stubbed in
-# tests), so the two jobs run in parallel and stay independently meaningful.
-#
-# Backend pipeline order mirrors backend/README.md "Tests" / "quality gates":
-#   prisma validate -> generate -> lint -> typecheck -> format:check
-#   -> unit -> build -> migrate deploy -> system-admin bootstrap -> e2e
-#      (with VARDENA_TEST_DATABASE_URL)
-#
-# Notes:
-# - npm is upgraded to v11 first: npm 10's resolver crashes on this
-#   dependency graph ("Exit handler never called!" — see backend/README.md
-#   Requirements and backend/Dockerfile).
-# - The job-level DATABASE_URL is intentionally unreachable (same value as
-#   backend/vitest.config.e2e.ts): `prisma generate`/`validate` need the key
-#   present but never connect, unit tests are hermetic, and the non-live e2e
-#   specs assert the deterministic readiness/503 path. Only the
-#   `migrate deploy` step and the live-DB suites (via
-#   VARDENA_TEST_DATABASE_URL) talk to the Postgres service.
+# The classifier fails open (unknown path -> every job); `ci-gate` fails closed.
+# `classify` also unions the decision of the classifier revision already
+# accepted on `main`, so a change set cannot narrow its own verification.
 name: CI
 
 on:
@@ -91,10 +55,6 @@ jobs:
       frontend: ${{ steps.scope.outputs.frontend }}
       generated: ${{ steps.scope.outputs.generated }}
       broad: ${{ steps.scope.outputs.broad }}
-      changed_count: ${{ steps.scope.outputs.changed_count }}
-      mode: ${{ steps.scope.outputs.mode }}
-      base_sha: ${{ steps.scope.outputs.base_sha }}
-      base_source: ${{ steps.scope.outputs.base_source }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -102,21 +62,17 @@ jobs:
           # full history: the merge base of the change set must be resolvable
           fetch-depth: 0
 
-      # The classification and the gate decide which checks a merge needs, so
-      # their own logic is verified before it is trusted (fast, hermetic).
+      # The classification and the gate decide what a merge needs, so their own
+      # logic is verified before it is trusted (fast, hermetic).
       - name: Unit-test the CI helper scripts
         run: python3 -m unittest discover -s scripts/tests -t scripts/tests
 
       - name: Classify change set
         id: scope
-        # Fails open to "every job" for anything it cannot classify; it never
-        # exits non-zero for an unknown change set (the gate fails closed).
-        #
-        # `--also-run-rev` is the self-weakening guard: the classifier stored in
-        # the revision already accepted on `main` re-evaluates the same change
-        # set and its decision is unioned in. A change set therefore cannot
-        # narrow its own verification by shipping a weakened classifier, and a
-        # classifier that exists but cannot be executed fails closed.
+        # Fails open (unknown path -> every job) and never exits non-zero for an
+        # unknown change set; the gate fails closed. `--also-run-rev` is the
+        # self-weakening guard: the classifier revision already accepted on
+        # `main` re-evaluates the same change set and its decision is unioned in.
         run: |
           python3 scripts/ci-classify-scope.py \
             --base "$CI_BASE_SHA" \
@@ -135,20 +91,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          # the comparison base revision and its tree are read from history
-          fetch-depth: 0
 
       - name: Check documentation links
-        env:
-          # The classifier already resolved and verified the comparison base
-          # (merge base, reachable from main); reuse it instead of resolving it
-          # twice. An empty value degrades to report-only mode.
-          DOCS_BASE_SHA: ${{ needs.classify.outputs.base_sha }}
-        run: |
-          python3 scripts/check-docs-links.py \
-            --base "$DOCS_BASE_SHA" \
-            --summary "$GITHUB_STEP_SUMMARY"
+        run: python3 scripts/check-docs-links.py
 
   backend:
     name: backend
@@ -478,18 +423,10 @@ jobs:
       - name: Check generated API client is up to date
         run: bash scripts/check-generated-api-client.sh
 
-  # Stable final gate — the always-running check, and the recommended required
-  # check for branch protection. `if: always()` is essential: without it a
+  # The stable result of the workflow. `if: always()` is essential: without it a
   # failed `classify` (or any failed dependency) would skip the gate, and a
-  # skipped job reports success, so a skipped gate could not protect anything.
-  #
-  # It asserts the merge contract:
-  #   * `classify` succeeded (no scope evidence -> no green),
-  #   * every job the classifier marked applicable reached `success`
-  #     (a skipped/cancelled/missing required job fails the gate),
-  #   * a job that ran although it was not required must not have failed,
-  #   * an empty classification is refused (never green without evidence).
-  # Skipped jobs that are genuinely not applicable keep the gate green, so a
+  # skipped job reports success, so a skipped gate could protect nothing.
+  # Skipped jobs that are genuinely not applicable keep it green, so a
   # documentation-only pull request is not blocked by the PostgreSQL/E2E job.
   # Keep this job's `needs:` list in sync with the jobs above.
   ci-gate:
@@ -512,6 +449,4 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           printf '%s' "$NEEDS" > needs.json
-          python3 scripts/ci-gate.py \
-            --needs-json needs.json \
-            --summary "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci-gate.py --needs-json needs.json

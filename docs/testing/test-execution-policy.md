@@ -4,17 +4,15 @@ Status: **Authoritative** · Date: 2026-09-26 · Type: testing policy (execution
 
 This document records WHERE tests execute, not WHAT is covered. It is an
 **execution-environment decision: no coverage is reduced by it.** Every suite
-listed under a CI gate below runs on CI for every pull request and every push
-to `main` **whenever the change set can affect it**
-(`.github/workflows/ci.yml`); the pipeline is change-aware, so a
-documentation-only pull request runs no database, no dependency install and no
-build, while any change under `backend/**` — including the Prisma schema and
-migrations — still runs the full backend, migration, live-DB and
-generated-client verification. The exact path-to-job matrix, the merge contract
-and the fail-safe rules are recorded in
-`docs/operations/ci-minutes-optimization.md`; the always-running `ci-gate` job
-fails when a job the change set requires did not succeed, and the classification
-itself is unit-tested in CI. The FAST-LOCAL/CI-* classification below exists so
+listed under a CI gate below runs on CI for every pull request and every push to
+`main` **whenever the change set can affect it** (`.github/workflows/ci.yml`;
+path-to-job matrix and merge contract in
+`docs/operations/ci-minutes-optimization.md`). A change that cannot affect a
+suite does not run it — a documentation-only pull request runs no database, no
+dependency install and no build — while any change under `backend/**`,
+including the Prisma schema and migrations, still runs the full backend,
+migration, live-DB and generated-client verification. The FAST-LOCAL/CI-*
+classification below exists so
 that a development sandbox (which may lack Docker, a PostgreSQL service, or
 network access to engine/registry hosts) never silently substitutes a weaker
 local approximation for the authoritative environment.

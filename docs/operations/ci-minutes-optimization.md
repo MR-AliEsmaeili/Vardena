@@ -1,229 +1,158 @@
 # CI minutes optimization — change-aware jobs with a stable gate
 
-Status: **implemented, pending CI verification on the pull request head** · Date: 2026-10-13
-Baseline audited: `main` @ `749b01c95c4f107b8a37a86376dad156dffb8463` (merge of PR #144)
-Scope: CI execution only — no product code, schema, migration, permission, API contract,
-generated client, dependency or licensing behaviour is changed.
+Status: **implemented** · Date: 2026-10-13 · Baseline: `main` @ `749b01c` (merge of PR #144)
+Scope: CI execution only. No product code, schema, migration, permission, API contract,
+generated client or dependency is changed.
 
 `docs/testing/test-execution-policy.md` remains the authority on **where** suites execute
-(FAST-LOCAL vs CI-HEAVY vs CI-LIVE-DB vs CI-MIGRATION). This document records **which jobs
-run for which change**, and the merge contract that keeps that optimization safe.
+(FAST-LOCAL vs CI-HEAVY vs CI-LIVE-DB vs CI-MIGRATION). This document records **which jobs run
+for which change**, the merge contract that keeps that safe, and the current enforcement
+limitation.
 
----
+## 1. Why (measured baseline)
 
-## 1. Baseline behaviour (measured, not inferred)
+Every pull request used to start three unconditional jobs — `backend` (PostgreSQL 16 service,
+`migrate deploy`, system-admin bootstrap, two timezone live suites, three migration rehearsals,
+E2E incl. live-DB), `frontend`, and `generated-api-client` (two `npm ci` installs + a backend
+build). Measured job time from the GitHub API (per-job billing rounds up):
 
-On the audited `main`, `.github/workflows/ci.yml` started for every pull request and every
-push to `main` and always ran **three unconditional jobs** in parallel:
+| Run | Change set | backend | frontend | generated-api-client | Total |
+| --- | --- | --- | --- | --- | --- |
+| `38390128645` (PR #144) | **documentation-only** (5 `*.md`) | 6m33s | 2m52s | 1m07s | **10m32s** = 12 billed min |
+| `38352417591` (PR #143) | backend + migration + workflow | 6m22s | 2m56s | 1m05s | 10m23s |
+| `38354611367` (push to `main`) | post-merge of PR #143 | 4m26s | 2m20s | 1m13s | 7m59s |
 
-| Job | Cost driver |
-| --- | --- |
-| `backend` | Node 22 + npm 11 + `npm ci`, Prisma validate/generate, lint, typecheck, format, unit tests, build, **postgres:16 service**, `migrate deploy`, system-admin bootstrap, two timezone live suites, three migration rehearsals, E2E incl. live-DB suites |
-| `frontend` | `npm ci`, lint, typecheck, format, tests, build |
-| `generated-api-client` | `npm ci` (backend) + `npm ci` (frontend), Prisma generate, backend build, OpenAPI dump, client diff |
+## 2. Path-to-job matrix
 
-Measured job durations from the GitHub API (sum of job wall-clock time):
+`classify` (`scripts/ci-classify-scope.py`) inspects the change set against the **merge base**
+and `docs`, `backend`, `frontend`, `generated-api-client` follow its decision. `classify` and
+`ci-gate` always run.
 
-| Run | Event | Change set | `backend` | `frontend` | `generated-api-client` | Total |
-| --- | --- | --- | --- | --- | --- | --- |
-| `38390128645` | pull_request | **documentation-only** (PR #144: 5 `*.md`) | 6m33s | 2m52s | 1m07s | **10m32s** |
-| `38352417591` | pull_request | backend + Prisma migration + workflow (PR #143) | 6m22s | 2m56s | 1m05s | **10m23s** |
-| `38354611367` | push to `main` | post-merge of PR #143 | 4m26s | 2m20s | 1m13s | **7m59s** |
-
-So a five-file Markdown pull request paid for a PostgreSQL service, migrations, live-DB E2E
-suites, two dependency installs and two production builds. Because GitHub bills per job
-minute rounded up (private repository, ubuntu runners, no multiplier), that documentation-only
-run consumed **12 billed minutes**.
-
-## 2. New path-to-job matrix
-
-`.github/workflows/ci.yml` now always starts and always runs a `classify` job plus the
-`ci-gate` job. The classifier (`scripts/ci-classify-scope.py`) inspects the change set against
-the **merge base** of the pull request base tip / pre-push head, and the six jobs below follow.
-
-| Changed paths | `docs` | `backend` | `frontend` | `generated-api-client` |
+| Changed paths | docs | backend | frontend | generated-api-client |
 | --- | --- | --- | --- | --- |
-| `*.md` anywhere root/`docs/`/`.vardena/` (incl. deleted, renamed, spaced names) | run | — | — | — |
-| `docs/**` (any file, incl. images/fixtures) | run | — | — | — |
-| `.vardena/**/*.md` | run | — | — | — |
+| `*.md` anywhere (root, `docs/`, `.vardena/`), deletions and renames included | run | — | — | — |
+| `docs/**` any file (images, fixtures) | run | — | — | — |
 | `backend/**` (src, tests, Prisma schema, migrations, manifests, lockfile) | — | run | — | run |
-| `backend/**/*.md` (e.g. `backend/README.md`) | run | run | — | — |
-| `frontend/**` non-API code (src, tests, config, lockfile) | — | — | run | — |
-| `frontend/README.md` | run | — | run | — |
+| `backend/**/*.md` (`format:check` covers Markdown) | run | run | — | — |
+| `frontend/**` non-API code | — | — | run | — |
 | `frontend/src/api/**` (incl. the committed generated client) | — | — | run | run |
 | `scripts/check-generated-api-client.sh` | — | — | — | run |
-| **anything else** — `.github/**`, other `scripts/**`, `docker-compose.yml`, `.env.example`, root files, new top-level directories | run | run | run | run |
+| **anything else** — `.github/**`, other `scripts/**`, root files, new top-level directories | run | run | run | run |
 | empty change set, missing/zero/unverifiable base revision | run | run | run | run |
 
-Decisions are made per path, so a mixed change set runs the union. `backend/**` non-Markdown
-changes trigger the client check because only backend sources, the Prisma schema and the
-backend manifests can change the OpenAPI document; a Markdown-only backend change cannot, but
-it still runs `backend` so its `format:check` coverage is unchanged.
-
-`classify`, `docs` and `ci-gate` add no dependency install, no database and no build. The
-`docs` job is Python-only (standard library), and the repository already relied on `python3`
-in the `backend` job's failure inventory.
+Decisions are per path, so a mixed change set runs the union. The `docs` job is Python-only
+(standard library): no Node, no PostgreSQL, no build.
 
 ## 3. Checks preserved
 
-Nothing was removed, weakened or replaced. Every step of `backend`, `frontend` and
-`generated-api-client` is byte-identical to the audited baseline; only the conditions that
-decide *whether* the job runs were added. In particular, for any change set that touches the
-corresponding workspace, CI still runs:
+No step of `backend`, `frontend` or `generated-api-client` was changed — each only gained its
+condition. For any change set that touches the corresponding workspace, CI still runs Prisma
+validate/generate, backend lint/typecheck/format/unit/build, fresh PostgreSQL 16 `migrate
+deploy`, system-admin bootstrap, both timezone-sensitive BusinessDate live suites, all three
+migration rehearsals, the full E2E set plus the serial licensing-persistence suite, frontend
+lint/typecheck/format/tests/build, and the generated-client drift check.
 
-* Prisma validate/generate, backend lint, typecheck, format, unit tests, build;
-* fresh PostgreSQL 16 migration deployment and system-admin bootstrap;
-* both timezone-sensitive BusinessDate live suites (Asia/Tehran, America/Los_Angeles);
-* all three migration rehearsals, including the licensing version-model fixture;
-* the full E2E set plus the serial licensing-persistence live suite;
-* frontend lint, typecheck, format, tests, production build;
-* the generated API client drift check.
+## 4. The stable result: `ci-gate`
 
-The classifier is validated by `scripts/tests/test_ci_scripts.py` (80 tests) which run inside
-the always-on `classify` job, so a pull request that would weaken the classification fails
-before anything else executes.
+A job skipped by an `if` condition reports **success**, and a workflow skipped by a `paths`
+filter leaves its checks **pending forever**. That is why there is no `paths` filter anywhere
+and why `ci-gate` exists: it declares `if: always()`, depends on every other job
+(`scripts/ci-gate.py`), and fails when
 
-## 4. Required-check safety (the reason there are no `paths` filters)
+* the classifier did not succeed (no scope evidence → no green),
+* a job the classifier marked applicable did not reach `success` — **including a job that was
+  skipped, cancelled or missing from `needs`**,
+* a job that ran outside the classification failed,
+* the classification claims no job is applicable.
 
-A workflow skipped by `paths`/`paths-ignore` leaves its required checks **"Pending" forever**
-and blocks the merge — GitHub documents this explicitly, and a *job* skipped by an `if`
-condition instead reports **success**. Both behaviours are handled deliberately:
+It passes exactly when every applicable job ran and succeeded and the rest were skipped. Job
+display names (`backend`, `frontend`, `generated-api-client`) are unchanged.
 
-* the workflow is never skipped by path or branch filters (only `main` targets, as before);
-* conditional jobs are made safe by a **stable final gate**, `ci-gate`, which declares
-  `if: always()` and depends on `classify`, `docs`, `backend`, `frontend` and
-  `generated-api-client`. It fails when
-  * the classifier did not succeed (no scope evidence → no green),
-  * a job the classifier marked applicable did not reach `success` — **including when it was
-    skipped or cancelled** or is missing from `needs`,
-  * a job that ran outside the classification failed,
-  * the classification claims no job is applicable (so a classifier regression can never
-    produce an empty green gate).
-  It passes when jobs that are genuinely not applicable are `skipped`, which is what lets a
-  documentation-only pull request merge without the PostgreSQL suite.
-* `classify` fails **open** (unclassifiable path → every job) while `ci-gate` fails **closed**,
-  so an unforeseen path can only cost minutes, never coverage or a stuck pull request.
-
-### Self-weakening guard (added after review of PR #145)
+## 5. Self-weakening guard
 
 The classifier decides which jobs run, so a change set that ships a *weakened* classifier could
-have skipped the jobs it should have triggered — for example a pull request that rewrites
-`backend/src/**` while classifying everything as documentation: only `docs` would run and the
-gate would be green. The fix is independent of any token or plan: `classify` passes
-`--also-run-rev "$CI_BASE_SHA"`, and the classifier revision **already accepted on `main`**
-re-evaluates the same change set; its decision is unioned in (`scripts/ci-classify-scope.py`).
-Consequences:
+skip the verification it should have triggered (reproduced: a pull request that rewrites
+`backend/src/worker.ts` while classifying everything as documentation ran only `docs`, leaving
+`ci-gate` green over untested code). `classify` therefore passes
+`--also-run-rev "$CI_BASE_SHA"`: the classifier revision **already accepted on `main`**
+re-evaluates the same change set and its decision is **unioned** in — monotone, so
+documentation-only and frontend-only runs stay narrow. A previous classifier that exists but
+cannot be executed fails closed (every job runs); a base revision that predates the classifier
+is reported as a notice. The guard is required by the CI-script tests, so it cannot be dropped
+silently.
 
-* a change set can never narrow its own verification (the union is monotone — it only adds
-  jobs), so the documentation-only optimization is untouched for honest change sets;
-* if that authoritative classifier exists but cannot be executed, every job runs (fail-closed,
-  annotated as `::error`);
-* if it does not exist in the base revision yet (the revision that introduces it), that is
-  reported as a notice and the head decision applies;
-* `scripts/check-ci-workflow.py` fails if the `--also-run-rev` invocation is dropped from the
-  workflow, so the guard cannot be lost silently.
+## 6. Concurrency
 
-### Enforcement status (verified, not assumed)
+Unchanged: `group: ci-${{ github.ref }}` with
+`cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}` — outdated pull-request runs stay
+cancellable, and an in-progress `main` verification is never cancelled. No scheduled run, no
+matrix, no extra full-suite run.
 
-**No status check is required for `main` today, and this repository cannot require one on its
-current plan.** `GET /repos/…/branches/main` → `protected: false` (readable, Contents: read);
-the detailed `…/branches/main/protection` endpoint answers `403 Resource not accessible by
-integration` with `X-Accepted-Github-Permissions: administration=read` (this token is a GitHub
-App installation token without Administration); rulesets answer `403 Upgrade to GitHub Pro or
-make this repository public` (private repository, GitHub Free). The exact evidence, the
-consequences and the owner's options are recorded in
-[required-check-enforcement.md](required-check-enforcement.md); `scripts/check-required-checks.py`
-re-verifies enforcement and distinguishes "not required", "plan-gated", "permission denied" and
-"cannot be determined".
+## 7. Savings: measured baseline, estimated categories
 
-The job *display names* `backend`, `frontend` and `generated-api-client` are unchanged, so any
-required check that exists after enforcement is enabled keeps matching, and a skipped job
-satisfies it the same way it would have satisfied it before. Recommended (a strengthening, not
-a change made here): require **`ci-gate` plus the per-job checks** (`backend`, `frontend`,
-`generated-api-client`, `docs`) — the aggregate makes the merge contract explicit, and the
-per-job checks make a single hollowed-out script unable to unlock a merge or a job deletion
-unable to drop coverage silently.
+Measured: the baseline in §1, and the new jobs' own durations (first run `38394588059`:
+`classify` 7s, `docs` 7s, `ci-gate` 5s). A documentation-only pull request therefore costs
+three jobs rounding up to **3 billed minutes instead of 12**.
 
-## 5. Concurrency and duplicate runs
+Estimated until a real run of each category exists: frontend-only ~58% saved, backend-only
+~8%, schema/migration and unclassifiable changes unchanged (full coverage retained). Only the
+baseline column is measured; this pull request's own runs are all broad, because its change set
+contains the workflow itself.
 
-`concurrency` is unchanged in behaviour and documented in place:
+## 8. Enforcement: advisory CI and the manual merge protocol
 
-```yaml
-group: ci-${{ github.ref }}
-cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
-```
+**GitHub does not technically require any check for `main` on the current plan.** Verified
+2026-10-13 (read-only): `GET /repos/MR-AliEsmaeili/Vardena/branches/main` → `{"protected":false}`
+(no branch protection rule exists, so no check can block a merge);
+`GET …/branches/main/protection` → `403 Resource not accessible by integration` with
+`X-Accepted-Github-Permissions: administration=read`; `GET …/rulesets` and
+`GET …/rules/branches/main` → `403 Upgrade to GitHub Pro or make this repository public to
+enable this feature` — protected branches/rulesets require GitHub Pro for a **private**
+repository.
 
-Outdated pull-request runs are still cancelled (per-PR group), and a push to `main` is never
-cancelled, so the authoritative post-merge verification of `main` cannot be hidden by a newer
-run. No scheduled run, no matrix, and no additional full-suite run was added; the new jobs are
-small runner jobs that exist only to keep the required checks safe.
+**Owner decision (2026-10-13): keep the repository private on GitHub Free and accept advisory
+CI with a manual merge protocol.** No visibility, billing, protection, secret or permission
+setting was changed, and the repository is not made public. A green `ci-gate` is therefore
+**not** proof of server-enforced protection: it can be ignored, and a pending or failed run
+does not prevent a merge. The protocol below reduces risk; it cannot guarantee prevention.
 
-## 6. Estimated savings by change category
+Manual merge protocol (per pull request):
 
-Savings are the difference against the measured baseline in §1, expressed in billed minutes
-(per-job rounding up). The **new** jobs' own durations *are* measured: the first run of this
-workflow (PR #145, run `38394588059`, head `d8c6632`) exercised the broad path and reported
-`classify` **7s**, `docs` **7s**, `ci-gate` **5s**; per-category totals remain estimates until
-a real run of each category exists (§7).
+1. Confirm the latest **completed** CI run is for the exact current head SHA; any new push
+   invalidates the previous verification.
+2. Require `classify` and `ci-gate` to succeed.
+3. Read the `classify` step summary and check the scope decision against the changed paths.
+4. Require every applicable job to succeed; accept a skipped job only when the classifier says
+   it is not applicable.
+5. Do not merge while any run is pending, missing, failed, cancelled or ambiguous — and review
+   the diff first.
+6. Never push directly to `main`.
 
-| Change category | Before | After (estimated) | Estimated saving |
-| --- | --- | --- | --- |
-| Documentation-only (PR #144 shaped) | 12 billed min | `classify` 1 + `docs` 1 + `ci-gate` 1 = **3 min** (19s of job time) | **~9 min (~75%)** |
-| Frontend-only | ~12 billed min | `classify` 1 + `frontend` ~3 + `ci-gate` 1 = **~5 min** | **~7 min (~58%)** |
-| Backend-only | ~12 billed min | `classify` 1 + `backend` ~7 + `generated` ~2 + `ci-gate` 1 = **~11 min** | **~1 min (~8%)** |
-| Prisma schema / migration | ~12 billed min | **unchanged** (full backend integration coverage retained) | ~0 |
-| Generated client / API contract | ~12 billed min | `classify` + `backend` + `generated` + `ci-gate` | ~1 min |
-| Workflow, root config, unclassifiable | ~12 billed min | **unchanged** (every job) | 0 |
-
-For a `main` push the same categories apply against the 7m59s baseline measured for run
-`38354611367`.
-
-**These numbers are expectations, not verified savings.** Actual savings must be measured from
-subsequent runs (compare `gh run view <id> --json jobs` totals per category). Only the
-*baseline* column of the table above was measured.
-
-## 7. Remaining uncertainties and risks
-
-* **Enforcement does not exist yet (BOOT-OQ-04 resolved to "none").** `main` is unprotected and
-  the current plan cannot protect a private repository, so every check in this workflow is
-  advisory until the Owner acts (see `required-check-enforcement.md` §4). No protection,
-  secret, permission, visibility or billing setting was changed by this work; a skipped
-  conditional job reports success, which is safe only while `ci-gate` is required as well.
-* **Hollowing out a check is not prevented by the guard.** The self-weakening guard protects the
-  *scope decision*; a pull request that edits, say, `scripts/check-generated-api-client.sh` or
-  `scripts/check-docs-links.py` can still make *that* check vacuous (it runs the edited script).
-  Such edits are classified broad (every job runs), so product verification still happens, and
-  the remaining control is review of `scripts/**` and `.github/**` changes.
-* **Actual savings, cancellation behaviour and gate behaviour are unmeasured** until the first
-  real runs on the new workflow. Re-measure per category before reporting a number as fact.
-* **Documentation link validation degrades to report-only** when no comparable base revision
-  can be resolved (missing, zero, or foreign to `main`): it reports broken links as warnings
-  and exits 0. The degradation is always logged and annotated. Three pre-existing broken
-  relative links exist on `main` and are reported as warnings, not failures; they are not
-  fixed here (out of scope for a CI-only change).
-* **The docs job checks relative links only.** External URLs, in-page anchors and
-  reference-style link definitions are out of scope, deliberately, to avoid network flakiness
-  and a dependency solely for link checking.
-* **Base detection depends on the event payload** (`github.event.pull_request.base.sha`,
-  `github.event.before`). The classifier refuses a base that is not reachable from
-  `origin/main` and falls back to running every job, so an unexpected payload costs minutes,
-  never coverage.
-* **A future job added to the workflow must be added to `ci-gate`'s `needs`**;
-  `scripts/check-ci-workflow.py` fails loudly if it is not.
-
-## 8. How this is verified
-
-| Check | Where |
-| --- | --- |
-| Path classification, gate contract, link checker, workflow wiring | `python3 -m unittest discover -s scripts/tests -t scripts/tests` (80 tests) |
-| Workflow invariants (no path filters, `if: always()` gate, gate wiring, scope conditions, output declarations, `main`-safe concurrency) | `scripts/check-ci-workflow.py` (also asserted by the test suite shell above, including mutations that must fail) |
-| Change detection against real history | `scripts/ci-classify-scope.py --base <base> --head HEAD` |
-| First full run of this workflow (broad path) | [PR #145](https://github.com/MR-AliEsmaeili/Vardena/pull/145), run `38394588059`, head `d8c6632`: `classify` 7s, `docs` 7s, `backend` 6m45s, `frontend` 2m41s, `generated-api-client` 1m06s, `ci-gate` 5s — all six `success`, including Prisma validate/generate, `migrate deploy`, system-admin bootstrap, both timezone live suites, all three rehearsals and the E2E suite incl. live-DB. The classifier annotation recorded the decision ("broad change detected — running every job") and the `docs` job reported only the three pre-existing broken links as warnings |
-| Documentation links | `scripts/check-docs-links.py --base <base>` |
-
-Run all of it locally in one line:
+## 9. How this is verified
 
 ```bash
-python3 -m unittest discover -s scripts/tests -t scripts/tests -v
-python3 scripts/check-ci-workflow.py
+python3 -m unittest discover -s scripts/tests -t scripts/tests   # CI helper suite
+python3 scripts/check-docs-links.py                              # documentation links
 ```
+
+The suite covers the classification matrix, the fallback for unknown paths and unusable base
+revisions, the gate contract (a skipped, cancelled or failed applicable job fails the gate),
+the self-weakening guard, the workflow wiring that makes the gate load-bearing, and the
+documentation link check. It runs inside the `classify` job, so a pull request that would
+weaken the classification fails before the other jobs execute.
+
+## 10. Remaining limitations
+
+* **No server-side enforcement** (§8); the manual protocol is the only control.
+* **Hollowing out a check is not prevented by the guard.** A change set that edits a CI script
+  (e.g. `scripts/check-generated-api-client.sh`) can make *that* check vacuous; such paths are
+  classified broad, so product verification still runs, and the remaining control is review of
+  `scripts/**` and `.github/**` changes.
+* **Documentation links**: repository-relative links only; external URLs, anchors and
+  reference-style definitions are out of scope. Reference-style links are not used anywhere in
+  the current tree.
+* **Base detection depends on the event payload** (`github.event.pull_request.base.sha`,
+  `github.event.before`); an unexpected payload falls back to running every job — minutes, not
+  coverage.
+* **A future job added to the workflow must be added to `ci-gate`'s `needs`**; the CI-script
+  tests assert the current wiring.

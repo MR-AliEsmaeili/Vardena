@@ -6,7 +6,7 @@
 | Date | 2026-10-11 |
 | Baseline inspected | `main` at `f27065149ffcb3b6d62929e418a8c6c1b4ce8fea` (merge of PR #136), plus the session branch `arena/5fd62737-vardena` |
 | Authority order | accepted ADRs and Owner decisions → PDR-11 (product source) → current implementation, migrations, tests → canonical registries → historical reports |
-| Authority | [ADR-0046](../../adr/0046-signed-license-documents-and-version-lifecycle.md) · [design record](../../licensing/version-model-and-file-exchange.md) · [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) §19.4 |
+| Authority | [ADR-0046](../adr/0046-signed-license-documents-and-version-lifecycle.md) · [design record](../licensing/version-model-and-file-exchange.md) · [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) §19.4 |
 | Product policy | No open product question is decided here. Every genuinely unresolved item is registered as `OQ-74`…`OQ-85` and cross-referenced from PDR-11 §15. |
 
 Method: every conflict in PDR-11 §19.2 was re-read against the code, migrations,
