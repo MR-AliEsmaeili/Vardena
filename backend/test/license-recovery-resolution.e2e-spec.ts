@@ -478,6 +478,10 @@ describe('License gap recovery and reduction resolution (e2e)', () => {
       .post('/api/v1/license/reduction-resolution')
       .send({ document: reducing.file, reason: 'ab' })
       .expect(400);
+    await resolveAgent
+      .post('/api/v1/license/reduction-resolution')
+      .send({ document: reducing.file })
+      .expect(400);
     const minimumReason = 'abc';
     await resolveAgent
       .post('/api/v1/license/reduction-resolution')
