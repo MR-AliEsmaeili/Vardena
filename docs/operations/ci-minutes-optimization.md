@@ -104,12 +104,45 @@ condition instead reports **success**. Both behaviours are handled deliberately:
 * `classify` fails **open** (unclassifiable path → every job) while `ci-gate` fails **closed**,
   so an unforeseen path can only cost minutes, never coverage or a stuck pull request.
 
-**Branch protection could not be read** (see §7) so no claim is made about which checks are
-currently required. The job *display names* `backend`, `frontend` and `generated-api-client`
-are unchanged, so any existing required check keeps matching, and a skipped job satisfies it
-the same way it would have satisfied it before. Recommended Owner action (a strengthening, not
-a change made here): make **`ci-gate`** the single required check, so the merge contract is
-"every applicable job passed" instead of "each job individually did not fail".
+### Self-weakening guard (added after review of PR #145)
+
+The classifier decides which jobs run, so a change set that ships a *weakened* classifier could
+have skipped the jobs it should have triggered — for example a pull request that rewrites
+`backend/src/**` while classifying everything as documentation: only `docs` would run and the
+gate would be green. The fix is independent of any token or plan: `classify` passes
+`--also-run-rev "$CI_BASE_SHA"`, and the classifier revision **already accepted on `main`**
+re-evaluates the same change set; its decision is unioned in (`scripts/ci-classify-scope.py`).
+Consequences:
+
+* a change set can never narrow its own verification (the union is monotone — it only adds
+  jobs), so the documentation-only optimization is untouched for honest change sets;
+* if that authoritative classifier exists but cannot be executed, every job runs (fail-closed,
+  annotated as `::error`);
+* if it does not exist in the base revision yet (the revision that introduces it), that is
+  reported as a notice and the head decision applies;
+* `scripts/check-ci-workflow.py` fails if the `--also-run-rev` invocation is dropped from the
+  workflow, so the guard cannot be lost silently.
+
+### Enforcement status (verified, not assumed)
+
+**No status check is required for `main` today, and this repository cannot require one on its
+current plan.** `GET /repos/…/branches/main` → `protected: false` (readable, Contents: read);
+the detailed `…/branches/main/protection` endpoint answers `403 Resource not accessible by
+integration` with `X-Accepted-Github-Permissions: administration=read` (this token is a GitHub
+App installation token without Administration); rulesets answer `403 Upgrade to GitHub Pro or
+make this repository public` (private repository, GitHub Free). The exact evidence, the
+consequences and the owner's options are recorded in
+[required-check-enforcement.md](required-check-enforcement.md); `scripts/check-required-checks.py`
+re-verifies enforcement and distinguishes "not required", "plan-gated", "permission denied" and
+"cannot be determined".
+
+The job *display names* `backend`, `frontend` and `generated-api-client` are unchanged, so any
+required check that exists after enforcement is enabled keeps matching, and a skipped job
+satisfies it the same way it would have satisfied it before. Recommended (a strengthening, not
+a change made here): require **`ci-gate` plus the per-job checks** (`backend`, `frontend`,
+`generated-api-client`, `docs`) — the aggregate makes the merge contract explicit, and the
+per-job checks make a single hollowed-out script unable to unlock a merge or a job deletion
+unable to drop coverage silently.
 
 ## 5. Concurrency and duplicate runs
 
@@ -151,15 +184,16 @@ subsequent runs (compare `gh run view <id> --json jobs` totals per category). On
 
 ## 7. Remaining uncertainties and risks
 
-* **Branch protection is unreadable from this session.** `gh api
-  repos/MR-AliEsmaeili/Vardena/branches/main/protection` returns HTTP 403 *"Resource not
-  accessible by integration"* and the rulesets endpoint requires GitHub Pro or a public
-  repository. The repository already records this as **BOOT-OQ-04 (UNKNOWN)** in `STATE.md`.
-  No protection setting, secret, permission or visibility was changed. If a required check
-  currently names *another* workflow or a status context that this workflow no longer
-  produces, the Owner must confirm; nothing here removes or renames an existing check.
-  A required check that is a *skipped conditional job* reports success — which is safe only
-  while `ci-gate` is also required (or while the conditional job's own condition is trusted).
+* **Enforcement does not exist yet (BOOT-OQ-04 resolved to "none").** `main` is unprotected and
+  the current plan cannot protect a private repository, so every check in this workflow is
+  advisory until the Owner acts (see `required-check-enforcement.md` §4). No protection,
+  secret, permission, visibility or billing setting was changed by this work; a skipped
+  conditional job reports success, which is safe only while `ci-gate` is required as well.
+* **Hollowing out a check is not prevented by the guard.** The self-weakening guard protects the
+  *scope decision*; a pull request that edits, say, `scripts/check-generated-api-client.sh` or
+  `scripts/check-docs-links.py` can still make *that* check vacuous (it runs the edited script).
+  Such edits are classified broad (every job runs), so product verification still happens, and
+  the remaining control is review of `scripts/**` and `.github/**` changes.
 * **Actual savings, cancellation behaviour and gate behaviour are unmeasured** until the first
   real runs on the new workflow. Re-measure per category before reporting a number as fact.
 * **Documentation link validation degrades to report-only** when no comparable base revision

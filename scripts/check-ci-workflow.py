@@ -205,6 +205,26 @@ def check(text: str) -> list[str]:
                 "the classification step must carry `id: scope` so the job "
                 "outputs above resolve"
             )
+        # The self-weakening guard is what stops a change set from narrowing
+        # its own verification. A mention in a comment is not enough: the flag
+        # has to be invoked with a revision.
+        classify_text = "\n".join(jobs[CLASSIFIER_JOB])
+        invocation = [
+            line
+            for line in classify_text.splitlines()
+            if "--also-run-rev" in line and not line.lstrip().startswith("#")
+        ]
+        if not invocation:
+            problems.append(
+                "the classify step must invoke `--also-run-rev <revision>` so the "
+                "decision is unioned with the classifier revision accepted on "
+                "main (self-weakening guard)"
+            )
+        elif not any("CI_BASE_SHA" in line for line in invocation):
+            problems.append(
+                "`--also-run-rev` must be given the base revision "
+                "(expected `$CI_BASE_SHA`) so the guard compares against main"
+            )
 
         for job, key in GATED_JOBS.items():
             if job not in jobs:

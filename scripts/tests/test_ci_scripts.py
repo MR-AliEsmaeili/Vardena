@@ -25,6 +25,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 
@@ -46,6 +47,7 @@ scope = load("ci-classify-scope.py")
 gate = load("ci-gate.py")
 docs = load("check-docs-links.py")
 workflow_check = load("check-ci-workflow.py")
+checks = load("check-required-checks.py")
 
 REPO_ROOT = SCRIPTS_DIR.parent
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "ci.yml"
@@ -359,9 +361,11 @@ class ClassifyGitIntegrationTest(unittest.TestCase):
                 "mode",
                 "base_sha",
                 "base_source",
+                "guard",
             },
         )
         self.assertEqual(content["base_sha"], self.base)
+        self.assertEqual(content["guard"], "disabled")
 
     def test_missing_base_falls_back_to_every_job(self):
         code, out = run(
@@ -791,6 +795,444 @@ class DocsLinkCheckTest(unittest.TestCase):
 # --------------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------------- #
+# Self-weakening guard (union with the classifier accepted on main)
+# --------------------------------------------------------------------------- #
+
+
+WEAKENING = ('''def classify_path(path: str) -> set[str]:''', '''def classify_path(path: str) -> set[str]:
+    return {"docs"}''')
+
+
+class SelfWeakeningGuardTest(unittest.TestCase):
+    """The change set must not be able to narrow its own verification.
+
+    Without this guard, a pull request that ships a weakened classifier plus a
+    backend change is classified as documentation-only by its own classifier:
+    only the `docs` job runs, the `ci-gate` check is green, and the backend
+    change is never built or tested. The union with the classifier revision
+    already accepted on `main` removes that failure mode.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        git(self.repo, "init", "-q", "-b", "main")
+        write(self.repo / "backend" / "src" / "worker.ts", "export const a = 1;\n")
+        write(self.repo / "docs" / "a.md", "# A\n")
+        self.install_classifier(SCRIPTS_DIR / "ci-classify-scope.py")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "main: honest classifier")
+        self.base = git(self.repo, "rev-parse", "HEAD")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def install_classifier(self, source: Path, weaken: bool = False) -> None:
+        target = self.repo / "scripts" / "ci-classify-scope.py"
+        content = source.read_text(encoding="utf-8")
+        if weaken:
+            old, new = WEAKENING
+            self.assertIn(old, content)
+            content = content.replace(old, new, 1)
+        write(target, content)
+
+    def commit(self, message: str) -> str:
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", message)
+        return git(self.repo, "rev-parse", "HEAD")
+
+    def classify(self, *extra: str):
+        return run(
+            scope.main,
+            [
+                "--base",
+                self.base,
+                "--head",
+                "HEAD",
+                "--repo-root",
+                str(self.repo),
+                "--main-ref",
+                "main",
+                *extra,
+            ],
+        )
+
+    def test_weakened_classifier_cannot_hide_a_backend_change(self):
+        # The defect this test exists for: the pull request's own classifier
+        # claims documentation-only while it also changes backend code.
+        self.install_classifier(SCRIPTS_DIR / "ci-classify-scope.py", weaken=True)
+        write(self.repo / "backend" / "src" / "worker.ts", "export const a = 2;\n")
+        self.commit("PR: weakened classifier + backend change")
+
+        _, without_guard = self.classify()
+        self.assertIn("decision      : docs", without_guard)
+
+        _, with_guard = self.classify("--also-run-rev", self.base)
+        self.assertIn("previous rev  : unioned", with_guard)
+        self.assertIn("decision      : docs, backend, frontend, generated", with_guard)
+        self.assertIn("broad change  : every job runs", with_guard)
+
+    def test_guard_keeps_documentation_only_changes_fast(self):
+        write(self.repo / "docs" / "b.md", "# B\n")
+        self.commit("docs only")
+        code, out = self.classify("--also-run-rev", self.base)
+        self.assertEqual(code, 0)
+        self.assertIn("decision      : docs", out)
+        self.assertIn("previous rev  : unioned", out)
+        self.assertNotIn("broad change", out)
+
+    def test_guard_keeps_frontend_only_changes_narrow(self):
+        write(self.repo / "frontend" / "src" / "app.tsx", "export const a = 1;\n")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "frontend only")
+        _, out = self.classify("--also-run-rev", self.base)
+        self.assertIn("decision      : frontend", out)
+
+    def test_guard_reports_a_previous_revision_without_a_classifier(self):
+        # The revision that introduces the classifier has no copy of it yet.
+        empty = Path(tempfile.mkdtemp())
+        try:
+            git(empty, "init", "-q", "-b", "main")
+            write(empty / "docs" / "a.md", "# A\n")
+            git(empty, "add", "-A")
+            git(empty, "commit", "-q", "-m", "before the classifier")
+            base = git(empty, "rev-parse", "HEAD")
+
+            write(self.repo / "docs" / "c.md", "# C\n")
+            head = self.commit("docs")
+            code, out = run(
+                scope.main,
+                [
+                    "--base",
+                    base,
+                    "--head",
+                    head,
+                    "--repo-root",
+                    str(self.repo),
+                    "--main-ref",
+                    "main",
+                    "--also-run-rev",
+                    base,
+                ],
+            )
+            self.assertEqual(code, 0)
+            self.assertIn("previous rev  : missing", out)
+            self.assertIn("decision      : docs", out)
+        finally:
+            empty.cleanup() if hasattr(empty, "cleanup") else None
+
+    def test_guard_fails_closed_when_the_previous_classifier_cannot_run(self):
+        # A file at the classifier path that carries the interface markers but
+        # exits non-zero must run every job rather than be ignored.
+        stub = (
+            "# def classify_path(\n# --paths-from\nimport sys\nsys.exit(3)\n"
+        )
+        (self.repo / "scripts").mkdir(exist_ok=True)
+        write(self.repo / "scripts" / "ci-classify-scope.py", stub)
+        base = self.commit("main: unusable classifier")
+
+        write(self.repo / "docs" / "d.md", "# D\n")
+        self.commit("docs change")
+        code, out = run(
+            scope.main,
+            [
+                "--base",
+                self.base,
+                "--head",
+                "HEAD",
+                "--repo-root",
+                str(self.repo),
+                "--main-ref",
+                "main",
+                "--also-run-rev",
+                base,
+            ],
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("previous rev  : failed", out)
+        self.assertIn("broad change  : every job runs", out)
+        self.assertIn("::error title=CI scope::", out)
+
+    def test_guard_fails_closed_when_the_previous_script_is_not_a_classifier(self):
+        (self.repo / "scripts").mkdir(exist_ok=True)
+        write(self.repo / "scripts" / "ci-classify-scope.py", "print('hello')\n")
+        base = self.commit("main: unrelated script at the classifier path")
+
+        write(self.repo / "docs" / "e.md", "# E\n")
+        self.commit("docs change")
+        _, out = run(
+            scope.main,
+            [
+                "--base",
+                self.base,
+                "--head",
+                "HEAD",
+                "--repo-root",
+                str(self.repo),
+                "--main-ref",
+                "main",
+                "--also-run-rev",
+                base,
+            ],
+        )
+        self.assertIn("previous rev  : failed", out)
+        self.assertIn("broad change  : every job runs", out)
+
+    def test_guard_is_disabled_without_a_usable_revision(self):
+        write(self.repo / "docs" / "f.md", "# F\n")
+        self.commit("docs change")
+        for rev in ("", "0" * 40):
+            with self.subTest(rev=rev or "<empty>"):
+                _, out = self.classify("--also-run-rev", rev)
+                self.assertIn("previous rev  : disabled", out)
+                self.assertIn("decision      : docs", out)
+
+    def test_union_outputs_never_removes_jobs(self):
+        decision = scope.classify_paths(["docs/a.md"])
+        added = scope.union_outputs(
+            decision,
+            {
+                "docs": "true",
+                "backend": "true",
+                "frontend": "true",
+                "generated": "true",
+                "broad": "true",
+            },
+        )
+        self.assertEqual(sorted(added), ["backend", "frontend", "generated"])
+        self.assertEqual(
+            sorted(decision.expected_jobs), ["backend", "docs", "frontend", "generated"]
+        )
+
+        narrower = scope.classify_paths(["backend/src/a.ts"])
+        scope.union_outputs(narrower, {"docs": "false", "backend": "false"})
+        self.assertEqual(sorted(narrower.expected_jobs), ["backend", "generated"])
+
+    def test_classifier_keeps_the_stable_paths_from_interface(self):
+        # The guard replays change sets through `--paths-from`; removing that
+        # contract would silently disable the guard.
+        paths_file = self.repo / "paths.txt"
+        paths_file.write_text("docs/a.md\n", encoding="utf-8")
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPTS_DIR / "ci-classify-scope.py"),
+                "--paths-from",
+                str(paths_file),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, msg=completed.stderr)
+        self.assertIn("decision      : docs", completed.stdout)
+
+
+# --------------------------------------------------------------------------- #
+# Required-check enforcement verification (owner tooling)
+# --------------------------------------------------------------------------- #
+
+
+class RequiredCheckVerificationTest(unittest.TestCase):
+    """`scripts/check-required-checks.py` must never report enforcement it did
+    not read: a plan gate, a permission failure and a missing rule are three
+    different answers and each must be distinguishable."""
+
+    POLICY = ["ci-gate", "backend", "frontend", "generated-api-client", "docs"]
+
+    def interpret(self, status, body):
+        return checks.interpret_response(status, body)
+
+    def test_plan_gated_403_is_reported_as_unavailable_not_as_missing_rule(self):
+        protection = self.interpret(
+            403,
+            '{"message":"Upgrade to GitHub Pro or make this repository public '
+            'to enable this feature."}',
+        )
+        self.assertEqual(protection.status, checks.PLAN_GATED)
+        verdict = checks.evaluate(protection, self.POLICY)
+        self.assertEqual(verdict.exit_code, 2)
+        self.assertTrue(any("plan" in problem for problem in verdict.problems))
+
+    def test_permission_denied_403_is_distinguished_from_a_plan_limit(self):
+        protection = self.interpret(
+            403, '{"message":"Resource not accessible by integration"}'
+        )
+        self.assertEqual(protection.status, checks.PERMISSION_DENIED)
+        self.assertEqual(checks.evaluate(protection, self.POLICY).exit_code, 2)
+
+    def test_404_means_the_branch_has_no_rule(self):
+        protection = self.interpret(404, '{"message":"Branch not protected"}')
+        self.assertEqual(protection.status, checks.NO_RULE)
+        verdict = checks.evaluate(protection, self.POLICY)
+        self.assertEqual(verdict.exit_code, 1)
+        self.assertEqual(verdict.missing, self.POLICY)
+
+    def test_a_rule_with_every_policy_check_is_enforced(self):
+        body = json.dumps(
+            {
+                "required_status_checks": {
+                    "strict": True,
+                    "contexts": [],
+                    "checks": [{"context": name} for name in self.POLICY],
+                },
+                "enforce_admins": {"enabled": True},
+                "required_pull_request_reviews": {"required_approving_review_count": 1},
+            }
+        )
+        verdict = checks.evaluate(self.interpret(200, body), self.POLICY)
+        self.assertEqual(verdict.exit_code, 0)
+        self.assertEqual(verdict.problems, [])
+        self.assertEqual(verdict.warnings, [])
+
+    def test_legacy_contexts_are_read_as_well_as_checks(self):
+        body = json.dumps(
+            {"required_status_checks": {"strict": False, "contexts": ["ci-gate"]}}
+        )
+        verdict = checks.evaluate(self.interpret(200, body), self.POLICY)
+        self.assertIn("ci-gate", verdict.required)
+        self.assertIn("backend", verdict.missing)
+
+    def test_missing_ci_gate_is_not_enforced(self):
+        body = json.dumps(
+            {
+                "required_status_checks": {
+                    "strict": True,
+                    "contexts": ["backend", "frontend"],
+                },
+                "enforce_admins": {"enabled": True},
+                "required_pull_request_reviews": {},
+            }
+        )
+        verdict = checks.evaluate(self.interpret(200, body), self.POLICY)
+        self.assertEqual(verdict.exit_code, 1)
+        self.assertIn("ci-gate", verdict.missing)
+
+    def test_administrator_bypass_is_warned_about(self):
+        body = json.dumps(
+            {
+                "required_status_checks": {
+                    "strict": True,
+                    "checks": [{"context": name} for name in self.POLICY],
+                },
+                "enforce_admins": {"enabled": False},
+                "required_pull_request_reviews": {"required_approving_review_count": 1},
+            }
+        )
+        verdict = checks.evaluate(self.interpret(200, body), self.POLICY)
+        self.assertEqual(verdict.exit_code, 0)
+        self.assertTrue(any("bypass" in warning for warning in verdict.warnings))
+
+    def test_unexpected_responses_are_not_reported_as_enforced(self):
+        for status, body in (
+            (500, '{"message":"server error"}'),
+            (200, "not json at all"),
+            (200, "[1, 2, 3]"),
+        ):
+            with self.subTest(status=status, body=body[:12]):
+                protection = self.interpret(status, body)
+                self.assertIn(protection.status, (checks.API_ERROR,))
+                self.assertEqual(checks.evaluate(protection, self.POLICY).exit_code, 2)
+
+    def test_cli_exit_codes_and_fixture_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "protection.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "required_status_checks": {
+                            "strict": True,
+                            "checks": [{"context": name} for name in self.POLICY],
+                        },
+                        "enforce_admins": {"enabled": True},
+                        "required_pull_request_reviews": {"required_approving_review_count": 1},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            code, out = run(
+                checks.main,
+                ["--protection-json", str(fixture), "--protection-status", "200"],
+            )
+            self.assertEqual(code, 0, msg=out)
+            self.assertIn("Verdict: ENFORCED", out)
+
+            code, out = run(
+                checks.main,
+                [
+                    "--protection-json",
+                    str(fixture),
+                    "--protection-status",
+                    "403",
+                    "--require",
+                    "ci-gate",
+                ],
+            )
+            self.assertEqual(code, 2, msg=out)
+            self.assertIn("UNKNOWN", out)
+
+    def test_live_fetch_failure_is_reported_not_swallowed(self):
+        with mock.patch.object(checks, "fetch_via_gh", return_value=None):
+            code, out = run(checks.main, [])
+        self.assertEqual(code, 2)
+        self.assertIn("could not read branch protection", out)
+
+
+class RepositoryCoverageTest(unittest.TestCase):
+    """Every tracked path must map to verification (exhaustive, not sampled)."""
+
+    def test_every_tracked_path_is_classified(self):
+        completed = subprocess.run(
+            ["git", "ls-files"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0 or not completed.stdout.strip():
+            self.skipTest("not a git checkout")
+        tracked = [line for line in completed.stdout.splitlines() if line.strip()]
+        self.assertGreater(len(tracked), 100, "unexpectedly small repository tree")
+
+        unclassified = []
+        for path in tracked:
+            decision = scope.classify_paths([path])
+            if not decision.expected_jobs and not decision.broad:
+                unclassified.append(path)
+        self.assertEqual(
+            unclassified,
+            [],
+            msg=f"paths that would run no verification at all: {unclassified[:10]}",
+        )
+
+    def test_safety_sensitive_paths_run_every_job(self):
+        for path in (
+            ".github/workflows/ci.yml",
+            "scripts/ci-classify-scope.py",
+            "scripts/ci-gate.py",
+            "scripts/check-ci-workflow.py",
+            "scripts/check-docs-links.py",
+            "docker-compose.yml",
+            ".gitignore",
+            "new-top-level-dir/anything.txt",
+        ):
+            with self.subTest(path=path):
+                decision = scope.classify_paths([path])
+                self.assertEqual(
+                    sorted(decision.expected_jobs),
+                    ["backend", "docs", "frontend", "generated"],
+                )
+                self.assertTrue(decision.broad)
+
+    def test_generated_client_script_change_runs_the_client_check(self):
+        # Documented exception to "other scripts/** is broad": the only job that
+        # can observe this script is the one that executes it.
+        decision = scope.classify_paths(["scripts/check-generated-api-client.sh"])
+        self.assertEqual(decision.expected_jobs, ["generated"])
+        self.assertFalse(decision.broad)
+
+
 class WorkflowWiringTest(unittest.TestCase):
     """The workflow must keep the contract the scripts assume.
 
@@ -915,6 +1357,20 @@ class WorkflowWiringTest(unittest.TestCase):
         self.assertTrue(
             any("steps.scope.outputs.docs" in problem for problem in workflow_check.check(mutated))
         )
+
+    def test_dropping_the_self_weakening_guard_is_rejected(self):
+        mutated = self.text.replace(
+            '            --also-run-rev "$CI_BASE_SHA" \\\n', ""
+        )
+        self.assertNotEqual(mutated, self.text)
+        self.assertTrue(
+            any("--also-run-rev" in problem for problem in workflow_check.check(mutated)),
+            msg="the validator must fail when the guard flag is dropped",
+        )
+
+    def test_guard_flag_is_wired_to_the_base_revision(self):
+        self.assertIn('--also-run-rev "$CI_BASE_SHA"', self.text)
+        self.assertIn("    if: always()", self.text)
 
     def test_structured_end_to_end_conditions(self):
         """Every conditional job is skipped or run by the classifier output only."""

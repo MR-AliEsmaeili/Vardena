@@ -13,10 +13,25 @@ Design constraints (see ``docs/operations/ci-minutes-optimization.md``):
   job/workflow level ``paths`` filters: the workflow always starts, every job
   reports a conclusion (skipped jobs report success), and a stable final gate
   (``scripts/ci-gate.py``) turns the decisions into a single explicit result.
+* Not self-weakening: with ``--also-run-rev <rev>`` the decision of the
+  classifier version stored in ``<rev>`` (the authoritative revision on
+  ``main``) is unioned with this one. A change set can therefore never narrow
+  verification by shipping a weakened classifier, because the revision that is
+  already accepted on ``main`` still has to agree that nothing else is needed.
+
+STABLE INTERFACES (do not remove; the guard depends on them):
+
+* ``--paths-from <file>`` -- classify an explicit path list (no git needed).
+  This is the contract ``--also-run-rev`` uses to replay a change set through a
+  previous revision's classifier.
+* ``--github-output <file>`` -- emit ``docs``/``backend``/``frontend``/
+  ``generated``/``broad``/``changed_count``/``mode``/``base_sha``/
+  ``base_source`` as ``key=value`` lines.
 
 Usage (CI):
 
     scripts/ci-classify-scope.py --base "$CI_BASE_SHA" --head HEAD \
+        --also-run-rev "$CI_BASE_SHA" \
         --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
 
 Usage (tests / local inspection):
@@ -29,6 +44,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -50,6 +66,10 @@ DOCS_PREFIX = "docs/"
 #: client in step with the OpenAPI document produced by the backend checkout.
 GENERATED_CLIENT_SCRIPT = "scripts/check-generated-api-client.sh"
 FRONTEND_API_PREFIX = "frontend/src/api/"
+
+#: This script's path inside the repository; the self-weakening guard extracts
+#: the previous revision's copy from here.
+CLASSIFIER_PATH = "scripts/ci-classify-scope.py"
 
 JOB_ORDER = ("docs", "backend", "frontend", "generated")
 
@@ -74,6 +94,8 @@ class Decision:
     reasons: list[str] = field(default_factory=list)
     #: Number of changed paths inspected.
     changed_count: int = 0
+    #: Normalised, de-duplicated changed paths the decision was made from.
+    paths: list[str] = field(default_factory=list)
 
     def as_outputs(self) -> dict[str, str]:
         return {
@@ -156,6 +178,7 @@ def classify_paths(paths: list[str]) -> Decision:
             setattr(decision, family, True)
 
     decision.changed_count = len(seen)
+    decision.paths = sorted(seen)
 
     if decision.broad:
         # A path we cannot reason about may affect anything -> run everything.
@@ -181,12 +204,155 @@ def classify_paths(paths: list[str]) -> Decision:
 
 
 # --------------------------------------------------------------------------- #
+# Self-weakening guard (union with the authoritative classifier on `main`)
+# --------------------------------------------------------------------------- #
+
+
+@dataclass
+class GuardResult:
+    """Outcome of replaying the change set through the previous classifier."""
+
+    #: "unioned" | "missing" | "unsupported" | "failed" | "disabled"
+    status: str
+    detail: str = ""
+    outputs: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def fail_closed(self) -> bool:
+        """True when the guard could not execute a classifier that exists."""
+        return self.status == "failed"
+
+
+def extract_previous_classifier(rev: str, repo_root: Path) -> tuple[str, str]:
+    """Return ("ok"/"missing"/"error", content) for ``rev:CLASSIFIER_PATH``."""
+    if is_unusable_sha(rev):
+        return "missing", ""
+    ok, _ = run_git(["cat-file", "-e", f"{rev}^{{commit}}"], repo_root, quiet=True)
+    if not ok:
+        return "missing", ""
+    ok, _ = run_git(["cat-file", "-e", f"{rev}:{CLASSIFIER_PATH}"], repo_root, quiet=True)
+    if not ok:
+        return "missing", ""
+    ok, content = run_git(["show", f"{rev}:{CLASSIFIER_PATH}"], repo_root, quiet=True)
+    if not ok or not content.strip():
+        return "error", ""
+    # A file at that path that is not this classifier cannot be replayed
+    # safely; the caller reports it instead of trusting it.
+    if "def classify_path(" not in content or "--paths-from" not in content:
+        return "error", ""
+    return "ok", content
+
+
+def parse_key_values(text: str) -> dict[str, str]:
+    outputs: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            outputs[key.strip()] = value.strip()
+    return outputs
+
+
+def union_outputs(decision: Decision, outputs: dict[str, str]) -> list[str]:
+    """Union a previous classifier's decision into ``decision`` (never narrows).
+
+    Returns the jobs the previous revision added to the decision.
+    """
+    added: list[str] = []
+    for job in JOB_ORDER:
+        if outputs.get(job) == "true" and not getattr(decision, job):
+            setattr(decision, job, True)
+            added.append(job)
+    if outputs.get("broad") == "true":
+        decision.broad = True
+    if decision.broad:
+        # A broad decision always means every job (same invariant as
+        # classify_paths applies to its own decision).
+        decision.docs = True
+        decision.backend = True
+        decision.frontend = True
+        decision.generated = True
+    return added
+
+
+def apply_previous_revision_guard(
+    decision: Decision, rev: str, repo_root: Path
+) -> GuardResult:
+    """Replay the change set through the classifier stored in ``rev``.
+
+    The decision of the revision that is already accepted on ``main`` is
+    unioned with this one. A change set can therefore not narrow its own
+    verification by shipping a weakened classifier, and a classifier that
+    exists but cannot be executed fails closed (every job runs).
+    """
+    if is_unusable_sha(rev):
+        return GuardResult("disabled", "no base revision to read a classifier from")
+
+    status, content = extract_previous_classifier(rev, repo_root)
+    if status == "missing":
+        return GuardResult(
+            "missing",
+            f"{rev[:12]} does not contain {CLASSIFIER_PATH} yet "
+            "(first revision introducing it): the head decision applies",
+        )
+    if status == "error":
+        return GuardResult(
+            "failed",
+            f"{rev[:12]}:{CLASSIFIER_PATH} exists but is not a usable classifier",
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        script = Path(tmp) / "previous-ci-classify-scope.py"
+        script.write_text(content, encoding="utf-8")
+        paths_file = Path(tmp) / "paths.txt"
+        paths_file.write_text("\n".join(decision.paths) + "\n", encoding="utf-8")
+        output_file = Path(tmp) / "outputs.txt"
+        # The replay uses the documented stable interface (--paths-from) so it
+        # works against any revision that keeps that contract.
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "--paths-from",
+                str(paths_file),
+                "--github-output",
+                str(output_file),
+            ],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            return GuardResult(
+                "failed",
+                f"{rev[:12]} classifier exited {completed.returncode}: "
+                f"{completed.stderr.strip()[:400]}",
+            )
+        try:
+            outputs = parse_key_values(output_file.read_text(encoding="utf-8"))
+        except OSError:
+            outputs = parse_key_values(completed.stdout)
+
+    if not outputs:
+        return GuardResult(
+            "failed", f"{rev[:12]} classifier produced no decision outputs"
+        )
+
+    added = union_outputs(decision, outputs)
+    detail = (
+        f"{rev[:12]} decision unioned (added: {', '.join(added) or 'nothing'})"
+    )
+    return GuardResult("unioned", detail, outputs)
+
+
+# --------------------------------------------------------------------------- #
 # Git plumbing
 # --------------------------------------------------------------------------- #
 
 
-def run_git(args: list[str], cwd: Path) -> tuple[bool, str]:
-    """Run git, returning (ok, stdout) and swallowing stderr into the log."""
+
+def run_git(args: list[str], cwd: Path, quiet: bool = False) -> tuple[bool, str]:
+    """Run git, returning (ok, stdout). Failures are logged unless ``quiet``."""
     try:
         completed = subprocess.run(
             ["git", *args],
@@ -199,11 +365,12 @@ def run_git(args: list[str], cwd: Path) -> tuple[bool, str]:
         print(f"git {' '.join(args)}: {exc}", file=sys.stderr)
         return False, ""
     if completed.returncode != 0:
-        print(
-            f"git {' '.join(args)} failed ({completed.returncode}): "
-            f"{completed.stderr.strip()}",
-            file=sys.stderr,
-        )
+        if not quiet:
+            print(
+                f"git {' '.join(args)} failed ({completed.returncode}): "
+                f"{completed.stderr.strip()}",
+                file=sys.stderr,
+            )
         return False, ""
     return True, completed.stdout
 
@@ -331,10 +498,25 @@ def changed_paths(base_ref: str, head: str, cwd: Path) -> list[str]:
 # --------------------------------------------------------------------------- #
 
 
-def print_summary(decision: Decision, base_source: str, base_ref: str) -> None:
+def print_summary(
+    decision: Decision,
+    base_source: str,
+    base_ref: str,
+    guard: GuardResult | None = None,
+) -> None:
     print("CI scope classification")
     print(f"  changed paths : {decision.changed_count}")
     print(f"  base          : {base_ref or '<none>'} ({base_source or 'unavailable'})")
+    if guard is not None:
+        print(f"  previous rev  : {guard.status} - {guard.detail}")
+        if guard.outputs:
+            print(
+                "    previous decision: "
+                + ", ".join(
+                    f"{job}={'true' if guard.outputs.get(job) == 'true' else 'false'}"
+                    for job in JOB_ORDER
+                )
+            )
     print(
         "  decision      : "
         + (", ".join(decision.expected_jobs) if decision.expected_jobs else "none")
@@ -347,7 +529,12 @@ def print_summary(decision: Decision, base_source: str, base_ref: str) -> None:
         print(f"  reason        : {reason}")
 
 
-def summary_markdown(decision: Decision, base_source: str, base_ref: str) -> str:
+def summary_markdown(
+    decision: Decision,
+    base_source: str,
+    base_ref: str,
+    guard: GuardResult | None = None,
+) -> str:
     rows = [
         ("docs", decision.docs, "Markdown / docs/ / .vardena/** docs link validation"),
         (
@@ -377,6 +564,19 @@ def summary_markdown(decision: Decision, base_source: str, base_ref: str) -> str
         lines.append(
             f"| `{job}` | {'run' if enabled else 'skipped (not applicable)'} | {description} |"
         )
+    if guard is not None:
+        lines += [
+            "",
+            f"Previous revision classifier (`{base_ref or 'none'}`): "
+            f"**{guard.status}** - {guard.detail}",
+        ]
+        if guard.outputs:
+            lines.append(
+                "It reported: "
+                + ", ".join(
+                    f"`{job}={guard.outputs.get(job, 'false')}`" for job in JOB_ORDER
+                )
+            )
     if decision.unclassified_paths:
         lines += ["", "Unclassified paths that forced a full run:"]
         lines += [f"- `{path}`" for path in decision.unclassified_paths]
@@ -390,7 +590,23 @@ def write_outputs(path: Path, outputs: dict[str, str]) -> None:
             handle.write(f"{key}={value}\n")
 
 
-def pin_github_annotations(decision: Decision) -> None:
+def pin_github_annotations(decision: Decision, guard: GuardResult | None = None) -> None:
+    if guard is not None:
+        if guard.status == "failed":
+            print(
+                "::error title=CI scope::the previous revision's classifier could "
+                f"not be executed ({guard.detail}); running every job"
+            )
+        elif guard.status == "missing":
+            print(
+                "::notice title=CI scope::no previous-revision classifier to "
+                f"compare against ({guard.detail})"
+            )
+        elif guard.status == "unioned":
+            print(
+                f"::notice title=CI scope::previous-revision classifier unioned "
+                f"({guard.detail})"
+            )
     if decision.broad:
         shown = ", ".join(decision.unclassified_paths[:4]) or "none"
         print(
@@ -427,7 +643,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--paths-from",
         default="",
         help="read change-set paths from this file ('-' for stdin) instead of "
-        "computing a git diff; used by the script tests",
+        "computing a git diff; stable interface (used by the guard and tests)",
+    )
+    parser.add_argument(
+        "--also-run-rev",
+        default=None,
+        help="revision whose copy of this script must agree with the decision "
+        "(self-weakening guard); normally the pull request base tip / "
+        "pre-push head that is already accepted on main",
     )
     parser.add_argument(
         "--github-output",
@@ -478,8 +701,28 @@ def main(argv: list[str] | None = None) -> int:
             "no comparable base revision: running every job (fail-safe)"
         )
 
-    print_summary(decision, base_source, base_ref)
-    pin_github_annotations(decision)
+    # Self-weakening guard: the classifier of the revision already accepted on
+    # `main` re-evaluates the same change set, and its decision is unioned in.
+    guard: GuardResult | None = None
+    if args.also_run_rev is not None:
+        guard = apply_previous_revision_guard(decision, args.also_run_rev, root)
+        if guard.fail_closed:
+            decision.broad = True
+            decision.docs = True
+            decision.backend = True
+            decision.frontend = True
+            decision.generated = True
+            decision.reasons.append(
+                "previous-revision classifier could not be executed: "
+                "running every job (fail-closed)"
+            )
+        elif guard.status == "unioned":
+            decision.reasons.append(
+                "previous-revision classifier unioned: " + guard.detail
+            )
+
+    print_summary(decision, base_source, base_ref, guard)
+    pin_github_annotations(decision, guard)
 
     if args.github_output:
         write_outputs(
@@ -489,11 +732,12 @@ def main(argv: list[str] | None = None) -> int:
                 "mode": "broad" if decision.broad else "changed",
                 "base_sha": base_ref,
                 "base_source": base_source,
+                "guard": guard.status if guard is not None else "disabled",
             },
         )
     if args.summary:
         with Path(args.summary).open("a", encoding="utf-8") as handle:
-            handle.write(summary_markdown(decision, base_source, base_ref))
+            handle.write(summary_markdown(decision, base_source, base_ref, guard))
 
     return 0
 

@@ -30,6 +30,9 @@
 #                                                               -> generated
 #   anything unclassifiable (`.github/**`, other `scripts/**`, root files)
 #                                                               -> every job
+# The change set cannot narrow its own verification: the classifier revision
+# already accepted on `main` re-evaluates the same paths and its decision is
+# unioned in (scripts/ci-classify-scope.py --also-run-rev).
 #
 # The frontend job deliberately does NOT duplicate the backend's live-DB
 # integration coverage: it never starts Postgres and never boots the API.
@@ -108,10 +111,17 @@ jobs:
         id: scope
         # Fails open to "every job" for anything it cannot classify; it never
         # exits non-zero for an unknown change set (the gate fails closed).
+        #
+        # `--also-run-rev` is the self-weakening guard: the classifier stored in
+        # the revision already accepted on `main` re-evaluates the same change
+        # set and its decision is unioned in. A change set therefore cannot
+        # narrow its own verification by shipping a weakened classifier, and a
+        # classifier that exists but cannot be executed fails closed.
         run: |
           python3 scripts/ci-classify-scope.py \
             --base "$CI_BASE_SHA" \
             --head HEAD \
+            --also-run-rev "$CI_BASE_SHA" \
             --github-output "$GITHUB_OUTPUT" \
             --summary "$GITHUB_STEP_SUMMARY"
 
