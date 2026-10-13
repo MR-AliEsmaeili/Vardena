@@ -708,4 +708,32 @@ did. The authoritative per-item matrix is
 
 **Owner decisions addendum (2026-10-12, documentation only — §1–§18 untouched).** The Product Owner decided the licensing questions this PDR deferred: **OQ-80** overlap = **Option B** (the later starting version governs in the overlap) and gap = **G2** (a renewal that would leave a gap is refused); **OQ-86** = **Option C** (the candidate is checked against the full retained effective history, retired windows included); the legacy `VLIC1` restriction is preserved; import tolerance stays strict; as-of reads stay a recomputation from the retained records; **Q3** renewal identity is the same `licenseId`; **Q4** an installation's commercial customer may change only through an explicit, authorized, audited operation; and the reason `license-binding-conflict` (409, nothing written) is ratified. §8.6 is **not** overridden by the precedence rule — a reducing or changed version still requires the check/explain/preserve/explicit-resolution flow, which is the L-04 slice, and every path that retires a version fails closed (`reduction-requires-resolution`) until it exists: the guard covers the explicit signed supersession (review fix on PR #141, 2026-10-12), the implicit hand-over and the legacy `VLIC1` replacement, because a signed document cannot resolve a capacity or entitlement conflict it cannot even observe. The decisions are recorded verbatim, with consequences and the blocked follow-on (OQ-87: may a new license identity cover a lapse?), in `docs/tasks/licensing-oq-80-oq-86-decision-brief.md` §7/§8; registry rows in `docs/open-questions.md`. OQ-80/OQ-86 are recorded as decided with implementation recorded in the same change; **CI update (2026-10-12): the branch's verified head `68d50517c2d2888f38f10ca1a615f05ce19b7fe0` (run `38239438399`, `completed / success`) carries that implementation, its tests and these records — so only Product Owner acceptance remains outstanding.** **License-term addendum (2026-10-12, documentation only — §1–§18 untouched).** The Product Owner then made the final decision on the term question those decisions left open: an **explicit, valid, signed supersession may replace a perpetual grant (`validUntil = null`) with a time-limited one**, and that is the *only* change it authorizes (§3.1 term change), subject to strict non-reduction of `organizationLimit`, `userLimit` and the granted entitlements (§8.2/§8.4/§8.6); implicit precedence and the legacy `VLIC1` transport keep the stricter guard and gain no bypass, and naming a version never unlocks a capacity or entitlement reduction. Recorded as **PDR-12** (decision id **OD-LIC-01**) in [`docs/decisions/product/PDR-12-license-term-supersession.md`](PDR-12-license-term-supersession.md), implemented in PR #141. **L-04 remains outstanding** (§8.6's check/explain/preserve/explicit-resolution flow against current usage is not implemented by it) and **OQ-87 stays OPEN**.
 
+**Q3 supersession addendum (2026-10-13, documentation only — §1–§18 untouched).**
+The Product Owner removed one requirement from the 2026-10-12 decision set
+recorded above: **preserving the previous `licenseId` during renewal is not a
+product requirement.** A newly issued license must remain bound to the same
+intended customer and the same customer code, and a changed `licenseId` must not
+bypass customer binding, installation binding, retained history, version
+precedence, capacity/entitlement reduction controls, replay protection, or audit
+requirements. `--license-id` must **not** be implemented merely to force reuse of
+the old identifier, so the tooling follow-up the addendum above left open is
+withdrawn. **§8.6 is unchanged and its trigger is unconditional** ("before
+applying a LicenseVersion that reduces entitlements or capacity"): a reducing or
+changed version still requires the check/explain/preserve/explicit-resolution
+flow. The audit of the merged tree establishes that **F-8 is not fully
+satisfied** and records the two exact gaps with their corrective tasks in
+[`docs/tasks/licensing-po-acceptance-audit-2026-10-13.md`](../../tasks/licensing-po-acceptance-audit-2026-10-13.md):
+(a) a successor that **retires nothing** (a contiguous renewal), for both a
+retained and a new identifier, is not evaluated by that flow — **L-05**, a
+requirement defect that keeps PR #142 at `HOLD` until it is implemented and
+verified; narrowing §8.6 is not an accepted alternative; and (b) the **same
+customer code** the decision requires is not representable, signed or validated
+anywhere in the current model, document or API — **L-06**, whose representation
+is an Owner decision item. The superseding record for Q3 itself is the decision
+brief §8.3.1; the earlier text stays as the record of what was decided on
+2026-10-12. Separately, the **F-12** requirement the records carried as an open
+remediation path is now decided — the initial password remains exactly `1`, and a
+forced first-login password change enforced in the backend and the frontend is
+**outstanding implementation**, with its acceptance tests in the same audit §5.
+
 *End of PDR-11. This record is an approved product-requirements reference. It is not an implementation specification and does not authorize any implementation work.*
