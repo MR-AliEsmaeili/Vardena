@@ -2870,3 +2870,347 @@ describe('explicit reduction resolution (PDR-11 §8.6, L-04)', () => {
     expect(harness.stores.versions).toHaveLength(2);
   });
 });
+
+/**
+ * L-05 (PDR-11 §8.6 on the renewal path): a contiguous renewal retires
+ * nothing, so before this guard it was applied with no §8.6 check at all —
+ * for a retained and for a changed `licenseId` alike. The mandated regression
+ * coverage of the acceptance audit (§4.4.1), end to end through the service:
+ * refusal with the stable 409 contract and nothing written, the authorized
+ * resolution that applies without stamping the baseline, and the legacy
+ * `VLIC1` adjacency renewal guarded after its own L-02 rules.
+ */
+describe('renewal-path reduction control (PDR-11 §8.6, L-05)', () => {
+  let harness: Harness;
+  const T0 = new Date('2026-06-01T00:00:00.000Z');
+  const BOUNDARY = new Date('2027-01-01T00:00:00.000Z');
+  const RESOLUTION_REASON =
+    'Customer confirmed the renewal; headcount was reduced with it.';
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    harness = buildHarness({ usage: { organizations: 9, activeUsers: 24 } });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function importPredecessor(
+    overrides: Partial<Parameters<typeof issueLicenseFile>[0]> = {},
+  ): Promise<string> {
+    const predecessor = signedDocument({
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      validUntil: BOUNDARY,
+      organizationLimit: 10,
+      userLimit: 25,
+      moduleEntitlements: ['organization', 'users'],
+      ...overrides,
+    });
+    await harness.service.importDocument(predecessor.file);
+    return predecessor.payload.operationId;
+  }
+
+  /** An adjacent signed renewal that retires nothing (no supersedes). */
+  function renewal(
+    overrides: Partial<Parameters<typeof issueLicenseFile>[0]> = {},
+  ): string {
+    return signedDocument({
+      validFrom: BOUNDARY,
+      validUntil: new Date('2028-01-01T00:00:00.000Z'),
+      organizationLimit: 10,
+      userLimit: 25,
+      moduleEntitlements: ['organization', 'users'],
+      ...overrides,
+    }).file;
+  }
+
+  it('refuses a contiguous renewal that reduces organization capacity below counted usage (same licenseId)', async () => {
+    await importPredecessor();
+
+    const refused = signedDocument({
+      validFrom: BOUNDARY,
+      organizationLimit: 2,
+    });
+    const rejection = await rejectionOf(
+      harness.service.importDocument(refused.file),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        predecessorVersionId: harness.stores.versions[0]?.versionId,
+        conflicts: [
+          { kind: 'organization-capacity', limit: 2, currentUsage: 9 },
+        ],
+      },
+    });
+    // Nothing was written: no version, no stamp, no applied event for the
+    // refused operation, and the refused operation id is not retained (the
+    // replay guard never saw it).
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.versions[0]).toMatchObject({
+      supersededAt: null,
+      governsUntil: null,
+      supersededByVersionId: null,
+    });
+    expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+      outcome: 'REJECTED',
+      reason: 'reduction-requires-resolution',
+    });
+    expect(
+      harness.stores.auditEvents.some(
+        (event) =>
+          event.outcome === 'APPLIED' &&
+          event.operationId === refused.payload.operationId,
+      ),
+    ).toBe(false);
+    expect(
+      harness.stores.versions.find(
+        (version) => version.operationId === refused.payload.operationId,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('refuses a contiguous renewal with a changed licenseId that reduces user capacity below counted usage', async () => {
+    await importPredecessor({
+      licenseId: '01K7OLDLICENSE000000000000',
+    });
+
+    const rejection = await rejectionOf(
+      harness.service.importDocument(
+        renewal({
+          licenseId: '01K7NEWLICENSE000000000000',
+          userLimit: 3,
+        }),
+      ),
+    );
+
+    // The F-8 non-bypass evidence: a new identity must not weaken the check —
+    // the baseline is still the grant the installation was on.
+    expect(rejection.status).toBe(409);
+    expect(rejection.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        predecessorVersionId: harness.stores.versions[0]?.versionId,
+        conflicts: [{ kind: 'user-capacity', limit: 3, currentUsage: 24 }],
+      },
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+  });
+
+  it('refuses a contiguous renewal that removes a granted entitlement', async () => {
+    await importPredecessor();
+
+    const rejection = await rejectionOf(
+      harness.service.importDocument(
+        renewal({ moduleEntitlements: ['organization'] }),
+      ),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        conflicts: [
+          {
+            kind: 'entitlement-removed',
+            entitlement: { kind: 'MODULE', code: 'users' },
+          },
+        ],
+      },
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+  });
+
+  it('applies a renewal that stays within actual usage without any resolution', async () => {
+    await importPredecessor();
+
+    const result = await harness.service.importDocument(
+      renewal({ organizationLimit: 9, userLimit: 24 }),
+    );
+
+    expect(result).toMatchObject({ outcome: 'APPLIED', changed: true });
+    expect(harness.stores.versions).toHaveLength(2);
+    // The renewal retires nothing and consumed no resolution: the baseline
+    // keeps its window unstamped and no resolution event exists.
+    expect(harness.stores.versions[0]).toMatchObject({
+      supersededAt: null,
+      governsUntil: null,
+      supersededByVersionId: null,
+    });
+    expect(harness.stores.versions[1]?.supersedesVersionId).toBeNull();
+    expect(
+      harness.stores.auditEvents.some((event) =>
+        event.eventType.startsWith('license.import.reduction'),
+      ),
+    ).toBe(false);
+  });
+
+  it('applies a conflicting renewal through the dedicated resolution, auditing the baseline without stamping it', async () => {
+    await importPredecessor();
+    const document = renewal({ organizationLimit: 2 });
+
+    const result = await harness.service.resolveReduction(
+      document,
+      RESOLUTION_REASON,
+    );
+
+    expect(result).toMatchObject({
+      outcome: 'APPLIED',
+      changed: true,
+      resolvedConflicts: [
+        { kind: 'organization-capacity', limit: 2, currentUsage: 9 },
+      ],
+    });
+    // The receipt names the BASELINE — the version whose grant was measured —
+    // which is retained history, not a retirement.
+    expect(result.resolvedPredecessorVersionId).toBe(
+      harness.stores.versions[0]?.versionId,
+    );
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(harness.stores.versions[0]).toMatchObject({
+      supersededAt: null,
+      governsUntil: null,
+      supersededByVersionId: null,
+    });
+    expect(harness.stores.versions[1]?.supersedesVersionId).toBeNull();
+    const resolved = harness.stores.auditEvents.find(
+      (event) => event.eventType === 'license.import.reduction-resolved',
+    );
+    expect(resolved).toMatchObject({
+      installationId: INSTALLATION,
+      outcome: 'APPLIED',
+      licenseId: LICENSE,
+      versionId: harness.stores.versions[1]?.versionId,
+      source: 'file',
+      occurredAt: T0,
+    });
+    expect(resolved?.detail).toContain(
+      `resolved reduction of version ${harness.stores.versions[0]?.versionId} [organization-capacity]`,
+    );
+    expect(resolved?.detail).toMatch(/Customer confirmed the renewal/);
+  });
+
+  it('refuses a resolution whose renewal does not conflict (nothing to resolve)', async () => {
+    await importPredecessor();
+
+    const rejection = await rejectionOf(
+      harness.service.resolveReduction(
+        renewal({ organizationLimit: 9 }),
+        RESOLUTION_REASON,
+      ),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.message).toMatch(
+      /no capacity or entitlement reduction to resolve/,
+    );
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.reduction-resolved',
+      ),
+    ).toBe(false);
+  });
+
+  it('guards the legacy VLIC1 adjacency renewal after its L-02 rules, and the legacy transport still cannot resolve', async () => {
+    // The legacy transport can only express a start that is already current
+    // (`not-yet-valid` still governs it), so the adjacency lives at the
+    // predecessor's own end: import the predecessor while it is active, then
+    // the downgrade code that starts exactly where it ended.
+    const first = signedCode({
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      validUntil: new Date('2026-03-01T00:00:00.000Z'),
+      organizationLimit: 10,
+      userLimit: 25,
+    }).code;
+    vi.setSystemTime(new Date('2026-01-15T00:00:00.000Z'));
+    await harness.service.importDocument(first);
+    vi.setSystemTime(T0);
+
+    // The legacy adjacency renewal: starts exactly where the retained window
+    // ends, retires nothing, and would cut the organization limit below the
+    // counted usage.
+    const downgrade = signedCode({
+      validFrom: new Date('2026-03-01T00:00:00.000Z'),
+      organizationLimit: 2,
+      userLimit: 25,
+    }).code;
+    const rejection = await rejectionOf(
+      harness.service.importDocument(downgrade),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        predecessorVersionId: harness.stores.versions[0]?.versionId,
+        conflicts: [
+          { kind: 'organization-capacity', limit: 2, currentUsage: 9 },
+        ],
+      },
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+
+    // The legacy transport cannot carry the resolution (422, document-level):
+    // a conflicting adjacency renewal must be re-issued as a signed document
+    // through the resolution operation.
+    const legacyResolution = await rejectionOf(
+      harness.service.resolveReduction(downgrade, RESOLUTION_REASON),
+    );
+    expect(legacyResolution.status).toBe(422);
+    expect(legacyResolution.details).toMatchObject({
+      reason: 'resolution-requires-signed-document',
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.reduction-resolved',
+      ),
+    ).toBe(false);
+  });
+
+  it('keeps non-reducing renewals, explicit supersession, hand-over and post-gap behaviour unchanged', async () => {
+    // A renewal with identical (and then larger) grants still applies.
+    await importPredecessor();
+    await expect(
+      harness.service.importDocument(renewal()),
+    ).resolves.toMatchObject({ outcome: 'APPLIED' });
+    await expect(
+      harness.service.importDocument(
+        renewal({
+          validFrom: new Date('2028-01-01T00:00:00.000Z'),
+          validUntil: new Date('2029-01-01T00:00:00.000Z'),
+          organizationLimit: 12,
+        }),
+      ),
+    ).resolves.toMatchObject({ outcome: 'APPLIED' });
+    expect(harness.stores.versions).toHaveLength(3);
+
+    // An explicit supersession with a usage-aware reduction still explains
+    // and refuses on its own path (unchanged L-04 behaviour), on a fresh
+    // installation whose retained history leaves room for the overlap.
+    harness = buildHarness({ usage: { organizations: 9, activeUsers: 24 } });
+    const predecessorOperationId = await importPredecessor({
+      licenseId: '01K7OTHERLICENSE0000000000',
+    });
+    const refusal = await rejectionOf(
+      harness.service.importDocument(
+        signedDocument({
+          licenseId: '01K7OTHERLICENSE0000000000',
+          validFrom: new Date('2026-06-01T00:00:00.000Z'),
+          validUntil: new Date('2028-01-01T00:00:00.000Z'),
+          organizationLimit: 2,
+          supersedesOperationId: predecessorOperationId,
+        }).file,
+      ),
+    );
+    expect(refusal.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+  });
+});

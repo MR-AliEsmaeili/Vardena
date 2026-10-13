@@ -59,9 +59,13 @@ import type {
  * authorized, audited recovery operation — never through ordinary import.
  * A reducing hand-over is checked against current usage and the retained
  * grant on **every** path that retires a version — an explicit signed
- * `supersedesOperationId` included — and conflicts are refused with their
- * concrete details unless the caller carries the explicit resolution of the
- * dedicated, authorized, audited resolution operation (PDR-11 §8.6, L-04).
+ * `supersedesOperationId` included — and a contiguous renewal that retires
+ * nothing is measured against the deterministic continuation baseline (the
+ * retained grant whose effective window ends exactly at the renewal's start,
+ * L-05). Conflicts are refused with their concrete details unless the caller
+ * carries the explicit resolution of the dedicated, authorized, audited
+ * resolution operation (PDR-11 §8.6, L-04/L-05); on a renewal the resolution
+ * subject is that baseline, which is audited but never retired or stamped.
  * Naming the version to retire is not that resolution.
  * `evaluateImportConflicts` is the single authority for that guarantee and is
  * evaluated twice — once as a read-side pre-check (fast, informative rejection)
@@ -932,7 +936,85 @@ export interface EvaluateImportConflictsParams {
 
 export type ImportConflictEvaluation =
   | { conflict: ImportConflict; supersedes: null }
-  | { conflict: null; supersedes: RetainedLicenseVersion | null };
+  | {
+      conflict: null;
+      supersedes: RetainedLicenseVersion | null;
+      /**
+       * The version whose grant an APPLIED resolution authorized reducing
+       * (L-04/L-05): the retired predecessor on a hand-over path, or the
+       * deterministic continuation baseline when the candidate is a renewal
+       * that retires nothing. Null when this import consumed no resolution —
+       * in particular when the reduction guard had nothing to lift. The
+       * repository audits and receipts name exactly this version, and it is
+       * never stamped: a resolution authorizes a reduction, it does not retire
+       * the version it is measured against.
+       */
+      resolutionSubject: RetainedLicenseVersion | null;
+    };
+
+/**
+ * The deterministic continuation baseline of a candidate that retires nothing
+ * (L-05, PDR-11 §8.6): the retained version whose **effective** window ends
+ * exactly at the candidate's `validFrom` — the grant the installation was
+ * enjoying immediately before a contiguous renewal takes over. Null when no
+ * retained version ends there (a first license, a backwards gap fill, a
+ * post-gap start), which leaves the candidate unmeasured exactly as the
+ * documented out-of-scope cases require.
+ *
+ * Selection is total and identity-independent (a changed `licenseId` must not
+ * weaken the §8.6 check — the F-8 decision of 2026-10-13):
+ *
+ * 1. among the versions adjacent at `candidate.validFrom`, prefer the one
+ *    whose `licenseId` equals the candidate's (the renewal of that license);
+ * 2. otherwise prefer the version of the customer the installation is bound
+ *    to (the commercial identity the grant belongs to, also across an
+ *    explicit customer transfer);
+ * 3. break any remaining tie by latest `importedAt`, then `versionId` — the
+ *    tail of the existing `compareByStartThenImport` ordering, so the newest
+ *    retained fact wins and the choice never depends on row order.
+ *
+ * An open-ended version can never be selected: a perpetual grant has no
+ * effective end (`null`), so it is never adjacent, and a candidate that
+ * overlaps a perpetual version is the already-guarded hand-over path where
+ * closing the open end is its own refusal (PDR-12). The term arm therefore
+ * has no continuation case at all.
+ */
+export function continuationBaselineFor(
+  candidate: Pick<ImportCandidate, 'validFrom' | 'licenseId'>,
+  versions: readonly RetainedLicenseVersion[],
+  installationCustomerId: string | null,
+): RetainedLicenseVersion | null {
+  let adjacent: RetainedLicenseVersion[] = [];
+  for (const version of versions) {
+    const end = effectiveWindow(version).end;
+    if (end !== null && end.getTime() === candidate.validFrom.getTime()) {
+      adjacent.push(version);
+    }
+  }
+  if (adjacent.length === 0) return null;
+  const sameLicense = adjacent.filter(
+    (version) => version.licenseId === candidate.licenseId,
+  );
+  if (sameLicense.length > 0) {
+    adjacent = sameLicense;
+  } else if (installationCustomerId !== null) {
+    const sameCustomer = adjacent.filter(
+      (version) => version.customerId === installationCustomerId,
+    );
+    if (sameCustomer.length > 0) adjacent = sameCustomer;
+  }
+  let best = adjacent[0]!;
+  for (const version of adjacent.slice(1)) {
+    if (
+      version.importedAt.getTime() > best.importedAt.getTime() ||
+      (version.importedAt.getTime() === best.importedAt.getTime() &&
+        version.versionId > best.versionId)
+    ) {
+      best = version;
+    }
+  }
+  return best;
+}
 
 /**
  * Evaluate one import against the retained versions that must be trusted.
@@ -1008,8 +1090,26 @@ export type ImportConflictEvaluation =
  *    a countable-but-unavailable usage — stays refused even with a
  *    resolution. A resolution request that meets no conflict at all is
  *    refused as `resolution-not-applicable`. Increases and identical grants
- *    are unaffected, and so is a document that retires nothing (`supersedes`
- *    null): with no predecessor retired there is no grant to take away;
+ *    are unaffected;
+ * 6c. **a renewal that retires nothing is measured against the deterministic
+ *    continuation baseline** (PDR-11 §8.6 — its trigger is unconditional;
+ *    L-05). When no version was retired (rule 6b had no predecessor) and at
+ *    least one retained version's effective window ends exactly at the
+ *    candidate's `validFrom`, the same per-dimension usage check runs against
+ *    the version {@link continuationBaselineFor} selects — prefer the
+ *    candidate's own `licenseId`, then the installation's bound customer,
+ *    ties by latest import then id — so a contiguous renewal that lowers
+ *    capacity below current usage or removes an entitlement is refused and
+ *    resolved exactly like a hand-over, for a retained and for a changed
+ *    `licenseId` alike. The resolution subject is the BASELINE: the receipt
+ *    and the typed audit event name it, and it is never stamped — a
+ *    resolution authorizes a reduction, it does not retire the version it is
+ *    measured against. Where nothing retained ends at the candidate's start
+ *    (a first license, a backwards gap fill, a post-gap start) there is no
+ *    baseline and no measurement — those cases keep their own flows. The
+ *    open-end arm cannot arise from adjacency: an open-ended grant has no
+ *    effective end, so it is never the baseline, and a candidate over a
+ *    perpetual grant is the already-guarded hand-over of rule 6b;
  * 7. a **renewal** may not leave a gap (OQ-80 **G2**, 2026-10-12): when the
  *    candidate carries the identity of a retained license, its `validFrom` may
  *    not be later than that license's retained coverage end
@@ -1033,9 +1133,9 @@ export type ImportConflictEvaluation =
  *    unchanged — at most one overlapping version that is still governing and
  *    has no recorded supersession, and never a hand-over in the past (which its
  *    default 2020 window would otherwise be). The historical rule 4, the
- *    reduction guard 6b, the gap rule 7 and the post-gap rule 7b apply to it
- *    as well, added after its own rules so no existing refusal changes its
- *    reason.
+ *    reduction guards 6b and 6c, the gap rule 7 and the post-gap rule 7b apply
+ *    to it as well, added after its own rules so no existing refusal changes
+ *    its reason.
  */
 export function evaluateImportConflicts(
   params: EvaluateImportConflictsParams,
@@ -1054,6 +1154,15 @@ export function evaluateImportConflicts(
    * `resolution-not-applicable` (nothing to resolve).
    */
   let resolutionApplied = false;
+  /**
+   * The version whose grant an applied resolution authorized reducing: the
+   * retired predecessor on a hand-over path, or the deterministic
+   * continuation baseline on a renewal that retires nothing (L-05). The
+   * success evaluation carries it as the `resolutionSubject` so the
+   * transaction can audit the reduction against the right version without
+   * stamping it.
+   */
+  let resolutionSubject: RetainedLicenseVersion | null = null;
 
   if (findVersionByOperationId(versions, operationId) !== null) {
     return conflictOnly({ reason: 'duplicate-operation', overlapping: 0 });
@@ -1150,6 +1259,29 @@ export function evaluateImportConflicts(
       );
       if (guard.action === 'refuse') return guard.evaluation;
       resolutionApplied = resolutionApplied || guard.resolutionUsed;
+      if (guard.resolutionUsed) resolutionSubject = implicitTarget;
+    }
+    if (implicitTarget === null) {
+      // Rule 6c (L-05): the legacy adjacency renewal — a `VLIC1` code that
+      // starts exactly where the retained coverage ends and retires nothing —
+      // is measured against the same deterministic continuation baseline as a
+      // signed renewal. It runs after the L-02 rules above (no existing
+      // refusal changes its reason) and like them it can only REFUSE here:
+      // the legacy transport can never carry the resolution intent (the
+      // service refuses it document-level), so a conflicting adjacency
+      // renewal must be re-issued as a signed document through the
+      // resolution operation.
+      const continuation = evaluateReductionContinuation(
+        candidate,
+        versions,
+        installationCustomerId,
+        usage,
+        reductionResolution,
+      );
+      if (continuation.action === 'refuse') return continuation.evaluation;
+      resolutionApplied = resolutionApplied || continuation.resolutionUsed;
+      if (continuation.subject !== null)
+        resolutionSubject = continuation.subject;
     }
     if (leavesRenewalGap(candidate, versions)) {
       return conflictOnly({ reason: 'renewal-gap', overlapping: 0 });
@@ -1162,7 +1294,11 @@ export function evaluateImportConflicts(
         overlapping: 0,
       });
     }
-    return { conflict: null, supersedes: implicitTarget };
+    return {
+      conflict: null,
+      supersedes: implicitTarget,
+      resolutionSubject,
+    };
   }
 
   // Rule 4 — retired effective windows are never silently overlapped.
@@ -1214,6 +1350,35 @@ export function evaluateImportConflicts(
     );
     if (guard.action === 'refuse') return guard.evaluation;
     resolutionApplied = resolutionApplied || guard.resolutionUsed;
+    if (guard.resolutionUsed) resolutionSubject = supersedes;
+  } else {
+    // Rule 6c (PDR-11 §8.6, L-05): the candidate retires nothing — the
+    // ordinary contiguous renewal — so rule 6b had no predecessor to compare.
+    // §8.6's trigger is unconditional ("before applying a LicenseVersion that
+    // reduces entitlements or capacity"), and the F-8 decision of 2026-10-13
+    // adds that a changed `licenseId` must not bypass the control, so the
+    // candidate is measured against the deterministic continuation baseline:
+    // the retained version whose effective window ends exactly at the
+    // candidate's `validFrom` (the grant the installation was on), selected
+    // identity-independently by {@link continuationBaselineFor}. The guard is
+    // the same per-dimension usage check as rule 6b — the open-end arm cannot
+    // arise here because an open-ended grant has no effective end and is
+    // never adjacent (a candidate over a perpetual grant is the already-
+    // guarded hand-over of rule 5). A conflicting renewal is refused with the
+    // baseline named in the explain payload unless the caller carries the
+    // explicit resolution of the dedicated resolution operation, which the
+    // transaction audits against the baseline — WITHOUT retiring it: the
+    // baseline keeps its window and gains no stamp.
+    const continuation = evaluateReductionContinuation(
+      candidate,
+      versions,
+      installationCustomerId,
+      usage,
+      reductionResolution,
+    );
+    if (continuation.action === 'refuse') return continuation.evaluation;
+    resolutionApplied = resolutionApplied || continuation.resolutionUsed;
+    if (continuation.subject !== null) resolutionSubject = continuation.subject;
   }
   if (leavesRenewalGap(candidate, versions)) {
     return conflictOnly({ reason: 'renewal-gap', overlapping: 0 });
@@ -1230,7 +1395,82 @@ export function evaluateImportConflicts(
       overlapping: 0,
     });
   }
-  return { conflict: null, supersedes };
+  return { conflict: null, supersedes, resolutionSubject };
+}
+
+/**
+ * Rule 6c — the §8.6 verdict for a candidate that retires nothing (L-05).
+ *
+ * The candidate is a contiguous renewal: it starts exactly at the effective
+ * end of the retained coverage and no rule retired a predecessor for it to
+ * shrink. PDR-11 §8.6 is unconditional in its trigger, so the candidate is
+ * measured against the deterministic continuation baseline of
+ * {@link continuationBaselineFor} — the grant the installation was actually
+ * on — with the SAME per-dimension usage check the hand-over paths use
+ * ({@link reductionConflicts}). When nothing retained ends at the candidate's
+ * start there is no baseline and no measurement: a first license, a backwards
+ * gap fill and a post-gap start stay out of scope, each with its own flow.
+ *
+ * The verdict mirrors {@link evaluateReductionHandOver}: `refuse` carries the
+ * exact conflict evaluation (with the baseline named as the measured
+ * predecessor when it is a reduction refusal), `apply` says the renewal may
+ * proceed — recording whether a supplied resolution was actually consumed to
+ * authorize real conflicts, and against which version (`subject`, the
+ * baseline; the caller must NOT stamp it — a resolution authorizes a
+ * reduction, it does not retire the version it is measured against).
+ *
+ * The open-end arm has no continuation case: an open-ended grant has no
+ * effective end, so it is never adjacent, and a candidate that overlaps a
+ * perpetual version reaches the hand-over guard of rule 6b instead, where
+ * closing the open end is its own unresolvable refusal (PDR-12).
+ */
+function evaluateReductionContinuation(
+  candidate: ImportCandidate,
+  versions: readonly RetainedLicenseVersion[],
+  installationCustomerId: string | null,
+  usage: LicenseUsageSnapshot | null,
+  resolution: ReductionResolutionIntent | null,
+):
+  | { action: 'refuse'; evaluation: ImportConflictEvaluation }
+  | {
+      action: 'apply';
+      resolutionUsed: boolean;
+      subject: RetainedLicenseVersion | null;
+    } {
+  const baseline = continuationBaselineFor(
+    candidate,
+    versions,
+    installationCustomerId,
+  );
+  if (baseline === null) {
+    return { action: 'apply', resolutionUsed: false, subject: null };
+  }
+  const conflicts = reductionConflicts(baseline, candidate, usage);
+  if (conflicts.length === 0) {
+    return resolution !== null
+      ? {
+          action: 'refuse',
+          evaluation: conflictOnly({
+            reason: 'resolution-not-applicable',
+            overlapping: 0,
+          }),
+        }
+      : { action: 'apply', resolutionUsed: false, subject: null };
+  }
+  if (resolution === null || !conflicts.every(isResolvableReductionConflict)) {
+    return {
+      action: 'refuse',
+      evaluation: conflictOnly({
+        reason: 'reduction-requires-resolution',
+        overlapping: 1,
+        reduction: {
+          predecessorVersionId: baseline.versionId,
+          conflicts,
+        },
+      }),
+    };
+  }
+  return { action: 'apply', resolutionUsed: true, subject: baseline };
 }
 
 /**

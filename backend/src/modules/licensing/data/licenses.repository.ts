@@ -742,14 +742,22 @@ export class LicensesRepository {
         };
         auditEvents.push(recoveryAuditEvent(command, lapsed));
       } else if (command.reductionResolution !== null) {
-        const predecessor = evaluation.supersedes;
+        // The evaluation's resolution subject is the version whose grant the
+        // resolution authorized reducing: the retired predecessor on a
+        // hand-over path, or — L-05 — the deterministic continuation baseline
+        // of a renewal that retires nothing. The baseline is audited and
+        // reported but deliberately NOT stamped: nothing below retires it,
+        // because the stamp above runs only for `supersedes` and a resolution
+        // authorizes a reduction, it does not retire the version it is
+        // measured against.
+        const predecessor = evaluation.resolutionSubject;
         // Reaching this point means the evaluation applied the resolution to
         // real conflicts (the domain rule refuses an unused resolution), so
-        // the predecessor exists and the recomputed conflicts are exactly the
+        // the subject exists and the recomputed conflicts are exactly the
         // ones the resolution authorized.
         if (predecessor === null) {
           throw new Error(
-            'A reduction resolution was applied without a retired predecessor; refusing rather than auditing an empty resolution.',
+            'A reduction resolution was applied without a resolution subject; refusing rather than auditing an empty resolution.',
           );
         }
         const conflicts = reductionConflicts(predecessor, candidate, usage);

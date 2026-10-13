@@ -216,8 +216,7 @@ import ──► retained (not yet effective | effective | expired)
   proves **which** version the document replaces and is verified like every
   other signature fact, but it cannot know how many users or organizations
   exist, so it may not switch §8.6 off. Increases and identical grants are
-  unaffected, and a document that retires nothing has no predecessor whose
-  grant could be taken away. The ONLY way to apply a conflicting reduction is
+  unaffected. The ONLY way to apply a conflicting reduction is
   the dedicated `POST /api/v1/license/reduction-resolution` operation (PDR-13
   §5): its own permission (`Licensing.License.ResolveReduction` together with
   `Licensing.License.Activate`), a required operator reason, ONE transaction
@@ -226,6 +225,39 @@ import ──► retained (not yet effective | effective | expired)
   transaction recomputed under the locks; a resolution whose document does not
   conflict is refused (`resolution-not-applicable`), and retrying a document or
   naming a version is never a resolution.
+- **A contiguous renewal is measured against the deterministic continuation
+  baseline (L-05, PDR-11 §8.6 — implemented 2026-10-13).** §8.6's trigger is
+  unconditional — it does not require the candidate to retire a version — and
+  the F-8 decision of 2026-10-13 adds that a changed `licenseId` must not
+  bypass the capacity/entitlement reduction controls. So after the overlap
+  rules above have accepted a candidate that retires nothing (a renewal whose
+  `validFrom` is exactly the end of the retained coverage — adjacency, not an
+  overlap), the same usage-aware check runs against the **continuation
+  baseline**: the retained version whose *effective* window ends exactly at
+  the candidate's `validFrom` — the grant the installation was actually on.
+  Baseline selection is total and identity-independent: prefer the adjacent
+  version whose `licenseId` equals the candidate's; otherwise the version of
+  the customer the installation is bound to; break any remaining tie by latest
+  `importedAt`, then `versionId`. A renewal that lowers capacity below the
+  counted usage or removes a granted entitlement is refused
+  (`reduction-requires-resolution`, 409, nothing written, the baseline named in
+  `reduction.predecessorVersionId`) exactly like a hand-over, and lifts only
+  through the same dedicated resolution operation. The resolution subject is
+  the BASELINE: the receipt and the typed audit event name it, and it is
+  **never stamped** — `superseded_at`, `governs_until` and
+  `superseded_by_version_id` stay null, because a resolution authorizes a
+  reduction, it does not retire the version it is measured against. Where
+  nothing retained ends at the candidate's start there is no baseline and no
+  measurement: a first license, a backwards gap fill and a post-gap start keep
+  their own flows (the post-gap recovery keeps its dedicated operation). The
+  term arm has no continuation case: an open-ended grant has no effective end,
+  so it is never adjacent, and a candidate that overlaps a perpetual version
+  is the already-guarded hand-over where closing the open end is refused
+  (PDR-12). The legacy `VLIC1` adjacency renewal is guarded by the same rule,
+  added after its documented L-02 lifecycle rules so no existing refusal
+  changes its reason; the legacy transport still can never carry the
+  resolution (`resolution-requires-signed-document`), so a conflicting legacy
+  adjacency renewal must be re-issued as a signed document.
 - The **term** dimension is decided by the Product Owner (2026-10-12,
   [PDR-12](../decisions/product/PDR-12-license-term-supersession.md),
   decision **OD-LIC-01**): an explicit, valid, signed supersession **may**

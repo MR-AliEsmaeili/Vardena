@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LicenseEntitlement, LicenseStatus } from './license.js';
 import {
+  continuationBaselineFor,
   covers,
   effectiveWindow,
   evaluateImportConflicts,
@@ -1535,5 +1536,349 @@ describe('retained versions never govern the same instant', () => {
         resolution.version,
       ]);
     }
+  });
+});
+
+/**
+ * L-05 (PDR-11 §8.6 on the renewal path): a contiguous renewal retires
+ * nothing, so rule 6b never had a predecessor to compare it against. The
+ * guard now measures such a candidate against the deterministic continuation
+ * baseline — the retained version whose effective window ends exactly at the
+ * candidate's start — with the same usage check the hand-over paths use.
+ */
+describe('continuation baseline of a renewal that retires nothing (L-05)', () => {
+  const BOUNDARY = '2027-01-01T00:00:00.000Z';
+  const AFTER = '2028-01-01T00:00:00.000Z';
+
+  function continuation(
+    candidateOverrides: Partial<RetainedLicenseVersion>,
+    overrides: Partial<Parameters<typeof evaluateImportConflicts>[0]> = {},
+  ): ReturnType<typeof evaluateImportConflicts> {
+    const full = version({
+      ...window(BOUNDARY, AFTER),
+      ...candidateOverrides,
+    });
+    return evaluateImportConflicts({
+      candidate: full,
+      operationId: full.operationId,
+      documentHash: full.documentHash,
+      supersession: { kind: 'none' },
+      versions: [],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      usage: { organizationCount: 9, activeUserCount: 24 },
+      ...overrides,
+    });
+  }
+
+  function retained(
+    overrides: Partial<RetainedLicenseVersion> = {},
+  ): RetainedLicenseVersion {
+    return version({
+      ...window('2026-01-01T00:00:00.000Z', BOUNDARY),
+      organizationLimit: 10,
+      userLimit: 25,
+      ...overrides,
+    });
+  }
+
+  it('measures a contiguous renewal against the adjacent grant and refuses a reduction below counted usage', () => {
+    const baseline = retained();
+    const result = continuation(
+      { organizationLimit: 2, userLimit: 3, entitlements: [] },
+      { versions: [baseline] },
+    );
+
+    expect(result.conflict).toEqual({
+      reason: 'reduction-requires-resolution',
+      overlapping: 1,
+      reduction: {
+        predecessorVersionId: baseline.versionId,
+        conflicts: [
+          { kind: 'organization-capacity', limit: 2, currentUsage: 9 },
+          { kind: 'user-capacity', limit: 3, currentUsage: 24 },
+          {
+            kind: 'entitlement-removed',
+            entitlement: { kind: 'MODULE', code: 'accounting' },
+          },
+        ],
+      },
+    });
+    expect(result.supersedes).toBeNull();
+  });
+
+  it('guards a renewal with a changed licenseId against the same baseline (F-8 non-bypass)', () => {
+    const baseline = retained({
+      licenseId: '01K7OLDLICENSE000000000000',
+    });
+    const result = continuation(
+      {
+        licenseId: '01K7NEWLICENSE000000000000',
+        userLimit: 3,
+      },
+      { versions: [baseline] },
+    );
+
+    // No licenseId match: the installation's bound customer selects the same
+    // baseline, so the shrink is caught exactly as for a retained identity.
+    expect(result.conflict).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        predecessorVersionId: baseline.versionId,
+        conflicts: [{ kind: 'user-capacity', limit: 3, currentUsage: 24 }],
+      },
+    });
+  });
+
+  it('selects the baseline deterministically: licenseId first, then the bound customer, then latest import and id', () => {
+    const ownLicense = retained({
+      importedAt: new Date('2026-02-01T00:00:00.000Z'),
+    });
+    const otherCustomer = retained({
+      licenseId: '01K7OTHERLICENSE00000000000',
+      customerId: '01K7OTHERCUSTOMER0000000000',
+      importedAt: new Date('2026-05-01T00:00:00.000Z'),
+    });
+
+    // 1. A version of the candidate's own licenseId wins even when another
+    //    adjacent version was imported later.
+    expect(
+      continuationBaselineFor(
+        { validFrom: new Date(BOUNDARY), licenseId: LICENSE },
+        [otherCustomer, ownLicense],
+        CUSTOMER,
+      )?.versionId,
+    ).toBe(ownLicense.versionId);
+
+    // 2. Without a licenseId match, the installation's bound customer wins
+    //    over a later-imported version of another customer.
+    expect(
+      continuationBaselineFor(
+        { validFrom: new Date(BOUNDARY), licenseId: '01K7NEWLICENSE000000000' },
+        [otherCustomer, ownLicense],
+        CUSTOMER,
+      )?.versionId,
+    ).toBe(ownLicense.versionId);
+
+    // 3. Neither matches (an unbound installation): latest import wins.
+    expect(
+      continuationBaselineFor(
+        { validFrom: new Date(BOUNDARY), licenseId: '01K7NEWLICENSE000000000' },
+        [ownLicense, otherCustomer],
+        null,
+      )?.versionId,
+    ).toBe(otherCustomer.versionId);
+
+    // 4. Same import instant: the greater version id breaks the tie.
+    const olderId = retained({
+      importedAt: new Date('2026-03-01T00:00:00.000Z'),
+    });
+    const newerId = retained({
+      importedAt: new Date('2026-03-01T00:00:00.000Z'),
+    });
+    expect(
+      continuationBaselineFor(
+        { validFrom: new Date(BOUNDARY), licenseId: '01K7NEWLICENSE000000000' },
+        [olderId, newerId],
+        null,
+      )?.versionId,
+    ).toBe(newerId.versionId);
+  });
+
+  it('refuses the resolved continuation through the baseline without stamping it', () => {
+    const baseline = retained();
+    const result = continuation(
+      { organizationLimit: 2 },
+      {
+        versions: [baseline],
+        reductionResolution: { reason: 'Operator confirmed the renewal.' },
+      },
+    );
+
+    if (result.conflict !== null)
+      throw new Error('expected the renewal to apply');
+    expect(result.supersedes).toBeNull();
+    // The resolution subject is the BASELINE — named for the audit, never a
+    // retirement (the transaction must not stamp it).
+    expect(result.resolutionSubject?.versionId).toBe(baseline.versionId);
+  });
+
+  it('keeps a renewal that stays within actual usage free of any resolution', () => {
+    const baseline = retained();
+    const result = continuation(
+      {
+        organizationLimit: 9,
+        userLimit: 24,
+        entitlements: baseline.entitlements,
+      },
+      { versions: [baseline] },
+    );
+
+    if (result.conflict !== null)
+      throw new Error('expected the renewal to apply');
+    expect(result.supersedes).toBeNull();
+    expect(result.resolutionSubject).toBeNull();
+  });
+
+  it('refuses a resolution whose renewal does not conflict (nothing to resolve)', () => {
+    const baseline = retained();
+    // A shrink that stays within the counted usage (9 organizations) is not a
+    // conflict, so the supplied resolution meets nothing to authorize.
+    const result = continuation(
+      { organizationLimit: 9 },
+      {
+        versions: [baseline],
+        reductionResolution: { reason: 'Operator confirmed the renewal.' },
+      },
+    );
+
+    expect(result.conflict).toEqual({
+      reason: 'resolution-not-applicable',
+      overlapping: 0,
+    });
+  });
+
+  it('refuses a resolution on a first license, where no retained version ends at the start', () => {
+    const result = continuation(
+      { organizationLimit: 2 },
+      {
+        versions: [],
+        reductionResolution: { reason: 'Operator confirmed the renewal.' },
+      },
+    );
+
+    // Nothing is retained, so there is no continuation measurement — and an
+    // unused resolution is never an import.
+    expect(result.conflict).toEqual({
+      reason: 'resolution-not-applicable',
+      overlapping: 0,
+    });
+  });
+
+  it('fails closed when the baseline usage cannot be counted, even with a resolution', () => {
+    const baseline = retained();
+    const result = continuation(
+      { organizationLimit: 2 },
+      { versions: [baseline], usage: null },
+    );
+
+    expect(result.conflict).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        predecessorVersionId: baseline.versionId,
+        conflicts: [{ kind: 'usage-unavailable', scope: 'organizations' }],
+      },
+    });
+    const withResolution = continuation(
+      { organizationLimit: 2 },
+      {
+        versions: [baseline],
+        usage: null,
+        reductionResolution: { reason: 'Operator confirmed the renewal.' },
+      },
+    );
+    expect(withResolution.conflict).toMatchObject({
+      reason: 'reduction-requires-resolution',
+    });
+  });
+
+  it('guards the legacy VLIC1 adjacency renewal after its own L-02 rules', () => {
+    const baseline = retained();
+    const full = version({
+      ...window(BOUNDARY, AFTER),
+      organizationLimit: 2,
+      entitlements: [],
+    });
+    const result = evaluateImportConflicts({
+      candidate: full,
+      operationId: full.operationId,
+      documentHash: full.documentHash,
+      supersession: { kind: 'implicit' },
+      versions: [baseline],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      usage: { organizationCount: 9, activeUserCount: 24 },
+    });
+
+    expect(result.conflict).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        predecessorVersionId: baseline.versionId,
+        conflicts: [
+          { kind: 'organization-capacity', limit: 2, currentUsage: 9 },
+          {
+            kind: 'entitlement-removed',
+            entitlement: { kind: 'MODULE', code: 'accounting' },
+          },
+        ],
+      },
+    });
+    expect(result.supersedes).toBeNull();
+  });
+
+  it('measures a renewal that follows a superseded chain against the latest effective end', () => {
+    // V1 was handed over to V2 mid-window (OQ-80 Option B); V2 then ended by
+    // its own validUntil. A renewal adjacent at V2's end must be measured
+    // against V2 — the grant the installation was last on.
+    const first = retained({
+      ...window('2026-01-01T00:00:00.000Z', BOUNDARY),
+      governsUntil: new Date('2026-06-01T00:00:00.000Z'),
+      supersededAt: new Date('2026-05-01T00:00:00.000Z'),
+      supersededByVersionId: '01K7SUCCESSOR0000000000000',
+    });
+    const second = retained({
+      ...window('2026-06-01T00:00:00.000Z', BOUNDARY),
+      organizationLimit: 4,
+      userLimit: 30,
+    });
+    const result = continuation(
+      { organizationLimit: 2, userLimit: 30 },
+      { versions: [first, second] },
+    );
+
+    expect(result.conflict).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        predecessorVersionId: second.versionId,
+        conflicts: [
+          { kind: 'organization-capacity', limit: 2, currentUsage: 9 },
+        ],
+      },
+    });
+  });
+
+  it('never selects an open-ended version as the baseline; the term arm has no continuation case', () => {
+    const perpetual = retained({ ...window('2026-01-01T00:00:00.000Z', null) });
+
+    // A perpetual grant has no effective end, so it is never adjacent.
+    expect(
+      continuationBaselineFor(
+        { validFrom: new Date(BOUNDARY), licenseId: LICENSE },
+        [perpetual],
+        CUSTOMER,
+      ),
+    ).toBeNull();
+
+    // A candidate over the perpetual grant cannot slip into the continuation
+    // path at all: it overlaps, so the hand-over guard refuses the closed end
+    // exactly as before (PDR-12), and no baseline is consulted. The candidate
+    // keeps the limits and entitlements, so the open end is the ONLY conflict.
+    const result = continuation(
+      {
+        ...window(BOUNDARY, AFTER),
+        validFrom: new Date('2026-06-01T00:00:00.000Z'),
+        organizationLimit: 10,
+        userLimit: 25,
+        entitlements: perpetual.entitlements,
+      },
+      { versions: [perpetual] },
+    );
+    expect(result.conflict).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        conflicts: [{ kind: 'open-end-closed' }],
+      },
+    });
+    expect(result.supersedes).toBeNull();
   });
 });
