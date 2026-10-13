@@ -1089,6 +1089,16 @@ describe.skipIf(DATABASE_URL === undefined)(
     }, 60_000);
 
     it('refuses an explicit supersession that reduces capacity, in the transaction too (PDR-11 §8.6)', async () => {
+      // The suite's earlier tests chain adjacent windows and leave retained
+      // coverage ending exactly where this test's first document starts. Since
+      // L-05, a contiguous new-identity candidate is measured against the
+      // deterministic continuation baseline, and this test's deliberately
+      // small grant (5/20, two entitlements — chosen so the successor's
+      // reduction conflicts deterministically) would reduce against the
+      // unlimited chain link. Resetting isolates the test: on a fresh
+      // installation the first document is a first license (no baseline), so
+      // the ONLY reduction in play is the explicit supersession under test.
+      await resetApplicationForFreshInstallation();
       const identity = await app.get(InstallationIdentityService).current();
       const licenseId = '01K7REDUCELICENSE00000000001';
       const governing = licenseFor(
