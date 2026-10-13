@@ -1,29 +1,23 @@
-# Vardena CI: two independent jobs.
+# Vardena CI — change-aware, with a stable final gate.
 #
-# `backend`  — quality gates + unit tests + build + e2e (incl. live-DB suites;
-#              licensing persistence is run serially against the shared DB).
-# `frontend` — quality gates + component/logic tests + production build.
+#    classify             change detection: which jobs this change set needs
+#    docs                 documentation link validation (no dependencies)
+#    backend              Prisma, lint, typecheck, format, unit, build,
+#                         PostgreSQL migrations, bootstrap, live-DB E2E
+#    frontend             lint, typecheck, format, tests, build
+#    generated-api-client OpenAPI dump vs the committed generated client
+#    ci-gate              the always-running aggregate result
 #
-# The frontend job deliberately does NOT duplicate the backend's live-DB
-# integration coverage: it never starts Postgres and never boots the API.
-# Frontend verification is hermetic (the `src/api/*` modules are stubbed in
-# tests), so the two jobs run in parallel and stay independently meaningful.
+# The workflow always starts (no `paths`/`paths-ignore` filter anywhere: a
+# skipped workflow leaves required checks pending forever). A job skipped by an
+# `if` condition instead reports success, which is why `ci-gate` exists: it
+# fails when a job the classifier marked applicable did not succeed — including
+# one that was skipped, cancelled or missing — and passes when the skipped jobs
+# are genuinely not applicable. See docs/operations/ci-minutes-optimization.md.
 #
-# Backend pipeline order mirrors backend/README.md "Tests" / "quality gates":
-#   prisma validate -> generate -> lint -> typecheck -> format:check
-#   -> unit -> build -> migrate deploy -> system-admin bootstrap -> e2e
-#      (with VARDENA_TEST_DATABASE_URL)
-#
-# Notes:
-# - npm is upgraded to v11 first: npm 10's resolver crashes on this
-#   dependency graph ("Exit handler never called!" — see backend/README.md
-#   Requirements and backend/Dockerfile).
-# - The job-level DATABASE_URL is intentionally unreachable (same value as
-#   backend/vitest.config.e2e.ts): `prisma generate`/`validate` need the key
-#   present but never connect, unit tests are hermetic, and the non-live e2e
-#   specs assert the deterministic readiness/503 path. Only the
-#   `migrate deploy` step and the live-DB suites (via
-#   VARDENA_TEST_DATABASE_URL) talk to the Postgres service.
+# The classifier fails open (unknown path -> every job); `ci-gate` fails closed.
+# `classify` also unions the decision of the classifier revision already
+# accepted on `main`, so a change set cannot narrow its own verification.
 name: CI
 
 on:
@@ -36,14 +30,78 @@ permissions:
   contents: read
 
 concurrency:
+  # Superseded pull-request runs are cancelled (a newer push makes the older
+  # result irrelevant); a push to `main` is never cancelled, so the
+  # authoritative post-merge verification is never hidden by a newer run.
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+env:
+  # Revision the change set is compared against: the pull request's base tip,
+  # or the pre-push head for a push to `main`. An absent/zero value (new branch,
+  # forced push) makes the classifier run every job instead of guessing.
+  CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+
 jobs:
+  # Change detection. Runs on every pull request and every push to `main`, and
+  # is the only job with full history (the merge base needs it).
+  classify:
+    name: classify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      docs: ${{ steps.scope.outputs.docs }}
+      backend: ${{ steps.scope.outputs.backend }}
+      frontend: ${{ steps.scope.outputs.frontend }}
+      generated: ${{ steps.scope.outputs.generated }}
+      broad: ${{ steps.scope.outputs.broad }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # full history: the merge base of the change set must be resolvable
+          fetch-depth: 0
+
+      # The classification and the gate decide what a merge needs, so their own
+      # logic is verified before it is trusted (fast, hermetic).
+      - name: Unit-test the CI helper scripts
+        run: python3 -m unittest discover -s scripts/tests -t scripts/tests
+
+      - name: Classify change set
+        id: scope
+        # Fails open (unknown path -> every job) and never exits non-zero for an
+        # unknown change set; the gate fails closed. `--also-run-rev` is the
+        # self-weakening guard: the classifier revision already accepted on
+        # `main` re-evaluates the same change set and its decision is unioned in.
+        run: |
+          python3 scripts/ci-classify-scope.py \
+            --base "$CI_BASE_SHA" \
+            --head HEAD \
+            --also-run-rev "$CI_BASE_SHA" \
+            --github-output "$GITHUB_OUTPUT" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+  # Documentation-only verification: no Node, no PostgreSQL, no build.
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: classify
+    if: needs.classify.outputs.docs == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check documentation links
+        run: python3 scripts/check-docs-links.py
+
   backend:
     name: backend
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: classify
+    if: needs.classify.outputs.backend == 'true'
+
     services:
       postgres:
         image: postgres:16
@@ -278,6 +336,8 @@ jobs:
     name: frontend
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: classify
+    if: needs.classify.outputs.frontend == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -324,6 +384,8 @@ jobs:
     name: generated-api-client
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: classify
+    if: needs.classify.outputs.generated == 'true'
     env:
       DATABASE_URL: postgresql://vardena:unused@127.0.0.1:1/vardena_test
       NODE_ENV: test
@@ -360,3 +422,31 @@ jobs:
 
       - name: Check generated API client is up to date
         run: bash scripts/check-generated-api-client.sh
+
+  # The stable result of the workflow. `if: always()` is essential: without it a
+  # failed `classify` (or any failed dependency) would skip the gate, and a
+  # skipped job reports success, so a skipped gate could protect nothing.
+  # Skipped jobs that are genuinely not applicable keep it green, so a
+  # documentation-only pull request is not blocked by the PostgreSQL/E2E job.
+  # Keep this job's `needs:` list in sync with the jobs above.
+  ci-gate:
+    name: ci-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs:
+      - classify
+      - docs
+      - backend
+      - frontend
+      - generated-api-client
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify every applicable check passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          printf '%s' "$NEEDS" > needs.json
+          python3 scripts/ci-gate.py --needs-json needs.json

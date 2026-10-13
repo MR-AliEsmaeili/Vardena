@@ -4,11 +4,18 @@ Status: **Authoritative** · Date: 2026-09-26 · Type: testing policy (execution
 
 This document records WHERE tests execute, not WHAT is covered. It is an
 **execution-environment decision: no coverage is reduced by it.** Every suite
-listed under a CI gate below runs on every pull request and every push to
-`main` (`.github/workflows/ci.yml`); the classification exists so that a
-development sandbox (which may lack Docker, a PostgreSQL service, or network
-access to engine/registry hosts) never silently substitutes a weaker local
-approximation for the authoritative environment.
+listed under a CI gate below runs on CI for every pull request and every push to
+`main` **whenever the change set can affect it** (`.github/workflows/ci.yml`;
+path-to-job matrix and merge contract in
+`docs/operations/ci-minutes-optimization.md`). A change that cannot affect a
+suite does not run it — a documentation-only pull request runs no database, no
+dependency install and no build — while any change under `backend/**`,
+including the Prisma schema and migrations, still runs the full backend,
+migration, live-DB and generated-client verification. The FAST-LOCAL/CI-*
+classification below exists so
+that a development sandbox (which may lack Docker, a PostgreSQL service, or
+network access to engine/registry hosts) never silently substitutes a weaker
+local approximation for the authoritative environment.
 
 ---
 
@@ -100,3 +107,10 @@ sandboxes cannot produce the interleavings these suites exist to catch.
    not alter the test, move verification to CI, and record *"Local heavy-test
    execution intentionally not used. CI is the authoritative execution
    environment."*
+7. **Change-aware CI never reduces required coverage.** The classifier
+   (`scripts/ci-classify-scope.py`) may skip a job only when the changed paths
+   cannot affect it; uncertainty runs the job, and any path it cannot classify
+   runs every job. Skipping a suite for a change that *can* affect it, weakening
+   a suite to make a run cheaper, or making a required job skippable while
+   `ci-gate` is not a required check, is a policy violation rather than an
+   optimization. See `docs/operations/ci-minutes-optimization.md`.
