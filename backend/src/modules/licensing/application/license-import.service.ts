@@ -679,6 +679,7 @@ export class LicenseImportService {
     rawDocument: string,
     reason: string,
   ): Promise<LicenseCustomerTransferResult> {
+    assertOperationReason(reason, 'transfer');
     return await this.runImport(rawDocument, {
       customerTransfer: { reason },
     });
@@ -1312,17 +1313,29 @@ export class LicenseImportService {
 
 /**
  * The required, validated operator reason of a dedicated operation. The DTO
- * validates the shape; this re-checks it at the application boundary so a
- * non-HTTP caller (a worker, a future scheduler) cannot bypass the
- * requirement either — an unexplained recovery or resolution is not
- * auditable, and the Owner decision requires the reason.
+ * validates the shape; this re-checks the 3–500 character boundary at the
+ * application layer so a non-HTTP caller (a worker, a future scheduler) cannot
+ * bypass it — an unexplained operation is not auditable, and the Owner
+ * decision requires the reason.
  */
 function assertOperationReason(reason: string, operation: string): void {
-  if (typeof reason !== 'string' || reason.trim().length < 3) {
+  if (
+    typeof reason !== 'string' ||
+    operationReasonLength(reason.trim()) < 3 ||
+    operationReasonLength(reason) > 500
+  ) {
     throw AppException.badRequest(
-      `A ${operation} reason of at least 3 characters is required.`,
+      `A ${operation} reason between 3 and 500 characters is required.`,
     );
   }
+}
+
+/** Match class-validator's Unicode character counting for @MinLength/@MaxLength. */
+function operationReasonLength(value: string): number {
+  const presentationSequences =
+    value.match(/[^\uFE0F\uFE0E][\uFE0F\uFE0E]/g) ?? [];
+  const surrogatePairs = value.match(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g) ?? [];
+  return value.length - presentationSequences.length - surrogatePairs.length;
 }
 
 /** The audit event type of an applied import, by operation kind. */

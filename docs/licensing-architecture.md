@@ -122,17 +122,19 @@ vocabulary (`ACTIVE|EXPIRED|SUSPENDED`, `UNLICENSED`) is unchanged; the
 `SUSPENDED` mapping question stays open (OQ-79) and no migration rewrites a
 status value.
 
-### Overlap, gaps and supersession (interim, fail-closed)
+### Overlap, gaps and supersession — current status
 
-Overlap resolution is an open product question (PDR-11 PQ-5 → OQ-80). Until it
-is decided, the import **rejects** a window that overlaps any version that still
-governs at the import instant, unless the signed document explicitly supersedes
-a named operation id; a future-dated start does not excuse an overlap. Adjacency
-is not overlap; gaps are allowed and report `expired` until the next version
-starts. Superseding never changes a retained row's validity, limits or
-entitlements — only when it stops governing, and that instant is the candidate's
-own `validFrom` (a version is retired at most once). This grants no customer
-anything and invents no precedence rule.
+The interim description from the initial L-03 slice was superseded by the
+Product Owner decisions recorded in the
+[OQ-80/OQ-86 decision brief](tasks/licensing-oq-80-oq-86-decision-brief.md)
+and [PDR-13](decisions/product/PDR-13-post-gap-recovery.md). Their implementation
+reached `main` through PR #142 (merge commit
+`f0b047ae4950edced9e301411da710dd82c68ed1`). The current, detailed behavior is
+maintained in the [version-model and file-exchange design](licensing/version-model-and-file-exchange.md#33-overlap-gaps-and-supersession);
+the earlier interim wording is not the current rule. The merge and CI evidence
+are not Product Owner acceptance; no acceptance record is present in this
+repository. The verification record is
+[`docs/tasks/licensing-post-merge-reconciliation.md` §16](tasks/licensing-post-merge-reconciliation.md#16-post-merge-verification-of-pr-142).
 
 ## Import, replay protection and audit
 

@@ -873,15 +873,12 @@ export class LicensesRepository {
   }
 
   /**
-   * Append one audit event. Rejections are recorded through a separate insert
-   * (they never share the state-change transaction), and the caller treats a
-   * logging failure as secondary to the rejection itself.
-   *
-   * The bounded columns (`reason` VarChar(60), `detail` VarChar(500)) are
-   * clamped here, not trusted to every call site: an audit event must never be
-   * LOST because its human detail ran long — the machine-readable facts
-   * (event type, outcome, ids, reason token) are the evidence, the detail is
-   * supplementary.
+   * Append one audit event through the separate, best-effort path used for
+   * rejections (these inserts do not share the state-change transaction).
+   * Their machine-readable reason remains bounded to the rejection vocabulary,
+   * and incidental rejection detail is capped here. Successful APPLIED events
+   * use the typed builders below and are written in the state-change
+   * transaction without truncating their operator reason or required context.
    */
   async recordAuditEvent(command: LicenseAuditEventCommand): Promise<void> {
     const client = await this.client();
@@ -1019,9 +1016,10 @@ export async function lockInstallationRow(
 /**
  * The typed audit event of one explicit customer transfer (Owner decision
  * 2026-10-12, Q4): old customer, new customer, installation, operation, actor,
- * source, document hash, outcome, instant — and the operator's reason, bounded
- * to the column and stored in `detail` (the machine-readable classifier is the
- * event type itself). `reason` stays null: it carries rejection reasons.
+ * source, document hash, outcome, instant and the complete operator reason are
+ * preserved in their typed fields and `detail` (the machine-readable
+ * classifier is the event type itself). `reason` stays null: it carries
+ * rejection reasons.
  */
 export function transferAuditEvent(
   command: ImportLicenseVersionCommand,
@@ -1039,11 +1037,7 @@ export function transferAuditEvent(
     source: command.source,
     documentHash: command.documentHash,
     reason: null,
-    detail:
-      `transfer to ${command.customerId}${reason === '' ? '' : `: ${reason}`}`.slice(
-        0,
-        500,
-      ),
+    detail: `transfer to ${command.customerId}${reason === '' ? '' : `: ${reason}`}`,
     previousCustomerId,
     newCustomerId: command.customerId,
     occurredAt: command.now,
@@ -1054,8 +1048,8 @@ export function transferAuditEvent(
  * The typed audit event of the dedicated post-gap recovery (Owner decision
  * 2026-10-12, OQ-87 Option B, PDR-13). It is the operation's APPLIED event:
  * the retained version, the recovery reason, and — in machine-readable
- * columns and bounded detail — the lapse it recovers from: which license's
- * coverage had ended and when. `previousLicenseId` is set ONLY here; the
+ * columns and detail — the lapse it recovers from: which license's coverage
+ * had ended and when. `previousLicenseId` is set ONLY here; the
  * installation and its customer are unchanged by a recovery (a document for
  * another customer is refused before this point).
  *
@@ -1081,7 +1075,7 @@ export function recoveryAuditEvent(
     detail:
       `post-gap recovery after license ${lapsed?.licenseId ?? 'unknown'}` +
       ` (coverage ended ${lapsed?.coverageEnd.toISOString() ?? 'unknown'})` +
-      `${reason === '' ? '' : `: ${reason}`}`.slice(0, 500),
+      `${reason === '' ? '' : `: ${reason}`}`,
     previousLicenseId: lapsed?.licenseId ?? null,
     occurredAt: command.now,
   };
@@ -1118,7 +1112,7 @@ export function resolutionAuditEvent(
     reason: null,
     detail:
       `resolved reduction of version ${predecessorVersionId}` +
-      ` [${summary}]${reason === '' ? '' : `: ${reason}`}`.slice(0, 500),
+      ` [${summary}]${reason === '' ? '' : `: ${reason}`}`,
     occurredAt: command.now,
   };
 }
@@ -1170,7 +1164,7 @@ function toRetainedVersion(row: VersionRow): RetainedLicenseVersion {
   };
 }
 
-/** Clamp a bounded audit column: an event is never lost to a long detail. */
+/** Cap incidental detail on the separate best-effort rejection audit path. */
 function clampText(value: string | null, limit: number): string | null {
   if (value === null || value.length <= limit) return value;
   return value.slice(0, limit);

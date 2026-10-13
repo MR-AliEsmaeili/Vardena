@@ -356,13 +356,18 @@ describe('License gap recovery and reduction resolution (e2e)', () => {
       .post('/api/v1/license/gap-recovery')
       .send({ document: recovery.file })
       .expect(400);
+    const minimumReason = 'abc';
+    await lateRecoveryAgent
+      .post('/api/v1/license/gap-recovery')
+      .send({ document: recovery.file, reason: 'R'.repeat(501) })
+      .expect(400);
     expect(licensing.versions).toHaveLength(1);
 
-    // Through the dedicated operation: applied, with the lapse receipt read
-    // from the same transaction that wrote the typed event.
+    // Through the dedicated operation: applied with the exact three-character
+    // minimum, and the lapse receipt read from the same transaction as audit.
     const applied = await lateRecoveryAgent
       .post('/api/v1/license/gap-recovery')
-      .send({ document: recovery.file, reason: RECOVERY_REASON })
+      .send({ document: recovery.file, reason: minimumReason })
       .expect(200);
     expect(applied.body).toMatchObject({
       outcome: 'APPLIED',
@@ -381,14 +386,14 @@ describe('License gap recovery and reduction resolution (e2e)', () => {
       licenseId: RECOVERY_LICENSE,
       source: 'file',
     });
-    expect(String(recovered?.detail)).toMatch(/Renewal order 2026-1182/);
+    expect(String(recovered?.detail)).toContain(minimumReason);
 
     // A deterministic retry: the same recovery request again is a stable 409
     // (the applied operation is retained — a replay is refused as a
     // duplicate), and the audit trail keeps exactly one recovery event.
     const retried = await lateRecoveryAgent
       .post('/api/v1/license/gap-recovery')
-      .send({ document: recovery.file, reason: RECOVERY_REASON })
+      .send({ document: recovery.file, reason: minimumReason })
       .expect(409);
     expect(retried.body.details).toMatchObject({
       reason: 'duplicate-operation',
@@ -473,13 +478,22 @@ describe('License gap recovery and reduction resolution (e2e)', () => {
       .post('/api/v1/license/reduction-resolution')
       .send({ document: reducing.file, reason: 'ab' })
       .expect(400);
+    await resolveAgent
+      .post('/api/v1/license/reduction-resolution')
+      .send({ document: reducing.file })
+      .expect(400);
+    const minimumReason = 'abc';
+    await resolveAgent
+      .post('/api/v1/license/reduction-resolution')
+      .send({ document: reducing.file, reason: 'R'.repeat(501) })
+      .expect(400);
     expect(licensing.versions).toHaveLength(1);
 
-    // Through the dedicated operation: applied, with the conflicts the
-    // transaction recomputed under the locks in the receipt.
+    // Through the dedicated operation: applied with the exact three-character
+    // minimum and conflicts recomputed under the locks in the receipt.
     const applied = await resolveAgent
       .post('/api/v1/license/reduction-resolution')
-      .send({ document: reducing.file, reason: RESOLUTION_REASON })
+      .send({ document: reducing.file, reason: minimumReason })
       .expect(200);
     expect(applied.body).toMatchObject({
       outcome: 'APPLIED',
@@ -503,16 +517,14 @@ describe('License gap recovery and reduction resolution (e2e)', () => {
     expect(String(resolved?.detail)).toMatch(
       /resolved reduction of version .+ \[organization-capacity\]/,
     );
-    expect(String(resolved?.detail)).toMatch(
-      /Customer confirmed the reduction/,
-    );
+    expect(String(resolved?.detail)).toContain(minimumReason);
 
     // Retrying the same document through the resolution route is a stable
     // 409 — the applied operation is retained, so the replay is refused as a
     // duplicate; retrying is never a resolution.
     const retried = await resolveAgent
       .post('/api/v1/license/reduction-resolution')
-      .send({ document: reducing.file, reason: RESOLUTION_REASON })
+      .send({ document: reducing.file, reason: minimumReason })
       .expect(409);
     expect(retried.body.details).toMatchObject({
       reason: 'duplicate-operation',

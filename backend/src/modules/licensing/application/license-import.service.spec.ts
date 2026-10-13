@@ -2078,9 +2078,10 @@ describe('explicit installation customer transfer (Q4)', () => {
     await importInitial();
     expect(harness.stores.self()?.customerId).toBe(CUSTOMER);
 
+    const transferReason = 'R'.repeat(500);
     const result = await harness.service.transferCustomer(
       transferDocument(),
-      'Contract 2026-114 moved this server to Acme Industrial.',
+      transferReason,
     );
 
     expect(result).toMatchObject({
@@ -2113,7 +2114,57 @@ describe('explicit installation customer transfer (Q4)', () => {
       reason: null,
       occurredAt: expect.any(Date),
     });
-    expect(transfer?.detail).toMatch(/Contract 2026-114/);
+    expect(transfer?.detail).toBe(
+      `transfer to ${OTHER_CUSTOMER}: ${transferReason}`,
+    );
+  });
+
+  it('accepts the exact three-character transfer-reason minimum', async () => {
+    await importInitial();
+
+    await harness.service.transferCustomer(transferDocument(), 'abc');
+
+    const transfer = harness.stores.auditEvents.find(
+      (event) =>
+        event.eventType === 'license.installation.customer-transferred',
+    );
+    expect(transfer?.detail).toBe(`transfer to ${OTHER_CUSTOMER}: abc`);
+  });
+
+  it('rejects invalid or overlong transfer reasons before writing', async () => {
+    await importInitial();
+    const versionCount = harness.stores.versions.length;
+
+    for (const reason of ['', '  ', 'ab', '😀😀', 'R'.repeat(501)]) {
+      const rejection = await rejectionOf(
+        harness.service.transferCustomer(transferDocument(), reason),
+      );
+      expect(rejection.status, `reason length: ${reason.length}`).toBe(400);
+    }
+
+    expect(harness.stores.self()?.customerId).toBe(CUSTOMER);
+    expect(harness.stores.versions).toHaveLength(versionCount);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) =>
+          event.eventType === 'license.installation.customer-transferred',
+      ),
+    ).toBe(false);
+  });
+
+  it('uses the same Unicode character count as the request DTO', async () => {
+    await importInitial();
+    const transferReason = '😀'.repeat(251);
+
+    await harness.service.transferCustomer(transferDocument(), transferReason);
+
+    const transfer = harness.stores.auditEvents.find(
+      (event) =>
+        event.eventType === 'license.installation.customer-transferred',
+    );
+    expect(transfer?.detail).toBe(
+      `transfer to ${OTHER_CUSTOMER}: ${transferReason}`,
+    );
   });
 
   it('never transfers on an ordinary import, and nothing is written', async () => {
@@ -2336,7 +2387,7 @@ describe('dedicated post-gap recovery (OQ-87 Option B, PDR-13)', () => {
   it('requires a validated reason (400), and writes nothing', async () => {
     await importLapsed();
 
-    for (const reason of ['', '  ', 'ab']) {
+    for (const reason of ['', '  ', 'ab', 'R'.repeat(501)]) {
       const rejection = await rejectionOf(
         harness.service.recoverAfterGap(recoveryDocument(), reason),
       );
@@ -2591,7 +2642,7 @@ describe('explicit reduction resolution (PDR-11 §8.6, L-04)', () => {
   it('requires a validated reason (400), and writes nothing', async () => {
     const predecessorOperationId = await importPredecessor();
 
-    for (const reason of ['', '  ', 'ab']) {
+    for (const reason of ['', '  ', 'ab', 'R'.repeat(501)]) {
       const rejection = await rejectionOf(
         harness.service.resolveReduction(
           reducingDocument(predecessorOperationId),

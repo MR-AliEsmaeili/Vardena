@@ -7,7 +7,7 @@
 | `main` inspected | `345047abec5a6af6760b05ad36b570ee5ed3a5f9` (merge commit of PR #137). Parents: `f27065149ffcb3b6d62929e418a8c6c1b4ce8fea` (`main` before, PR #136 merge) and `2ecd8396f0edcc1c34b3724c79cd767b3401c96d` (PR #137 head). |
 | Session branch | `arena/f0ddc379-vardena` (created from `345047a`; did not exist on origin before this audit). |
 | Merge state of this report's fixes | **Merged 2026-10-12 as PR #138, merge commit `d283744b4098346b6ef2e0b91922266f10cdabd1`, merge-commit CI green (run `38210710188`).** Everything below was written while the branch was still unmerged: where §3–§13 say "on this branch", read `d283744`. See §14. |
-| `main` at the latest verification | `d283744b4098346b6ef2e0b91922266f10cdabd1` (PR #138 merge). The `main` inspected above is **no longer the tip of `main`**, and it does **not** contain this report's fixes (`git grep license-binding-conflict 345047a -- backend/src` → no match). |
+| `main` at the original latest verification (before PR #142) | `d283744b4098346b6ef2e0b91922266f10cdabd1` (PR #138 merge). This is a historical baseline, not the current tip; the post-PR #142 `main` state is recorded in §16. |
 | Owner acceptance | **Not given.** Nothing in this record accepts the slice, any OQ answer or any §15 policy. |
 | Product policy | **No product decision is taken here.** OQ-80 and OQ-86 stay OPEN (decision brief: `docs/tasks/licensing-oq-80-oq-86-decision-brief.md`). |
 
@@ -350,6 +350,8 @@ Not changed: any OQ status; any PDR-11 §1–§18 policy; the decision brief's o
 
 ## 15. Owner decisions of 2026-10-12 and their implementation (records + code, not yet accepted)
 
+**Time scope:** the status cells below record the state when §15 was first written, before PR #142 merged. Their later merge/CI state is reconciled in §16; earlier SHA-scoped CI entries remain historical and are not deleted.
+
 | Item | Decision (recorded verbatim in `docs/tasks/licensing-oq-80-oq-86-decision-brief.md` §7) | Status of this change |
 | --- | --- | --- |
 | OQ-80 overlap | **Option B** — the later starting version governs in the overlap; a candidate that starts at or before the version it overlaps is refused | Implementation recorded; unit + live-PostgreSQL tests pass locally; CI and Owner acceptance outstanding |
@@ -361,3 +363,60 @@ Not changed: any OQ status; any PDR-11 §1–§18 policy; the decision brief's o
 | Q4 customer change | explicit, authorized, audited operation only | Implementation recorded (`licenses.repository.transferCustomer` + typed `license.installation.customer-transferred` event + the dedicated `POST /api/v1/license/customer-transfer` route); tests at unit and live-PostgreSQL level |
 | `license-binding-conflict` | ratified (name, 409, nothing written) | Unchanged behaviour; ratification recorded in §9 |
 | **OQ-87 (new)** | **Not decided** — may a NEW license identity cover a lapse for the same customer + installation? | **BLOCKED**: no rule grants or refuses it (pre-decision behaviour preserved); no workflow may claim post-gap recovery. Registered in `docs/open-questions.md` **(Update 2026-10-12: DECIDED — Option B, [PDR-13](../decisions/product/PDR-13-post-gap-recovery.md); dedicated audited recovery operation, ordinary import never recovers; the BLOCKED gate above is lifted and L-04 is implemented in the same change)** |
+
+## 16. Post-merge verification of PR #142 (2026-10-12)
+
+Scope: re-establish live GitHub state, verify the final merged implementation and migration ordering, and reconcile only stale status language. No product-code, schema, permission, generated-client or product-policy change is made by this section. Product Owner acceptance is not inferred from merge, review or CI.
+
+### 16.1 Merge identity and current `main`
+
+- Live GitHub reports PR #142 (`Licensing: OQ-87 Option B — dedicated post-gap recovery + L-04 usage-aware reduction flow`) `closed` / `merged`, merged at `2026-10-12T18:20:27Z`.
+- Final PR head: `fdf2fdbc665359157d74210b65e4fb1defaead63`. Distinct merge commit: `f0b047ae4950edced9e301411da710dd82c68ed1`. The GitHub commit API reports the merge commit's parents as pre-merge `main` `f4c2e84f7af734c356e035dabc69bb8acfa81a05` and the PR head; the merge commit message and two parents establish merge-commit method (not squash/rebase).
+- The live `main` ref and fetched `origin/main` both point to `f0b047ae4950edced9e301411da710dd82c68ed1`; that exact merge commit is the current tip. The merge and PR-head trees are identical (`aebf5e42dfc62875461687b86ebb8200fb1bd9f5`).
+
+### 16.2 CI evidence, never transferred between SHAs
+
+| Item | Workflow / job | Event and exact tested SHA | Result |
+| --- | --- | --- | --- |
+| PR #142 final head | [run `38289188865`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38289188865) | `pull_request`, `fdf2fdbc665359157d74210b65e4fb1defaead63` | `CI`, completed / success |
+| PR-head backend | job `114944834096` | `fdf2fdbc665359157d74210b65e4fb1defaead63` | success: Prisma validate/generate, lint, typecheck, format, unit, build, migrate test DB, bootstrap, both timezone live suites, all three migration rehearsals and E2E (incl. live-DB suites); failure-only inventory/upload steps skipped |
+| PR-head generated API client | job `114944834385` | `fdf2fdbc665359157d74210b65e4fb1defaead63` | success, including generated-client drift check |
+| PR-head frontend | job `114944834437` | `fdf2fdbc665359157d74210b65e4fb1defaead63` | success: lint, typecheck, format, tests and build |
+| **Merge commit/current `main`** | [run `38290247234`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38290247234) | `push` to `main`, `f0b047ae4950edced9e301411da710dd82c68ed1` | `CI`, completed / success |
+| Merge/main backend | job `114948327992` | `f0b047ae4950edced9e301411da710dd82c68ed1` | success: same backend quality, unit, build, migrate, rehearsal and E2E step set as above |
+| Merge/main generated API client | job `114948328423` | `f0b047ae4950edced9e301411da710dd82c68ed1` | success, including generated-client drift check |
+| Merge/main frontend | job `114948328482` | `f0b047ae4950edced9e301411da710dd82c68ed1` | success: lint, typecheck, format, tests and build |
+
+The merge commit itself therefore has verified CI. The PR-head run is separate evidence for `fdf2f...` and is not used as a substitute. The legacy combined-status endpoint returned `pending` with zero legacy statuses for the merge SHA; the GitHub Actions check-runs API and completed workflow/job records above are the evidence used here. The initial inspection observed the merge run while `backend` E2E was still in progress; the final workflow API and `gh run watch` show the same run completed successfully.
+
+### 16.3 Merged implementation review
+
+**OQ-87 / PDR-13 recovery:**
+
+- `backend/src/modules/licensing/api/license-gap-recovery.controller.ts` applies `AuthGuard` and `AuthorizationGuard` at the route, with `@RequirePermission(Licensing.License.Activate, Licensing.Installation.RecoverAfterGap)`. `RequirePermission` explicitly requires all listed codes. `LicenseImportService.runImport` rechecks both permissions at the application boundary (AR-21).
+- `RecoverAfterGapDto` applies the documented 3–500 character constraint. The service rechecks a minimum trimmed length before entering the import pipeline; see the bounded-reason finding below for the upper-bound audit issue.
+- The signed-document path, recovery intent and typed `license.import.recovered` event are handled by `LicensesRepository.importVersion` in one transaction. It locks the installation, recomputes conflicts, writes the version and supersession stamp, then writes the recovery audit event before commit. `previous_license_id` is machine-readable; `detail` captures the lapsed coverage end, and the response receipt carries the transaction's lapsed license and coverage end. An audit insert failure rolls back the whole transaction; no partial applied version survives.
+- Ordinary import refuses a new-identity post-gap candidate as `post-gap-recovery-requires-dedicated-operation`; the route is the only path to the recovery intent. `recovery-not-applicable`, `recovery-requires-signed-document` for `VLIC1`, and duplicate `duplicate-operation` behavior are present and covered by `backend/test/license-recovery-resolution.e2e-spec.ts` plus domain/service tests. Customer binding is checked against the installation under the lock; a recovery cannot transfer it. Signature, identity, precedence, retained-history and reduction checks remain on the shared pipeline.
+
+**L-04 / PDR-11 §8.6 usage-aware reduction:**
+
+- `CrossModuleLicenseUsage` obtains organizations and active-user counts through the owning modules' published service contracts; it does not read their tables. The authoritative read is executed inside the import transaction after taking the same `vardena:license:{installationId}:active-users` and `...:organizations` transaction advisory locks used by the allocation guards. A failed/unavailable count aborts or yields a `usage-unavailable` conflict; neither path applies a candidate without the count.
+- `evaluateReductionHandOver` compares each finite capacity reduction to counted usage and every removed entitlement to the retained grant. A conflict returns `reduction-requires-resolution` with predecessor and per-conflict details before any state write. `POST /api/v1/license/reduction-resolution` requires `Licensing.License.ResolveReduction` plus `Licensing.License.Activate`, and a reason; the application service rechecks both. The repository recomputes usage/conflicts under the locks and writes the `license.import.reduction-resolved` event atomically with the import. A non-conflicting request is refused as `resolution-not-applicable`; PDR-12's open-end behavior remains non-resolvable except for the already-decided explicit signed supersession.
+
+**Migration:** `20261017000000_license_audit_previous_license_id` adds nullable `previous_license_id` and a comment only. It is ordered after `20261014000000_licensing_version_model_and_import` creates `license_audit_events` and after `20261016000000_licensing_customer_transfer_audit`; no table rewrite, backfill, FK or pairing check was added. This is the additive history fact required by PDR-13.
+
+### 16.4 Blocking finding — valid maximum-length operation reason can exceed audit `detail`
+
+**Severity: medium (P2), functional failure at a documented boundary.** The source-derived finding was subsequently reproduced by the real PostgreSQL CI suite on PR #143's exact pre-fix head `dceeaea954aef4f4b48bfdeaa186e5f66d0f44f3`, run [`38305329909`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38305329909). The annotations for [`licensing-persistence-live.e2e-spec.ts`](https://github.com/MR-AliEsmaeili/Vardena/blob/dceeaea954aef4f4b48bfdeaa186e5f66d0f44f3/backend/test/licensing-persistence-live.e2e-spec.ts) show both exactly-500-character requests—post-gap recovery and authorized L-04 resolution—returned HTTP 500 instead of 200. In each test the preceding PostgreSQL assertions verified rollback: no applied version/audit event and no predecessor supersession facts persisted. The test summary exposes the generic HTTP response, not a PostgreSQL SQLSTATE. This is actual database evidence, not an in-memory reproduction.
+
+**Root cause:** the successful-event builders compose required lapse/conflict context with the operator reason, but the old `.slice(0, 500)` calls do not bound the final composed string; the recovery/resolution detail therefore exceeds `license_audit_events.detail VARCHAR(500)`. `importVersion` inserts the event inside the state-change transaction, so PostgreSQL rejects the audit insert and correctly rolls the whole operation back. The customer-transfer builder has a separate 500-character slice that silently drops part of a valid maximum-length reason. The DTOs enforce 3–500; the application boundary previously rechecked only the minimum.
+
+**PR #143 remediation (CI-verified; Product Owner acceptance outstanding):** the candidate removes truncation from the successful transfer/recovery/resolution event builders, rechecks the 3–500 boundary in the application service, and changes `detail` to PostgreSQL `TEXT` through additive migration `20261018000000_licensing_audit_detail_text`. No applied migration is edited. The type conversion preserves existing row values; the licensing migration rehearsal seeds a populated 500-character audit detail, applies the widening after the existing audit migrations, checks the old value unchanged and round-trips a new 750-character detail. The live PostgreSQL regression cases assert the full recovery/resolution reason plus required context and replay refusal on success; the exact pre-fix CI reproduction documented above confirms rollback/no partial writes on the failure path. Authorization, signatures, customer/installation binding, locks, replay handling, usage checks and licensing policies are unchanged.
+
+**Verification status:** runtime correction commit `4ca6239cd1fca2b8ddea5a7291072c2523d83451` passed exact PR CI run [`38351688052`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38351688052). The [`backend` job](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38351688052/job/115145296879) passed Prisma validation/generation, lint, typecheck, format, unit tests, build, fresh migration deploy, all migration rehearsals (including the populated licensing audit-detail upgrade), E2E and the serial live PostgreSQL licensing suite. The `frontend` job [`115145296807`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38351688052/job/115145296807) and `generated-api-client` job [`115145296947`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38351688052/job/115145296947) also passed. This is post-fix evidence from GitHub's real PostgreSQL infrastructure, not an in-memory claim. The focused local service unit suite (74 tests), in-memory recovery/resolution route suite (4 tests), typecheck, build, lint, format check, rehearsal `node --check` and `git diff --check` pass; lint has one pre-existing warning in an unrelated accounting spec. PostgreSQL and Prisma validation/generation were **NOT RUN locally**: `pg_isready`, `psql` and Docker are unavailable, and the Prisma formatter could not download its schema engine from `binaries.prisma.sh`. This paragraph is scoped to runtime commit `4ca6239`; the subsequent documentation-only PR head requires its own exact-head CI, which is reported in PR #143. Product Owner acceptance is not recorded or inferred; verification does not constitute acceptance.
+
+### 16.5 Records and gates
+
+- `STATE.md` §36 and `docs/open-questions.md` OQ-87 now distinguish: Product Owner decision recorded; implementation merged; exact PR-head and merge/main CI evidence; Product Owner acceptance outstanding. Earlier head runs stay as historical evidence and the pre-merge statements are time-scoped, not deleted.
+- `docs/licensing-architecture.md` no longer describes OQ-80's interim behavior as the current rule. PDR-13, the decision brief, PDR-11 §19.4 and the product decision index were checked; their dated decision/history text is preserved. PDR-11 §1–§18 policy is unchanged. No OQ status is changed here: OQ-79, OQ-82, OQ-83, OQ-84 and OQ-77 remain Open.
+- Product Owner acceptance is not recorded or inferred. No product code, schema, permission, generated client or API contract is changed by this reconciliation section.

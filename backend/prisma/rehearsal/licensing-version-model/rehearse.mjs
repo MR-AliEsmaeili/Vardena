@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Targeted rehearsal for 20261014000000_licensing_version_model_and_import and
- * its corrective follow-up 20261015000000_licensing_supersession_governs_until.
+ * Targeted rehearsal for the licensing version/import migration, its
+ * supersession correction, and the later licensing audit-detail widening.
  *
  * The migration turns the L-02 single-current-license model into retained
  * license versions without losing a single fact. This script proves that on a
@@ -27,6 +27,10 @@
  * a row that the pre-correction behaviour retired prematurely is REPAIRED to
  * the successor's start, the pair check refuses a half-stamped row, and the
  * migrated data satisfies the disjoint-window invariant.
+ *
+ * The audit-detail migration is then applied to the populated schema: an
+ * existing 500-character event detail must remain byte-for-byte intact, and a
+ * new detail longer than 500 characters must round-trip as PostgreSQL TEXT.
  *
  * Connection: VARDENA_REHEARSAL_ADMIN_URL (same local maintenance-database URL
  * used by the other migration rehearsals). This script refuses non-local
@@ -67,6 +71,22 @@ const MIGRATION_SQL = readMigration(
 const CORRECTION_SQL = readMigration(
   '20261015000000_licensing_supersession_governs_until',
 );
+const TRANSFER_AUDIT_SQL = readMigration(
+  '20261016000000_licensing_customer_transfer_audit',
+);
+const RECOVERY_AUDIT_SQL = readMigration(
+  '20261017000000_license_audit_previous_license_id',
+);
+const AUDIT_DETAIL_SQL = readMigration(
+  '20261018000000_licensing_audit_detail_text',
+);
+const AUDIT_DETAIL_FIXTURE = {
+  id: 'rehearsal-preserved-audit-detail',
+  preserved: 'H'.repeat(500),
+  longId: 'rehearsal-long-audit-detail',
+  long: 'L'.repeat(750),
+  occurredAt: '2026-10-12T00:00:00Z',
+};
 /** An L-03-era successor row, used to prove the repair path of the backfill. */
 const REHEARSAL_SUCCESSOR = {
   id: '01K7LICENSESUCCESSOR00000',
@@ -485,6 +505,52 @@ async function assertPreservedState(client) {
   );
 }
 
+async function assertAuditDetailWidening(client) {
+  const column = await client.query(
+    `SELECT data_type, character_maximum_length
+       FROM information_schema.columns
+      WHERE table_schema = 'licensing'
+        AND table_name = 'license_audit_events'
+        AND column_name = 'detail'`,
+  );
+  assert.equal(column.rowCount, 1, 'the audit detail column must exist');
+  assert.equal(column.rows[0].data_type, 'text');
+  assert.equal(
+    column.rows[0].character_maximum_length,
+    null,
+    'TEXT has no old VARCHAR(500) length limit',
+  );
+
+  const preserved = await client.query(
+    `SELECT "detail" FROM "licensing"."license_audit_events" WHERE "id" = $1`,
+    [AUDIT_DETAIL_FIXTURE.id],
+  );
+  assert.equal(preserved.rowCount, 1, 'the historical audit event survives');
+  assert.equal(
+    preserved.rows[0].detail,
+    AUDIT_DETAIL_FIXTURE.preserved,
+    'migration must preserve the existing 500-character detail exactly',
+  );
+
+  await client.query(
+    `INSERT INTO "licensing"."license_audit_events"
+       ("id", "installation_id", "event_type", "outcome", "source", "detail", "occurred_at")
+     VALUES ($1, '01K7INSTALLATIONAAAAAAAAAA', 'license.import.recovered', 'APPLIED', 'file', $2, $3)`,
+    [
+      AUDIT_DETAIL_FIXTURE.longId,
+      AUDIT_DETAIL_FIXTURE.long,
+      AUDIT_DETAIL_FIXTURE.occurredAt,
+    ],
+  );
+  const longer = await client.query(
+    `SELECT "detail" FROM "licensing"."license_audit_events" WHERE "id" = $1`,
+    [AUDIT_DETAIL_FIXTURE.longId],
+  );
+  assert.equal(longer.rowCount, 1);
+  assert.equal(longer.rows[0].detail, AUDIT_DETAIL_FIXTURE.long);
+  assert.equal(longer.rows[0].detail.length, 750);
+}
+
 async function rehearsal() {
   await createDatabase(REHEARSAL_DB);
   await withClient(REHEARSAL_DB, async (client) => {
@@ -498,8 +564,33 @@ async function rehearsal() {
     await client.query(CORRECTION_SQL);
     log('  applied 20261015000000_licensing_supersession_governs_until');
 
+    await client.query(TRANSFER_AUDIT_SQL);
+    log('  applied 20261016000000_licensing_customer_transfer_audit');
+
+    await client.query(RECOVERY_AUDIT_SQL);
+    log('  applied 20261017000000_license_audit_previous_license_id');
+
+    await client.query(
+      `INSERT INTO "licensing"."license_audit_events"
+         ("id", "installation_id", "event_type", "outcome", "source", "detail", "occurred_at")
+       VALUES ($1, '01K7INSTALLATIONAAAAAAAAAA', 'license.import.applied', 'APPLIED', 'file', $2, $3)`,
+      [
+        AUDIT_DETAIL_FIXTURE.id,
+        AUDIT_DETAIL_FIXTURE.preserved,
+        AUDIT_DETAIL_FIXTURE.occurredAt,
+      ],
+    );
+    log('  seeded an existing audit event with a 500-character detail');
+
+    await client.query(AUDIT_DETAIL_SQL);
+    log('  applied 20261018000000_licensing_audit_detail_text');
+
     await assertPreservedState(client);
-    log('  preserved state assertions passed');
+    log('  licensing version state assertions passed');
+    await assertAuditDetailWidening(client);
+    log(
+      '  audit detail preservation and >500-character round-trip assertions passed',
+    );
   });
 }
 
