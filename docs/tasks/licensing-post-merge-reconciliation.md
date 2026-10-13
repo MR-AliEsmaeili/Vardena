@@ -420,3 +420,56 @@ The merge commit itself therefore has verified CI. The PR-head run is separate e
 - `STATE.md` §36 and `docs/open-questions.md` OQ-87 now distinguish: Product Owner decision recorded; implementation merged; exact PR-head and merge/main CI evidence; Product Owner acceptance outstanding. Earlier head runs stay as historical evidence and the pre-merge statements are time-scoped, not deleted.
 - `docs/licensing-architecture.md` no longer describes OQ-80's interim behavior as the current rule. PDR-13, the decision brief, PDR-11 §19.4 and the product decision index were checked; their dated decision/history text is preserved. PDR-11 §1–§18 policy is unchanged. No OQ status is changed here: OQ-79, OQ-82, OQ-83, OQ-84 and OQ-77 remain Open.
 - Product Owner acceptance is not recorded or inferred. No product code, schema, permission, generated client or API contract is changed by this reconciliation section.
+
+## 17. Product Owner decisions of 2026-10-13 — F-8 supersession and F-12 (dated addendum)
+
+**Scope:** records only. No product code, schema, migration, permission, API
+contract or generated client is changed by this section, and no earlier text in
+this document is rewritten — the affected statements are superseded, not
+amended. The audit that establishes the facts is
+[`docs/tasks/licensing-po-acceptance-audit-2026-10-13.md`](licensing-po-acceptance-audit-2026-10-13.md).
+
+- **Q3 (renewal identity) — SUPERSEDED.** §15's row "Q3 renewal identity = same
+  `licenseId`" and the follow-ups it created (§9 item 3, finding F-8 and its
+  `--license-id` tooling change) are superseded by the Product Owner decision of
+  2026-10-13: preserving the previous `licenseId` during renewal is **not** a
+  product requirement. What remains required is that a newly issued license stay
+  bound to the same intended customer and the same customer code, and that a
+  changed `licenseId` not bypass customer binding, installation binding,
+  retained history, version precedence, capacity/entitlement reduction controls,
+  replay protection, or audit requirements. **`--license-id` must not be
+  implemented** merely to force reuse of the old identifier — the tooling
+  follow-up is withdrawn, not owed. Supersession note recorded in the decision
+  brief §8.3.1; the audit's §4 records what the model enforces for a changed
+  identifier (binding, binding-to-installation, history, precedence, replay and
+  audit hold; the one gap is the §8.6 reduction control on a successor that
+  retires nothing).
+- **F-8 finding (this document, §9) — status.** The finding that the issuer CLI
+  cannot target an existing `licenseId` is no longer a defect: new identity per
+  renewal is now an accepted policy, and the issuer's `options.licenseId ??
+  generateId()` behaviour matches it. Nothing in the merged slice silently
+  claims the OLD policy; the records are updated here instead.
+- **F-12 (initial System Administrator) — DECIDED, NOT IMPLEMENTED.** The
+  Product Owner's decisions of 2026-10-13: (1) the initial password remains
+  exactly `1`; (2) the account must hold the real System Administrator role with
+  the highest software access the purchased license and its entitlements allow,
+  without bypassing license/module restrictions; (3) after the first successful
+  login the user must be forced to set a new password **before** accessing
+  normal application functionality; (4) the requirement must be enforced in the
+  **backend** as well as the frontend, covering API access, session/token
+  handling, refresh flows, failure paths and bootstrap idempotency; (5) the
+  initial password must **not** be replaced by an environment variable or a
+  different bootstrap policy, and authorization must not be weakened or given
+  wildcard permissions. **State on `main`:** (1) and (2) are satisfied
+  (hardcoded `'1'` with no env override; the role is built from every registered
+  permission filtered by `LicensingService.filterLicensedPermissions`, and the
+  same filter applies at authorization time). (3) and (4) are **not
+  implemented anywhere** in the merged tree: there is no change-required state
+  in the schema or code, no forced-change gate in `auth`/`AuthGuard`, no
+  self-service password-change endpoint (the only password mutation is the
+  administrator route `POST /api/v1/users/{id}/password-reset`), and no
+  frontend flow. The row in §3/§9 that calls F-12 "an Owner/security decision on
+  the remediation path" is superseded: the remediation path is now decided
+  (forced first-login change) and is an **outstanding implementation item** and
+  a deployment blocker, with the eight acceptance tests recorded in the audit
+  §5.2.

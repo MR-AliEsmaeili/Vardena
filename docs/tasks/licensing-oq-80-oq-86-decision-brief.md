@@ -122,6 +122,26 @@ Dates are illustrative. "Verified" means executed in this session or in a named 
 
 The identity of a license is stable across its renewals, so the license-identifier binding (one license → one installation → one customer) governs every renewal. The issuer tooling must therefore be able to target an existing `licenseId`; today `issue-development-license.ts` parses no `--license-id` and `buildLicensePayload` falls back to a fresh ULID (finding F-8). **The decision is recorded; the tooling change is not part of this slice and remains an open follow-up.**
 
+#### 8.3.1 Superseded (2026-10-13, Product Owner decision — recorded, not amended)
+
+**The Q3 decision above is superseded.** The Product Owner has removed the
+requirement to preserve the previous `licenseId` during renewal: a newly issued
+license must remain bound to the same intended customer and the same customer
+code, and a changed `licenseId` must not bypass customer binding, installation
+binding, retained history, version precedence, capacity/entitlement reduction
+controls, replay protection, or audit requirements. `--license-id` must **not**
+be implemented merely to force reuse of the old identifier, so the tooling
+follow-up recorded in §8.3 is **withdrawn, not owed**.
+
+This note supersedes only the identity-continuity requirement. The audit that
+establishes what a new identity may do (ordinary contiguous renewal: allowed,
+same customer required, everything else unchanged) and the one exact gap it
+found — the §8.6 reduction control does not execute for a successor that retires
+nothing — are recorded in
+[`docs/tasks/licensing-po-acceptance-audit-2026-10-13.md`](licensing-po-acceptance-audit-2026-10-13.md)
+§4. The old text above is preserved as the record of what was decided on
+2026-10-12; it is not rewritten.
+
 ### 8.4 Q4 — customer transfer is an explicit, audited operation
 
 - An ordinary import may never change the installation's commercial customer: a document naming a different customer is refused (`installation-customer-mismatch`, 409, nothing written).
