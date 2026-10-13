@@ -90,14 +90,17 @@ matrix, no extra full-suite run.
 
 ## 7. Savings: measured baseline, estimated categories
 
-Measured: the baseline in §1, and the new jobs' own durations (first run `38394588059`:
-`classify` 7s, `docs` 7s, `ci-gate` 5s). A documentation-only pull request therefore costs
-three jobs rounding up to **3 billed minutes instead of 12**.
+Measured: the baseline in §1, and the durations of the three jobs such a change set would run
+(`classify` 8–12s, `docs` 6–16s, `ci-gate` 5–12s across runs `38441286692`, `38442405919` and
+`38394588059`).
 
-Estimated until a real run of each category exists: frontend-only ~58% saved, backend-only
-~8%, schema/migration and unclassifiable changes unchanged (full coverage retained). Only the
-baseline column is measured; this pull request's own runs are all broad, because its change set
-contains the workflow itself.
+Estimated, not yet observed end-to-end: a documentation-only pull request costs those three
+jobs, rounding up to **3 billed minutes instead of 12** (arithmetic on the measured job
+durations). Frontend-only ~58% saved, backend-only ~8%, schema/migration and unclassifiable
+changes unchanged (full coverage retained). Every run of the pull request that introduces this
+pipeline is **broad** — a pull request's change set is its whole diff against `main`, and that
+diff contains `.github/**` and `scripts/**` — so the narrow paths are verified by the test suite
+and by local reproduction, and become measurable on `main` after the merge.
 
 ## 8. Enforcement: advisory CI and the manual merge protocol
 
