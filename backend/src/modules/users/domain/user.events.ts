@@ -16,6 +16,7 @@ export const USER_UPDATED_EVENT = 'User.Updated' as const;
 export const USER_DISABLED_EVENT = 'User.Disabled' as const;
 export const USER_ENABLED_EVENT = 'User.Enabled' as const;
 export const USER_PASSWORD_RESET_EVENT = 'User.PasswordReset' as const;
+export const USER_PASSWORD_CHANGED_EVENT = 'User.PasswordChanged' as const;
 
 export interface UserCreatedEvent extends DomainEvent {
   type: typeof USER_CREATED_EVENT;
@@ -53,9 +54,18 @@ export interface UserPasswordResetEvent extends DomainEvent {
   payload: { userId: string; username: string };
 }
 
+/** The authenticated user changed their own password (no credential in the payload). */
+export interface UserPasswordChangedEvent extends DomainEvent {
+  type: typeof USER_PASSWORD_CHANGED_EVENT;
+  aggregateType: 'User';
+  aggregateId: string;
+  payload: { userId: string; username: string };
+}
+
 export type UserEvent =
   | UserCreatedEvent
   | UserUpdatedEvent
   | UserDisabledEvent
   | UserEnabledEvent
-  | UserPasswordResetEvent;
+  | UserPasswordResetEvent
+  | UserPasswordChangedEvent;

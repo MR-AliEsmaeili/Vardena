@@ -1,5 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+} from '../../../kernel/config/app-config.js';
+import {
   DOMAIN_EVENT_BUS,
   type DomainEventBus,
 } from '../../../kernel/events/domain-event-bus.js';
@@ -26,11 +30,13 @@ import {
   USER_CREATED_EVENT,
   USER_DISABLED_EVENT,
   USER_ENABLED_EVENT,
+  USER_PASSWORD_CHANGED_EVENT,
   USER_PASSWORD_RESET_EVENT,
   USER_UPDATED_EVENT,
   type UserCreatedEvent,
   type UserDisabledEvent,
   type UserEnabledEvent,
+  type UserPasswordChangedEvent,
   type UserPasswordResetEvent,
   type UserUpdatedEvent,
 } from '../domain/user.events.js';
@@ -66,6 +72,8 @@ export interface CreateUserInput {
   password: string;
   /** Not exposed by the API: creation always yields an active account. */
   isActive?: boolean | undefined;
+  /** Internal bootstrap/provisioning flag requiring password change on login. */
+  mustChangePassword?: boolean | undefined;
 }
 
 export interface UpdateUserInput {
@@ -242,11 +250,13 @@ export class UsersService {
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
     const passwordHash = await this.passwordService.hash(params.password);
+    const mustChangePassword = params.mustChangePassword ?? false;
     const createInput = {
       id: generateId(),
       username,
       passwordHash,
       isActive: createsActiveUser,
+      mustChangePassword,
       createdAt: now,
       updatedAt: now,
       createdBy: actorId,
@@ -421,7 +431,11 @@ export class UsersService {
    * not defined in the repository (OQ-06) and inventing one here would be a
    * business rule.
    */
-  async resetPassword(userId: string, newPassword: string): Promise<void> {
+  async resetPassword(
+    userId: string,
+    newPassword: string,
+    options?: { mustChangePassword?: boolean | undefined },
+  ): Promise<void> {
     await this.authorization.requireAllPermissions([
       USER_PERMISSIONS.RESET_PASSWORD,
     ]);
@@ -440,8 +454,10 @@ export class UsersService {
     }
 
     const passwordHash = await this.passwordService.hash(newPassword);
+    const mustChangePassword = options?.mustChangePassword ?? false;
     const updated = await this.repository.update(userId, {
       passwordHash,
+      mustChangePassword,
       updatedAt: new Date(),
       updatedBy: getPrincipal()?.userId ?? null,
     });
@@ -461,6 +477,110 @@ export class UsersService {
     );
   }
 
+  /**
+   * Self-service password change for the authenticated user.
+   *
+   * Verifies `currentPassword` against the stored argon2id hash, enforces
+   * password policy on `newPassword` (length, non-blank, distinct from
+   * `currentPassword`), hashes `newPassword`, and atomically updates
+   * `passwordHash` while clearing `mustChangePassword = false`.
+   */
+  async changeOwnPassword(
+    userId: string,
+    params: { currentPassword: string; newPassword: string },
+  ): Promise<User> {
+    const existing = await this.findActiveById(userId);
+    if (existing === null) {
+      throw AppException.unauthorized('Authentication is required.');
+    }
+
+    if (params.currentPassword.length < 1) {
+      throw AppException.validation([
+        {
+          field: 'currentPassword',
+          message: 'Current password is required.',
+          code: 'isNotEmpty',
+        },
+      ]);
+    }
+
+    const currentMatches = await this.passwordService.verify(
+      existing.passwordHash,
+      params.currentPassword,
+    );
+    if (!currentMatches) {
+      throw AppException.validation([
+        {
+          field: 'currentPassword',
+          message: 'Current password is incorrect.',
+          code: 'invalidCurrentPassword',
+        },
+      ]);
+    }
+
+    if (
+      params.newPassword.length < MIN_PASSWORD_LENGTH ||
+      params.newPassword.trim().length === 0
+    ) {
+      throw AppException.validation([
+        {
+          field: 'newPassword',
+          message: `New password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
+          code: 'minLength',
+        },
+      ]);
+    }
+
+    if (params.newPassword.length > MAX_PASSWORD_LENGTH) {
+      throw AppException.validation([
+        {
+          field: 'newPassword',
+          message: `New password must be at most ${MAX_PASSWORD_LENGTH} characters.`,
+          code: 'maxLength',
+        },
+      ]);
+    }
+
+    if (
+      params.newPassword === params.currentPassword ||
+      (await this.passwordService.verify(
+        existing.passwordHash,
+        params.newPassword,
+      ))
+    ) {
+      throw AppException.validation([
+        {
+          field: 'newPassword',
+          message: 'New password must be different from the current password.',
+          code: 'mustDifferFromCurrent',
+        },
+      ]);
+    }
+
+    const passwordHash = await this.passwordService.hash(params.newPassword);
+    const updated = await this.repository.update(existing.id, {
+      passwordHash,
+      mustChangePassword: false,
+      updatedAt: new Date(),
+      updatedBy: existing.id,
+    });
+    if (updated === null || !updated.isActive || updated.deletedAt !== null) {
+      throw AppException.unauthorized('Authentication is required.');
+    }
+
+    await this.publish({
+      type: USER_PASSWORD_CHANGED_EVENT,
+      aggregateId: updated.id,
+      payload: { userId: updated.id, username: updated.username },
+    });
+    this.logger.log(
+      'User changed own password',
+      { userId: updated.id, username: updated.username },
+      UsersService.name,
+    );
+    return updated;
+  }
+
   // -----------------------------------------------------------------------
   // Internal helpers
   // -----------------------------------------------------------------------
@@ -477,6 +597,10 @@ export class UsersService {
       | Omit<UserEnabledEvent, 'correlationId' | 'occurredAt' | 'aggregateType'>
       | Omit<
           UserPasswordResetEvent,
+          'correlationId' | 'occurredAt' | 'aggregateType'
+        >
+      | Omit<
+          UserPasswordChangedEvent,
           'correlationId' | 'occurredAt' | 'aggregateType'
         >,
   ): Promise<void> {

@@ -38,6 +38,7 @@ describe('loadAppConfig', () => {
         loginRateLimit: { windowMs: 15 * 60 * 1000, max: 10 },
       },
       deploymentOrganizationId: null,
+      bootstrapSystemAdminPassword: null,
       licensing: {
         provider: 'persistent',
         signingPublicKeys: [],
@@ -81,6 +82,54 @@ describe('loadAppConfig', () => {
         DEPLOYMENT_ORGANIZATION_ID: 'not-a-ulid',
       }),
     ).toThrow(/DEPLOYMENT_ORGANIZATION_ID must be a valid ULID/);
+  });
+
+  it('defaults the bootstrap system administrator password to unset', () => {
+    const config = loadAppConfig({ DATABASE_URL: VALID_DB });
+    expect(config.bootstrapSystemAdminPassword).toBeNull();
+  });
+
+  it('accepts a valid bootstrap system administrator password', () => {
+    const config = loadAppConfig({
+      DATABASE_URL: VALID_DB,
+      BOOTSTRAP_SYSTEM_ADMIN_PASSWORD: 'initial-admin-secret-9',
+    });
+    expect(config.bootstrapSystemAdminPassword).toBe('initial-admin-secret-9');
+  });
+
+  it('rejects weak, blank, or placeholder bootstrap system administrator passwords without echoing the secret', () => {
+    expect(() =>
+      loadAppConfig({
+        DATABASE_URL: VALID_DB,
+        BOOTSTRAP_SYSTEM_ADMIN_PASSWORD: '1',
+      }),
+    ).toThrow(/BOOTSTRAP_SYSTEM_ADMIN_PASSWORD must be at least 8 characters/);
+
+    expect(() =>
+      loadAppConfig({
+        DATABASE_URL: VALID_DB,
+        BOOTSTRAP_SYSTEM_ADMIN_PASSWORD: '        ',
+      }),
+    ).toThrow(/BOOTSTRAP_SYSTEM_ADMIN_PASSWORD cannot be blank/);
+
+    expect(() =>
+      loadAppConfig({
+        DATABASE_URL: VALID_DB,
+        BOOTSTRAP_SYSTEM_ADMIN_PASSWORD: 'CHANGE_ME',
+      }),
+    ).toThrow(/BOOTSTRAP_SYSTEM_ADMIN_PASSWORD must not use the placeholder/);
+
+    let message = '';
+    try {
+      loadAppConfig({
+        DATABASE_URL: VALID_DB,
+        BOOTSTRAP_SYSTEM_ADMIN_PASSWORD: 'short',
+      });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain('BOOTSTRAP_SYSTEM_ADMIN_PASSWORD');
+    expect(message).not.toContain('short');
   });
 
   it('applies development defaults', () => {

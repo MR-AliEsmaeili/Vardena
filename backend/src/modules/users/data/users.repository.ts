@@ -36,6 +36,7 @@ interface UserCreateInput {
   username: string;
   passwordHash: string;
   isActive: boolean;
+  mustChangePassword?: boolean | undefined;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
@@ -191,6 +192,7 @@ export class UsersRepository {
       username?: string | undefined;
       passwordHash?: string | undefined;
       isActive?: boolean | undefined;
+      mustChangePassword?: boolean | undefined;
       updatedAt: Date;
       updatedBy: string | null;
       deletedAt?: Date | null | undefined;
@@ -241,6 +243,7 @@ interface PrismaUserRecord {
   username: string;
   passwordHash: string;
   isActive: boolean;
+  mustChangePassword: boolean;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -270,6 +273,7 @@ function toDomain(row: PrismaUserRecord): User {
     username: row.username,
     passwordHash: row.passwordHash,
     isActive: row.isActive,
+    mustChangePassword: row.mustChangePassword,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,

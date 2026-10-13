@@ -123,6 +123,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   const {
     status: sessionStatus,
     user,
+    mustChangePassword,
     permissions,
     permissionsLoaded,
   } = useSession();
@@ -138,7 +139,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   const organizationsQuery = useQuery({
     queryKey: queryKeys.organizations.mine(),
     queryFn: ({ signal }) => listMyOrganizations(signal),
-    enabled: sessionStatus === 'authenticated',
+    enabled: sessionStatus === 'authenticated' && !mustChangePassword,
     retry: false,
     staleTime: 5 * 60_000,
   });
@@ -173,7 +174,9 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   }, [organization]);
 
   const status: OrganizationContextStatus =
-    sessionStatus !== 'authenticated' || organizationsQuery.isPending
+    sessionStatus !== 'authenticated' ||
+    mustChangePassword ||
+    organizationsQuery.isPending
       ? 'loading'
       : organizationsQuery.isError
         ? 'error'

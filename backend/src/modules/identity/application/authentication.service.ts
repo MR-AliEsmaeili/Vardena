@@ -11,8 +11,11 @@ import {
 } from '../../../kernel/events/domain-event-bus.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
-import { getCorrelationId } from '../../../kernel/correlation/request-context.js';
-import { setPrincipal } from '../../../kernel/correlation/request-context.js';
+import {
+  getCorrelationId,
+  getPrincipal,
+  setPrincipal,
+} from '../../../kernel/correlation/request-context.js';
 import { UsersService } from '../../users/application/users.service.js';
 import type { User, UserDto } from '../../users/domain/user.js';
 import { toUserDto } from '../../users/domain/user.js';
@@ -133,7 +136,11 @@ export class AuthenticationService {
     this.issueSessionCookie(ctx.res, rawToken, session);
 
     // Set the principal on the request context so downstream handlers see it.
-    setPrincipal({ userId: user.id, sessionId: session.id });
+    setPrincipal({
+      userId: user.id,
+      sessionId: session.id,
+      mustChangePassword: user.mustChangePassword,
+    });
 
     // 7. Emit event + return safe user DTO.
     const created: SessionCreatedEvent = {
@@ -199,6 +206,70 @@ export class AuthenticationService {
       { userId: session.userId, sessionId: session.id },
       AuthenticationService.name,
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Self-service password change
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Change the authenticated user's own password, clear `mustChangePassword`,
+   * and revoke all other active sessions for this user while keeping the
+   * current session active (docs/security.md §2).
+   */
+  async changePassword(params: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<UserDto> {
+    const principal = getPrincipal();
+    if (principal === undefined) {
+      throw AppException.unauthorized('Authentication is required.');
+    }
+
+    const updatedUser = await this.users.changeOwnPassword(
+      principal.userId,
+      params,
+    );
+
+    const now = new Date();
+    const revokedCount = await this.sessions.revokeAllForUser(
+      updatedUser.id,
+      principal.sessionId,
+      now,
+    );
+    if (revokedCount > 0) {
+      const evt: SessionRevokedEvent = {
+        type: SESSION_REVOKED_EVENT,
+        aggregateType: 'UserSession',
+        aggregateId: updatedUser.id,
+        payload: {
+          sessionId: '*',
+          userId: updatedUser.id,
+          reason: 'password_change',
+        },
+        correlationId: getCorrelationId(),
+        occurredAt: now.getTime(),
+      };
+      await this.events.publish(evt);
+    }
+
+    setPrincipal({
+      userId: updatedUser.id,
+      sessionId: principal.sessionId,
+      mustChangePassword: updatedUser.mustChangePassword,
+    });
+
+    this.logger.log(
+      'Password changed for authenticated user',
+      {
+        userId: updatedUser.id,
+        sessionId: principal.sessionId,
+        otherSessionsRevoked: revokedCount,
+      },
+      AuthenticationService.name,
+    );
+
+    return toUserDto(updatedUser);
   }
 
   // ---------------------------------------------------------------------------
@@ -290,7 +361,11 @@ export class AuthenticationService {
         );
       });
 
-    const principal = { userId: user.id, sessionId: session.id };
+    const principal = {
+      userId: user.id,
+      sessionId: session.id,
+      mustChangePassword: user.mustChangePassword,
+    };
     setPrincipal(principal);
 
     return { user, session };

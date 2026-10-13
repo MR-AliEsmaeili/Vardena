@@ -19,6 +19,8 @@ import { createTestApp } from './support/test-app.js';
  * operation is idempotent against already-populated PostgreSQL state.
  */
 const DATABASE_URL = process.env['VARDENA_TEST_DATABASE_URL'];
+const INITIAL_BOOTSTRAP_PASSWORD = 'vardena_ci_bootstrap_password';
+const ROTATED_ADMIN_PASSWORD = 'vardena_rotated_admin_password';
 
 describe.skipIf(DATABASE_URL === undefined)(
   'Bootstrap System Administrator (live database)',
@@ -34,9 +36,11 @@ describe.skipIf(DATABASE_URL === undefined)(
     beforeAll(async () => {
       const built = await createTestApp({
         override: (builder) =>
-          builder
-            .overrideProvider(APP_CONFIG)
-            .useValue({ ...loadAppConfig(), databaseUrl: DATABASE_URL }),
+          builder.overrideProvider(APP_CONFIG).useValue({
+            ...loadAppConfig(),
+            databaseUrl: DATABASE_URL,
+            bootstrapSystemAdminPassword: INITIAL_BOOTSTRAP_PASSWORD,
+          }),
       });
       app = built.app;
       prisma = built.module.get(PrismaService);
@@ -91,6 +95,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           findUnique: (args: unknown) => Promise<{
             id: string;
             passwordHash: string;
+            mustChangePassword: boolean;
           } | null>;
         };
         role: { count: (args: unknown) => Promise<number> };
@@ -118,25 +123,26 @@ describe.skipIf(DATABASE_URL === undefined)(
 
       const stored = await client.user.findUnique({ where: { id: userId } });
       expect(stored).not.toBeNull();
+      expect(stored!.mustChangePassword).toBe(true);
+      expect(stored!.passwordHash).not.toBe(INITIAL_BOOTSTRAP_PASSWORD);
       expect(stored!.passwordHash).not.toBe('1');
       expect(stored!.passwordHash).toMatch(/^\$argon2id\$/);
       await expect(
-        new PasswordService().verify(stored!.passwordHash, '1'),
+        new PasswordService().verify(
+          stored!.passwordHash,
+          INITIAL_BOOTSTRAP_PASSWORD,
+        ),
       ).resolves.toBe(true);
+      await expect(
+        new PasswordService().verify(stored!.passwordHash, '1'),
+      ).resolves.toBe(false);
     });
 
-    it('authenticates the exact initial credential and rejects a wrong password without leaking it', async () => {
-      const accepted = await request(app!.getHttpServer())
+    it('authenticates the configured initial credential with mustChangePassword=true, blocks ordinary APIs until change-password, and rejects wrong passwords', async () => {
+      await request(app!.getHttpServer())
         .post('/api/v1/auth/login')
         .send({ username: 'مدیر', password: '1' })
-        .expect(200);
-      expect(accepted.body).toMatchObject({
-        id: userId,
-        username: BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME,
-        isActive: true,
-      });
-      expect(accepted.body).not.toHaveProperty('password');
-      expect(accepted.body).not.toHaveProperty('passwordHash');
+        .expect(401);
 
       const rejected = await request(app!.getHttpServer())
         .post('/api/v1/auth/login')
@@ -147,13 +153,73 @@ describe.skipIf(DATABASE_URL === undefined)(
         message: 'Invalid username or password.',
       });
       expect(JSON.stringify(rejected.body)).not.toContain('wrong');
+
+      const admin = request.agent(app!.getHttpServer());
+      const accepted = await admin
+        .post('/api/v1/auth/login')
+        .send({ username: 'مدیر', password: INITIAL_BOOTSTRAP_PASSWORD })
+        .expect(200);
+      expect(accepted.body).toMatchObject({
+        id: userId,
+        username: BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME,
+        isActive: true,
+        mustChangePassword: true,
+      });
+      expect(accepted.body).not.toHaveProperty('password');
+      expect(accepted.body).not.toHaveProperty('passwordHash');
+
+      const meBefore = await admin.get('/api/v1/auth/me').expect(200);
+      expect(meBefore.body).toMatchObject({
+        id: userId,
+        mustChangePassword: true,
+      });
+
+      // Ordinary protected APIs are blocked while mustChangePassword is true.
+      const blockedUsers = await admin.get('/api/v1/users').expect(403);
+      expect(blockedUsers.body).toMatchObject({
+        code: 'PermissionDenied',
+        details: { reason: 'password_change_required' },
+      });
+
+      const blockedPermissions = await admin
+        .get('/api/v1/permissions/effective')
+        .expect(403);
+      expect(blockedPermissions.body).toMatchObject({
+        code: 'PermissionDenied',
+        details: { reason: 'password_change_required' },
+      });
+
+      const changed = await admin
+        .post('/api/v1/auth/change-password')
+        .send({
+          currentPassword: INITIAL_BOOTSTRAP_PASSWORD,
+          newPassword: ROTATED_ADMIN_PASSWORD,
+        })
+        .expect(200);
+      expect(changed.body).toMatchObject({
+        id: userId,
+        username: BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME,
+        isActive: true,
+        mustChangePassword: false,
+      });
+
+      // Re-running bootstrap after password change neither resets the password
+      // nor restores mustChangePassword=true.
+      const rerun = await app!.get(SystemAdministratorBootstrapService).run();
+      expect(rerun.userCreated).toBe(false);
+
+      const meAfter = await admin.get('/api/v1/auth/me').expect(200);
+      expect(meAfter.body).toMatchObject({
+        id: userId,
+        mustChangePassword: false,
+      });
     });
 
     it('uses normal RBAC and organization membership across implemented domains', async () => {
       const admin = request.agent(app!.getHttpServer());
       await admin
         .post('/api/v1/auth/login')
-        .send({ username: 'مدیر', password: '1' })
+        .send({ username: 'مدیر', password: ROTATED_ADMIN_PASSWORD })
         .expect(200);
 
       const effective = await admin
@@ -353,6 +419,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             ...loadAppConfig(),
             databaseUrl: DATABASE_URL,
             deploymentOrganizationId: pin,
+            bootstrapSystemAdminPassword: INITIAL_BOOTSTRAP_PASSWORD,
           }),
       });
       app = built.app;
@@ -425,11 +492,28 @@ describe.skipIf(DATABASE_URL === undefined)(
       ).resolves.toBe(1);
     }, 120_000);
 
-    it('logs in with the initial credential and reaches organization-scoped APIs with no manual step', async () => {
+    it('logs in with the initial credential, enforces first-login password change, and reaches organization-scoped APIs with no manual step', async () => {
       const admin = request.agent(app!.getHttpServer());
-      await admin
+      const loginRes = await admin
         .post('/api/v1/auth/login')
-        .send({ username: 'مدیر', password: '1' })
+        .send({ username: 'مدیر', password: INITIAL_BOOTSTRAP_PASSWORD })
+        .expect(200);
+      expect(loginRes.body).toMatchObject({
+        id: userId,
+        mustChangePassword: true,
+      });
+
+      await admin
+        .get('/api/v1/inventory/items')
+        .query({ organizationId: pin })
+        .expect(403);
+
+      await admin
+        .post('/api/v1/auth/change-password')
+        .send({
+          currentPassword: INITIAL_BOOTSTRAP_PASSWORD,
+          newPassword: ROTATED_ADMIN_PASSWORD,
+        })
         .expect(200);
 
       for (const path of [

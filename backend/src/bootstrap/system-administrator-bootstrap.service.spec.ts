@@ -16,6 +16,7 @@ const INSTALLATION_ID = '01K6D3Q8GH0K97M5DFYBTZ8V7N';
 const USER_ID = '01K6D3Q8GH0K97M5DFYBTZ8V7P';
 const ROLE_ID = '01K6D3Q8GH0K97M5DFYBTZ8V7Q';
 const ORGANIZATION_ID = '01K6D3Q8GH0K97M5DFYBTZ8V7R';
+const VALID_INITIAL_PASSWORD = 'initial-bootstrap-secret-9';
 
 function storedUser(overrides: Partial<User> = {}): User {
   const now = new Date('2026-09-26T00:00:00.000Z');
@@ -24,6 +25,7 @@ function storedUser(overrides: Partial<User> = {}): User {
     username: BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME,
     passwordHash: '$argon2id$stored-hash',
     isActive: true,
+    mustChangePassword: false,
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
@@ -54,6 +56,7 @@ interface Harness {
 
 function harness(options: {
   existingUser?: User | null;
+  bootstrapSystemAdminPassword?: string | null;
   createUser?: ReturnType<typeof vi.fn>;
   rbac?: {
     roleCreated: boolean;
@@ -72,6 +75,7 @@ function harness(options: {
       id: USER_ID,
       username: BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME,
       isActive: true,
+      mustChangePassword: true,
       createdAt: '2026-09-26T00:00:00.000Z',
       updatedAt: '2026-09-26T00:00:00.000Z',
     });
@@ -95,6 +99,10 @@ function harness(options: {
     customerId: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
   });
+  const bootstrapSystemAdminPassword =
+    options.bootstrapSystemAdminPassword === undefined
+      ? VALID_INITIAL_PASSWORD
+      : options.bootstrapSystemAdminPassword;
   const service = new SystemAdministratorBootstrapService(
     {
       current: currentInstallation,
@@ -103,6 +111,7 @@ function harness(options: {
     { ensureForUser } as unknown as SystemAdministratorRbacService,
     { ensureDeploymentOrganization } as unknown as OrganizationsService,
     { grantMembership } as unknown as OrganizationMembershipsService,
+    { bootstrapSystemAdminPassword },
   );
   return {
     service,
@@ -115,7 +124,7 @@ function harness(options: {
 }
 
 describe('SystemAdministratorBootstrapService', () => {
-  it('creates the exact initial credential through Users and assigns the real RBAC role', async () => {
+  it('creates the initial administrator with the configured password, mustChangePassword=true, and the real RBAC role', async () => {
     const h = harness({});
 
     await expect(h.service.run()).resolves.toEqual({
@@ -133,9 +142,61 @@ describe('SystemAdministratorBootstrapService', () => {
     expect(h.createUser).toHaveBeenCalledOnce();
     expect(h.createUser).toHaveBeenCalledWith({
       username: 'مدیر',
-      password: '1',
+      password: VALID_INITIAL_PASSWORD,
+      mustChangePassword: true,
     });
     expect(h.ensureForUser).toHaveBeenCalledWith(USER_ID);
+  });
+
+  it('fails clearly when BOOTSTRAP_SYSTEM_ADMIN_PASSWORD is missing or invalid on a fresh installation', async () => {
+    const missing = harness({
+      existingUser: null,
+      bootstrapSystemAdminPassword: null,
+    });
+    await expect(missing.service.run()).rejects.toThrow(
+      /BOOTSTRAP_SYSTEM_ADMIN_PASSWORD must be explicitly configured/,
+    );
+    expect(missing.createUser).not.toHaveBeenCalled();
+
+    const weak = harness({
+      existingUser: null,
+      bootstrapSystemAdminPassword: '1',
+    });
+    await expect(weak.service.run()).rejects.toThrow(
+      /BOOTSTRAP_SYSTEM_ADMIN_PASSWORD must be between 8 and 128/,
+    );
+    expect(weak.createUser).not.toHaveBeenCalled();
+
+    const placeholder = harness({
+      existingUser: null,
+      bootstrapSystemAdminPassword: 'CHANGE_ME',
+    });
+    await expect(placeholder.service.run()).rejects.toThrow(
+      /must not use a placeholder value/,
+    );
+    expect(placeholder.createUser).not.toHaveBeenCalled();
+  });
+
+  it('succeeds on an already-provisioned installation even when BOOTSTRAP_SYSTEM_ADMIN_PASSWORD is unset', async () => {
+    const h = harness({
+      existingUser: storedUser({ mustChangePassword: false }),
+      bootstrapSystemAdminPassword: null,
+      rbac: { roleCreated: false, userRoleCreated: false },
+      organization: { organization: pinnedOrganization(), created: false },
+      grantMembership: vi
+        .fn()
+        .mockRejectedValue(
+          AppException.conflict(
+            'That user is already a member of this organization.',
+          ),
+        ),
+    });
+
+    await expect(h.service.run()).resolves.toMatchObject({
+      userId: USER_ID,
+      userCreated: false,
+    });
+    expect(h.createUser).not.toHaveBeenCalled();
   });
 
   it('is idempotent and never resets an existing bootstrap user password', async () => {
@@ -267,6 +328,7 @@ describe('SystemAdministratorBootstrapService', () => {
         ensureDeploymentOrganization: vi.fn().mockResolvedValue(null),
       } as unknown as OrganizationsService,
       { grantMembership: vi.fn() } as unknown as OrganizationMembershipsService,
+      { bootstrapSystemAdminPassword: VALID_INITIAL_PASSWORD },
     );
 
     await expect(service.run()).resolves.toMatchObject({

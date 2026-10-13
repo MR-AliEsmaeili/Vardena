@@ -97,6 +97,12 @@ export class AuthorizationService {
     if (principal === undefined) {
       throw AppException.unauthorized('Authentication is required.');
     }
+    if (principal.mustChangePassword === true) {
+      throw AppException.forbidden(
+        'Password change is required before accessing this resource.',
+        { reason: 'password_change_required' },
+      );
+    }
     const allowed = await this.hasAllPermissions(principal.userId, codes);
     if (!allowed) {
       this.logger.warn(
@@ -153,6 +159,12 @@ export class AuthorizationService {
       // re-checked at every use.
       throw AppException.unauthorized(
         'The Accounting posting operation requires an authenticated initiating user.',
+      );
+    }
+    if (principal.mustChangePassword === true) {
+      throw AppException.forbidden(
+        'Password change is required before accessing this resource.',
+        { reason: 'password_change_required' },
       );
     }
     const structural = checkServiceAuthorityStructure({

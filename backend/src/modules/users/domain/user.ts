@@ -27,6 +27,8 @@ export interface User {
   passwordHash: string;
   /** Whether the user may authenticate; disabled users are rejected at login. */
   isActive: boolean;
+  /** Whether the user must change their password before accessing normal functionality. */
+  mustChangePassword: boolean;
   /** Audit columns (AR-12). */
   createdAt: Date;
   updatedAt: Date;
@@ -42,17 +44,27 @@ export interface UserDto {
   id: string;
   username: string;
   isActive: boolean;
+  mustChangePassword: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
 export function toUserDto(
-  user: Pick<User, 'id' | 'username' | 'isActive' | 'createdAt' | 'updatedAt'>,
+  user: Pick<
+    User,
+    | 'id'
+    | 'username'
+    | 'isActive'
+    | 'mustChangePassword'
+    | 'createdAt'
+    | 'updatedAt'
+  >,
 ): UserDto {
   return {
     id: user.id,
     username: user.username,
     isActive: user.isActive,
+    mustChangePassword: user.mustChangePassword,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
   };

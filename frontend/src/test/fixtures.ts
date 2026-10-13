@@ -28,8 +28,15 @@ export const testUser: AuthenticatedUser = {
   id: 'usr-1',
   username: 'accountant',
   isActive: true,
+  mustChangePassword: false,
   createdAt: '2026-01-01T08:00:00.000Z',
   updatedAt: '2026-01-01T08:00:00.000Z',
+};
+
+export const testForcedPasswordChangeUser: AuthenticatedUser = {
+  ...testUser,
+  username: 'مدیر',
+  mustChangePassword: true,
 };
 
 export const allAccountingPermissions: string[] = [

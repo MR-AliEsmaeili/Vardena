@@ -15,6 +15,7 @@ import { AccountsPage } from '@/features/accounting/master-data/accounts-page';
 import { FinancialAreasPage } from '@/features/accounting/master-data/financial-areas-page';
 import { FiscalYearsPage } from '@/features/accounting/master-data/fiscal-years-page';
 import { TrialBalancePage } from '@/features/accounting/trial-balance/trial-balance-page';
+import { ChangePasswordPage } from '@/features/auth/change-password-page';
 import { LoginPage } from '@/features/auth/login-page';
 import { InventoryDocumentDetailPage } from '@/features/inventory/documents/inventory-document-detail-page';
 import { InventoryDocumentFormPage } from '@/features/inventory/documents/inventory-document-form-page';
@@ -70,6 +71,7 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/change-password" element={<ChangePasswordPage />} />
 
       <Route element={<RequireAuth />}>
         <Route path="/app" element={<AppShell />}>

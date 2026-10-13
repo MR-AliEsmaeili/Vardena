@@ -96,10 +96,13 @@ rules; it defines the _mechanism_, vertical modules provide the _content_
 - **Owns:** `identity.sessions` (opaque tokens, hashed at rest, expiry, last
   activity, device/IP metadata). Password hashes live on `users.users` (owned by
   Users); Identity reads them via the Users module's public service.
-- **API (implemented):** login, logout and current session. The Users API owns
-  the implemented administrator password-reset operation; self-service password
-  change, forced-change-on-first-login state, and session list/revoke endpoints
-  are not implemented.
+- **API (implemented):** login (`POST /auth/login`), logout (`POST /auth/logout`),
+  current session (`GET /auth/me`), and self-service password change
+  (`POST /auth/change-password`). When a user's `mustChangePassword` flag is
+  `true`, `AuthGuard` and `AuthorizationService` block all other protected
+  endpoints until `POST /auth/change-password` succeeds. The Users API owns the
+  administrator password-reset operation; session list/revoke endpoints are not
+  implemented.
 - **Publishes:** `UserSession.Created`, `UserSession.Revoked`, `Login.Failed`.
 - **Not responsible for:** user records/profiles (Users), role/permission checks
   (RBAC), audit storage (Audit — it emits events that Audit consumes).
@@ -108,9 +111,10 @@ rules; it defines the _mechanism_, vertical modules provide the _content_
 
 ## Users (v1 core — implemented)
 
-- **Owns:** `users.users` (username (unique), password hash, active flag, audit
-  columns, `deleted_at` reserved for soft delete). Profile/email/display-name
-  fields are later Users sessions; MFA hooks are reserved (OQ-06).
+- **Owns:** `users.users` (username (unique), password hash, active flag,
+  `must_change_password` flag, audit columns, `deleted_at` reserved for soft
+  delete). Profile/email/display-name fields are later Users sessions; MFA hooks
+  are reserved (OQ-06).
 - **API (implemented):** `GET /users` (paginated, `isActive` filter), `GET
 /users/{id}`, `POST /users`, `PATCH /users/{id}` (username), `POST
 /users/{id}/enable|disable`, `POST /users/{id}/password-reset` (admin reset,
@@ -119,17 +123,18 @@ rules; it defines the _mechanism_, vertical modules provide the _content_
 Disable|ResetPassword`. There is no delete permission because there is no
   delete endpoint.
 - **Publishes:** `User.Created`, `User.Updated`, `User.Enabled`, `User.Disabled`,
-  `User.PasswordReset` (security-relevant lifecycle; the password itself is
-  never in the payload).
+  `User.PasswordReset`, `User.PasswordChanged` (security-relevant lifecycle; the
+  password itself is never in the payload).
 - **Depends on:** RBAC (role assignments are managed by the RBAC module against
   user ids; administration endpoints require the permissions above), Identity
   (deactivated users' sessions are revoked via event).
 - **Not responsible for:** login/session mechanics (Identity), permissions (RBAC).
-- **Responses:** safe DTOs only (id, username, isActive, createdAt, updatedAt) —
-  the password hash never leaves the module (AR-24).
+- **Responses:** safe DTOs only (id, username, isActive, mustChangePassword,
+  createdAt, updatedAt) — the password hash never leaves the module (AR-24).
 - **Installation bootstrap:** the post-migration command creates `مدیر` through
-  this module's normal user model and Argon2id `PasswordService`; plaintext is
-  never stored or returned. An existing account is not password-reset on a
+  this module's normal user model and Argon2id `PasswordService` using
+  `BOOTSTRAP_SYSTEM_ADMIN_PASSWORD` and `mustChangePassword = true`; plaintext
+  is never stored or returned. An existing account is not password-reset on a
   later bootstrap run.
 
 ## Organization (implemented — structure & party master data)

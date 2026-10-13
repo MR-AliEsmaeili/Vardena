@@ -172,11 +172,21 @@ idempotent System Administrator bootstrap, and then starts `api` and `worker`.
 The API is available at `http://localhost:3000`; `/api/v1/health/live` is the
 liveness probe and `/api/docs` is the local Swagger UI.
 
-Initial login: username `مدیر`, password `1`. This deliberately weak installation
-credential is hashed with the existing Argon2id mechanism before storage and is
-never printed by the bootstrap command. Change it immediately after first login
-with `POST /api/v1/users/{id}/password-reset`; all sessions are then revoked.
-Forced password change is not implemented, so this operational step is required.
+Initial login: username `مدیر`, initial password from
+`BOOTSTRAP_SYSTEM_ADMIN_PASSWORD` (8–128 characters; required whenever the
+bootstrap command creates a new `مدیر` record, hashed with Argon2id before
+storage, and never printed or returned). A newly bootstrapped `مدیر` account is
+created with `mustChangePassword = true`. While `mustChangePassword` is `true`,
+the authentication/authorization pipeline permits only `GET /api/v1/auth/me`,
+`POST /api/v1/auth/change-password`, and `POST /api/v1/auth/logout`, blocking
+all other protected endpoints (`403 PermissionDenied` with
+`reason: "password_change_required"`). Changing the password via
+`POST /api/v1/auth/change-password` atomically updates the Argon2id hash, clears
+`mustChangePassword`, and revokes all other sessions for the user while keeping
+the current session active. Re-running `bootstrap:system-admin` on an already
+provisioned installation is idempotent: it does not require
+`BOOTSTRAP_SYSTEM_ADMIN_PASSWORD`, does not overwrite the existing password
+hash, and does not reset `mustChangePassword`.
 Organization access depends on the deployment shape (ADR-0025). When
 `DEPLOYMENT_ORGANIZATION_ID` is set, the bootstrap command provisions that exact
 organization (code `MAIN`, rename it afterwards through the ordinary

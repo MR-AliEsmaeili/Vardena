@@ -209,6 +209,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/change-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change the authenticated user password and clear any mandatory password-change restriction. */
+        post: operations["AuthController_changePassword_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users": {
         parameters: {
             query?: never;
@@ -3782,10 +3799,19 @@ export interface components {
             id: string;
             username: string;
             isActive: boolean;
+            /**
+             * @description True when the user must change their password before accessing normal application functionality.
+             * @example false
+             */
+            mustChangePassword: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        ChangePasswordRequestDto: {
+            currentPassword: string;
+            newPassword: string;
         };
         UserResponseDto: {
             /** Format: ulid */
@@ -3797,6 +3823,11 @@ export interface components {
              * @example true
              */
             isActive: boolean;
+            /**
+             * @description True when the user must change their password before accessing normal application functionality.
+             * @example false
+             */
+            mustChangePassword: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -8792,6 +8823,43 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthenticatedUserDto"];
                 };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_changePassword_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequestDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthenticatedUserDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Not authenticated. */
             401: {

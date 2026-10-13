@@ -64,6 +64,12 @@ export class AuthorizationGuard implements CanActivate {
     if (principal === undefined) {
       throw AppException.unauthorized('Authentication is required.');
     }
+    if (principal.mustChangePassword === true) {
+      throw AppException.forbidden(
+        'Password change is required before accessing this resource.',
+        { reason: 'password_change_required' },
+      );
+    }
 
     const allowed = await this.authorization.hasAllPermissions(
       principal.userId,

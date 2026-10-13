@@ -49,9 +49,16 @@ development defaults. The API is available at <http://localhost:3000>, the
 liveness probe is at <http://localhost:3000/api/v1/health/live>, and Swagger is
 enabled at <http://localhost:3000/api/docs>.
 
-Initial login is `مدیر` / `1`. The password is stored only as an Argon2id hash;
-change it immediately through the existing password-reset API because forced
-password change is not implemented. The bootstrap grants no scope bypass: with
+Initial login is `مدیر` with the initial password configured via
+`BOOTSTRAP_SYSTEM_ADMIN_PASSWORD` (required when provisioning a new `مدیر`
+account; Docker Compose supplies a local-only placeholder if unset in `.env`,
+which must be overridden outside local development). The password is stored only
+as an Argon2id hash and the newly provisioned administrator is flagged with
+`mustChangePassword = true`: on first login, all protected business APIs are
+blocked until the password is changed via `POST /api/v1/auth/change-password`
+(or the forced password-change screen in the UI). Subsequent bootstrap runs are
+idempotent and neither require `BOOTSTRAP_SYSTEM_ADMIN_PASSWORD` nor overwrite
+an existing `مدیر` password. The bootstrap grants no scope bypass: with
 `DEPLOYMENT_ORGANIZATION_ID` configured it provisions that single organization
 and `مدیر`'s ordinary membership, so organization-scoped APIs work at first
 login; without it, create the initial organization and grant `مدیر` its ordinary

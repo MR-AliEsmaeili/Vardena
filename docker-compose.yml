@@ -43,6 +43,9 @@ services:
       # command below also provisions that organization and the administrator's
       # ordinary membership of it.
       DEPLOYMENT_ORGANIZATION_ID: ${DEPLOYMENT_ORGANIZATION_ID:-}
+      # Required on a fresh bootstrap when `مدیر` does not exist yet; may be
+      # omitted on subsequent starts of an already-provisioned installation.
+      BOOTSTRAP_SYSTEM_ADMIN_PASSWORD: ${BOOTSTRAP_SYSTEM_ADMIN_PASSWORD:-}
       CHECKPOINT_DISABLE: "1"
       NPM_CONFIG_FETCH_RETRIES: "5"
       NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "15000"

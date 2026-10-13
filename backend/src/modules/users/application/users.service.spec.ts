@@ -16,6 +16,7 @@ import {
   USER_CREATED_EVENT,
   USER_DISABLED_EVENT,
   USER_ENABLED_EVENT,
+  USER_PASSWORD_CHANGED_EVENT,
   USER_PASSWORD_RESET_EVENT,
   USER_UPDATED_EVENT,
 } from '../domain/user.events.js';
@@ -48,6 +49,7 @@ async function buildFixture(
     USER_DISABLED_EVENT,
     USER_ENABLED_EVENT,
     USER_PASSWORD_RESET_EVENT,
+    USER_PASSWORD_CHANGED_EVENT,
   ]) {
     bus.on(type, (event) => {
       events.push(event);
@@ -101,17 +103,30 @@ describe('UsersService (administration)', () => {
 
     expect(created.username).toBe('alice');
     expect(created.isActive).toBe(true);
+    expect(created.mustChangePassword).toBe(false);
     // The safe DTO has no hash, and the hash is not the plaintext.
     expect(created).not.toHaveProperty('passwordHash');
     const stored = stores.raw.users.raw(created.id);
     expect(stored?.passwordHash).not.toBe('correct horse battery staple');
     expect(password.isArgon2idHash(stored?.passwordHash ?? '')).toBe(true);
+    expect(stored?.mustChangePassword).toBe(false);
 
     expect(events.map((event) => event.type)).toEqual([USER_CREATED_EVENT]);
     expect(events[0]?.payload).toEqual({
       userId: created.id,
       username: 'alice',
     });
+  });
+
+  it('persists mustChangePassword=true when creating a forced-password-change user', async () => {
+    const { service, stores } = await buildFixture();
+    const created = await service.createUser({
+      username: 'bootstrap-admin',
+      password: 'initial-password-123',
+      mustChangePassword: true,
+    });
+    expect(created.mustChangePassword).toBe(true);
+    expect(stores.raw.users.raw(created.id)?.mustChangePassword).toBe(true);
   });
 
   it('rejects a duplicate username with a conflict', async () => {
@@ -279,6 +294,91 @@ describe('UsersService (administration)', () => {
     await expect(
       service.resetPassword('missing', 'whatever'),
     ).rejects.toMatchObject({ code: 'EntityNotFound' });
+  });
+
+  it('changeOwnPassword verifies currentPassword, enforces newPassword policy, hashes with argon2id, and clears mustChangePassword', async () => {
+    const { service, password, events, stores } = await buildFixture();
+    const created = await service.createUser({
+      username: 'admin-user',
+      password: 'initial-password-123',
+      mustChangePassword: true,
+    });
+    const beforeHash = stores.raw.users.raw(created.id)?.passwordHash ?? '';
+
+    const updated = await service.changeOwnPassword(created.id, {
+      currentPassword: 'initial-password-123',
+      newPassword: 'rotated-strong-password-456',
+    });
+
+    expect(updated.mustChangePassword).toBe(false);
+    expect(stores.raw.users.raw(created.id)?.mustChangePassword).toBe(false);
+    const afterHash = stores.raw.users.raw(created.id)?.passwordHash ?? '';
+    expect(afterHash).not.toBe(beforeHash);
+    expect(afterHash).not.toBe('rotated-strong-password-456');
+    expect(password.isArgon2idHash(afterHash)).toBe(true);
+    await expect(
+      password.verify(afterHash, 'rotated-strong-password-456'),
+    ).resolves.toBe(true);
+    await expect(
+      password.verify(afterHash, 'initial-password-123'),
+    ).resolves.toBe(false);
+    expect(events.map((event) => event.type)).toContain(
+      USER_PASSWORD_CHANGED_EVENT,
+    );
+  });
+
+  it('changeOwnPassword rejects wrong currentPassword, weak/blank/identical newPassword, and keep mustChangePassword=true on failure', async () => {
+    const { service, stores } = await buildFixture();
+    const created = await service.createUser({
+      username: 'admin-user',
+      password: 'initial-password-123',
+      mustChangePassword: true,
+    });
+    const initialHash = stores.raw.users.raw(created.id)?.passwordHash ?? '';
+
+    await expect(
+      service.changeOwnPassword(created.id, {
+        currentPassword: 'wrong-password',
+        newPassword: 'rotated-strong-password-456',
+      }),
+    ).rejects.toMatchObject({
+      code: 'ValidationFailed',
+      details: [{ field: 'currentPassword', code: 'invalidCurrentPassword' }],
+    });
+
+    await expect(
+      service.changeOwnPassword(created.id, {
+        currentPassword: 'initial-password-123',
+        newPassword: 'short',
+      }),
+    ).rejects.toMatchObject({
+      code: 'ValidationFailed',
+      details: [{ field: 'newPassword', code: 'minLength' }],
+    });
+
+    await expect(
+      service.changeOwnPassword(created.id, {
+        currentPassword: 'initial-password-123',
+        newPassword: '        ',
+      }),
+    ).rejects.toMatchObject({
+      code: 'ValidationFailed',
+      details: [{ field: 'newPassword', code: 'minLength' }],
+    });
+
+    await expect(
+      service.changeOwnPassword(created.id, {
+        currentPassword: 'initial-password-123',
+        newPassword: 'initial-password-123',
+      }),
+    ).rejects.toMatchObject({
+      code: 'ValidationFailed',
+      details: [{ field: 'newPassword', code: 'mustDifferFromCurrent' }],
+    });
+
+    // Neither passwordHash nor mustChangePassword changed on rejected attempts.
+    expect(stores.raw.users.raw(created.id)?.passwordHash).toBe(initialHash);
+    expect(stores.raw.users.raw(created.id)?.mustChangePassword).toBe(true);
   });
 
   it('verifies credentials but never leaks the failure reason through the service result shape used by login', async () => {

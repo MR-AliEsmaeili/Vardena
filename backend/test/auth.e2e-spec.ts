@@ -6,12 +6,20 @@ import { generateId } from '../src/kernel/ids/ulid.js';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
 import type { Session } from '../src/modules/identity/domain/session.js';
 import { SessionsRepository } from '../src/modules/identity/data/sessions.repository.js';
+import { PermissionsRepository } from '../src/modules/rbac/data/permissions.repository.js';
+import { RolesRepository } from '../src/modules/rbac/data/roles.repository.js';
+import { UserRolesRepository } from '../src/modules/rbac/data/user-roles.repository.js';
+import { PermissionRegistry } from '../src/modules/rbac/application/permission-registry.js';
+import { RolesService } from '../src/modules/rbac/application/roles.service.js';
+import { UserRolesService } from '../src/modules/rbac/application/user-roles.service.js';
 import type { User } from '../src/modules/users/domain/user.js';
+import { UsersRepository } from '../src/modules/users/data/users.repository.js';
 import {
   UsersService,
   type VerifyCredentialsResult,
 } from '../src/modules/users/application/users.service.js';
 import { PasswordService } from '../src/modules/users/domain/password.service.js';
+import { createInMemoryStores } from './support/in-memory-repositories.js';
 import { createTestApp } from './support/test-app.js';
 
 /**
@@ -196,6 +204,280 @@ describe('Auth (e2e)', () => {
     expect(paths['/api/v1/auth/login']).toBeDefined();
     expect(paths['/api/v1/auth/logout']).toBeDefined();
     expect(paths['/api/v1/auth/me']).toBeDefined();
+    expect(paths['/api/v1/auth/change-password']).toBeDefined();
+  });
+});
+
+describe('Auth — mandatory password change & self-service change-password (e2e)', () => {
+  let app: INestApplication;
+  let users: UsersService;
+  let roles: RolesService;
+  let userRoles: UserRolesService;
+
+  beforeAll(async () => {
+    const stores = createInMemoryStores();
+    const rebuilt = await createTestApp({
+      override: (builder) =>
+        builder
+          .overrideProvider(PrismaService)
+          .useValue(buildPrismaStub())
+          .overrideProvider(UsersRepository)
+          .useValue(stores.users)
+          .overrideProvider(SessionsRepository)
+          .useValue(stores.sessions)
+          .overrideProvider(PermissionsRepository)
+          .useValue(stores.permissions)
+          .overrideProvider(RolesRepository)
+          .useValue(stores.roles)
+          .overrideProvider(UserRolesRepository)
+          .useValue(stores.userRoles),
+    });
+    app = rebuilt.app;
+    users = app.get(UsersService);
+    roles = app.get(RolesService);
+    userRoles = app.get(UserRolesService);
+
+    const admin = await users.createUser({
+      username: 'bootstrap-admin',
+      password: 'initial-password-123',
+      mustChangePassword: true,
+    });
+    const allCodes = app
+      .get(PermissionRegistry)
+      .all()
+      .map((definition) => definition.code);
+    const adminRole = await roles.createRole({
+      name: 'SystemAdminTest',
+      description: 'Test admin role',
+      permissionCodes: allCodes,
+    });
+    await userRoles.assignRoleToUser(adminRole.id, admin.id);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('flags forced-password-change users on login and /auth/me, blocks protected APIs with 403, and unlocks after POST /api/v1/auth/change-password', async () => {
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        username: 'bootstrap-admin',
+        password: 'initial-password-123',
+      })
+      .expect(200);
+
+    expect(loginRes.body).toMatchObject({
+      username: 'bootstrap-admin',
+      isActive: true,
+      mustChangePassword: true,
+    });
+    const cookie = readSetCookies(loginRes)[0]!;
+
+    // Allowed while restricted: GET /api/v1/auth/me
+    const meBefore = await request(app.getHttpServer())
+      .get('/api/v1/auth/me')
+      .set('Cookie', cookie)
+      .expect(200);
+    expect(meBefore.body).toMatchObject({
+      username: 'bootstrap-admin',
+      mustChangePassword: true,
+    });
+
+    // Blocked while restricted: AuthGuard-only bootstrap endpoints AND
+    // AuthorizationGuard-protected business endpoints, even when the user
+    // holds all RBAC permissions.
+    const blockedPermissions = await request(app.getHttpServer())
+      .get('/api/v1/permissions/effective')
+      .set('Cookie', cookie)
+      .expect(403);
+    expect(blockedPermissions.body).toMatchObject({
+      code: 'PermissionDenied',
+      details: { reason: 'password_change_required' },
+    });
+
+    const blockedLicense = await request(app.getHttpServer())
+      .get('/api/v1/license/current')
+      .set('Cookie', cookie)
+      .expect(403);
+    expect(blockedLicense.body).toMatchObject({
+      code: 'PermissionDenied',
+      details: { reason: 'password_change_required' },
+    });
+
+    const blockedUsers = await request(app.getHttpServer())
+      .get('/api/v1/users')
+      .set('Cookie', cookie)
+      .expect(403);
+    expect(blockedUsers.body).toMatchObject({
+      code: 'PermissionDenied',
+      details: { reason: 'password_change_required' },
+    });
+
+    // Rejected password-change attempts keep mustChangePassword=true and
+    // keep the session alive.
+    const wrongCurrent = await request(app.getHttpServer())
+      .post('/api/v1/auth/change-password')
+      .set('Cookie', cookie)
+      .send({
+        currentPassword: 'wrong-password',
+        newPassword: 'rotated-strong-password-456',
+      })
+      .expect(400);
+    expect(wrongCurrent.body).toMatchObject({
+      code: 'ValidationFailed',
+      details: [{ field: 'currentPassword', code: 'invalidCurrentPassword' }],
+    });
+
+    const samePassword = await request(app.getHttpServer())
+      .post('/api/v1/auth/change-password')
+      .set('Cookie', cookie)
+      .send({
+        currentPassword: 'initial-password-123',
+        newPassword: 'initial-password-123',
+      })
+      .expect(400);
+    expect(samePassword.body).toMatchObject({
+      code: 'ValidationFailed',
+      details: [{ field: 'newPassword', code: 'mustDifferFromCurrent' }],
+    });
+
+    const tooShort = await request(app.getHttpServer())
+      .post('/api/v1/auth/change-password')
+      .set('Cookie', cookie)
+      .send({
+        currentPassword: 'initial-password-123',
+        newPassword: 'short',
+      })
+      .expect(400);
+    expect(tooShort.body).toMatchObject({
+      code: 'ValidationFailed',
+    });
+
+    // Reject client-supplied userId (forbidNonWhitelisted).
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/change-password')
+      .set('Cookie', cookie)
+      .send({
+        userId: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+        currentPassword: 'initial-password-123',
+        newPassword: 'rotated-strong-password-456',
+      })
+      .expect(400);
+
+    // Start a second session for the same user to verify other-session revocation.
+    const secondLogin = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        username: 'bootstrap-admin',
+        password: 'initial-password-123',
+      })
+      .expect(200);
+    const secondCookie = readSetCookies(secondLogin)[0]!;
+
+    // Valid self-service password change clears mustChangePassword and keeps
+    // the current session active while revoking the second session.
+    const changedRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/change-password')
+      .set('Cookie', cookie)
+      .send({
+        currentPassword: 'initial-password-123',
+        newPassword: 'rotated-strong-password-456',
+      })
+      .expect(200);
+
+    expect(changedRes.body).toMatchObject({
+      username: 'bootstrap-admin',
+      isActive: true,
+      mustChangePassword: false,
+    });
+    expect(changedRes.body).not.toHaveProperty('passwordHash');
+
+    // Current session immediately reflects mustChangePassword=false on /auth/me.
+    const meAfter = await request(app.getHttpServer())
+      .get('/api/v1/auth/me')
+      .set('Cookie', cookie)
+      .expect(200);
+    expect(meAfter.body).toMatchObject({
+      username: 'bootstrap-admin',
+      mustChangePassword: false,
+    });
+
+    // Other session was revoked on password change.
+    await request(app.getHttpServer())
+      .get('/api/v1/auth/me')
+      .set('Cookie', secondCookie)
+      .expect(401);
+
+    // Protected endpoints are immediately unlocked for the same session.
+    await request(app.getHttpServer())
+      .get('/api/v1/permissions/effective')
+      .set('Cookie', cookie)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get('/api/v1/license/current')
+      .set('Cookie', cookie)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get('/api/v1/users')
+      .set('Cookie', cookie)
+      .expect(200);
+
+    // Old password no longer authenticates; new password authenticates with mustChangePassword=false.
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        username: 'bootstrap-admin',
+        password: 'initial-password-123',
+      })
+      .expect(401);
+
+    const relogin = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        username: 'bootstrap-admin',
+        password: 'rotated-strong-password-456',
+      })
+      .expect(200);
+    expect(relogin.body).toMatchObject({
+      username: 'bootstrap-admin',
+      mustChangePassword: false,
+    });
+  });
+
+  it('allows a restricted user to log out while mustChangePassword=true and rejects unauthenticated password changes with 401', async () => {
+    await users.createUser({
+      username: 'restricted-logout',
+      password: 'initial-password-123',
+      mustChangePassword: true,
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/change-password')
+      .send({
+        currentPassword: 'initial-password-123',
+        newPassword: 'rotated-strong-password-456',
+      })
+      .expect(401);
+
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        username: 'restricted-logout',
+        password: 'initial-password-123',
+      })
+      .expect(200);
+    const cookie = readSetCookies(loginRes)[0]!;
+
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/logout')
+      .set('Cookie', cookie)
+      .expect(204);
+
+    await request(app.getHttpServer())
+      .get('/api/v1/auth/me')
+      .set('Cookie', cookie)
+      .expect(401);
   });
 });
 
@@ -267,6 +549,7 @@ function buildInMemoryUsers(): UsersService {
       username: string;
       password: string;
       isActive?: boolean;
+      mustChangePassword?: boolean;
     }) {
       const username = params.username.trim();
       if (byUsername.has(username)) {
@@ -280,6 +563,7 @@ function buildInMemoryUsers(): UsersService {
         username,
         passwordHash: await passwordService.hash(params.password),
         isActive: params.isActive ?? true,
+        mustChangePassword: params.mustChangePassword ?? false,
         createdAt: now,
         updatedAt: now,
         deletedAt: null,
@@ -290,6 +574,7 @@ function buildInMemoryUsers(): UsersService {
         id: user.id,
         username: user.username,
         isActive: user.isActive,
+        mustChangePassword: user.mustChangePassword,
         createdAt: user.createdAt.toISOString(),
         updatedAt: user.updatedAt.toISOString(),
       };
@@ -299,6 +584,57 @@ function buildInMemoryUsers(): UsersService {
       if (u === undefined) throw AppException.notFound('User', userId);
       u.isActive = false;
       u.updatedAt = new Date();
+    },
+    async changeOwnPassword(
+      userId: string,
+      params: { currentPassword: string; newPassword: string },
+    ) {
+      const u = store.get(userId);
+      if (u === undefined || !u.isActive || u.deletedAt !== null) {
+        throw AppException.unauthorized('Authentication is required.');
+      }
+      const matches = await passwordService.verify(
+        u.passwordHash,
+        params.currentPassword,
+      );
+      if (!matches) {
+        throw AppException.validation([
+          {
+            field: 'currentPassword',
+            message: 'Current password is incorrect.',
+            code: 'invalidCurrentPassword',
+          },
+        ]);
+      }
+      if (
+        params.newPassword.length < 8 ||
+        params.newPassword.trim().length === 0
+      ) {
+        throw AppException.validation([
+          {
+            field: 'newPassword',
+            message: 'New password must be at least 8 characters.',
+            code: 'minLength',
+          },
+        ]);
+      }
+      if (
+        params.newPassword === params.currentPassword ||
+        (await passwordService.verify(u.passwordHash, params.newPassword))
+      ) {
+        throw AppException.validation([
+          {
+            field: 'newPassword',
+            message:
+              'New password must be different from the current password.',
+            code: 'mustDifferFromCurrent',
+          },
+        ]);
+      }
+      u.passwordHash = await passwordService.hash(params.newPassword);
+      u.mustChangePassword = false;
+      u.updatedAt = new Date();
+      return u;
     },
   } as unknown as UsersService;
 }

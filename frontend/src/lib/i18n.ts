@@ -48,6 +48,26 @@ export const fa = {
     passwordRequired: 'گذرواژه الزامی است.',
     checkingSession: 'در حال بررسی نشست…',
     signedInAs: 'کاربر جاری',
+    changePasswordTitle: 'تغییر اجباری گذرواژه',
+    changePasswordSubtitle:
+      'برای ادامه استفاده از سامانه، باید گذرواژه حساب کاربری خود را تغییر دهید.',
+    currentPassword: 'گذرواژه فعلی',
+    newPassword: 'گذرواژه جدید',
+    confirmPassword: 'تکرار گذرواژه جدید',
+    passwordLengthHint:
+      'گذرواژه جدید باید حداقل ۸ نویسه و متفاوت از گذرواژه فعلی باشد.',
+    submitChangePassword: 'ثبت گذرواژه جدید و ادامه',
+    changingPassword: 'در حال تغییر گذرواژه…',
+    changePasswordFailedTitle: 'تغییر گذرواژه انجام نشد',
+    currentPasswordRequired: 'وارد کردن گذرواژه فعلی الزامی است.',
+    currentPasswordInvalid: 'گذرواژه فعلی نادرست است.',
+    newPasswordRequired: 'وارد کردن گذرواژه جدید الزامی است.',
+    newPasswordMinLength: 'گذرواژه جدید باید حداقل ۸ نویسه باشد.',
+    newPasswordMaxLength: 'گذرواژه جدید نباید بیش از ۱۲۸ نویسه باشد.',
+    newPasswordMustDiffer: 'گذرواژه جدید باید با گذرواژه فعلی متفاوت باشد.',
+    confirmPasswordRequired: 'تکرار گذرواژه جدید الزامی است.',
+    passwordConfirmationMismatch:
+      'تکرار گذرواژه جدید با گذرواژه جدید مطابقت ندارد.',
   },
   permissions: {
     forbiddenTitle: 'دسترسی ندارید',
