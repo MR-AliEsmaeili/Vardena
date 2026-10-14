@@ -1,6 +1,7 @@
 import { apiGet, apiPost } from './client';
 import type {
   AuthenticatedUser,
+  ChangePasswordRequest,
   EffectivePermissions,
   LoginRequest,
 } from './contracts';
@@ -23,6 +24,15 @@ export function login(body: LoginRequest): Promise<AuthenticatedUser> {
 
 export function logout(): Promise<void> {
   return apiPost<void>('/auth/logout');
+}
+
+export function changePassword(
+  body: ChangePasswordRequest,
+): Promise<AuthenticatedUser> {
+  return apiPost<AuthenticatedUser, ChangePasswordRequest>(
+    '/auth/change-password',
+    body,
+  );
 }
 
 export function getCurrentUser(

@@ -30,6 +30,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     username: 'alice',
     passwordHash: 'hash',
     isActive: true,
+    mustChangePassword: false,
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
@@ -99,6 +100,7 @@ describe('AuthenticationService', () => {
       findByUsername: vi.fn(),
       createUser: vi.fn(),
       disableUser: vi.fn(),
+      changeOwnPassword: vi.fn(),
     } as unknown as UsersService;
     events = {
       on: vi.fn(),
@@ -306,6 +308,65 @@ describe('AuthenticationService', () => {
         session.id,
         expect.objectContaining({ lastSeenAt: expect.any(Date) }),
       );
+    });
+  });
+
+  describe('changePassword', () => {
+    it('changes the authenticated user password, clears mustChangePassword, and revokes other sessions while keeping current session active', async () => {
+      const updatedUser = makeUser({ mustChangePassword: false });
+      vi.mocked(users.changeOwnPassword).mockResolvedValue(updatedUser);
+      vi.mocked(sessions.revokeAllForUser).mockResolvedValue(2);
+
+      const dto = await runWithRequestContext(
+        {
+          correlationId: '01ARZ3NDEKTSV4RRFFQ69G5FAX',
+          principal: {
+            userId: updatedUser.id,
+            sessionId: '01ARZ3NDEKTSV4RRFFQ69G5FAW',
+            mustChangePassword: true,
+          },
+        },
+        () =>
+          service.changePassword({
+            currentPassword: 'old-password',
+            newPassword: 'new-strong-password',
+          }),
+      );
+
+      expect(dto.id).toBe(updatedUser.id);
+      expect(dto.mustChangePassword).toBe(false);
+      expect(users.changeOwnPassword).toHaveBeenCalledWith(updatedUser.id, {
+        currentPassword: 'old-password',
+        newPassword: 'new-strong-password',
+      });
+      expect(sessions.revokeAllForUser).toHaveBeenCalledWith(
+        updatedUser.id,
+        '01ARZ3NDEKTSV4RRFFQ69G5FAW',
+        expect.any(Date),
+      );
+      expect(events.publish).toHaveBeenCalledTimes(1);
+      expect(events.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'UserSession.Revoked',
+          payload: expect.objectContaining({
+            sessionId: '*',
+            userId: updatedUser.id,
+            reason: 'password_change',
+          }),
+        }),
+      );
+    });
+
+    it('rejects with Unauthorized when no principal is present in request context', async () => {
+      await expect(
+        inContext(() =>
+          service.changePassword({
+            currentPassword: 'old-password',
+            newPassword: 'new-strong-password',
+          }),
+        ),
+      ).rejects.toMatchObject({ code: 'Unauthorized' });
+      expect(users.changeOwnPassword).not.toHaveBeenCalled();
     });
   });
 });

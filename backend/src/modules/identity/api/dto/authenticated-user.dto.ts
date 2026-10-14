@@ -15,6 +15,13 @@ export class AuthenticatedUserDto {
   @ApiProperty()
   isActive!: boolean;
 
+  @ApiProperty({
+    example: false,
+    description:
+      'True when the user must change their password before accessing normal application functionality.',
+  })
+  mustChangePassword!: boolean;
+
   @ApiProperty({ format: 'date-time' })
   createdAt!: string;
 

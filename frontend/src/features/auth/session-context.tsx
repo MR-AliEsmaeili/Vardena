@@ -9,14 +9,13 @@ import {
 } from 'react';
 import { setUnauthorizedHandler } from '@/api/client';
 import { normalizeApiError } from '@/api/errors';
-import {
-  getCurrentUser,
-  getEffectivePermissions,
-  login as loginRequest,
-  logout as logoutRequest,
-} from '@/api/identity.api';
+import * as identityApi from '@/api/identity.api';
 import { queryKeys } from '@/api/query-keys';
-import type { AuthenticatedUser, LoginRequest } from '@/api/contracts';
+import type {
+  AuthenticatedUser,
+  ChangePasswordRequest,
+  LoginRequest,
+} from '@/api/contracts';
 
 export type SessionStatus =
   'loading' | 'authenticated' | 'unauthenticated' | 'error';
@@ -25,14 +24,22 @@ export interface SessionContextValue {
   user: AuthenticatedUser | null;
   status: SessionStatus;
   error: unknown;
+  /** True when the authenticated user must change their password before accessing normal routes. */
+  mustChangePassword: boolean;
   /** Effective permission codes of the current session (UX only, AR-21). */
   permissions: readonly string[];
   permissionsLoaded: boolean;
   sessionExpired: boolean;
-  login: (credentials: LoginRequest) => Promise<void>;
+  login: (credentials: LoginRequest) => Promise<AuthenticatedUser>;
   isLoggingIn: boolean;
   loginError: unknown;
   resetLoginError: () => void;
+  changePassword: (
+    payload: ChangePasswordRequest,
+  ) => Promise<AuthenticatedUser>;
+  isChangingPassword: boolean;
+  changePasswordError: unknown;
+  resetChangePasswordError: () => void;
   logout: () => Promise<void>;
   isLoggingOut: boolean;
   acknowledgeSessionExpiry: () => void;
@@ -63,7 +70,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     queryKey: queryKeys.session(),
     queryFn: async ({ signal }): Promise<AuthenticatedUser | null> => {
       try {
-        return await getCurrentUser(signal);
+        return await identityApi.getCurrentUser(signal);
       } catch (error) {
         const apiError = normalizeApiError(error);
         if (apiError.isUnauthorized) return null;
@@ -76,11 +83,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   });
 
   const user = sessionQuery.data ?? null;
+  const mustChangePassword = user?.mustChangePassword === true;
 
   const permissionsQuery = useQuery({
     queryKey: queryKeys.effectivePermissions(),
-    queryFn: async ({ signal }) => getEffectivePermissions(signal),
-    enabled: user !== null,
+    queryFn: async ({ signal }) => identityApi.getEffectivePermissions(signal),
+    enabled: user !== null && !mustChangePassword,
     retry: false,
     staleTime: 60_000,
   });
@@ -98,18 +106,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [queryClient]);
 
   const loginMutation = useMutation({
-    mutationFn: (credentials: LoginRequest) => loginRequest(credentials),
+    mutationFn: (credentials: LoginRequest) => identityApi.login(credentials),
     onSuccess: async (authenticatedUser) => {
       setSessionExpired(false);
       queryClient.setQueryData(queryKeys.session(), authenticatedUser);
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.effectivePermissions(),
-      });
+      if (!authenticatedUser.mustChangePassword) {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.effectivePermissions(),
+        });
+      }
+    },
+  });
+
+  const changePasswordMutation = useMutation({
+    mutationFn: (payload: ChangePasswordRequest) =>
+      identityApi.changePassword(payload),
+    onSuccess: async (updatedUser) => {
+      setSessionExpired(false);
+      queryClient.setQueryData(queryKeys.session(), updatedUser);
+      if (!updatedUser.mustChangePassword) {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.effectivePermissions(),
+        });
+      }
     },
   });
 
   const logoutMutation = useMutation({
-    mutationFn: () => logoutRequest(),
+    mutationFn: () => identityApi.logout(),
     onSettled: () => {
       // Logout is idempotent server-side; locally we always end the session
       // and drop every cached response of the previous user.
@@ -121,9 +145,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (credentials: LoginRequest) => {
-      await loginMutation.mutateAsync(credentials);
+      return loginMutation.mutateAsync(credentials);
     },
     [loginMutation],
+  );
+
+  const changePassword = useCallback(
+    async (payload: ChangePasswordRequest) => {
+      return changePasswordMutation.mutateAsync(payload);
+    },
+    [changePasswordMutation],
   );
 
   const logout = useCallback(async () => {
@@ -133,6 +164,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const resetLoginError = useCallback(() => {
     loginMutation.reset();
   }, [loginMutation]);
+
+  const resetChangePasswordError = useCallback(() => {
+    changePasswordMutation.reset();
+  }, [changePasswordMutation]);
 
   const status: SessionStatus = sessionQuery.isPending
     ? 'loading'
@@ -147,6 +182,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       user,
       status,
       error: sessionQuery.error,
+      mustChangePassword,
       permissions: permissionsQuery.data?.permissions ?? [],
       permissionsLoaded: permissionsQuery.isSuccess,
       sessionExpired,
@@ -154,6 +190,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       isLoggingIn: loginMutation.isPending,
       loginError: loginMutation.error,
       resetLoginError,
+      changePassword,
+      isChangingPassword: changePasswordMutation.isPending,
+      changePasswordError: changePasswordMutation.error,
+      resetChangePasswordError,
       logout,
       isLoggingOut: logoutMutation.isPending,
       acknowledgeSessionExpiry: () => setSessionExpired(false),
@@ -162,6 +202,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       user,
       status,
       sessionQuery.error,
+      mustChangePassword,
       permissionsQuery.data,
       permissionsQuery.isSuccess,
       sessionExpired,
@@ -169,6 +210,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       loginMutation.isPending,
       loginMutation.error,
       resetLoginError,
+      changePassword,
+      changePasswordMutation.isPending,
+      changePasswordMutation.error,
+      resetChangePasswordError,
       logout,
       logoutMutation.isPending,
     ],

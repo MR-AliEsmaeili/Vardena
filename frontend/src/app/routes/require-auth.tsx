@@ -15,7 +15,7 @@ import { FullPageLoading } from '@/ui/patterns/states';
  * logout. This is UX routing — the API rejects unauthenticated calls itself.
  */
 export function RequireAuth() {
-  const { status, error } = useSession();
+  const { status, error, mustChangePassword } = useSession();
   const location = useLocation();
 
   if (status === 'loading') {
@@ -37,6 +37,16 @@ export function RequireAuth() {
     return (
       <Navigate
         to="/login"
+        replace
+        state={{ from: `${location.pathname}${location.search}` }}
+      />
+    );
+  }
+
+  if (mustChangePassword) {
+    return (
+      <Navigate
+        to="/change-password"
         replace
         state={{ from: `${location.pathname}${location.search}` }}
       />

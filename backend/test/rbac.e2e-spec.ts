@@ -158,11 +158,13 @@ describe('Users + RBAC (e2e)', () => {
     expect(res.body).toMatchObject({
       username: ALICE.username,
       isActive: true,
+      mustChangePassword: false,
     });
     expect(Object.keys(res.body).sort()).toEqual([
       'createdAt',
       'id',
       'isActive',
+      'mustChangePassword',
       'updatedAt',
       'username',
     ]);

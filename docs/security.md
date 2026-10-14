@@ -214,21 +214,24 @@ second administrator authorization subsystem. The `user_roles →
 role_permissions → permissions` relationship remains the single source of
 truth, and role names and usernames carry no runtime authority.
 
-**First-administrator bootstrap (PR #64 merged implementation; work item READY
-FOR REVIEW — NOT ACCEPTED; OQ-19 remains OPEN):**
+**First-administrator bootstrap (PR #64 merged implementation; F-12 secure
+initial credential & mandatory first-login password change):**
 after migrations, `npm run bootstrap:system-admin` creates the real Users-domain
-account `مدیر` with the specified initial credential, hashing the password
-through the existing Argon2id `PasswordService`, then assigns `System
-Administrator`. The command is idempotent: it creates no duplicate
-user/role/assignment/membership, adds newly registered permissions on later
-deployment runs, and never resets an existing user's password or lifecycle
-state — a disabled or soft-deleted `مدیر` is never silently reactivated; the
-command fails loudly instead (Task 26 closure). Docker
-Compose runs it in the `migrate` service; CI runs the same built command against
-PostgreSQL. There is no bootstrap HTTP endpoint. This records the provisioning
-mechanism implemented by PR #64; it does not record an Owner Decision or fully
-resolve OQ-19. Self-disable protection, self-role-removal protection, and
-last-administrator lockout protection remain OPEN. The bootstrap does not invent
+account `مدیر` using the explicit `BOOTSTRAP_SYSTEM_ADMIN_PASSWORD` environment
+variable (8–128 characters, never hardcoded), hashing the password through the
+existing Argon2id `PasswordService` and setting `mustChangePassword = true`,
+then assigns `System Administrator`. If `مدیر` does not exist yet and
+`BOOTSTRAP_SYSTEM_ADMIN_PASSWORD` is missing or invalid, the bootstrap command
+fails safely before writing any user record. Once `مدیر` exists, the command is
+idempotent: it requires no bootstrap password to start or re-run, creates no
+duplicate user/role/assignment/membership, adds newly registered permissions on
+later deployment runs, and never resets an existing user's password,
+`mustChangePassword` flag, or lifecycle state — a disabled or soft-deleted
+`مدیر` is never silently reactivated; the command fails loudly instead (Task 26
+closure). Docker Compose runs it in the `migrate` service; CI runs the same
+built command against PostgreSQL. There is no bootstrap HTTP endpoint.
+Self-disable protection, self-role-removal protection, and last-administrator
+lockout protection remain OPEN (OQ-19). The bootstrap does not invent
 or hardcode an organization. Its organization behaviour depends on the
 deployment shape (ADR-0025):
 
@@ -272,9 +275,13 @@ deployment shape (ADR-0025):
 Authorization stays `required permission AND organization membership`: removing
 one permission from the `System Administrator` role denies exactly that
 operation (403), and removing the membership denies organization-scoped reads
-(404). Neither the username `مدیر` nor the role name carries any authority. The schema has no forced-password-change state or login contract; the
-initial credential must therefore be changed immediately after first login
-through the existing password-reset operation, which revokes sessions.
+(404). Neither the username `مدیر` nor the role name carries any authority. When
+`mustChangePassword = true`, the server-side authentication/authorization guards
+quarantine the session to `GET /api/v1/auth/me`,
+`POST /api/v1/auth/change-password`, and `POST /api/v1/auth/logout` until the
+user completes a self-service password change (which verifies `currentPassword`,
+stores a new Argon2id hash, clears `mustChangePassword`, and revokes all other
+sessions for that user while keeping the current session active).
 
 **Organization membership boundary (ODR-3, Task 19):** organization-scoped
 access is principal-bound. A module permission alone NEVER crosses

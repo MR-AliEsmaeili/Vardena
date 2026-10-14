@@ -13,11 +13,13 @@ import type { AppConfig } from '../../src/kernel/config/app-config.js';
 /** Default fixture configuration: no deployment pin (ADR-0021 structural mode). */
 export const UNPINNED_APP_CONFIG: AppConfig = {
   deploymentOrganizationId: null,
+  bootstrapSystemAdminPassword: null,
 } as unknown as AppConfig;
 
 /** Fixture configuration pinned to exactly one organization (ADR-0025). */
 export function pinnedAppConfig(organizationId: string): AppConfig {
   return {
     deploymentOrganizationId: organizationId,
+    bootstrapSystemAdminPassword: null,
   } as unknown as AppConfig;
 }

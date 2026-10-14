@@ -1,4 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import {
+  APP_CONFIG,
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  type AppConfig,
+} from '../kernel/config/app-config.js';
 import { AppException } from '../kernel/errors/app-exception.js';
 import { OrganizationMembershipsService } from '../modules/organization/application/organization-memberships.service.js';
 import { OrganizationsService } from '../modules/organization/application/organizations.service.js';
@@ -7,11 +13,6 @@ import { InstallationIdentityService } from '../modules/licensing/application/in
 import { UsersService } from '../modules/users/application/users.service.js';
 
 export const BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME = 'مدیر';
-
-// This installation credential is intentionally fixed by the bootstrap
-// contract. It is passed only to UsersService, which hashes it with the
-// existing Argon2id PasswordService before persistence. Never log or return it.
-const BOOTSTRAP_SYSTEM_ADMINISTRATOR_INITIAL_PASSWORD = '1';
 
 export interface SystemAdministratorBootstrapResult {
   /** The installation identity this deployment runs as (L-02). */
@@ -50,6 +51,9 @@ export class SystemAdministratorBootstrapService {
     private readonly rbac: SystemAdministratorRbacService,
     private readonly organizations: OrganizationsService,
     private readonly memberships: OrganizationMembershipsService,
+    @Optional()
+    @Inject(APP_CONFIG)
+    private readonly config?: Pick<AppConfig, 'bootstrapSystemAdminPassword'>,
   ) {}
 
   async run(): Promise<SystemAdministratorBootstrapResult> {
@@ -90,10 +94,13 @@ export class SystemAdministratorBootstrapService {
       return { userId: existing.id, userCreated: false };
     }
 
+    const initialPassword = this.resolveInitialPassword();
+
     try {
       const created = await this.users.createUser({
         username: BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME,
-        password: BOOTSTRAP_SYSTEM_ADMINISTRATOR_INITIAL_PASSWORD,
+        password: initialPassword,
+        mustChangePassword: true,
       });
       return { userId: created.id, userCreated: true };
     } catch (error) {
@@ -110,6 +117,25 @@ export class SystemAdministratorBootstrapService {
       }
       throw error;
     }
+  }
+
+  private resolveInitialPassword(): string {
+    const raw = this.config?.bootstrapSystemAdminPassword ?? null;
+    if (raw === null || raw.trim().length === 0) {
+      throw new Error(
+        `Cannot provision the bootstrap system administrator "${BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME}": BOOTSTRAP_SYSTEM_ADMIN_PASSWORD must be explicitly configured (minimum ${MIN_PASSWORD_LENGTH} characters) when creating a new initial administrator account.`,
+      );
+    }
+    if (
+      raw.length < MIN_PASSWORD_LENGTH ||
+      raw.length > MAX_PASSWORD_LENGTH ||
+      raw.trim().toUpperCase() === 'CHANGE_ME'
+    ) {
+      throw new Error(
+        `Cannot provision the bootstrap system administrator "${BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME}": BOOTSTRAP_SYSTEM_ADMIN_PASSWORD must be between ${MIN_PASSWORD_LENGTH} and ${MAX_PASSWORD_LENGTH} non-blank characters and must not use a placeholder value.`,
+      );
+    }
+    return raw;
   }
 
   /**

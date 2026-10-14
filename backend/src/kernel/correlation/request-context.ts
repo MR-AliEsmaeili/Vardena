@@ -16,6 +16,8 @@ export interface AuthenticatedPrincipal {
   userId: string;
   /** Authenticated session id (ULID from `identity.sessions`). */
   sessionId: string;
+  /** True when the user must change their password before accessing normal functionality. */
+  mustChangePassword?: boolean | undefined;
 }
 
 /**

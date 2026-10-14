@@ -50,8 +50,9 @@ export class AppException extends HttpException {
   /** 403 — authenticated but lacking permission (RBAC module owns usage). */
   static forbidden(
     message = 'You do not have permission to perform this action.',
+    details?: unknown,
   ): AppException {
-    return new AppException('PermissionDenied', message, undefined);
+    return new AppException('PermissionDenied', message, details);
   }
 
   /** 404 — the addressed entity does not exist (or is invisible to the caller). */

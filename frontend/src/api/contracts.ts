@@ -71,6 +71,7 @@ export interface Paginated<TItem> {
 
 export type AuthenticatedUser = Schemas['AuthenticatedUserDto'];
 export type LoginRequest = Schemas['LoginRequestDto'];
+export type ChangePasswordRequest = Schemas['ChangePasswordRequestDto'];
 export type EffectivePermissions = Schemas['EffectivePermissionsDto'];
 
 // ---------------------------------------------------------------------------

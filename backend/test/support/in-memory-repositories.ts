@@ -125,6 +125,7 @@ export class InMemoryUsersRepository {
       username: string;
       passwordHash: string;
       isActive: boolean;
+      mustChangePassword?: boolean | undefined;
       createdAt: Date;
       updatedAt: Date;
       createdBy: string | null;
@@ -175,6 +176,7 @@ export class InMemoryUsersRepository {
     username: string;
     passwordHash: string;
     isActive: boolean;
+    mustChangePassword?: boolean | undefined;
     createdAt: Date;
     updatedAt: Date;
     createdBy: string | null;
@@ -184,6 +186,7 @@ export class InMemoryUsersRepository {
       username: input.username,
       passwordHash: input.passwordHash,
       isActive: input.isActive,
+      mustChangePassword: input.mustChangePassword ?? false,
       createdAt: input.createdAt,
       updatedAt: input.updatedAt,
       deletedAt: null,
@@ -198,6 +201,7 @@ export class InMemoryUsersRepository {
       username?: string | undefined;
       passwordHash?: string | undefined;
       isActive?: boolean | undefined;
+      mustChangePassword?: boolean | undefined;
       updatedAt: Date;
       updatedBy: string | null;
       deletedAt?: Date | null | undefined;
@@ -210,6 +214,8 @@ export class InMemoryUsersRepository {
       username: patch.username ?? existing.username,
       passwordHash: patch.passwordHash ?? existing.passwordHash,
       isActive: patch.isActive ?? existing.isActive,
+      mustChangePassword:
+        patch.mustChangePassword ?? existing.mustChangePassword,
       updatedAt: patch.updatedAt,
       deletedAt:
         patch.deletedAt === undefined ? existing.deletedAt : patch.deletedAt,
@@ -723,6 +729,7 @@ export async function seedUser(
     username?: string;
     passwordHash?: string;
     isActive?: boolean;
+    mustChangePassword?: boolean;
   } = {},
 ): Promise<User> {
   const now = new Date();
@@ -732,6 +739,7 @@ export async function seedUser(
     username: overrides.username ?? `user-${id}`,
     passwordHash: overrides.passwordHash ?? 'argon2id$test-hash',
     isActive: overrides.isActive ?? true,
+    mustChangePassword: overrides.mustChangePassword ?? false,
     createdAt: now,
     updatedAt: now,
     createdBy: null,

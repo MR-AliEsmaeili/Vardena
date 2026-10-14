@@ -1,9 +1,11 @@
 # Vardena local stack: PostgreSQL + API + worker.
 #
-# A root .env file is optional: a fresh clone can be started with
-# `docker-compose up` (or `docker compose up`) without any preparation.
-# Override the defaults through .env for a real deployment; never commit that
-# file because it may contain credentials.
+# A root .env file is needed for a FRESH installation: copy .env.example to
+# .env and set BOOTSTRAP_SYSTEM_ADMIN_PASSWORD (see the comment below — no
+# placeholder or default password is supplied). An already-provisioned
+# installation may start with `docker-compose up` (or `docker compose up`)
+# without a .env file. Override the defaults through .env for a real
+# deployment; never commit that file because it may contain credentials.
 
 services:
   postgres:
@@ -12,7 +14,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-vardena}
       POSTGRES_USER: ${POSTGRES_USER:-vardena}
-      # The zero-configuration local stack uses trust authentication on the
+      # The default local stack uses trust authentication on the
       # private Compose network, so no password needs to be committed. Set
       # POSTGRES_HOST_AUTH_METHOD=scram-sha-256 and POSTGRES_PASSWORD in .env
       # when password authentication is required.
@@ -43,6 +45,12 @@ services:
       # command below also provisions that organization and the administrator's
       # ordinary membership of it.
       DEPLOYMENT_ORGANIZATION_ID: ${DEPLOYMENT_ORGANIZATION_ID:-}
+      # Required on a fresh bootstrap when `مدیر` does not exist yet; may be
+      # omitted on subsequent starts of an already-provisioned installation.
+      # Passed through with an empty default — Compose supplies NO placeholder
+      # or default password. Configure it in the local, untracked `.env`
+      # (copied from `.env.example`) for a fresh installation.
+      BOOTSTRAP_SYSTEM_ADMIN_PASSWORD: ${BOOTSTRAP_SYSTEM_ADMIN_PASSWORD:-}
       CHECKPOINT_DISABLE: "1"
       NPM_CONFIG_FETCH_RETRIES: "5"
       NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "15000"

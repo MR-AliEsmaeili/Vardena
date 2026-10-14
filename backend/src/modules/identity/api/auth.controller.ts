@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
@@ -21,9 +22,13 @@ import { getPrincipal } from '../../../kernel/correlation/request-context.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { UsersService } from '../../users/application/users.service.js';
 import { AuthenticationService } from '../application/authentication.service.js';
-import { AuthGuard } from '../application/auth.guard.js';
+import {
+  AllowWhenPasswordChangeRequired,
+  AuthGuard,
+} from '../application/auth.guard.js';
 import { toUserDto } from '../../users/domain/user.js';
 import { AuthenticatedUserDto } from './dto/authenticated-user.dto.js';
+import { ChangePasswordRequestDto } from './dto/change-password-request.dto.js';
 import { LoginRequestDto } from './dto/login-request.dto.js';
 
 /**
@@ -83,6 +88,7 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(AuthGuard)
+  @AllowWhenPasswordChangeRequired()
   @ApiOperation({ summary: 'Return the currently authenticated user.' })
   @ApiOkResponse({ type: AuthenticatedUserDto })
   @ApiUnauthorizedResponse({ description: 'Not authenticated.' })
@@ -99,5 +105,25 @@ export class AuthController {
     }
     void req;
     return toUserDto(user);
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard)
+  @AllowWhenPasswordChangeRequired()
+  @ApiOperation({
+    summary:
+      'Change the authenticated user password and clear any mandatory password-change restriction.',
+  })
+  @ApiOkResponse({ type: AuthenticatedUserDto })
+  @ApiBadRequestResponse({ description: 'Validation failed.' })
+  @ApiUnauthorizedResponse({ description: 'Not authenticated.' })
+  async changePassword(
+    @Body() body: ChangePasswordRequestDto,
+  ): Promise<AuthenticatedUserDto> {
+    return this.auth.changePassword({
+      currentPassword: body.currentPassword,
+      newPassword: body.newPassword,
+    });
   }
 }

@@ -175,6 +175,7 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
+          BOOTSTRAP_SYSTEM_ADMIN_PASSWORD: vardena_ci_bootstrap_password
         run: npm run bootstrap:system-admin
 
       # Exercise actual PrismaPg/PostgreSQL DATE round-trips with a non-UTC

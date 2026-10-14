@@ -15,6 +15,9 @@
 
 export const APP_CONFIG = Symbol('APP_CONFIG');
 
+export const MIN_PASSWORD_LENGTH = 8;
+export const MAX_PASSWORD_LENGTH = 128;
+
 export type NodeEnv = 'development' | 'test' | 'production';
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -105,6 +108,14 @@ export interface AppConfig {
    * names an organization must name this one; any other id answers 404.
    */
   deploymentOrganizationId: string | null;
+  /**
+   * Initial password for provisioning the bootstrap system administrator on a
+   * fresh installation (`npm run bootstrap:system-admin`). Optional at config
+   * load so already-provisioned installations and runtime processes do not
+   * require a bootstrap credential; required when a new bootstrap
+   * administrator must be created.
+   */
+  bootstrapSystemAdminPassword: string | null;
   /** Explicit provider configuration; never inferred from NODE_ENV or identity. */
   licensing: LicensingConfig;
 }
@@ -220,6 +231,36 @@ function parseDeploymentOrganizationId(
     return null;
   }
   return value;
+}
+
+function parseBootstrapSystemAdminPassword(
+  raw: string | undefined,
+  errors: string[],
+): string | null {
+  if (raw === undefined || raw === '') return null;
+  if (raw.trim().length === 0) {
+    errors.push('BOOTSTRAP_SYSTEM_ADMIN_PASSWORD cannot be blank when set.');
+    return null;
+  }
+  if (raw.length < MIN_PASSWORD_LENGTH) {
+    errors.push(
+      `BOOTSTRAP_SYSTEM_ADMIN_PASSWORD must be at least ${MIN_PASSWORD_LENGTH} characters when set.`,
+    );
+    return null;
+  }
+  if (raw.length > MAX_PASSWORD_LENGTH) {
+    errors.push(
+      `BOOTSTRAP_SYSTEM_ADMIN_PASSWORD must be at most ${MAX_PASSWORD_LENGTH} characters when set.`,
+    );
+    return null;
+  }
+  if (raw.trim().toUpperCase() === 'CHANGE_ME') {
+    errors.push(
+      'BOOTSTRAP_SYSTEM_ADMIN_PASSWORD must not use the placeholder value CHANGE_ME.',
+    );
+    return null;
+  }
+  return raw;
 }
 
 function parseLicenseLimit(
@@ -360,6 +401,10 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     env['DEPLOYMENT_ORGANIZATION_ID'],
     errors,
   );
+  const bootstrapSystemAdminPassword = parseBootstrapSystemAdminPassword(
+    env['BOOTSTRAP_SYSTEM_ADMIN_PASSWORD'],
+    errors,
+  );
 
   // Explicit local provider configuration. It is selected by name, never by
   // NODE_ENV, administrator identity, role, or email.
@@ -435,6 +480,7 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       loginRateLimit: { windowMs: loginWindowMs, max: loginMax },
     },
     deploymentOrganizationId,
+    bootstrapSystemAdminPassword,
     licensing: {
       provider: licenseProviderRaw as LicenseProviderName,
       signingPublicKeys: licenseSigningPublicKeys,

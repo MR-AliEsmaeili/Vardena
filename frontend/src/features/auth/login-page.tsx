@@ -24,11 +24,13 @@ interface LocationState {
  * (protocol-relative URLs included) falls back to `/app`, so the redirect can
  * never leave the application (open-redirect guard).
  */
-function safeReturnPath(from: unknown): string {
+export function safeReturnPath(from: unknown): string {
   if (
     typeof from === 'string' &&
     from.startsWith('/') &&
-    !from.startsWith('//')
+    !from.startsWith('//') &&
+    !from.startsWith('/login') &&
+    !from.startsWith('/change-password')
   ) {
     return from;
   }
@@ -59,7 +61,13 @@ export function LoginPage() {
   }
 
   if (session.status === 'authenticated') {
-    return <Navigate to={safeReturnPath(state?.from)} replace />;
+    const returnTo = safeReturnPath(state?.from);
+    if (session.mustChangePassword) {
+      return (
+        <Navigate to="/change-password" replace state={{ from: returnTo }} />
+      );
+    }
+    return <Navigate to={returnTo} replace />;
   }
 
   const onSubmit = form.handleSubmit(async (values) => {
