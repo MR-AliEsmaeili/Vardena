@@ -34,6 +34,11 @@ export interface PrismaDatabaseClient {
   $disconnect(): Promise<void>;
 }
 
+/** Opaque, callback-scoped transaction capability (ADR-0047). No delegates escape. */
+export interface DatabaseTransaction {
+  readonly transaction: unique symbol;
+}
+
 interface GeneratedClientModule {
   PrismaClient: new (options: { adapter: unknown }) => PrismaDatabaseClient;
 }
@@ -43,6 +48,7 @@ export class PrismaService implements OnModuleDestroy {
   private readonly pool: Pool;
   private readonly adapter: PrismaPg;
   private clientPromise: Promise<PrismaDatabaseClient> | undefined;
+  private readonly transactions = new WeakMap<DatabaseTransaction, unknown>();
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
@@ -76,9 +82,41 @@ export class PrismaService implements OnModuleDestroy {
    * unnecessarily strict. Casts inside repositories are therefore safe:
    * the runtime object is always the full generated client.
    */
-  async getClient<TClient = PrismaDatabaseClient>(): Promise<TClient> {
+  async getClient<TClient = PrismaDatabaseClient>(
+    transaction?: DatabaseTransaction,
+  ): Promise<TClient> {
+    if (transaction !== undefined) {
+      const client = this.transactions.get(transaction);
+      if (client === undefined)
+        throw new Error('Inactive database transaction.');
+      return client as TClient;
+    }
     this.clientPromise ??= this.loadClient();
     return (await this.clientPromise) as unknown as TClient;
+  }
+
+  /** Explicit opt-in only; no ambient/nested transactions (ADR-0047). */
+  async inTransaction<T>(
+    work: (transaction: DatabaseTransaction) => Promise<T>,
+  ): Promise<T> {
+    const client = await this.getClient<{
+      $transaction<R>(
+        fn: (tx: unknown) => Promise<R>,
+        options: { isolationLevel: 'ReadCommitted' },
+      ): Promise<R>;
+    }>();
+    return client.$transaction(
+      async (tx) => {
+        const transaction = {} as DatabaseTransaction;
+        this.transactions.set(transaction, tx);
+        try {
+          return await work(transaction);
+        } finally {
+          this.transactions.delete(transaction);
+        }
+      },
+      { isolationLevel: 'ReadCommitted' },
+    );
   }
 
   /** Connectivity probe used by readiness checks and worker startup. */

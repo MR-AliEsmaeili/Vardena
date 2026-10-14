@@ -2147,3 +2147,34 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   - **(3) L-06 upgrade path documented.** `docs/licensing/version-model-and-file-exchange.md` §11.1 records the supported owner-assigned backfill: prerequisites, the exact execution order (add column if absent → write owner codes → four validation queries → `prisma migrate deploy`), and a recovery procedure that inspects `_prisma_migrations` and the real schema state before re-running rather than assuming a failed DDL rolled back. The migration is safe to re-run from any partial state (every statement is idempotent). Codes stay explicit and owner-controlled; nothing derives one.
   - **(4) Pre-L-06 `VLIC1` boundary documented.** §11.2 states that a pre-L-06 `VLIC1` code has no signed `customerCode` and is therefore refused (`reason: 'payload'`, 422, nothing written), why no code is ever inferred from `customerId`/`customerName` or supplied out of band, and the reissuance procedure for retained installations, renewals and offline/on-prem deployments — which never requires importing an old artifact through the new parser.
 
+
+## 41. Repository-first Licensing audit and F-12 credential-transition correction (2026-10-14)
+
+- **Verified baseline:** `origin/main` `05933588fad3f1cb76475d48c3f9586ec32494df`;
+  baseline push [CI 38646737525](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38646737525)
+  succeeded (all six jobs). No open PRs existed at selection. #150 and #151 are
+  both reported merged with the same head/merge commit. This supersedes older
+  current-state claims of missing F-12/L-06; it is not Owner acceptance.
+- **Selected existing requirement:** F-12 concurrency/failure paths, not L-07.
+  The bootstrap configuration, real licensed administrator role, persisted flag,
+  protected-API gate and frontend change page are already merged in #149. The
+  remaining defect was unlocked password verification/unconditional update,
+  followed by separately committed session revocation. Eight hermetic baseline
+  regressions failed, including concurrent overwrite, partial writes and stale
+  login/session reads. The correction serializes and commits the credential and
+  session transition atomically through module-owned repositories (ADR-0047).
+- **Impact:** no schema/migration, endpoint/DTO/client/frontend or bootstrap
+  password-policy change. Current-session continuity, normal RBAC/licensing and
+  existing-account bootstrap idempotency are preserved. Device/key/replacement,
+  audit-retention/exposure and owner-side issuance policies remain gated;
+  OQ-83 is OPEN (PDR-14's incorrect introductory status reference is corrected).
+- **Verification:** 53 focused hermetic tests, TypeScript typecheck and targeted
+  lint passed locally. PostgreSQL transition regressions are added to the
+  existing backend CI suite, never run locally. Final-head verification belongs
+  to the PR description/delivery evidence; this entry does not claim an
+  unexecuted run. No heavy E2E/live-DB test was executed locally unless explicitly
+  authorized; no authorization was requested and none was run.
+- **Status:** implementation submitted for review, not merged or Owner-accepted.
+  [Task selection, acceptance criteria and test matrix](docs/tasks/f-12-credential-transition-correction.md).
+  Follow the existing exact-SHA manual merge protocol; no server-enforced
+  protection, auto-merge or settings changes are introduced.

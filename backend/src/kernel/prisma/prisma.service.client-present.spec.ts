@@ -2,7 +2,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { describe, expect, it, vi } from 'vitest';
 import { loadAppConfig } from '../config/app-config.js';
 import type { JsonLogger } from '../logging/json-logger.service.js';
-import { PrismaService } from './prisma.service.js';
+import { PrismaService, type DatabaseTransaction } from './prisma.service.js';
 
 // Companion to prisma.service.spec.ts: pins the generated module to a
 // working client so the client-present path is covered hermetically
@@ -22,6 +22,13 @@ vi.mock('../../generated/prisma/client.js', () => {
     ): Promise<unknown> {
       queries.push({ text: query.join('?'), values });
       return [{ '?column?': 1 }];
+    }
+    async $transaction<T>(
+      work: (tx: unknown) => Promise<T>,
+      options: unknown,
+    ): Promise<T> {
+      expect(options).toEqual({ isolationLevel: 'ReadCommitted' });
+      return work({ transactionClient: true });
     }
     async $disconnect(): Promise<void> {
       this.disconnected = true;
@@ -73,4 +80,31 @@ describe('PrismaService (generated client present)', () => {
     expect(queries[0]?.text).toContain('SELECT 1');
     await service.onModuleDestroy();
   });
+  it.each([false, true])(
+    'expires the transaction capability after success/failure (failure=%s)',
+    async (fail) => {
+      const service = makeService();
+      const foreignService = makeService();
+      let captured!: DatabaseTransaction;
+      const operation = service.inTransaction(async (transaction) => {
+        captured = transaction;
+        const scoped = await service.getClient(transaction);
+        expect(scoped).toEqual({ transactionClient: true });
+        expect(scoped).not.toBe(await service.getClient());
+        expect(await service.getClient(transaction)).toBe(scoped);
+        await expect(foreignService.getClient(transaction)).rejects.toThrow(
+          'Inactive database transaction',
+        );
+        if (fail) throw new Error('callback failure');
+        return 'committed';
+      });
+      if (fail) await expect(operation).rejects.toThrow('callback failure');
+      else await expect(operation).resolves.toBe('committed');
+      await expect(service.getClient(captured)).rejects.toThrow(
+        'Inactive database transaction',
+      );
+      await service.onModuleDestroy();
+      await foreignService.onModuleDestroy();
+    },
+  );
 });

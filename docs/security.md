@@ -283,6 +283,21 @@ user completes a self-service password change (which verifies `currentPassword`,
 stores a new Argon2id hash, clears `mustChangePassword`, and revokes all other
 sessions for that user while keeping the current session active).
 
+**F-12 concurrency correction ([ADR-0047](adr/0047-atomic-self-service-credential-transition.md)):**
+self-service password/flag updates and other-session revocation now share one
+transaction. Users locks/revalidates its credential row; Identity locks/checks
+the initiating session's owner, revocation and expiry before committing session
+effects. A stale credential or invalidated initiating session returns 401; no
+partial password, flag or session write survives a refusal or transaction
+failure. Login session creation uses the same credential lock, and request
+authentication rechecks the session after reading user state. The current
+session survives a successful change; passwords/hashes/tokens never enter the
+response or lifecycle event. Events remain post-commit, in-memory notifications,
+not a durable audit store. This atomic guarantee does not extend the existing
+administrator-reset/event-consumer flow or cancel already-authorized in-flight
+requests. Existing accounts' bootstrap state is not retroactively rewritten.
+
+
 **Organization membership boundary (ODR-3, Task 19):** organization-scoped
 access is principal-bound. A module permission alone NEVER crosses
 organizations: every organization-scoped read and write passes through

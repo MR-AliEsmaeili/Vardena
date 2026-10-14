@@ -83,7 +83,43 @@ export class AuthenticationService {
       params.password,
     );
 
-    if (user === null) {
+    // 5. Create session.
+    //
+    // Session fixation defense: if the request already presents a session
+    // cookie (e.g. from a previous, now-expired session) we ignore it — a
+    // fresh token + cookie is always issued on successful login. We do NOT
+    // revoke the old session here because logout already handles that; if
+    // the presented cookie maps to a still-valid session belonging to a
+    // DIFFERENT user that situation is harmless: we just overwrite the
+    // cookie with a new session for the newly-authenticated user.
+    const rawToken = this.tokens.generateToken();
+    const tokenHash = this.tokens.hashToken(rawToken);
+    const now = new Date();
+    const session =
+      user === null
+        ? null
+        : await this.users.withCurrentCredentials(user, (transaction) =>
+            this.sessions.create(
+              {
+                id: generateId(),
+                userId: user.id,
+                tokenHash,
+                userAgent,
+                ipAddress: ip,
+                createdAt: now,
+                lastSeenAt: now,
+                expiresAt: new Date(
+                  now.getTime() + this.config.auth.sessionIdleTimeoutMs,
+                ),
+                absoluteExpiresAt: new Date(
+                  now.getTime() + this.config.auth.sessionAbsoluteTimeoutMs,
+                ),
+              },
+              transaction,
+            ),
+          );
+
+    if (user === null || session === null) {
       const reason = failureReason ?? 'invalid_credentials';
 
       const event: LoginFailedEvent = {
@@ -103,34 +139,6 @@ export class AuthenticationService {
       // Generic message — identical for every failure (AR-24).
       throw AppException.unauthorized('Invalid username or password.');
     }
-
-    // 5. Create session.
-    //
-    // Session fixation defense: if the request already presents a session
-    // cookie (e.g. from a previous, now-expired session) we ignore it — a
-    // fresh token + cookie is always issued on successful login. We do NOT
-    // revoke the old session here because logout already handles that; if
-    // the presented cookie maps to a still-valid session belonging to a
-    // DIFFERENT user that situation is harmless: we just overwrite the
-    // cookie with a new session for the newly-authenticated user.
-    const rawToken = this.tokens.generateToken();
-    const tokenHash = this.tokens.hashToken(rawToken);
-    const now = new Date();
-    const session = await this.sessions.create({
-      id: generateId(),
-      userId: user.id,
-      tokenHash,
-      userAgent,
-      ipAddress: ip,
-      createdAt: now,
-      lastSeenAt: now,
-      expiresAt: new Date(
-        now.getTime() + this.config.auth.sessionIdleTimeoutMs,
-      ),
-      absoluteExpiresAt: new Date(
-        now.getTime() + this.config.auth.sessionAbsoluteTimeoutMs,
-      ),
-    });
 
     // 6. Set cookie.
     this.issueSessionCookie(ctx.res, rawToken, session);
@@ -226,17 +234,32 @@ export class AuthenticationService {
       throw AppException.unauthorized('Authentication is required.');
     }
 
+    let revokedCount = 0;
     const updatedUser = await this.users.changeOwnPassword(
       principal.userId,
       params,
+      async (transaction) => {
+        const current = await this.sessions.lockById(
+          principal.sessionId,
+          transaction,
+        );
+        if (
+          current === null ||
+          current.userId !== principal.userId ||
+          !isSessionValid(current)
+        ) {
+          throw AppException.unauthorized('Authentication is required.');
+        }
+        revokedCount = await this.sessions.revokeAllForUser(
+          principal.userId,
+          principal.sessionId,
+          new Date(),
+          transaction,
+        );
+      },
     );
 
     const now = new Date();
-    const revokedCount = await this.sessions.revokeAllForUser(
-      updatedUser.id,
-      principal.sessionId,
-      now,
-    );
     if (revokedCount > 0) {
       const evt: SessionRevokedEvent = {
         type: SESSION_REVOKED_EVENT,
@@ -338,6 +361,16 @@ export class AuthenticationService {
       return null;
     }
 
+    // Do not combine a pre-change session with a post-change, unrestricted
+    // user. Password/flag and revocations commit atomically (ADR-0047).
+    const currentSession = await this.sessions.findById(session.id);
+    if (
+      currentSession === null ||
+      currentSession.userId !== user.id ||
+      !isSessionValid(currentSession)
+    )
+      return null;
+
     // Sliding expiry: bump lastSeenAt + idle deadline.
     // Fire-and-forget is acceptable here — a missed bump only shortens the
     // session, and we do NOT want a slow write to delay the response. Any
@@ -368,7 +401,7 @@ export class AuthenticationService {
     };
     setPrincipal(principal);
 
-    return { user, session };
+    return { user, session: currentSession };
   }
 
   // ---------------------------------------------------------------------------

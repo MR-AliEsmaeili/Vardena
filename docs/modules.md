@@ -103,6 +103,12 @@ rules; it defines the _mechanism_, vertical modules provide the _content_
   endpoints until `POST /auth/change-password` succeeds. The Users API owns the
   administrator password-reset operation; session list/revoke endpoints are not
   implemented.
+- **F-12 transition (ADR-0047):** login and self-password-change coordinate
+  through Users' public `withCurrentCredentials` contract and an opaque,
+  explicit transaction capability. Identity alone mutates sessions, including
+  in-transaction validation of the initiating session and revocation of others.
+  Request validation rechecks sessions after user reads to prevent mixed-state
+  promotion. There is no foreign-module table access.
 - **Publishes:** `UserSession.Created`, `UserSession.Revoked`, `Login.Failed`.
 - **Not responsible for:** user records/profiles (Users), role/permission checks
   (RBAC), audit storage (Audit — it emits events that Audit consumes).
@@ -128,6 +134,11 @@ Disable|ResetPassword`. There is no delete permission because there is no
 - **Depends on:** RBAC (role assignments are managed by the RBAC module against
   user ids; administration endpoints require the permissions above), Identity
   (deactivated users' sessions are revoked via event).
+- **Credential serialization (ADR-0047 / AR-11):** `UsersRepository` uses a
+  parameterized `SELECT … FOR UPDATE` on its own user row, then revalidates the
+  verified hash and active/deleted state. Password hashing precedes the lock;
+  credential/flag and the calling Identity operation's session effects commit
+  together. Users never reads or writes the Identity tables.
 - **Not responsible for:** login/session mechanics (Identity), permissions (RBAC).
 - **Responses:** safe DTOs only (id, username, isActive, mustChangePassword,
   createdAt, updatedAt) — the password hash never leaves the module (AR-24).

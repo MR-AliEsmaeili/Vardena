@@ -3,7 +3,10 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppException } from '../src/kernel/errors/app-exception.js';
 import { generateId } from '../src/kernel/ids/ulid.js';
-import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
+import {
+  PrismaService,
+  type DatabaseTransaction,
+} from '../src/kernel/prisma/prisma.service.js';
 import type { Session } from '../src/modules/identity/domain/session.js';
 import { SessionsRepository } from '../src/modules/identity/data/sessions.repository.js';
 import { PermissionsRepository } from '../src/modules/rbac/data/permissions.repository.js';
@@ -533,6 +536,20 @@ function buildInMemoryUsers(): UsersService {
       }
       return { user, failureReason: null };
     },
+    async withCurrentCredentials<T>(
+      expected: User,
+      work: (tx: DatabaseTransaction) => Promise<T>,
+    ) {
+      const current = store.get(expected.id);
+      if (
+        current === undefined ||
+        !current.isActive ||
+        current.deletedAt !== null ||
+        current.passwordHash !== expected.passwordHash
+      )
+        return null;
+      return work({} as DatabaseTransaction);
+    },
     async findActiveById(id: string) {
       const u = store.get(id) ?? null;
       if (u === null || !u.isActive || u.deletedAt !== null) return null;
@@ -588,6 +605,7 @@ function buildInMemoryUsers(): UsersService {
     async changeOwnPassword(
       userId: string,
       params: { currentPassword: string; newPassword: string },
+      commitSessions: (tx: DatabaseTransaction) => Promise<void>,
     ) {
       const u = store.get(userId);
       if (u === undefined || !u.isActive || u.deletedAt !== null) {
@@ -631,7 +649,9 @@ function buildInMemoryUsers(): UsersService {
           },
         ]);
       }
-      u.passwordHash = await passwordService.hash(params.newPassword);
+      const hash = await passwordService.hash(params.newPassword);
+      await commitSessions({} as DatabaseTransaction);
+      u.passwordHash = hash;
       u.mustChangePassword = false;
       u.updatedAt = new Date();
       return u;
@@ -645,6 +665,9 @@ function buildInMemorySessions(): SessionsRepository {
   const byTokenHash = new Map<string, Session>();
 
   const repo = {
+    async lockById(sessionId: string) {
+      return byId.get(sessionId) ?? null;
+    },
     async create(input: {
       id: string;
       userId: string;

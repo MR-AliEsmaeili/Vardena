@@ -1,5 +1,14 @@
 # Vardena — Open Questions
 
+**Licensing/F-12 source reconciliation (2026-10-14):** audited `main`
+`05933588fad3f1cb76475d48c3f9586ec32494df`. L-04/L-05/L-06 and the core F-12
+flow are merged; F-12 concurrency/atomicity correction is in review
+([task/evidence](tasks/f-12-credential-transition-correction.md)). **No OQ is
+opened, closed, or decided by this correction.** OQ-83 remains OPEN: PDR-14's
+introductory "Decided" cross-reference was erroneous and is corrected, not
+interpreted as approval for device work. OQ-14/OQ-19's unresolved role/lockout
+policies and OQ-77/78/82/84/85's lifecycle blockers remain unchanged.
+
 Status: Living document · Current reconciliation: **C-61 Owner Decision Package (2026-10-07, documentation only)** records PO-01…PO-12 in [PDR-09](decisions/product/PDR-09-inventory-accounting-posting-boundary.md); no OQ is closed. OQ-70 is narrowed to the Purchase Return agreed-price variance. **OQ-24/25/39/42/69/70/71/72 remain OPEN.**
 
 **C-62 approval reconciliation (2026-10-08):** [PDR-10](decisions/product/PDR-10-c62-inventory-accounting-posting-modes.md) records Owner-approved C62-OD-01…06. OQ-39 remains open for the feasibility-gated transaction design/recovery; OQ-42 for remaining per-mode approval/period and multi-warehouse details; OQ-72 for bounded service/worker authority detail; OQ-24/25 for source-specific mappings; OQ-69 for full historical valuation policy. OQ-70 variance and OQ-71 correction remain open. **No registry status changes.**
