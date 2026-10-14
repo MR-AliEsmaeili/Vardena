@@ -274,7 +274,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       const admin = request.agent(app!.getHttpServer());
       await admin
         .post('/api/v1/auth/login')
-        .send({ username: 'مدیر', password: '1' })
+        .send({ username: 'مدیر', password: ROTATED_ADMIN_PASSWORD })
         .expect(200);
 
       // A real, ordinary user whose name merely resembles the bootstrap one.
@@ -322,7 +322,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       const admin = request.agent(app!.getHttpServer());
       await admin
         .post('/api/v1/auth/login')
-        .send({ username: 'مدیر', password: '1' })
+        .send({ username: 'مدیر', password: ROTATED_ADMIN_PASSWORD })
         .expect(200);
       await admin.get('/api/v1/users').expect(200);
 
@@ -360,7 +360,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       const admin = request.agent(app!.getHttpServer());
       await admin
         .post('/api/v1/auth/login')
-        .send({ username: 'مدیر', password: '1' })
+        .send({ username: 'مدیر', password: ROTATED_ADMIN_PASSWORD })
         .expect(200);
       await admin
         .get('/api/v1/inventory/items')
