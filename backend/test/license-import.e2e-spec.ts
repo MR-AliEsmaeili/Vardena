@@ -324,8 +324,15 @@ describe('License document import (e2e)', () => {
 
   it('accepts the same artifact as text and retains it identically', async () => {
     const installationId = (await state()).installationId as string;
+    // L-06 (PDR-14 §3.4): issuance requires an explicit customer identity and
+    // business code; it never generates or derives them.
     const { document } = issueLicenseDocument(
-      { installationId, customerName: 'Acme Holding' },
+      {
+        installationId,
+        customerId: CUSTOMER,
+        customerCode: 'CUST-ACME-01',
+        customerName: 'Acme Holding',
+      },
       authority.privateKey,
     );
 

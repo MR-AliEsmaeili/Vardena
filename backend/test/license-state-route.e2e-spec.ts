@@ -124,6 +124,7 @@ describe('License state route registration (e2e)', () => {
         'inactiveReason',
         'installationId',
         'customerId',
+        'customerCode',
         'licenseId',
         'validFrom',
         'validUntil',
