@@ -455,7 +455,8 @@ error. Covered by the live PostgreSQL cases in `licensing-persistence-live.e2e-s
 ("refuses a license identifier another installation committed while this import was
 in flight" and "lets exactly one of two installations keep a license identifier…").
 
-**Superseded by OQ-86 Option C (implemented 2026-10-13).** This paragraph
+**Superseded by OQ-86 Option C (Owner decision 2026-10-12, implemented in the
+change that records the decision).** This paragraph
 recorded the pre-decision behaviour: overlap used to be evaluated only against
 versions that still governed at the import instant, so a retired version was
 excluded and a backdated non-superseding document could land inside the window
