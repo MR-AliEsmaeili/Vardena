@@ -206,6 +206,19 @@ protection and migration before any code changes (G-10, AR-29).
   unimplemented and gated by their open items (PDR-11 §15).
 - The version table is the future home of revocation/reactivation state; adding
   it now avoids a second lossy migration later.
+- *Addendum (2026-10-14, overlap-authority correction):* Decision 4's
+  pairwise-disjoint wording is the rule, without exception for a document that
+  names a supersession target. `evaluateImportConflicts` used to keep the named
+  target and silently ignore a *second* retained version the candidate also
+  overlapped, so a signed document naming one version while overlapping another
+  was applied and left two versions governing the same instants — the
+  `ambiguous` defensive read this model exists to avoid. The authority now
+  refuses that document with `overlapping-range` (409, nothing written, the
+  operation id unused): a supersession sanctions exactly the ONE version it
+  names, an unnamed overlap is only ever the OQ-80 Option B hand-over, and the
+  legacy `VLIC1` arm gains no bypass. No decision, HTTP class or OQ status
+  changes; recorded with its tests in
+  [the task record](../tasks/licensing-explicit-supersession-overlap-correction.md).
 - *Addendum (2026-10-14, L-06 / OD-LIC-03, [PDR-14](../decisions/product/PDR-14-licensing-customer-code.md)):*
   Every licensing customer row in `licensing.customers` carries a stable,
   independent business `customer_code` (`VARCHAR(64) NOT NULL`, unique via

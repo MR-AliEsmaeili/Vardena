@@ -2178,3 +2178,63 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   [Task selection, acceptance criteria and test matrix](docs/tasks/f-12-credential-transition-correction.md).
   Follow the existing exact-SHA manual merge protocol; no server-enforced
   protection, auto-merge or settings changes are introduced.
+
+## 42. Overlap-authority correction — an explicit supersession sanctions exactly the version it names (2026-10-14)
+
+- **Verified baseline:** `origin/main` `56072fefc565c305d0eb3701922d30f5bb44c26e`
+  (merge of PR #152); baseline push
+  [CI 38652768791](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38652768791)
+  succeeded (`classify`, `backend`, `docs`, `generated-api-client`, `ci-gate`;
+  `frontend` skipped as explicitly non-applicable). **Zero open PRs** existed at
+  selection. F-12 is complete in the current tree (only the un-owned policies
+  OQ-14/OQ-19 remain) and L-05/L-06 are merged; device/quota, revocation,
+  replacement, receipts, audit retention and owner-side issuance stay gated by
+  their OPEN OQ rows. This slice therefore fixes a reproduced defect in
+  **already-decided** behaviour instead of inventing a new milestone — it is not
+  L-07 and adds no scope.
+- **Defect (reproduced on the baseline):** `evaluateImportConflicts` kept the
+  explicit supersession target and, when the candidate *also* overlapped a
+  different retained version that still governs, silently ignored that version:
+  no branch existed for `target !== null && overlap !== null`. The document was
+  applied and the named (non-overlapped) version was stamped while the overlapped
+  version stayed eligible — two retained versions governing the same instants,
+  an as-of read reporting `ambiguous` (design §3.2 rule 7), and a retirement
+  audit row that explains nothing. Authority contradicted: ADR-0046 **Decision 4**,
+  design §3.3 ("overlap is allowed only in so far as it is replaced"; a
+  supersession is declared for exactly one version), OQ-80 §8.1 ("more than one
+  still-governing version is refused rather than guessed"), OQ-86 **Option C**,
+  and the domain's own type documentation ("exactly that version may be
+  overlapped").
+- **Fix:** `backend/src/modules/licensing/domain/license-version.ts` —
+  `if (target !== null && overlap !== null) return conflictOnly({ reason:
+  'overlapping-range', overlapping: 1 })`, placed between the multi-overlap
+  refusal and the OQ-80 Option B hand-over, with the rationale added to rule 4's
+  documentation. Both the read-side pass and the authoritative in-transaction
+  re-evaluation call this pure function, so refusal and "nothing written" hold on
+  both paths; the operation id stays unused and the document can be re-issued to
+  name the version it actually overlaps.
+- **Tests:** domain (`license-version.spec.ts`) — defect and variant, accepted
+  control, non-overlapping correction, unchanged legacy `VLIC1` hand-over, the
+  ambiguity counterexample, and a bounded reachability enumeration asserting the
+  disjoint-window invariant over every state the transaction would commit;
+  hermetic HTTP (`license-import.e2e-spec.ts`) — 409 with the stable reason,
+  nothing written (no version, stamp, supersession event or `APPLIED` audit; the
+  state endpoint still deterministic) plus the accepted control. Reverting only
+  the production file makes 3 domain tests and 1 e2e test fail; the fixed tree
+  passes 70/70 domain and 20/20 hermetic e2e.
+- **Impact:** no schema, migration, permission, API/DTO, generated-client,
+  frontend or workflow change. The existing `overlapping-range` 409 contract and
+  its existing Persian copy apply unchanged. Documentation corrected: design
+  §3.3 and the stale pre-decision `OQ-86` "known behaviour" paragraph, an
+  ADR-0046 addendum, and [the task record](docs/tasks/licensing-explicit-supersession-overlap-correction.md).
+  **No OQ row changed** — OQ-86 is already decided and its recorded rule is what
+  the code now enforces.
+- **Verification boundary:** fast local checks were the domain suite, the single
+  hermetic e2e file (in-memory repositories, no database), `npm run typecheck`
+  and targeted lint/format. All heavy verification (full unit suite, migrations
+  and rehearsals, full e2e, live-PostgreSQL suites, generated-client drift) runs
+  in GitHub Actions on the exact final PR head; the run URLs and SHAs live in the
+  PR description rather than in a later documentation commit.
+- **Status:** implementation submitted for review, **not merged and not
+  Owner-accepted**; the existing manual merge protocol applies and CI remains
+  advisory under the accepted GitHub Free limitation.

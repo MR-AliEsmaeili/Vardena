@@ -514,6 +514,166 @@ describe('License document import (e2e)', () => {
     expect(supersededEvent?.reason).toBeNull();
   });
 
+  /**
+   * Overlap-authority correction (2026-10-14): a signed supersession sanctions
+   * exactly the ONE version it names. Before the correction a document that
+   * named one retained version while overlapping a different one was applied,
+   * leaving the unnamed version governing the same instants as the new one —
+   * two covering versions, which the disjoint-window invariant (ADR-0046
+   * Decision 4, design §3.3) forbids and every as-of read then reports as
+   * `ambiguous`. The document is now refused like any other overlap it does not
+   * retire: 409, nothing written, the operation id unused.
+   */
+  it('refuses a supersession that does not retire the version it overlaps', async () => {
+    const installationId = (await state()).installationId as string;
+    const governing = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2027-01-01T00:00:00.000Z'),
+      },
+      authority.privateKey,
+    );
+    await importDocument(governing.file).expect(200);
+
+    // A scheduled renewal retained at its own window: adjacency, not overlap,
+    // so the governing version keeps governing until the renewal's start.
+    const scheduled = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2027-01-01T00:00:00.000Z'),
+        validUntil: new Date('2028-01-01T00:00:00.000Z'),
+      },
+      authority.privateKey,
+    );
+    await importDocument(scheduled.file).expect(200);
+
+    // The document names the CURRENT version but starts inside the scheduled
+    // renewal's window: the version it overlaps is not the one it retires.
+    const misplaced = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2027-06-01T00:00:00.000Z'),
+        validUntil: new Date('2028-06-01T00:00:00.000Z'),
+        supersedesOperationId: governing.payload.operationId,
+      },
+      authority.privateKey,
+    );
+    const refused = await importDocument(misplaced.file).expect(409);
+
+    expect(refused.body.code).toBe('Conflict');
+    expect(String(refused.body.message)).toMatch(/overlaps a retained version/);
+
+    // Nothing was written: no version, no stamp, no supersession event, and the
+    // refusal is the last audit record the attempt left behind.
+    expect(licensing.versions).toHaveLength(2);
+    const scheduledRow = await app
+      .get(LicensesRepository)
+      .findVersion(installationId, {
+        operationId: scheduled.payload.operationId,
+      });
+    expect(scheduledRow?.supersededAt).toBeNull();
+    expect(scheduledRow?.governsUntil).toBeNull();
+    expect(
+      licensing.auditEvents.some(
+        (event) => event.eventType === 'license.version.superseded',
+      ),
+    ).toBe(false);
+    expect(licensing.auditEvents.at(-1)).toMatchObject({
+      eventType: 'license.import.rejected',
+      outcome: 'REJECTED',
+      reason: 'overlapping-range',
+    });
+
+    // The installation is untouched: the governing version is still effective
+    // and the renewal is still only scheduled.
+    const current = await state();
+    const governingRow = await app
+      .get(LicensesRepository)
+      .findVersion(installationId, {
+        operationId: governing.payload.operationId,
+      });
+    expect(current.effectiveVersionId).toBe(governingRow?.versionId);
+    expect(current.scheduledVersion).toMatchObject({
+      validFrom: '2027-01-01T00:00:00.000Z',
+      effective: false,
+    });
+  });
+
+  it('applies the same document when it retires the version it overlaps', async () => {
+    const installationId = (await state()).installationId as string;
+    const governing = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2027-01-01T00:00:00.000Z'),
+      },
+      authority.privateKey,
+    );
+    await importDocument(governing.file).expect(200);
+    const scheduled = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2027-01-01T00:00:00.000Z'),
+        validUntil: new Date('2028-01-01T00:00:00.000Z'),
+      },
+      authority.privateKey,
+    );
+    await importDocument(scheduled.file).expect(200);
+
+    // Naming the version it overlaps is the one sanctioned overlap: the
+    // hand-over is stamped at the successor's own start.
+    const successor = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2027-06-01T00:00:00.000Z'),
+        validUntil: new Date('2028-06-01T00:00:00.000Z'),
+        supersedesOperationId: scheduled.payload.operationId,
+      },
+      authority.privateKey,
+    );
+    const applied = await importDocument(successor.file).expect(200);
+
+    expect(applied.body).toMatchObject({ outcome: 'APPLIED', active: true });
+    expect(licensing.versions).toHaveLength(3);
+    const scheduledRow = await app
+      .get(LicensesRepository)
+      .findVersion(installationId, {
+        operationId: scheduled.payload.operationId,
+      });
+    expect(scheduledRow).toMatchObject({
+      supersededAt: expect.any(Date),
+      governsUntil: new Date('2027-06-01T00:00:00.000Z'),
+    });
+    // The successor is retained, not yet effective, and not itself retired.
+    const successorRow = await app
+      .get(LicensesRepository)
+      .findVersion(installationId, {
+        operationId: successor.payload.operationId,
+      });
+    expect(successorRow).toMatchObject({
+      validFrom: new Date('2027-06-01T00:00:00.000Z'),
+      supersededAt: null,
+      governsUntil: null,
+    });
+    // The earliest version that is not effective yet is still the renewal the
+    // successor will take over from.
+    const current = await state();
+    expect(current.scheduledVersion).toMatchObject({
+      validFrom: '2027-01-01T00:00:00.000Z',
+      effective: false,
+    });
+    expect(
+      (
+        current.versions as Array<{ versionId: string; effective: boolean }>
+      ).some(
+        (version) =>
+          version.versionId === successorRow?.versionId &&
+          version.effective === false,
+      ),
+    ).toBe(true);
+  });
+
   it('refuses a supersession that would take over before the import instant', async () => {
     const installationId = (await state()).installationId as string;
     // A start in the past is fine for a document that retires nothing (the
