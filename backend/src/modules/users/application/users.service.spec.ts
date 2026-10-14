@@ -305,10 +305,14 @@ describe('UsersService (administration)', () => {
     });
     const beforeHash = stores.raw.users.raw(created.id)?.passwordHash ?? '';
 
-    const updated = await service.changeOwnPassword(created.id, {
-      currentPassword: 'initial-password-123',
-      newPassword: 'rotated-strong-password-456',
-    });
+    const updated = await service.changeOwnPassword(
+      created.id,
+      {
+        currentPassword: 'initial-password-123',
+        newPassword: 'rotated-strong-password-456',
+      },
+      async () => {},
+    );
 
     expect(updated.mustChangePassword).toBe(false);
     expect(stores.raw.users.raw(created.id)?.mustChangePassword).toBe(false);
@@ -337,40 +341,56 @@ describe('UsersService (administration)', () => {
     const initialHash = stores.raw.users.raw(created.id)?.passwordHash ?? '';
 
     await expect(
-      service.changeOwnPassword(created.id, {
-        currentPassword: 'wrong-password',
-        newPassword: 'rotated-strong-password-456',
-      }),
+      service.changeOwnPassword(
+        created.id,
+        {
+          currentPassword: 'wrong-password',
+          newPassword: 'rotated-strong-password-456',
+        },
+        async () => {},
+      ),
     ).rejects.toMatchObject({
       code: 'ValidationFailed',
       details: [{ field: 'currentPassword', code: 'invalidCurrentPassword' }],
     });
 
     await expect(
-      service.changeOwnPassword(created.id, {
-        currentPassword: 'initial-password-123',
-        newPassword: 'short',
-      }),
+      service.changeOwnPassword(
+        created.id,
+        {
+          currentPassword: 'initial-password-123',
+          newPassword: 'short',
+        },
+        async () => {},
+      ),
     ).rejects.toMatchObject({
       code: 'ValidationFailed',
       details: [{ field: 'newPassword', code: 'minLength' }],
     });
 
     await expect(
-      service.changeOwnPassword(created.id, {
-        currentPassword: 'initial-password-123',
-        newPassword: '        ',
-      }),
+      service.changeOwnPassword(
+        created.id,
+        {
+          currentPassword: 'initial-password-123',
+          newPassword: '        ',
+        },
+        async () => {},
+      ),
     ).rejects.toMatchObject({
       code: 'ValidationFailed',
       details: [{ field: 'newPassword', code: 'minLength' }],
     });
 
     await expect(
-      service.changeOwnPassword(created.id, {
-        currentPassword: 'initial-password-123',
-        newPassword: 'initial-password-123',
-      }),
+      service.changeOwnPassword(
+        created.id,
+        {
+          currentPassword: 'initial-password-123',
+          newPassword: 'initial-password-123',
+        },
+        async () => {},
+      ),
     ).rejects.toMatchObject({
       code: 'ValidationFailed',
       details: [{ field: 'newPassword', code: 'mustDifferFromCurrent' }],

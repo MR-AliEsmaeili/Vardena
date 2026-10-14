@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { AppConfig } from '../../../kernel/config/app-config.js';
 import type { DomainEventBus } from '../../../kernel/events/domain-event-bus.js';
+import type { DatabaseTransaction } from '../../../kernel/prisma/prisma.service.js';
 import { loadAppConfig } from '../../../kernel/config/app-config.js';
 import type { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { UsersService } from '../../users/application/users.service.js';
@@ -91,10 +92,14 @@ describe('AuthenticationService', () => {
       touch: vi.fn(),
       revoke: vi.fn(),
       revokeAllForUser: vi.fn(),
+      lockById: vi.fn().mockResolvedValue(makeSession()),
     } as unknown as SessionsRepository;
     tokens = new SessionTokenService();
     users = {
       verifyCredentials: vi.fn(),
+      withCurrentCredentials: vi.fn(async (_user, work) =>
+        work({} as DatabaseTransaction),
+      ),
       findActiveById: vi.fn(),
       findById: vi.fn(),
       findByUsername: vi.fn(),
@@ -292,6 +297,7 @@ describe('AuthenticationService', () => {
       const session = makeSession();
       vi.spyOn(tokens, 'hashToken').mockReturnValue(session.tokenHash);
       vi.mocked(sessions.findByTokenHash).mockResolvedValue(session);
+      vi.mocked(sessions.findById).mockResolvedValue(session);
       vi.mocked(users.findActiveById).mockResolvedValue(user);
 
       const result = await inContext(() =>
@@ -314,7 +320,12 @@ describe('AuthenticationService', () => {
   describe('changePassword', () => {
     it('changes the authenticated user password, clears mustChangePassword, and revokes other sessions while keeping current session active', async () => {
       const updatedUser = makeUser({ mustChangePassword: false });
-      vi.mocked(users.changeOwnPassword).mockResolvedValue(updatedUser);
+      vi.mocked(users.changeOwnPassword).mockImplementation(
+        async (_id, _params, commit) => {
+          await commit({} as DatabaseTransaction);
+          return updatedUser;
+        },
+      );
       vi.mocked(sessions.revokeAllForUser).mockResolvedValue(2);
 
       const dto = await runWithRequestContext(
@@ -335,14 +346,19 @@ describe('AuthenticationService', () => {
 
       expect(dto.id).toBe(updatedUser.id);
       expect(dto.mustChangePassword).toBe(false);
-      expect(users.changeOwnPassword).toHaveBeenCalledWith(updatedUser.id, {
-        currentPassword: 'old-password',
-        newPassword: 'new-strong-password',
-      });
+      expect(users.changeOwnPassword).toHaveBeenCalledWith(
+        updatedUser.id,
+        {
+          currentPassword: 'old-password',
+          newPassword: 'new-strong-password',
+        },
+        expect.any(Function),
+      );
       expect(sessions.revokeAllForUser).toHaveBeenCalledWith(
         updatedUser.id,
         '01ARZ3NDEKTSV4RRFFQ69G5FAW',
         expect.any(Date),
+        expect.any(Object),
       );
       expect(events.publish).toHaveBeenCalledTimes(1);
       expect(events.publish).toHaveBeenCalledWith(

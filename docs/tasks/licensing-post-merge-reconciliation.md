@@ -1,5 +1,14 @@
 # Licensing slice — post-merge audit, reconciliation and verification (PR #137)
 
+> **Current-tree reconciliation (2026-10-14):** at `main`
+> `05933588fad3f1cb76475d48c3f9586ec32494df`, L-05 (#146), F-12's core
+> bootstrap/forced-change flow (#149), and L-06 (#150; #151 shares its merged
+> commit) exist. Earlier outstanding-feature/credential-policy statements below
+> are historical. The remaining F-12 credential-transition defects and their
+> corrective slice are recorded in
+> [the repository-first task record](f-12-credential-transition-correction.md).
+> OQ-83 remains open; no device policy or Owner acceptance is inferred.
+
 | Field | Value |
 | --- | --- |
 | Date | 2026-10-11 (UTC) |

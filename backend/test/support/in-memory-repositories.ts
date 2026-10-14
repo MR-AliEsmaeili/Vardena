@@ -39,6 +39,7 @@ import type { RolesRepository } from '../../src/modules/rbac/data/roles.reposito
 import type { UserRolesRepository } from '../../src/modules/rbac/data/user-roles.repository.js';
 import type { UsersRepository } from '../../src/modules/users/data/users.repository.js';
 import type { SessionsRepository } from '../../src/modules/identity/data/sessions.repository.js';
+import type { DatabaseTransaction } from '../../src/kernel/prisma/prisma.service.js';
 import { generateId } from '../../src/kernel/ids/ulid.js';
 import type { LicensedAllocation } from '../../src/modules/licensing/application/licensing.service.js';
 
@@ -72,6 +73,34 @@ export function recordNotFound(): Error {
 export class InMemoryUsersRepository {
   private readonly byId = new Map<string, User>();
   private allocationTail: Promise<void> = Promise.resolve();
+
+  constructor(private readonly sessions: InMemorySessionsRepository) {}
+
+  async withCurrentCredentials<T>(
+    expected: Pick<User, 'id' | 'passwordHash'>,
+    work: (transaction: DatabaseTransaction) => Promise<T>,
+  ): Promise<T | null> {
+    return this.withAllocationLock(async () => {
+      const current = this.byId.get(expected.id);
+      if (
+        current === undefined ||
+        !current.isActive ||
+        current.deletedAt !== null ||
+        current.passwordHash !== expected.passwordHash
+      )
+        return null;
+      const users = new Map(this.byId);
+      const restoreSessions = this.sessions.rollbackSnapshot();
+      try {
+        return await work({} as DatabaseTransaction);
+      } catch (error) {
+        this.byId.clear();
+        users.forEach((user, id) => this.byId.set(id, user));
+        restoreSessions();
+        throw error;
+      }
+    });
+  }
 
   async findById(id: string): Promise<User | null> {
     return this.byId.get(id) ?? null;
@@ -255,6 +284,20 @@ export class InMemoryUsersRepository {
 
 export class InMemorySessionsRepository {
   private readonly byId = new Map<string, Session>();
+
+  rollbackSnapshot(): () => void {
+    const before = [...this.byId].map(
+      ([id, session]) => [id, { ...session }] as const,
+    );
+    return () => {
+      this.byId.clear();
+      before.forEach(([id, session]) => this.byId.set(id, session));
+    };
+  }
+
+  async lockById(sessionId: string): Promise<Session | null> {
+    return this.findById(sessionId);
+  }
 
   async create(input: {
     id: string;
@@ -695,8 +738,8 @@ export interface InMemoryStores {
  * so RBAC's joins behave like the real foreign-keyed tables.
  */
 export function createInMemoryStores(): InMemoryStores {
-  const users = new InMemoryUsersRepository();
   const sessions = new InMemorySessionsRepository();
+  const users = new InMemoryUsersRepository(sessions);
   const permissions = new InMemoryPermissionsRepository();
   const roles = new InMemoryRolesRepository(permissions);
   const userRoles = new InMemoryUserRolesRepository(permissions, roles, (id) =>

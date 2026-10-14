@@ -7,6 +7,7 @@ import {
   DOMAIN_EVENT_BUS,
   type DomainEventBus,
 } from '../../../kernel/events/domain-event-bus.js';
+import type { DatabaseTransaction } from '../../../kernel/prisma/prisma.service.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
@@ -153,6 +154,14 @@ export class UsersService {
       return { user: null, failureReason: 'user_disabled' };
     }
     return { user, failureReason: null };
+  }
+
+  /** Internal Identity contract: revalidate a verified credential under the user lock. */
+  async withCurrentCredentials<T>(
+    expected: Pick<User, 'id' | 'passwordHash'>,
+    work: (transaction: DatabaseTransaction) => Promise<T>,
+  ): Promise<T | null> {
+    return this.repository.withCurrentCredentials(expected, work);
   }
 
   /**
@@ -488,6 +497,7 @@ export class UsersService {
   async changeOwnPassword(
     userId: string,
     params: { currentPassword: string; newPassword: string },
+    commitSessions: (transaction: DatabaseTransaction) => Promise<void>,
   ): Promise<User> {
     const existing = await this.findActiveById(userId);
     if (existing === null) {
@@ -558,12 +568,26 @@ export class UsersService {
     }
 
     const passwordHash = await this.passwordService.hash(params.newPassword);
-    const updated = await this.repository.update(existing.id, {
-      passwordHash,
-      mustChangePassword: false,
-      updatedAt: new Date(),
-      updatedBy: existing.id,
-    });
+    const updated = await this.withCurrentCredentials(
+      existing,
+      async (transaction) => {
+        const changed = await this.repository.update(
+          existing.id,
+          {
+            passwordHash,
+            mustChangePassword: false,
+            updatedAt: new Date(),
+            updatedBy: existing.id,
+          },
+          transaction,
+        );
+        if (changed === null)
+          throw AppException.unauthorized('Authentication is required.');
+        // Identity owns session effects. Failure aborts BOTH modules' writes.
+        await commitSessions(transaction);
+        return changed;
+      },
+    );
     if (updated === null || !updated.isActive || updated.deletedAt !== null) {
       throw AppException.unauthorized('Authentication is required.');
     }

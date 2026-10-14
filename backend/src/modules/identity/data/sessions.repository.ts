@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import {
+  PrismaService,
+  type DatabaseTransaction,
+} from '../../../kernel/prisma/prisma.service.js';
 import type { Session } from '../domain/session.js';
 
 /**
@@ -12,34 +15,55 @@ import type { Session } from '../domain/session.js';
 export class SessionsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(input: {
-    id: string;
-    userId: string;
-    tokenHash: string;
-    userAgent: string | null;
-    ipAddress: string | null;
-    createdAt: Date;
-    lastSeenAt: Date;
-    expiresAt: Date;
-    absoluteExpiresAt: Date;
-  }): Promise<Session> {
+  /** User lock is already held; lock/revalidate the initiating session next. */
+  async lockById(
+    sessionId: string,
+    transaction: DatabaseTransaction,
+  ): Promise<Session | null> {
+    const client = await this.prisma.getClient<{
+      $queryRaw(
+        query: TemplateStringsArray,
+        ...values: unknown[]
+      ): Promise<unknown>;
+    }>(transaction);
+    await client.$queryRaw`SELECT "id" FROM "identity"."sessions" WHERE "id" = ${sessionId} FOR UPDATE`;
+    return this.findById(sessionId, transaction);
+  }
+
+  async create(
+    input: {
+      id: string;
+      userId: string;
+      tokenHash: string;
+      userAgent: string | null;
+      ipAddress: string | null;
+      createdAt: Date;
+      lastSeenAt: Date;
+      expiresAt: Date;
+      absoluteExpiresAt: Date;
+    },
+    transaction?: DatabaseTransaction,
+  ): Promise<Session> {
     const client = await this.prisma.getClient<{
       session: {
         create: (args: { data: typeof input }) => Promise<PrismaSessionRecord>;
       };
-    }>();
+    }>(transaction);
     const row = await client.session.create({ data: input });
     return toDomain(row);
   }
 
-  async findById(id: string): Promise<Session | null> {
+  async findById(
+    id: string,
+    transaction?: DatabaseTransaction,
+  ): Promise<Session | null> {
     const client = await this.prisma.getClient<{
       session: {
         findUnique: (args: {
           where: { id: string };
         }) => Promise<PrismaSessionRecord | null>;
       };
-    }>();
+    }>(transaction);
     const row = await client.session.findUnique({ where: { id } });
     return row === null ? null : toDomain(row);
   }
@@ -93,6 +117,7 @@ export class SessionsRepository {
     userId: string,
     exceptSessionId: string | null,
     revokedAt: Date,
+    transaction?: DatabaseTransaction,
   ): Promise<number> {
     const client = await this.prisma.getClient<{
       session: {
@@ -105,7 +130,7 @@ export class SessionsRepository {
           data: { revokedAt: Date };
         }) => Promise<{ count: number }>;
       };
-    }>();
+    }>(transaction);
     const where: {
       userId: string;
       revokedAt: null;

@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import {
+  PrismaService,
+  type DatabaseTransaction,
+} from '../../../kernel/prisma/prisma.service.js';
 import type { User } from '../domain/user.js';
 import type { LicensedAllocation } from '../../licensing/application/licensing.service.js';
 
@@ -50,6 +53,28 @@ export type UserActivationResult =
 @Injectable()
 export class UsersRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Serialize credential-dependent effects with password/lifecycle writes. */
+  async withCurrentCredentials<T>(
+    expected: Pick<User, 'id' | 'passwordHash'>,
+    work: (transaction: DatabaseTransaction) => Promise<T>,
+  ): Promise<T | null> {
+    return this.prisma.inTransaction(async (transaction) => {
+      const client = await this.prisma.getClient<UserAllocationTx>(transaction);
+      await client.$queryRaw`SELECT "id" FROM "users"."users" WHERE "id" = ${expected.id} FOR UPDATE`;
+      const current = await client.user.findUnique({
+        where: { id: expected.id },
+      });
+      if (
+        current === null ||
+        !current.isActive ||
+        current.deletedAt !== null ||
+        current.passwordHash !== expected.passwordHash
+      )
+        return null;
+      return work(transaction);
+    });
+  }
 
   async findById(id: string): Promise<User | null> {
     const client = await this.prisma.getClient<{
@@ -197,6 +222,7 @@ export class UsersRepository {
       updatedBy: string | null;
       deletedAt?: Date | null | undefined;
     },
+    transaction?: DatabaseTransaction,
   ): Promise<User | null> {
     const client = await this.prisma.getClient<{
       user: {
@@ -205,7 +231,7 @@ export class UsersRepository {
           data: typeof patch;
         }) => Promise<PrismaUserRecord>;
       };
-    }>();
+    }>(transaction);
     try {
       const row = await client.user.update({ where: { id }, data: patch });
       return toDomain(row);
