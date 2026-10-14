@@ -84,12 +84,25 @@ describe.skipIf(DATABASE_URL === undefined)(
      * exercise the customer rules build their documents.
      */
     function licenseFor(
-      options: Parameters<typeof issueLicenseFile>[0],
+      options: Partial<Parameters<typeof issueLicenseFile>[0]> & {
+        installationId: string;
+      },
       key: Parameters<typeof issueLicenseFile>[1] = authority.privateKey,
       file: { keyId?: string } = {},
     ): IssuedFile {
+      const customerId =
+        options.customer?.customerId ?? options.customerId ?? SELF_CUSTOMER;
       return issueLicenseFile(
-        { customerId: SELF_CUSTOMER, ...options },
+        {
+          customerId,
+          customerCode:
+            options.customer?.customerCode ??
+            options.customerCode ??
+            (customerId === SELF_CUSTOMER
+              ? 'CUST-LIVE-SELF'
+              : `CUST-${customerId.replace(/[^A-Za-z0-9]/g, '').slice(-12)}`),
+          ...options,
+        },
         key,
         file,
       );
@@ -376,6 +389,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           // The suite's customer: this first import is what binds the
           // installation, and every later document in this file names it.
           customerId: SELF_CUSTOMER,
+          customerCode: 'CUST-LIVE-SELF',
           customerName: 'Live customer',
           organizationLimit: 2,
           moduleEntitlements: ['organization', 'users'],
@@ -423,6 +437,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         {
           installationId: identity.installationId,
           customerId: SELF_CUSTOMER,
+          customerCode: 'CUST-LIVE-SELF',
           customerName: 'Live customer',
           organizationLimit: 5,
           moduleEntitlements: ['organization', 'users'],
@@ -578,6 +593,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           now,
           licenseId: '01K7DOOMEDLICENSE000000000',
           customerId: '01K7DOOMEDCUSTOMER00000000',
+          customerCode: 'CUST-DOOMED-01',
           customerName: 'Doomed customer',
           versionId: '01K7DOOMEDVERSION000000000',
           // Deliberately collides with a retained operation.
@@ -658,6 +674,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           now,
           licenseId: '01K7DOOMEDLICENSE000000000',
           customerId: '01K7DOOMEDCUSTOMER00000000',
+          customerCode: 'CUST-DOOMED-01',
           customerName: 'Doomed customer',
           versionId: '01K7DOOMEDVERSION000000001',
           operationId: 'doomed-operation-late-failure',
@@ -1236,8 +1253,8 @@ describe.skipIf(DATABASE_URL === undefined)(
       const foreignInstallation = '01K7FOREIGNINSTALLATION00001';
       const foreignLicense = '01K7FOREIGNLICENSE000000001';
       await client.$executeRawUnsafe(
-        `INSERT INTO "licensing"."customers" ("id", "display_name", "created_at", "updated_at")
-         VALUES ($1, 'Foreign customer', now(), now())`,
+        `INSERT INTO "licensing"."customers" ("id", "customer_code", "display_name", "created_at", "updated_at")
+         VALUES ($1, 'CUST-FOREIGN-01', 'Foreign customer', now(), now())`,
         foreignCustomer,
       );
       await client.$executeRawUnsafe(
@@ -1312,6 +1329,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         now,
         licenseId: payload.licenseId,
         customerId: payload.customerId,
+        customerCode: payload.customerCode,
         customerName,
         versionId,
         operationId: payload.operationId,
@@ -1416,9 +1434,10 @@ describe.skipIf(DATABASE_URL === undefined)(
         ): Promise<T>;
       }>();
       await client0.$executeRawUnsafe(
-        `INSERT INTO "licensing"."customers" ("id", "display_name", "created_at", "updated_at")
-         VALUES ($1, 'Self customer', now(), now())`,
+        `INSERT INTO "licensing"."customers" ("id", "customer_code", "display_name", "created_at", "updated_at")
+         VALUES ($1, $2, 'Self customer', now(), now())`,
         selfCustomer,
+        `CUST-${selfCustomer.replace(/[^A-Za-z0-9]/g, '').slice(-12)}`,
       );
       // Test fixture: bind this installation to the customer the document will
       // name. A document may only name the binding it already has (a customer
@@ -2382,5 +2401,59 @@ describe.skipIf(DATABASE_URL === undefined)(
         ),
       ).toBe(1);
     }, 120_000);
+
+    it('enforces customer_code uniqueness, preserves stored display_name/customer_code on import, and rejects customer-code-mismatch (L-06, PDR-14)', async () => {
+      const identity = await app.get(InstallationIdentityService).current();
+      const repository = app.get(LicensesRepository);
+
+      // Rename the bound customer's display_name via updateCustomerDisplayName;
+      // customerId and customerCode stay unchanged.
+      const renamed = await repository.updateCustomerDisplayName({
+        customerId: SELF_CUSTOMER,
+        displayName: 'Renamed Live Customer Ltd.',
+      });
+      expect(renamed.customerId).toBe(SELF_CUSTOMER);
+      expect(renamed.customerCode).toBe('CUST-LIVE-SELF');
+      expect(renamed.displayName).toBe('Renamed Live Customer Ltd.');
+
+      // Importing a renewal with a different customerName in the signed payload
+      // does NOT overwrite the stored display_name or customer_code.
+      const renewalWithDifferentName = licenseFor({
+        installationId: identity.installationId,
+        customerId: SELF_CUSTOMER,
+        customerCode: 'CUST-LIVE-SELF',
+        customerName: 'Different Label In Artifact',
+        validFrom: new Date('2046-01-01T00:00:00.000Z'),
+        validUntil: new Date('2047-01-01T00:00:00.000Z'),
+        userLimit: 100,
+      });
+      const applied = await importOutcome(renewalWithDifferentName);
+      expect(applied).toMatchObject({ applied: true, status: 200 });
+
+      const afterImport = await repository.findCustomerById(SELF_CUSTOMER);
+      expect(afterImport).toMatchObject({
+        customerId: SELF_CUSTOMER,
+        customerCode: 'CUST-LIVE-SELF',
+        displayName: 'Renamed Live Customer Ltd.',
+      });
+
+      // Importing a document with a mismatched customerCode for SELF_CUSTOMER
+      // fails closed with 409 customer-code-mismatch.
+      const mismatchedCode = licenseFor({
+        installationId: identity.installationId,
+        customerId: SELF_CUSTOMER,
+        customerCode: 'CUST-WRONG-LIVE-99',
+        customerName: 'Renamed Live Customer Ltd.',
+        validFrom: new Date('2047-01-01T00:00:00.000Z'),
+        validUntil: new Date('2048-01-01T00:00:00.000Z'),
+        userLimit: 100,
+      });
+      const refused = await importOutcome(mismatchedCode);
+      expect(refused).toMatchObject({
+        applied: false,
+        status: 409,
+        reason: 'customer-code-mismatch',
+      });
+    }, 60_000);
   },
 );

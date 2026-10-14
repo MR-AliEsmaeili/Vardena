@@ -268,6 +268,13 @@ export class LicenseStateDto implements LicenseStateView {
   @ApiProperty({
     type: String,
     nullable: true,
+    description: 'Stable business customer code (L-06, PDR-14).',
+  })
+  customerCode!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
   })
   licenseId!: string | null;
 
@@ -351,6 +358,14 @@ export class LicenseCustomerTransferResultDto extends LicenseImportResultDto {
       'The commercial customer this installation was bound to before the transfer.',
   })
   previousCustomerId!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The business customer code this installation was bound to before the transfer (L-06).',
+  })
+  previousCustomerCode!: string | null;
 
   @ApiProperty({ description: 'True when the transfer changed the binding.' })
   bindingChanged!: boolean;

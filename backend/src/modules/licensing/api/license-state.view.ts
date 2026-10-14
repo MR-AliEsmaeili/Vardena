@@ -24,6 +24,7 @@ export interface LicenseStateView {
   inactiveReason: string | null;
   installationId: string | null;
   customerId: string | null;
+  customerCode: string | null;
   licenseId: string | null;
   validFrom: string | null;
   validUntil: string | null;
@@ -50,6 +51,7 @@ export function toLicenseStateView(
     inactiveReason: license.inactiveReason,
     installationId: license.installationId,
     customerId: license.customerId,
+    customerCode: license.customerCode,
     licenseId: license.licenseId,
     validFrom: license.validFrom?.toISOString() ?? null,
     validUntil: license.validUntil?.toISOString() ?? null,

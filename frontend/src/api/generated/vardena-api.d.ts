@@ -3554,6 +3554,8 @@ export interface components {
             inactiveReason: string | null;
             installationId: string | null;
             customerId: string | null;
+            /** @description Stable business customer code (L-06, PDR-14). */
+            customerCode: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;
@@ -3589,6 +3591,8 @@ export interface components {
             inactiveReason: string | null;
             installationId: string | null;
             customerId: string | null;
+            /** @description Stable business customer code (L-06, PDR-14). */
+            customerCode: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;
@@ -3640,6 +3644,8 @@ export interface components {
             inactiveReason: string | null;
             installationId: string | null;
             customerId: string | null;
+            /** @description Stable business customer code (L-06, PDR-14). */
+            customerCode: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;
@@ -3662,6 +3668,8 @@ export interface components {
             outcome: "APPLIED" | "UNCHANGED";
             /** @description The commercial customer this installation was bound to before the transfer. */
             previousCustomerId: string | null;
+            /** @description The business customer code this installation was bound to before the transfer (L-06). */
+            previousCustomerCode: string | null;
             /** @description True when the transfer changed the binding. */
             bindingChanged: boolean;
         };
@@ -3688,6 +3696,8 @@ export interface components {
             inactiveReason: string | null;
             installationId: string | null;
             customerId: string | null;
+            /** @description Stable business customer code (L-06, PDR-14). */
+            customerCode: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;
@@ -3760,6 +3770,8 @@ export interface components {
             inactiveReason: string | null;
             installationId: string | null;
             customerId: string | null;
+            /** @description Stable business customer code (L-06, PDR-14). */
+            customerCode: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;

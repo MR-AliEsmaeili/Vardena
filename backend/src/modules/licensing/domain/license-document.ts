@@ -4,6 +4,7 @@ import {
   verify as cryptoVerify,
   type KeyObject,
 } from 'node:crypto';
+import { CUSTOMER_CODE_PATTERN } from './customer.js';
 import {
   KNOWN_MODULE_CODES,
   LicenseCodeError,
@@ -77,6 +78,7 @@ export interface LicenseVersionPayload {
   operationId: string;
   licenseId: string;
   customerId: string;
+  customerCode: string;
   customerName: string;
   installationId: string;
   status: LicenseStatus;
@@ -199,6 +201,7 @@ interface WirePayloadV2 {
   operationId: string;
   licenseId: string;
   customerId: string;
+  customerCode: string;
   customerName: string;
   installationId: string;
   status: string;
@@ -226,6 +229,7 @@ export function canonicalizeLicenseVersion(
     operationId: payload.operationId,
     licenseId: payload.licenseId,
     customerId: payload.customerId,
+    customerCode: payload.customerCode,
     customerName: payload.customerName,
     installationId: payload.installationId,
     status: payload.status,
@@ -476,12 +480,15 @@ function readLicenseVersionPayload(raw: unknown): LicenseVersionPayload {
       'The license document is not a server license version.',
     );
   }
+  const customerId = readId(wire.customerId, 'customerId');
+  const customerCode = readCustomerCode(wire.customerCode, customerId);
   return {
     version: LICENSE_DOCUMENT_VERSION,
     kind: LICENSE_DOCUMENT_KIND,
     operationId: readId(wire.operationId, 'operationId'),
     licenseId: readId(wire.licenseId, 'licenseId'),
-    customerId: readId(wire.customerId, 'customerId'),
+    customerId,
+    customerCode,
     customerName: readName(wire.customerName),
     installationId: readId(wire.installationId, 'installationId'),
     status: readStatus(wire.status),
@@ -508,6 +515,22 @@ function readId(value: unknown, field: string): string {
     throw new LicenseDocumentError(
       'payload',
       `The license ${field} is missing or malformed.`,
+    );
+  }
+  return value;
+}
+
+function readCustomerCode(value: unknown, customerId: string): string {
+  if (typeof value !== 'string' || !CUSTOMER_CODE_PATTERN.test(value)) {
+    throw new LicenseDocumentError(
+      'payload',
+      'The license customerCode is missing or malformed.',
+    );
+  }
+  if (value === customerId) {
+    throw new LicenseDocumentError(
+      'payload',
+      'The license customerCode must be an independent business code and must not equal customerId.',
     );
   }
   return value;
@@ -591,6 +614,15 @@ function readCodes(value: unknown, field: string): string[] {
 export function assertLicenseVersionPayload(
   payload: LicenseVersionPayload,
 ): void {
+  readId(payload.operationId, 'operationId');
+  readId(payload.licenseId, 'licenseId');
+  const customerId = readId(payload.customerId, 'customerId');
+  readCustomerCode(payload.customerCode, customerId);
+  readName(payload.customerName);
+  readId(payload.installationId, 'installationId');
+  if (payload.supersedesOperationId !== null) {
+    readId(payload.supersedesOperationId, 'supersedesOperationId');
+  }
   if (
     payload.validUntil !== null &&
     payload.validUntil.getTime() <= payload.validFrom.getTime()

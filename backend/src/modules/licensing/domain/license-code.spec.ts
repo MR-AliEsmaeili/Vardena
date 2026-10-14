@@ -25,14 +25,22 @@ describe('license code', () => {
   const other = generateAuthorityKeyPair();
   const publicKeys = [parsePublicKey(authority.publicKey)];
   const INSTALLATION = '01K7INSTALLATIONAAAAAAAAAA';
+  const CUSTOMER = '01K7CUSTOMERAAAAAAAAAAAAAA';
+  const CUSTOMER_CODE = 'CUST-ACME-01';
 
   const issue = (
-    overrides: Parameters<typeof issueLicenseCode>[0] = {
-      installationId: INSTALLATION,
-    },
+    overrides: Partial<Parameters<typeof issueLicenseCode>[0]> = {},
     key = authority.privateKey,
   ): { code: string; payload: LicensePayload } =>
-    issueLicenseCode({ ...overrides }, key);
+    issueLicenseCode(
+      {
+        installationId: INSTALLATION,
+        customerId: CUSTOMER,
+        customerCode: CUSTOMER_CODE,
+        ...overrides,
+      },
+      key,
+    );
 
   it('round-trips an issued license and preserves every field', () => {
     const { code, payload } = issue({
@@ -48,7 +56,10 @@ describe('license code', () => {
     const parsed = parseLicenseCode(code, publicKeys);
 
     expect(parsed).toEqual(payload);
+    expect(parsed.customerCode).toBe(CUSTOMER_CODE);
     expect(toInstallationLicense(parsed, 'persistent')).toMatchObject({
+      customerId: CUSTOMER,
+      customerCode: CUSTOMER_CODE,
       installationId: INSTALLATION,
       organizationLimit: 3,
       userLimit: 25,
@@ -60,7 +71,12 @@ describe('license code', () => {
     });
     expect(
       evaluateLicense(toInstallationLicense(parsed, 'p'), new Date()),
-    ).toMatchObject({ licensed: true, active: true });
+    ).toMatchObject({
+      licensed: true,
+      active: true,
+      customerId: CUSTOMER,
+      customerCode: CUSTOMER_CODE,
+    });
   });
 
   it('is stable: the same code always hashes to the same value', () => {

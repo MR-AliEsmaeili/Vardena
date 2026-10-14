@@ -24,12 +24,13 @@ enum EntitlementKind {
 }
 
 model LicenseCustomer {
-  id          String   @id
-  displayName String   @map("display_name") @db.VarChar(200)
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
-  createdBy   String?  @map("created_by")
-  updatedBy   String?  @map("updated_by")
+  id           String   @id
+  customerCode String   @unique(map: "uq_customers_customer_code") @map("customer_code") @db.VarChar(64)
+  displayName  String   @map("display_name") @db.VarChar(200)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy    String?  @map("created_by")
+  updatedBy    String?  @map("updated_by")
 
   installations Installation[]
   licenses      License[]
@@ -185,9 +186,13 @@ model LicenseAuditEvent {
   detail         String?  @db.Text
   /// The commercial customer the installation was bound to BEFORE an explicit
   /// transfer; null on every other event (Q4, 2026-10-12).
-  previousCustomerId String? @map("previous_customer_id")
+  previousCustomerId   String? @map("previous_customer_id")
+  /// The business customer code BEFORE that transfer (L-06, PDR-14); null on every other event.
+  previousCustomerCode String? @map("previous_customer_code") @db.VarChar(64)
   /// The customer it is bound to AFTER that transfer; null on every other event.
-  newCustomerId      String? @map("new_customer_id")
+  newCustomerId        String? @map("new_customer_id")
+  /// The business customer code AFTER that transfer (L-06, PDR-14); null on every other event.
+  newCustomerCode      String? @map("new_customer_code") @db.VarChar(64)
   /// The license whose lapsed coverage a dedicated post-gap recovery follows
   /// (OQ-87 Option B, PDR-13); null on every other event. A prior/current
   /// license pair is the traceable history the Owner decision requires — and

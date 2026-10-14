@@ -16,7 +16,8 @@ import {
  *       application (a password manager, the CI secret store, …).
  *
  *   LICENSE_SIGNING_PRIVATE_KEY=<base64> npm run license:issue -- \
- *     --installation 01J... [--customer-name "Acme"] [--valid-until 2027-01-01] \
+ *     --installation 01J... --customer 01J... --customer-code CUST-... \
+ *     [--customer-name "Acme"] [--valid-until 2027-01-01] \
  *     [--organizations 3] [--users 25] [--modules organization,users,rbac] \
  *     [--status ACTIVE] [--valid-from 2027-01-01] [--operation-id 01J...] \
  *     [--supersedes 01J...] [--key-id 2026-a] [--artifact] [--out license.json]
@@ -32,8 +33,10 @@ import {
  *
  * It refuses to run with `NODE_ENV=production`: a production license must be
  * issued by the commercial authority, not by a copy of the application.
- * The installation id is NOT invented here — it is the id the target
- * installation reports in `GET /api/v1/license/current`.
+ * The installation id, customer id, and business customer code are NOT
+ * invented here — the installation id is reported in
+ * `GET /api/v1/license/current`, and `--customer` / `--customer-code` must
+ * identify the target customer explicitly (PDR-14 / L-06).
  */
 async function issueDevelopmentLicense(): Promise<void> {
   const config = loadAppConfig();
@@ -67,9 +70,21 @@ async function issueDevelopmentLicense(): Promise<void> {
     );
   }
   const installationId = args.get('installation');
-  if (installationId === undefined) {
+  if (installationId === undefined || installationId === 'true') {
     throw new Error(
       '--installation <installationId> is required; read it from GET /api/v1/license/current on the target installation.',
+    );
+  }
+  const customerId = args.get('customer');
+  if (customerId === undefined || customerId === 'true') {
+    throw new Error(
+      '--customer <customerId> is required; specify the target customer id explicitly.',
+    );
+  }
+  const customerCode = args.get('customer-code');
+  if (customerCode === undefined || customerCode === 'true') {
+    throw new Error(
+      '--customer-code <customerCode> is required; specify the target customer business code explicitly.',
     );
   }
 
@@ -79,7 +94,8 @@ async function issueDevelopmentLicense(): Promise<void> {
   }
   const common = {
     installationId,
-    ...optional('customerId', args.get('customer')),
+    customerId,
+    customerCode,
     ...optional('customerName', args.get('customer-name')),
     ...optional('status', args.get('status') as 'ACTIVE' | undefined),
     ...optional('validFrom', dateArg(args.get('valid-from'))),
@@ -153,6 +169,7 @@ function summaryLines(
     installationId: string;
     licenseId: string;
     customerId: string;
+    customerCode: string;
     customerName: string;
     status: string;
     validFrom: Date;
@@ -167,7 +184,7 @@ function summaryLines(
     `Transport    : ${transport}`,
     `Installation : ${payload.installationId}`,
     `License      : ${payload.licenseId}`,
-    `Customer     : ${payload.customerId} (${payload.customerName})`,
+    `Customer     : ${payload.customerId} [${payload.customerCode}] (${payload.customerName})`,
     `Status       : ${payload.status}`,
     `Valid        : ${payload.validFrom.toISOString()} → ${payload.validUntil?.toISOString() ?? 'perpetual'}`,
     `Limits       : organizations=${payload.organizationLimit ?? 'unlimited'} users=${payload.userLimit ?? 'unlimited'}`,

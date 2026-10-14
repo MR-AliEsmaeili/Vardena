@@ -32,7 +32,7 @@ PDR-11 §14 conceptual entities → implemented tables (CF-17):
 | --- | --- | --- |
 | License | `licensing.licenses` | One row per commercial license; bound to one installation (one active installation per license, §5.3). Holds no dates and no entitlements: those belong to a version. It is deliberately minimal — it is also the future home of license-level revocation state (PDR-11 §10, OQ-78). |
 | LicenseVersion | `licensing.license_versions` | Retained, never overwritten. Carries validity window, limits, status, entitlements, signing key id, document hash, operation id, source and import facts. Supersession is two facts, not one: `superseded_at` (when it was recorded) and `governs_until` (from when the version stops governing) — §3.1. |
-| Customer / Contract | `licensing.customers` | Customer only. Contracts, pricing and billing are out of scope (PDR-11 §4.1/§17.1) and stay Owner-side. |
+| Customer / Contract | `licensing.customers` | Customer only (`id`, unique `customer_code`, and `display_name`; [PDR-14](../decisions/product/PDR-14-licensing-customer-code.md) / L-06). Contracts, pricing and billing are out of scope (PDR-11 §4.1/§17.1) and stay Owner-side. |
 | ServerInstallation | `licensing.installations` | Unchanged from L-02 (ADR-0045 Decision 1). |
 | ReplacementRecord | — | Not implemented; replacement workflow is a later slice (PDR-11 §5.5, U-9). |
 | ClientDevice | — | Not implemented; client-device licensing is a later slice (PDR-11 §7). |
@@ -60,6 +60,7 @@ Canonical payload (fixed key order, sorted arrays, ISO-8601 UTC instants):
   "operationId": "01J…",
   "licenseId": "01J…",
   "customerId": "01J…",
+  "customerCode": "CUST-ACME-001",
   "customerName": "…",
   "installationId": "01J…",
   "status": "ACTIVE",
@@ -75,7 +76,9 @@ Canonical payload (fixed key order, sorted arrays, ISO-8601 UTC instants):
 ```
 
 Rules: the payload must round-trip to **exactly** the signed bytes (canonical
-form), `validUntil` is exclusive and `null` means perpetual, limits are
+form), `customerId` and `customerCode` must be valid codes and distinct from
+each other (`customerCode !== customerId`, [PDR-14](../decisions/product/PDR-14-licensing-customer-code.md)),
+`validUntil` is exclusive and `null` means perpetual, limits are
 positive-or-null, module codes must be known to this build, feature codes must
 match the code pattern, and no duplicates are allowed.
 
@@ -408,10 +411,18 @@ one customer and to exactly one installation (PDR-11 §2.1; ADR-0046 Decision 2)
 Versions of one license therefore share its customer, and an import may not change
 it:
 
+- a document whose `customerId` matches an existing customer with a different
+  `customerCode`, or whose `customerCode` is already bound to a different
+  `customerId`, is refused as `customer-code-mismatch` (409) by the shared
+  evaluation (`evaluateImportConflicts`) and inside the transaction
+  ([PDR-14](../decisions/product/PDR-14-licensing-customer-code.md) / L-06);
 - a document whose `licenseId` is already retained for this installation under a
   **different customer** is refused as `license-binding-conflict` (409) by the
   shared evaluation (`evaluateImportConflicts`, rule 2a). An explicit supersession
   does not bypass this rule;
+- an ordinary import never overwrites an existing customer's stored
+  `display_name` in `licensing.customers` ([PDR-14](../decisions/product/PDR-14-licensing-customer-code.md)).
+  `licensing.customers` is inserted only when `customerId` is not yet present;
 - a document whose `licenseId` belongs to **another installation** is refused as
   `license-binding-conflict` (409) inside the transaction, under the installation
   lock and before any upsert. Before this correction the foreign identifier reached
@@ -508,11 +519,11 @@ One transaction per import, in the licensing schema only:
 ```text
 BEGIN  (READ COMMITTED, 10 s timeout)
   SELECT ... FROM licensing.installations WHERE id = $1 FOR UPDATE   -- serialize per installation
-  read licensing.license_versions                                   -- committed state under the lock
-  evaluate the version invariant  (replay + overlap + supersession target)
+  read licensing.customers + licensing.license_versions              -- committed state under the lock
+  evaluate the version invariant  (replay + customer/code consistency + overlap + supersession target)
     -> conflict: raise (409 reason), transaction rolls back, nothing written
-  upsert licensing.customers        (id = payload.customerId, display name)
-  upsert licensing.licenses         (id = payload.licenseId, installation, customer)
+  create licensing.customers if absent (id, customer_code, display_name; never overwrite existing display_name)
+  insert/update licensing.licenses  (id = payload.licenseId, installation, customer)
   insert licensing.license_versions (+ entitlements)
   stamp the retired version         (superseded_at = now, governs_until = candidate.valid_from,
                                      superseded_by_version_id = the new version)

@@ -151,6 +151,7 @@ export interface LicenseState {
   inactiveReason: 'unlicensed' | 'status' | 'not-yet-valid' | 'expired' | null;
   installationId: string | null;
   customerId: string | null;
+  customerCode: string | null;
   licenseId: string | null;
   validFrom: string | null;
   validUntil: string | null;

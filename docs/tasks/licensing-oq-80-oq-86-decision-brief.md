@@ -146,6 +146,7 @@ either a retained or a new identifier (corrective task **L-05**, report §4.4.1 
 a requirement defect; PR #142 stays `HOLD` until it is fixed and verified, and
 narrowing §8.6 is not an accepted alternative). The old text above is preserved as
 the record of what was decided on 2026-10-12; it is not rewritten.
+*(Update 2026-10-14: **L-05** was implemented and merged in PR #146 (`0879db3f0a3740cfbe8e68bce98013fac7322791`); **L-06** was decided by the Product Owner in **[PDR-14](../decisions/product/PDR-14-licensing-customer-code.md)** (`OD-LIC-03`) and implemented on branch `arena/3e77bbc7-vardena`, introducing `licensing.customers.customer_code`, signed `customerCode` in `VLIC2`/`VLIC1`, explicit issuance/CLI validation, non-overwrite of `display_name`, and `customer-code-mismatch` conflict enforcement.)*
 
 ### 8.4 Q4 — customer transfer is an explicit, audited operation
 

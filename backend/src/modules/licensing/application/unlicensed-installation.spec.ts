@@ -25,6 +25,7 @@ describe('unlicensed installation', () => {
     await expect(licensing.current()).resolves.toEqual({
       licensed: false,
       customerId: null,
+      customerCode: null,
       installationId: '01K7INSTALLATIONAAAAAAAAAA',
       licenseId: null,
       status: 'UNLICENSED',
@@ -72,6 +73,7 @@ describe('unlicensed installation', () => {
       name: 'persistent',
       getLicense: async () => ({
         customerId: 'customer',
+        customerCode: 'CUST-01',
         installationId: 'installation',
         licenseId: 'license',
         status: 'ACTIVE',
@@ -124,6 +126,7 @@ describe('unlicensed installation', () => {
       name: 'persistent',
       getLicense: async () => ({
         customerId: 'customer',
+        customerCode: 'CUST-01',
         installationId: 'installation',
         licenseId: 'license',
         status: 'ACTIVE',

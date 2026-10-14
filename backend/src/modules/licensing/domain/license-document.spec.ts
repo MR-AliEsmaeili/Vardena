@@ -31,6 +31,23 @@ import {
 const AUTHORITY = generateAuthorityKeyPair();
 const OTHER = generateAuthorityKeyPair();
 const INSTALLATION = '01K7INSTALLATION0000000000';
+const CUSTOMER = '01K7CUSTOMER00000000000000';
+const CUSTOMER_CODE = 'CUST-ACME-01';
+
+function issue(
+  overrides: Partial<Parameters<typeof issueLicenseFile>[0]> = {},
+  key = AUTHORITY.privateKey,
+): ReturnType<typeof issueLicenseFile> {
+  return issueLicenseFile(
+    {
+      installationId: INSTALLATION,
+      customerId: CUSTOMER,
+      customerCode: CUSTOMER_CODE,
+      ...overrides,
+    },
+    key,
+  );
+}
 
 function trusted(...materials: string[]): TrustedLicenseKey[] {
   return toTrustedKeys(
@@ -61,6 +78,7 @@ function wire(
     operationId: generateId(),
     licenseId: generateId(),
     customerId: generateId(),
+    customerCode: CUSTOMER_CODE,
     customerName: 'Acme Holding',
     installationId: INSTALLATION,
     status: 'ACTIVE',
@@ -89,7 +107,7 @@ function reasonOf(run: () => unknown): string | undefined {
 
 describe('signed license document', () => {
   it('round-trips a document through the trust list', () => {
-    const { document, payload } = issueLicenseFile(
+    const { document, payload } = issue(
       {
         installationId: INSTALLATION,
         customerName: 'Acme Holding',
@@ -108,6 +126,8 @@ describe('signed license document', () => {
       version: 2,
       kind: 'SERVER_LICENSE_VERSION',
       operationId: payload.operationId,
+      customerId: CUSTOMER,
+      customerCode: CUSTOMER_CODE,
       installationId: INSTALLATION,
       organizationLimit: 3,
       userLimit: 25,
@@ -119,7 +139,7 @@ describe('signed license document', () => {
   });
 
   it('produces the same payload from the file envelope and the bare artifact', () => {
-    const { file, document } = issueLicenseFile(
+    const { file, document } = issue(
       { installationId: INSTALLATION },
       AUTHORITY.privateKey,
     );
@@ -139,7 +159,7 @@ describe('signed license document', () => {
   });
 
   it('rejects a tampered payload with a signature failure', () => {
-    const { document } = issueLicenseFile(
+    const { document } = issue(
       { installationId: INSTALLATION },
       AUTHORITY.privateKey,
     );
@@ -148,6 +168,30 @@ describe('signed license document', () => {
       Buffer.from(body!, 'base64url').toString('utf8'),
     );
     decoded['userLimit'] = 100_000;
+
+    const forged = [
+      prefix,
+      Buffer.from(JSON.stringify(decoded), 'utf8').toString('base64url'),
+      signature,
+    ].join('.');
+
+    expect(
+      reasonOf(() =>
+        parseLicenseDocument(forged, trusted(AUTHORITY.publicKey)),
+      ),
+    ).toBe('signature');
+  });
+
+  it('rejects a tampered customerCode with a signature failure', () => {
+    const { document } = issue(
+      { installationId: INSTALLATION },
+      AUTHORITY.privateKey,
+    );
+    const [prefix, body, signature] = document.split('.');
+    const decoded = JSON.parse(
+      Buffer.from(body!, 'base64url').toString('utf8'),
+    );
+    decoded['customerCode'] = 'CUST-TAMPERED-99';
 
     const forged = [
       prefix,
@@ -189,7 +233,7 @@ describe('signed license document', () => {
   });
 
   it('rejects a document signed by an untrusted authority', () => {
-    const { document } = issueLicenseFile(
+    const { document } = issue(
       { installationId: INSTALLATION },
       OTHER.privateKey,
     );
@@ -202,7 +246,7 @@ describe('signed license document', () => {
   });
 
   it('rejects an empty trust list', () => {
-    const { document } = issueLicenseFile(
+    const { document } = issue(
       { installationId: INSTALLATION },
       AUTHORITY.privateKey,
     );
@@ -212,7 +256,7 @@ describe('signed license document', () => {
   });
 
   it('honours an addressable key id and rejects an unknown one', () => {
-    const { document } = issueLicenseFile(
+    const { document } = issue(
       { installationId: INSTALLATION },
       AUTHORITY.privateKey,
     );
@@ -230,7 +274,7 @@ describe('signed license document', () => {
   });
 
   it('keeps a rotated-away key usable only while it is trusted', () => {
-    const { document } = issueLicenseFile(
+    const { document } = issue(
       { installationId: INSTALLATION },
       AUTHORITY.privateKey,
     );
@@ -329,6 +373,16 @@ describe('signed license document', () => {
       [{ kind: 'CLIENT_LICENSE' }, 'payload'],
       [{ v: 1 }, 'unsupported-version'],
       [{ installationId: 'not a valid id!' }, 'payload'],
+      [{ customerCode: '' }, 'payload'],
+      [{ customerCode: '   ' }, 'payload'],
+      [{ customerCode: 'invalid spaces!' }, 'payload'],
+      [
+        {
+          customerId: '01K7CUSTOMER00000000000000',
+          customerCode: '01K7CUSTOMER00000000000000',
+        },
+        'payload',
+      ],
     ];
 
     for (const [overrides, expected] of cases) {
@@ -341,6 +395,17 @@ describe('signed license document', () => {
         ),
       ).toBe(expected);
     }
+
+    const withoutCustomerCode = wire();
+    delete withoutCustomerCode['customerCode'];
+    expect(
+      reasonOf(() =>
+        parseLicenseDocument(
+          signWire(withoutCustomerCode),
+          trusted(AUTHORITY.publicKey),
+        ),
+      ),
+    ).toBe('payload');
 
     // A document cannot retire itself.
     const operationId = generateId();
@@ -355,7 +420,7 @@ describe('signed license document', () => {
   });
 
   it('hashes the artifact deterministically and irreversibly', () => {
-    const { document } = issueLicenseFile(
+    const { document } = issue(
       { installationId: INSTALLATION },
       AUTHORITY.privateKey,
     );

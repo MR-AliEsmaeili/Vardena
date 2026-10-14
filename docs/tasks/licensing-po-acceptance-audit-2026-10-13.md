@@ -482,6 +482,7 @@ equivalent in this repository, and this audit does not assume they are:
 **F-8 overall: NOT SATISFIED — two outstanding implementation items (L-05, L-06).**
 The identity relaxation itself needs no code change and is correctly implemented;
 the two gaps above are against the same decision and are not waived by this audit.
+*(Update 2026-10-14: **L-05** was implemented and merged in PR #146 (`0879db3f0a3740cfbe8e68bce98013fac7322791`), and **F-12** was implemented and merged in PR #149 (`d017636f5e339b26c0b5511009fb3aa450ddd288`). **L-06** was decided by the Product Owner in **[PDR-14](../decisions/product/PDR-14-licensing-customer-code.md)** (`OD-LIC-03`) and implemented on branch `arena/3e77bbc7-vardena`, see [`docs/tasks/licensing-post-merge-reconciliation.md` §19](./licensing-post-merge-reconciliation.md).)*
 
 ## 5. F-12 — initial System Administrator
 

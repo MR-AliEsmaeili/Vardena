@@ -130,6 +130,8 @@ export interface RetainedLicenseVersion {
   licenseId: string;
   /** Commercial customer of the version's license (from the license row). */
   customerId: string;
+  /** Stable business customer code of the version's customer (L-06, PDR-14). */
+  customerCode: string;
   installationId: string;
   /** Unique operation identity; the replay guard keys on it. */
   operationId: string;
@@ -795,6 +797,7 @@ export type ImportConflictReason =
   | 'overlapping-range'
   | 'backdated-supersession'
   | 'license-binding-conflict'
+  | 'customer-code-mismatch'
   | 'installation-customer-mismatch'
   | 'transfer-not-applicable'
   | 'renewal-gap'
@@ -850,6 +853,7 @@ export interface ImportCandidate {
   validUntil: Date | null;
   licenseId: string;
   customerId: string;
+  customerCode: string;
   organizationLimit: LicenseLimit;
   userLimit: LicenseLimit;
   entitlements: readonly LicenseEntitlement[];
@@ -916,6 +920,13 @@ export interface EvaluateImportConflictsParams {
   at: Date;
   /** The installation's current commercial customer (null = not bound yet). */
   installationCustomerId?: string | null;
+  /** The installation's current customer business code (null = not bound yet). */
+  installationCustomerCode?: string | null;
+  /**
+   * Known persisted customer records (`licensing.customers`) to validate
+   * `(customerId, customerCode)` consistency against (L-06, PDR-14).
+   */
+  knownCustomers?: readonly { customerId: string; customerCode: string }[];
   /** Set only by the explicit transfer operation; null on every other path. */
   customerTransfer?: CustomerTransferIntent | null;
   /**
@@ -1143,6 +1154,8 @@ export function evaluateImportConflicts(
   const { candidate, operationId, documentHash, supersession, versions, at } =
     params;
   const installationCustomerId = params.installationCustomerId ?? null;
+  const installationCustomerCode = params.installationCustomerCode ?? null;
+  const knownCustomers = params.knownCustomers ?? [];
   const customerTransfer = params.customerTransfer ?? null;
   const usage = params.usage ?? null;
   const gapRecovery = params.gapRecovery ?? null;
@@ -1153,16 +1166,8 @@ export function evaluateImportConflicts(
    * meeting a conflict is not an import — it is refused below as
    * `resolution-not-applicable` (nothing to resolve).
    */
-  let resolutionApplied = false;
-  /**
-   * The version whose grant an applied resolution authorized reducing: the
-   * retired predecessor on a hand-over path, or the deterministic
-   * continuation baseline on a renewal that retires nothing (L-05). The
-   * success evaluation carries it as the `resolutionSubject` so the
-   * transaction can audit the reduction against the right version without
-   * stamping it.
-   */
   let resolutionSubject: RetainedLicenseVersion | null = null;
+  let resolutionApplied = false;
 
   if (findVersionByOperationId(versions, operationId) !== null) {
     return conflictOnly({ reason: 'duplicate-operation', overlapping: 0 });
@@ -1178,6 +1183,17 @@ export function evaluateImportConflicts(
     )
   ) {
     return conflictOnly({ reason: 'license-binding-conflict', overlapping: 0 });
+  }
+  if (
+    hasCustomerCodeMismatch(
+      candidate,
+      versions,
+      installationCustomerId,
+      installationCustomerCode,
+      knownCustomers,
+    )
+  ) {
+    return conflictOnly({ reason: 'customer-code-mismatch', overlapping: 0 });
   }
 
   const customerChanges =
@@ -1578,6 +1594,50 @@ function postGapGuard(
   return null;
 }
 
+/**
+ * L-06 (PDR-14 / OD-LIC-03): `(customerId, customerCode)` must be a 1-to-1
+ * bijection across all known customers (`licensing.customers`), the bound
+ * installation customer, and all retained versions.
+ *
+ * A candidate whose `customerId` matches a known customer with a different
+ * `customerCode`, or whose `customerCode` matches a known customer with a
+ * different `customerId`, is refused as `customer-code-mismatch` (409).
+ */
+function hasCustomerCodeMismatch(
+  candidate: Pick<ImportCandidate, 'customerId' | 'customerCode'>,
+  versions: readonly RetainedLicenseVersion[],
+  installationCustomerId: string | null,
+  installationCustomerCode: string | null,
+  knownCustomers: readonly { customerId: string; customerCode: string }[],
+): boolean {
+  const pairConflicts = (id: string, code: string): boolean =>
+    (id === candidate.customerId && code !== candidate.customerCode) ||
+    (id !== candidate.customerId && code === candidate.customerCode);
+
+  if (
+    installationCustomerId !== null &&
+    installationCustomerCode !== null &&
+    pairConflicts(installationCustomerId, installationCustomerCode)
+  ) {
+    return true;
+  }
+  if (
+    versions.some((version) =>
+      pairConflicts(version.customerId, version.customerCode),
+    )
+  ) {
+    return true;
+  }
+  if (
+    knownCustomers.some((customer) =>
+      pairConflicts(customer.customerId, customer.customerCode),
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /** The single shape of a conflict evaluation (no supersession is resolved). */
 function conflictOnly(conflict: ImportConflict): ImportConflictEvaluation {
   return { conflict, supersedes: null };
@@ -1600,6 +1660,7 @@ export function toInstallationLicense(
 ): InstallationLicense {
   return {
     customerId: version.customerId,
+    customerCode: version.customerCode,
     installationId: version.installationId,
     licenseId: version.licenseId,
     status: version.status,

@@ -12,6 +12,7 @@ function license(
 ): InstallationLicense {
   return {
     customerId: 'customer-a',
+    customerCode: 'CUST-A',
     installationId: 'installation-a',
     licenseId: 'license-a',
     status: 'ACTIVE',

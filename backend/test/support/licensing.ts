@@ -8,6 +8,7 @@ export function licensingTestDouble(
   const provider: LicenseProvider = {
     getLicense: async () => ({
       customerId: 'test-customer',
+      customerCode: 'CUST-TEST-01',
       installationId: 'test-installation',
       licenseId: 'test-license',
       status: 'ACTIVE',

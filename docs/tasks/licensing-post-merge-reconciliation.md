@@ -536,3 +536,23 @@ acceptance is not recorded or inferred.
   independent of Licensing's import path and comes next; L-06 (customer code)
   follows once the Product Owner records what the customer code IS (audit
   §4.6 step 1) — neither is a dependency of L-05, and neither is started here.
+
+---
+
+## 19. L-06 — stable customer code across the license lifecycle (2026-10-14)
+
+**Scope:** records the Product Owner decision (**[PDR-14](../decisions/product/PDR-14-licensing-customer-code.md)**, decision id **OD-LIC-03**) and the corrective implementation of task **L-06** ([acceptance audit](licensing-po-acceptance-audit-2026-10-13.md) §4.6). Earlier historical statements remain dated records of the state they describe.
+
+- **Product Owner decision recorded (`PDR-14` / `OD-LIC-03`).**
+  1. Every licensing customer has a stable, independent business `customerCode` (`licensing.customers.customer_code`).
+  2. `customerId` (`licensing.customers.id`) remains the internal database identity and is not replaced by `customerCode`.
+  3. `customerName` (`licensing.customers.display_name`) remains a display name, not an identity key; renaming it does not alter `customerId` or `customerCode`, and ordinary license import never silently overwrites a customer's stored `display_name`.
+  4. Signed license artifacts (`VLIC2` and `VLIC1`) carry `customerCode` inside the signed payload, and issuance and import validate `customerCode` against the intended customer.
+  5. Customer or installation rebinding requires the explicit, authorized, auditable transfer operation (`POST /api/v1/license/customer-transfer`, `Licensing.License.TransferCustomer`); editing a display name or changing `customerCode` in an ordinary import never transfers ownership.
+  6. Renewals — whether preserving `licenseId` or using a new `licenseId` (L-05) — remain bound to the same customer (`customerId` and `customerCode`).
+- **What changed.**
+  - **Schema and migration (`backend/prisma/schema/licensing.prisma`, `backend/prisma/migrations/20261020000000_licensing_customer_code/migration.sql`):** added `customer_code VARCHAR(64) NOT NULL`, unique index `uq_customers_customer_code`, and `customers_customer_code_check` (`customer_code ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{1,63}$' AND customer_code <> id`), guarded by a fail-closed migration preflight that refuses null/blank/invalid/duplicate `customer_code` on existing rows without fabricating codes from `id` or `display_name`. Rehearsed in `backend/prisma/rehearsal/licensing-version-model/rehearse.mjs`.
+  - **Signed artifact contract (`license-document.ts`, `license-code.ts`):** added `customerCode` in canonical wire order (`customerId`, `customerCode`, `customerName`), covered by Ed25519 signature verification and validated against `CUSTOMER_CODE_PATTERN` (`customerCode !== customerId`).
+  - **Issuance and CLI (`development-license-authority.ts`, `issue-development-license.ts`):** required explicit valid `customerId` and `customerCode` (or an explicit customer record with consistent `customerId` and `customerCode`) and `--customer` / `--customer-code` CLI flags; never auto-generates `customerId` or `customerCode` and never derives `customerCode` from `customerName` or `customerId`.
+  - **Conflict authority, persistence, transfer, and audit (`license-version.ts`, `licenses.repository.ts`, `license-import.service.ts`):** added `customer-code-mismatch` (HTTP 409, nothing written) when `customerId` or `customerCode` conflicts with persisted customer records across ordinary import, renewal (same or new `licenseId`), recovery, reduction resolution, or customer transfer; replaced the `display_name`-overwriting customer upsert with read-and-validate plus insert-only-if-absent so ordinary imports never overwrite `display_name`; extended transfer results and `LICENSE_CUSTOMER_TRANSFERRED` audit details with `previousCustomerCode` and `newCustomerCode`; exposed `customerCode` on `LicenseStateDto` and regenerated the OpenAPI TypeScript client (`frontend/src/api/generated/vardena-api.d.ts`).
+
