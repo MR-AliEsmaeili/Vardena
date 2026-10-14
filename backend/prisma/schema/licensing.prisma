@@ -193,12 +193,18 @@ model LicenseAuditEvent {
   newCustomerId        String? @map("new_customer_id")
   /// The business customer code AFTER that transfer (L-06, PDR-14); null on every other event.
   newCustomerCode      String? @map("new_customer_code") @db.VarChar(64)
-  /// The license whose lapsed coverage a dedicated post-gap recovery follows
-  /// (OQ-87 Option B, PDR-13); null on every other event. A prior/current
-  /// license pair is the traceable history the Owner decision requires — and
-  /// a recovery never re-binds an identity, so this is context, not a
-  /// foreign key: a lapsed license id is retained forever, even if its rows
-  /// were ever removed.
+  /// The license governing immediately before the event it is recorded on:
+  /// - `license.import.recovered` — the license whose lapsed coverage a
+  ///   dedicated post-gap recovery follows (OQ-87 Option B, PDR-13);
+  /// - `license.installation.customer-transferred` — the license that governed
+  ///   this installation immediately before an explicit customer transfer took
+  ///   effect, observed under the installation transaction lock (L-06, PDR-14
+  ///   §3.5.4; the NEW license identity is the event's own `licenseId`).
+  /// Null on every other event, and null on a transfer whose installation had
+  /// no governing license then. A prior/current license pair is the traceable
+  /// history the Owner decisions require — and neither a recovery nor a
+  /// transfer re-binds a license identity, so this is context, not a foreign
+  /// key: a license id is retained forever, even if its rows were ever removed.
   previousLicenseId  String? @map("previous_license_id")
   occurredAt     DateTime @map("occurred_at") @db.Timestamptz(6)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

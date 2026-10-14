@@ -768,18 +768,21 @@ export function resolveEffectiveVersion(
  *
  * 409 (retained-state conflict, ADR-0046): `duplicate-operation`,
  * `unknown-supersession`, `overlapping-range`, `license-binding-conflict`,
- * `installation-customer-mismatch`, `transfer-not-applicable`, `renewal-gap`,
- * `reduction-requires-resolution`, `post-gap-recovery-requires-dedicated-
- * operation`, `recovery-not-applicable` and `resolution-not-applicable`.
+ * `installation-customer-mismatch`, `transfer-requires-different-customer`,
+ * `renewal-gap`, `reduction-requires-resolution`, `post-gap-recovery-requires-
+ * dedicated-operation`, `recovery-not-applicable` and
+ * `resolution-not-applicable`.
  *
  * 422 (the document's own temporal window or capability set can never be
  * applied as issued, so a re-issued document is the fix): the temporal
  * `backdated-supersession`, plus `expired-document`, `not-yet-valid` and the
  * document-level verdicts of the pipeline. No reason here ever writes anything.
  *
- * `installation-customer-mismatch`, `transfer-not-applicable`, `renewal-gap`
- * and `reduction-requires-resolution` were introduced by the Owner decisions of
+ * `installation-customer-mismatch`, `renewal-gap` and
+ * `reduction-requires-resolution` were introduced by the Owner decisions of
  * 2026-10-12 (Q4 customer transfer, OQ-80 G2, OQ-80 Option B with PDR-11 §8.6);
+ * PDR-14 §3.5.4 (L-06) renamed the Q4 transfer refusal from the earlier
+ * `transfer-not-applicable` to `transfer-requires-different-customer`;
  * the reduction guard applies to the explicit supersession path as well, so no
  * precedence path can apply a reduction silently.
  * `post-gap-recovery-requires-dedicated-operation`, `recovery-not-applicable`
@@ -799,7 +802,7 @@ export type ImportConflictReason =
   | 'license-binding-conflict'
   | 'customer-code-mismatch'
   | 'installation-customer-mismatch'
-  | 'transfer-not-applicable'
+  | 'transfer-requires-different-customer'
   | 'renewal-gap'
   | 'reduction-requires-resolution'
   | 'post-gap-recovery-requires-dedicated-operation'
@@ -1049,8 +1052,9 @@ export function continuationBaselineFor(
  *    the installation's current one is refused (`installation-customer-mismatch`)
  *    unless the caller carries an explicit, authorized transfer intent. A
  *    transfer request that names the customer the installation already has is
- *    refused as `transfer-not-applicable` — there is nothing to transfer — so a
- *    repeated or concurrent transfer can never silently re-apply;
+ *    refused as `transfer-requires-different-customer` (PDR-14 §3.5.4) —
+ *    there is nothing to transfer — so a repeated or concurrent transfer can
+ *    never silently re-apply;
  * 3. an explicit supersession target (the retained version carrying the
  *    declared operation id) must exist in this installation, must not have a
  *    supersession recorded yet, and must still govern at `at` — a version is
@@ -1207,7 +1211,10 @@ export function evaluateImportConflicts(
       });
     }
   } else if (!customerChanges) {
-    return conflictOnly({ reason: 'transfer-not-applicable', overlapping: 0 });
+    return conflictOnly({
+      reason: 'transfer-requires-different-customer',
+      overlapping: 0,
+    });
   }
 
   let target: RetainedLicenseVersion | null = null;

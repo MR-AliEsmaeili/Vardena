@@ -2139,7 +2139,13 @@ describe('explicit installation customer transfer (Q4)', () => {
       installationId: INSTALLATION,
       outcome: 'APPLIED',
       previousCustomerId: CUSTOMER,
+      previousCustomerCode: CUSTOMER_CODE,
       newCustomerId: OTHER_CUSTOMER,
+      newCustomerCode: defaultCustomerCode(OTHER_CUSTOMER),
+      // L-06 (PDR-14 §3.5.4): the license that governed immediately before the
+      // transfer is recorded machine-readably, and the NEW license identity is
+      // the event's own `licenseId`.
+      previousLicenseId: LICENSE,
       licenseId: OTHER_LICENSE,
       operationId: harness.stores.versions[1]?.operationId,
       versionId: harness.stores.versions[1]?.versionId,
@@ -2149,7 +2155,7 @@ describe('explicit installation customer transfer (Q4)', () => {
       occurredAt: expect.any(Date),
     });
     expect(transfer?.detail).toBe(
-      `transfer to ${OTHER_CUSTOMER}: ${transferReason}`,
+      `transfer from license ${LICENSE} to ${OTHER_CUSTOMER} license ${OTHER_LICENSE}: ${transferReason}`,
     );
   });
 
@@ -2162,7 +2168,9 @@ describe('explicit installation customer transfer (Q4)', () => {
       (event) =>
         event.eventType === 'license.installation.customer-transferred',
     );
-    expect(transfer?.detail).toBe(`transfer to ${OTHER_CUSTOMER}: abc`);
+    expect(transfer?.detail).toBe(
+      `transfer from license ${LICENSE} to ${OTHER_CUSTOMER} license ${OTHER_LICENSE}: abc`,
+    );
   });
 
   it('rejects invalid or overlong transfer reasons before writing', async () => {
@@ -2197,7 +2205,7 @@ describe('explicit installation customer transfer (Q4)', () => {
         event.eventType === 'license.installation.customer-transferred',
     );
     expect(transfer?.detail).toBe(
-      `transfer to ${OTHER_CUSTOMER}: ${transferReason}`,
+      `transfer from license ${LICENSE} to ${OTHER_CUSTOMER} license ${OTHER_LICENSE}: ${transferReason}`,
     );
   });
 
@@ -2245,11 +2253,25 @@ describe('explicit installation customer transfer (Q4)', () => {
 
     expect(rejection.status).toBe(409);
     expect(rejection.message).toMatch(/nothing to transfer/);
+    // PDR-14 §3.5.4 names the exact reason; nothing at all is written.
+    expect(rejection.details).toEqual({
+      reason: 'transfer-requires-different-customer',
+    });
     expect(harness.stores.self()?.customerId).toBe(CUSTOMER);
     expect(harness.stores.versions).toHaveLength(versionsBefore);
+    expect(harness.stores.customerRecords.has(OTHER_CUSTOMER)).toBe(false);
+    expect(harness.stores.customerCodes.has(OTHER_CUSTOMER)).toBe(false);
+    // No successful transfer event: only the REJECTED row exists.
+    expect(
+      harness.stores.auditEvents.some(
+        (event) =>
+          event.eventType === 'license.installation.customer-transferred' &&
+          event.outcome === 'APPLIED',
+      ),
+    ).toBe(false);
     expect(harness.stores.auditEvents.at(-1)).toMatchObject({
       outcome: 'REJECTED',
-      reason: 'transfer-not-applicable',
+      reason: 'transfer-requires-different-customer',
     });
   });
 
@@ -3513,7 +3535,11 @@ describe('stable customerCode across the license lifecycle (L-06, PDR-14)', () =
       outcome: 'APPLIED',
       previousCustomerId: CUSTOMER,
       previousCustomerCode: CUSTOMER_CODE,
+      // The license governing at the transfer instant (PDR-14 §3.5.4), and the
+      // operator reason exactly as the typed audit event recorded it.
+      previousLicenseId: LICENSE,
       bindingChanged: true,
+      reason: 'Contract novation 2026-10-14 to Globex Corp.',
     });
     expect(harness.stores.self()?.customerId).toBe(OTHER_CUSTOMER);
     expect(harness.stores.customerCodes.get(OTHER_CUSTOMER)).toBe(
@@ -3529,7 +3555,7 @@ describe('stable customerCode across the license lifecycle (L-06, PDR-14)', () =
       previousCustomerCode: CUSTOMER_CODE,
       newCustomerId: OTHER_CUSTOMER,
       newCustomerCode: OTHER_CUSTOMER_CODE,
-      detail: `transfer to ${OTHER_CUSTOMER}: Contract novation 2026-10-14 to Globex Corp.`,
+      detail: `transfer from license ${LICENSE} to ${OTHER_CUSTOMER} license ${NEW_LICENSE}: Contract novation 2026-10-14 to Globex Corp.`,
     });
   });
 });

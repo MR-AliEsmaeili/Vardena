@@ -18,6 +18,7 @@ import {
   evaluateImportConflicts,
   lapsedLicenseContext,
   reductionConflicts,
+  resolveEffectiveVersion,
   supersessionCeaseInstant,
   type CustomerTransferIntent,
   type GapRecoveryIntent,
@@ -220,7 +221,7 @@ function conflictErrorDefaultMessage(reason: ImportConflictReason): string {
       return 'This license document carries a customer code that does not match the customer record.';
     case 'installation-customer-mismatch':
       return 'This license document belongs to a different customer than the installation is bound to.';
-    case 'transfer-not-applicable':
+    case 'transfer-requires-different-customer':
       return 'The installation is already bound to the customer this transfer names.';
     case 'renewal-gap':
       return 'This renewal would leave a gap in the license coverage.';
@@ -260,6 +261,14 @@ export interface ImportVersionResult {
   previousCustomerCode: string | null;
   /** True when this import changed the installation's customer binding. */
   bindingChanged: boolean;
+  /**
+   * The license that governed this installation immediately before an explicit
+   * customer transfer took effect (L-06, PDR-14 §3.5.4) — the retained version
+   * this document retired or took over, read under the installation lock. Null
+   * on a non-transfer import, and null on a transfer whose installation had no
+   * governing license at that instant.
+   */
+  previousLicenseId: string | null;
   /** Set only when this transaction WAS the dedicated gap recovery. */
   recovery: {
     /** The license whose retained coverage had ended (the lapse). */
@@ -927,9 +936,32 @@ export class LicensesRepository {
       }
       // An explicit transfer is audited as its own typed event, written from
       // the values the lock guarantees: the customer that was, the customer
-      // that is, the operation, the actor, the source, the instant and the
-      // operator's reason. It is built HERE rather than by the caller because
-      // only the transaction knows the real "previous" value under concurrency.
+      // that is, the license that governed before, the operation, the actor,
+      // the source, the instant and the operator's reason. It is built HERE
+      // rather than by the caller because only the transaction knows the real
+      // "previous" values under concurrency.
+      //
+      // L-06 (PDR-14 §3.5.4): the license that governed this installation
+      // immediately before the transfer took effect. It is resolved HERE from
+      // `retained` — the versions this transaction read UNDER the installation
+      // lock — never from the unlocked pre-check, so a concurrent writer
+      // cannot make the audit row name a predecessor that was not governing.
+      //
+      // `resolveEffectiveVersion` is the same authority the read path uses, so
+      // the recorded predecessor is exactly the license an as-of query would
+      // have returned at that instant: the version this document retired or
+      // took over when it overlapped one, and the still-governing version when
+      // the transfer document is a future-dated or contiguous successor. Null
+      // when nothing was governing then.
+      //
+      // Recorded only for a transfer that actually changed the binding: every
+      // other import leaves the column null as before (PDR-13 records the
+      // recovery's own predecessor on `license.import.recovered`).
+      const previousLicenseId =
+        command.customerTransfer !== null && bindingChanged
+          ? (resolveEffectiveVersion(retained, command.now).version
+              ?.licenseId ?? null)
+          : null;
       const auditEvents =
         bindingChanged && previousCustomerId !== null
           ? [
@@ -938,6 +970,7 @@ export class LicensesRepository {
                 command,
                 previousCustomerId,
                 previousCustomerCode,
+                previousLicenseId,
               ),
             ]
           : [...command.auditEvents];
@@ -1091,6 +1124,7 @@ export class LicensesRepository {
         previousCustomerId,
         previousCustomerCode,
         bindingChanged,
+        previousLicenseId,
         recovery: recoveryReceipt,
         resolution: resolutionReceipt,
       };
@@ -1100,6 +1134,7 @@ export class LicensesRepository {
       previousCustomerId: committed.previousCustomerId,
       previousCustomerCode: committed.previousCustomerCode,
       bindingChanged: committed.bindingChanged,
+      previousLicenseId: committed.previousLicenseId,
       recovery: committed.recovery,
       resolution: committed.resolution,
     };
@@ -1306,16 +1341,27 @@ export async function lockInstallationRow(
 
 /**
  * The typed audit event of one explicit customer transfer (Owner decision
- * 2026-10-12, Q4): old customer, new customer, installation, operation, actor,
- * source, document hash, outcome, instant and the complete operator reason are
- * preserved in their typed fields and `detail` (the machine-readable
- * classifier is the event type itself). `reason` stays null: it carries
- * rejection reasons.
+ * 2026-10-12, Q4; L-06, PDR-14 §3.5.4): old customer, new customer, installation,
+ * operation, actor, source, document hash, outcome, instant and the complete
+ * operator reason are preserved in their typed fields and `detail` (the
+ * machine-readable classifier is the event type itself). `reason` stays null:
+ * it carries rejection reasons, and the audit schema documents `detail` as the
+ * place a successful event retains the full reason.
+ *
+ * The license pair PDR-14 §3.5.4 requires is carried as:
+ * - `previousLicenseId` — the license that governed this installation
+ *   immediately before the transfer took effect, computed by the importing
+ *   transaction under the installation lock (never inferred from an unlocked
+ *   pre-check); null when the installation had no governing license then.
+ * - `licenseId` — the NEW license identity the transfer applied, following the
+ *   existing `licenseId` convention every other audit event uses for the
+ *   license it describes.
  */
 export function transferAuditEvent(
   command: ImportLicenseVersionCommand,
   previousCustomerId: string,
   previousCustomerCode: string | null = null,
+  previousLicenseId: string | null = null,
 ): LicenseAuditEventCommand {
   const reason = command.customerTransfer?.reason.trim() ?? '';
   return {
@@ -1329,11 +1375,15 @@ export function transferAuditEvent(
     source: command.source,
     documentHash: command.documentHash,
     reason: null,
-    detail: `transfer to ${command.customerId}${reason === '' ? '' : `: ${reason}`}`,
+    detail:
+      `transfer from license ${previousLicenseId ?? 'none'} ` +
+      `to ${command.customerId} license ${command.licenseId}` +
+      `${reason === '' ? '' : `: ${reason}`}`,
     previousCustomerId,
     previousCustomerCode,
     newCustomerId: command.customerId,
     newCustomerCode: command.customerCode,
+    previousLicenseId,
     occurredAt: command.now,
   };
 }

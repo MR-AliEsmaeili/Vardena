@@ -367,8 +367,22 @@ export class LicenseCustomerTransferResultDto extends LicenseImportResultDto {
   })
   previousCustomerCode!: string | null;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The license that governed this installation immediately before the transfer, observed under the installation transaction lock (L-06, PDR-14 §3.5.4). Null when no license was governing then. The new license identity is `licenseId` in this same response.',
+  })
+  previousLicenseId!: string | null;
+
   @ApiProperty({ description: 'True when the transfer changed the binding.' })
   bindingChanged!: boolean;
+
+  @ApiProperty({
+    description:
+      'The operator-supplied transfer reason exactly as recorded on the typed `license.installation.customer-transferred` audit event (L-06, PDR-14 §3.5.4).',
+  })
+  reason!: string;
 }
 
 /**

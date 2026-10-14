@@ -1109,7 +1109,10 @@ describe('import conflict evaluation', () => {
         installationCustomerId: CUSTOMER,
         customerTransfer: { reason: 'Repeating the same transfer.' },
       }).conflict,
-    ).toEqual({ reason: 'transfer-not-applicable', overlapping: 0 });
+    ).toEqual({
+      reason: 'transfer-requires-different-customer',
+      overlapping: 0,
+    });
   });
 
   it('refuses a document that lands inside the effective window of a retired version (OQ-86 Option C)', () => {

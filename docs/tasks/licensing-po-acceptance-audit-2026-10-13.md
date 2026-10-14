@@ -139,7 +139,9 @@ gate, the unit/e2e suites, the migration rehearsal, and the decision records.
   `POST /api/v1/license/customer-transfer` requires **both**
   `Licensing.License.Activate` and `Licensing.Installation.TransferCustomer`
   (route guard + application re-check). `transfer-not-applicable` prevents
-  replay.
+  replay. *(The reason was renamed `transfer-requires-different-customer` by
+  [PDR-14](../decisions/product/PDR-14-licensing-customer-code.md) §3.5.4;
+  the replay protection is unchanged.)*
 - PDR-12 (OD-LIC-01) is implemented: only a document that *names* the version it
   retires may close an open end (`license-version.ts:1269–1316`, `namedByDocument`);
   that arm is never operator-resolvable.

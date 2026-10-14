@@ -49,6 +49,7 @@ import {
   evaluateImportConflicts,
   lapsedLicenseContext,
   reductionConflicts,
+  resolveEffectiveVersion,
   supersessionCeaseInstant,
   type RetainedLicenseVersion,
 } from '../../src/modules/licensing/domain/license-version.js';
@@ -349,6 +350,15 @@ export function createLicensingStores(
         self !== null &&
         self.installationId === command.installationId &&
         previousCustomerId !== command.customerId;
+      // L-06 (PDR-14 §3.5.4): the license governing immediately before an
+      // explicit transfer, resolved from the retained versions this call read —
+      // the same authority and the same rule the real repository applies under
+      // the installation lock.
+      const previousLicenseId =
+        command.customerTransfer !== null && bindingChanged
+          ? (resolveEffectiveVersion(retained, command.now).version
+              ?.licenseId ?? null)
+          : null;
       if (bindingChanged && self !== null) {
         self = { ...self, customerId: command.customerId };
       }
@@ -396,6 +406,7 @@ export function createLicensingStores(
                 command,
                 previousCustomerId,
                 previousCustomerCode,
+                previousLicenseId,
               ),
             ]
           : []),
@@ -497,6 +508,7 @@ export function createLicensingStores(
         previousCustomerId,
         previousCustomerCode,
         bindingChanged,
+        previousLicenseId,
         recovery,
         resolution,
       };

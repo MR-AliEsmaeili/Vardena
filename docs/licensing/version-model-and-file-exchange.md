@@ -692,6 +692,166 @@ Evidence: `backend/prisma/rehearsal/licensing-version-model/rehearse.mjs`
 the premature-retirement defect that the backfill must repair, and a database the
 migration must refuse with a clear message) plus the live PostgreSQL suite.
 
+### 11.1 L-06 `customer_code`: owner-assigned backfill before upgrading
+
+`20261020000000_licensing_customer_code` adds
+`licensing.customers.customer_code` and then enforces `NOT NULL`,
+`customers_customer_code_check` and `uq_customers_customer_code`. It is
+**fail-closed and never derives a code**: if any existing row is missing a
+`customer_code`, or carries a blank, malformed, `customer_code = id`, or
+duplicate value, the migration aborts with a descriptive `RAISE EXCEPTION`
+rather than guessing a business code from `id` or `display_name`
+([PDR-14](../decisions/product/PDR-14-licensing-customer-code.md) §3.2). A
+`customerCode` is an owner-assigned business identifier, so only the Product
+Owner / commercial owner can supply it — no tool in this repository invents one.
+
+An installation whose `licensing.customers` is **empty** (a fresh deployment, or
+a test database) needs nothing: the constraints apply immediately. An
+installation that already has customer rows must complete the backfill **before**
+`prisma migrate deploy` reaches this migration.
+
+**Prerequisites**
+
+1. A current backup (`docs/operations/backup-and-restore.md`). The backfill is a
+   data change to `licensing.customers` and must be reversible.
+2. The owner-assigned business code for **every** existing customer row, each
+   matching `^[A-Za-z0-9][A-Za-z0-9._:-]{1,63}$`, distinct from that row's `id`,
+   and unique across `licensing.customers`.
+3. Application writes to the licensing schema stopped, or the upgrade performed
+   in the normal maintenance window (`prisma migrate deploy` before app start —
+   `docs/database-strategy.md` §14).
+
+**Execution order**
+
+1. Inspect the population and produce the owner's assignment list:
+
+   ```sql
+   SELECT "id", "display_name"
+   FROM "licensing"."customers"
+   ORDER BY "id";
+   ```
+
+2. Add the column if it is not there yet. This is the same idempotent statement
+   the migration itself begins with, so running it early is safe and is what
+   makes the backfill possible before the constraints exist:
+
+   ```sql
+   ALTER TABLE "licensing"."customers"
+     ADD COLUMN IF NOT EXISTS "customer_code" VARCHAR(64);
+   ```
+
+3. Write the owner-assigned codes — one explicit row per customer, never a
+   generated expression:
+
+   ```sql
+   UPDATE "licensing"."customers" SET "customer_code" = 'CUST-ACME-001'
+    WHERE "id" = '01K7CUSTOMERAAAAAAAAAAAAAA';
+   ```
+
+4. Validate before deploying. Every one of these must return zero rows:
+
+   ```sql
+   SELECT "id" FROM "licensing"."customers"
+    WHERE "customer_code" IS NULL OR BTRIM("customer_code") = '';
+   SELECT "id" FROM "licensing"."customers"
+    WHERE "customer_code" !~ '^[A-Za-z0-9][A-Za-z0-9._:-]{1,63}$';
+   SELECT "id" FROM "licensing"."customers" WHERE "customer_code" = "id";
+   SELECT "customer_code" FROM "licensing"."customers"
+    GROUP BY "customer_code" HAVING COUNT(*) > 1;
+   ```
+
+5. Run `prisma migrate deploy`. The migration's own preflight re-checks the same
+   four conditions inside its transaction and aborts if any row is still wrong,
+   so a missed customer is refused rather than silently coded.
+
+**Recovery after a failure**
+
+Do not assume how much of a failed run survived — inspect, then re-run:
+
+1. Read what Prisma recorded:
+
+   ```sql
+   SELECT "migration_name", "finished_at", "rolled_back_at", "logs"
+   FROM "_prisma_migrations"
+   WHERE "migration_name" LIKE '%licensing_customer_code%';
+   ```
+
+2. Read what the schema actually holds — whether `customer_code` exists, and
+   whether the constraint and index were applied:
+
+   ```sql
+   SELECT "column_name", "is_nullable" FROM "information_schema"."columns"
+    WHERE "table_schema" = 'licensing' AND "table_name" = 'customers'
+      AND "column_name" = 'customer_code';
+   SELECT "indexname" FROM "pg_indexes"
+    WHERE "schemaname" = 'licensing' AND "tablename" = 'customers';
+   ```
+
+3. Fix the data the failure named (the exception message quotes the offending
+   `id` or `customer_code`), then re-run `prisma migrate deploy`. The migration
+   is **safe to re-run from any partial state**: every statement in it is
+   idempotent — `ADD COLUMN IF NOT EXISTS`, a pure check block, `SET NOT NULL`,
+   `DROP CONSTRAINT IF EXISTS` before `ADD CONSTRAINT`, `CREATE UNIQUE INDEX IF
+   NOT EXISTS`, and `COMMENT ON`. It contains no destructive DDL and no down
+   migration (F-13).
+4. If the failure was not data — for example the deploy was interrupted — the
+   same re-run applies. If a row in `_prisma_migrations` was left without
+   `finished_at` while the DDL did apply, that is a Prisma bookkeeping state to
+   resolve with `prisma migrate resolve` against the recorded migration name,
+   after step 2 has confirmed what the schema actually contains; never resolve
+   it as applied without that confirmation.
+
+**Rehearsal evidence.** `backend/prisma/rehearsal/licensing-version-model/rehearse.mjs`
+(`assertCustomerCodeMigration`) exercises exactly this sequence against a
+disposable populated database: the migration is refused with the
+`without an explicit customer_code` message and writes nothing; the staged
+owner-assigned codes are then applied and the migration succeeds and enforces
+`NOT NULL`, `CHECK` and `UNIQUE`; and duplicate, empty, whitespace-only and
+`customer_code = id` values are each refused. Run it with
+`npm run test:licensing-version-rehearsal` (backend). It covers the SQL and the
+populated-database case including a successful continuation; it does not exercise
+Prisma's own `_prisma_migrations` bookkeeping after an interrupted deploy, which
+is why step 1–2 above are inspection steps rather than assumptions.
+
+### 11.2 Pre-L-06 `VLIC1` codes: the compatibility boundary
+
+Since L-06, `customerCode` is part of the **signed** payload of both artifact
+versions — `VLIC2` and the legacy `VLIC1` text code — immediately after
+`customerId` and before `customerName`
+([PDR-14](../decisions/product/PDR-14-licensing-customer-code.md) §3.3). A
+`VLIC1` code issued before L-06 has no `customerCode` field in the bytes its
+Ed25519 signature covers, so the parser rejects it: `reason: 'payload'`, HTTP
+422, nothing written.
+
+This is deliberate and is not worked around:
+
+- A code is **never** accepted with a `customerCode` inferred from its
+  `customerId` or `customerName` — PDR-14 §3.4 forbids deriving or generating
+  one, and doing so would let a display string become an identity key.
+- An unsigned or out-of-band `customerCode` is **never** accepted: the import
+  endpoints take only `{ document }` (and `{ document, reason }` on the
+  dedicated operations), so nothing outside the signature can supply the field.
+- Weakening this to admit old codes would remove `customerCode` from the signed
+  surface for exactly the artifacts an attacker would replay.
+
+**What an operator must do.**
+
+| Situation | Action |
+| --- | --- |
+| Existing retained installations | Nothing. Retained `license_versions` rows are history and are untouched by the upgrade; the installation keeps governing from them. The 422 applies only to *presenting* an old artifact again. |
+| Renewal or replacement after upgrading | Issue a **new** artifact from the current authority carrying `customerId`, `customerCode` and `customerName`, and import it through the normal path. Do not re-present the pre-L-06 code. |
+| Offline / on-prem deployments | Upgrade the server first, then issue. An operator who cannot reach the issuing authority keeps governing from the retained version until they can; there is no offline path that mints a `customerCode`. |
+| A pre-L-06 code presented by mistake | It is refused 422 with `reason: 'payload'` and nothing is written, so the attempt is harmless and retryable with a newly issued artifact. |
+
+Reissuance therefore never requires importing an old artifact through the new
+parser: the new artifact is issued for the same installation, the same
+`customerId`, and the owner-assigned `customerCode` recorded for that customer in
+`licensing.customers` (§11.1), and it renews on the existing `licenseId` or —
+with a new `licenseId` — under the L-05 continuation rules. Because the customer
+is unchanged, a renewal is not a transfer; moving an installation to a different
+customer stays the explicit, authorized, audited
+`POST /api/v1/license/customer-transfer` operation (§3.5, PDR-14 §3.5.4).
+
 ## 12. Test strategy
 
 | Area | Level | Cases |
