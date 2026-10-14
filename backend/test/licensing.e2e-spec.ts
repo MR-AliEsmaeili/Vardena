@@ -24,6 +24,7 @@ describe('Licensing capability gate (e2e)', () => {
   let targetRoleId: string;
   const state: InstallationLicense = {
     customerId: 'customer-a',
+    customerCode: 'CUST-A',
     installationId: 'installation-a',
     licenseId: 'license-a',
     status: 'ACTIVE',

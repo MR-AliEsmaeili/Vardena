@@ -1,0 +1,33 @@
+-- L-06 (PDR-14 §3.5.4 / OD-LIC-03): the explicit customer transfer must leave
+-- the license pair behind, not only the customer pair. `previous_license_id`
+-- was introduced by `20261017000000_license_audit_previous_license_id` for the
+-- dedicated post-gap recovery (OQ-87 Option B, PDR-13) and documented there as
+-- "recovery events only".
+--
+-- PDR-14 §3.5.4 requires the `license.installation.customer-transferred` event
+-- to record the previous AND the new license identity. The Product Owner
+-- decided (2026-10-15) that on a transfer this column carries the license that
+-- governed the installation immediately before the transfer took effect — the
+-- retained version the transfer document retired or took over, resolved by the
+-- conflict authority UNDER the per-installation transaction lock, never
+-- inferred from an unlocked pre-check — and is NULL when nothing was governing
+-- at that instant. The NEW license identity continues to be the event's own
+-- `license_id`, the convention every other audit event already uses.
+--
+-- This migration changes ONLY the column comment. It is a documentation-only,
+-- forward-only statement: no data change, no table rewrite, no backfill, no
+-- default, no constraint, no foreign key. Existing rows keep their values —
+-- every recovery row still means what PDR-13 defined, and every older
+-- transfer row keeps NULL (the fact was not captured before this change, and
+-- this repository never fabricates audit history).
+--
+-- The column stays nullable with no pairing CHECK on purpose: it is traceable
+-- context, not a foreign key, and a license identifier is only ever added to
+-- the retained history, never removed from it.
+--
+-- Rollback (no down migrations in this repository, F-13): re-running the
+-- `20261017000000` COMMENT statement restores the recovery-only wording and
+-- loses nothing but the comment.
+
+COMMENT ON COLUMN "licensing"."license_audit_events"."previous_license_id" IS
+  'License governing before the event: on license.import.recovered, the license whose lapsed coverage the recovery follows (OQ-87, PDR-13); on license.installation.customer-transferred, the license governing immediately before the transfer (L-06, PDR-14 §3.5.4); NULL on every other event.';

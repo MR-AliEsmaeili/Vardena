@@ -6,6 +6,7 @@ import {
   verify as cryptoVerify,
   type KeyObject,
 } from 'node:crypto';
+import { CUSTOMER_CODE_PATTERN } from './customer.js';
 import type {
   InstallationLicense,
   LicenseEntitlement,
@@ -56,6 +57,7 @@ export interface LicensePayload {
   version: 1;
   licenseId: string;
   customerId: string;
+  customerCode: string;
   customerName: string;
   installationId: string;
   status: LicenseStatus;
@@ -124,6 +126,7 @@ interface WirePayload {
   v: 1;
   licenseId: string;
   customerId: string;
+  customerCode: string;
   customerName: string;
   installationId: string;
   status: string;
@@ -145,6 +148,7 @@ function canonicalize(payload: LicensePayload): string {
     v: 1,
     licenseId: payload.licenseId,
     customerId: payload.customerId,
+    customerCode: payload.customerCode,
     customerName: payload.customerName,
     installationId: payload.installationId,
     status: payload.status,
@@ -287,10 +291,13 @@ function readPayload(raw: unknown): LicensePayload {
     wire.validUntil === null || wire.validUntil === undefined
       ? null
       : readDate(wire.validUntil, 'validUntil');
+  const customerId = readId(wire.customerId, 'customerId');
+  const customerCode = readCustomerCode(wire.customerCode, customerId);
   return {
     version: 1,
     licenseId: readId(wire.licenseId, 'licenseId'),
-    customerId: readId(wire.customerId, 'customerId'),
+    customerId,
+    customerCode,
     customerName: readName(wire.customerName),
     installationId: readId(wire.installationId, 'installationId'),
     status: status as LicenseStatus,
@@ -308,6 +315,22 @@ function readId(value: unknown, field: string): string {
     throw new LicenseCodeError(
       'payload',
       `The license ${field} is missing or malformed.`,
+    );
+  }
+  return value;
+}
+
+function readCustomerCode(value: unknown, customerId: string): string {
+  if (typeof value !== 'string' || !CUSTOMER_CODE_PATTERN.test(value)) {
+    throw new LicenseCodeError(
+      'payload',
+      'The license customerCode is missing or malformed.',
+    );
+  }
+  if (value === customerId) {
+    throw new LicenseCodeError(
+      'payload',
+      'The license customerCode must be an independent business code and must not equal customerId.',
     );
   }
   return value;
@@ -369,6 +392,11 @@ function readCodes(value: unknown, field: string): string[] {
 
 /** Semantic validation shared by issuing and verification. */
 export function assertPayload(payload: LicensePayload): void {
+  readId(payload.licenseId, 'licenseId');
+  const customerId = readId(payload.customerId, 'customerId');
+  readCustomerCode(payload.customerCode, customerId);
+  readName(payload.customerName);
+  readId(payload.installationId, 'installationId');
   if (
     payload.validUntil !== null &&
     payload.validUntil.getTime() <= payload.validFrom.getTime()
@@ -442,6 +470,7 @@ export function toInstallationLicense(
 ): InstallationLicense {
   return {
     customerId: payload.customerId,
+    customerCode: payload.customerCode,
     installationId: payload.installationId,
     licenseId: payload.licenseId,
     status: payload.status,

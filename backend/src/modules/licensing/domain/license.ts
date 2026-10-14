@@ -22,6 +22,7 @@ export interface LicenseEntitlement {
 /** Authoritative provider result for exactly one installation. */
 export interface InstallationLicense {
   customerId: string;
+  customerCode: string;
   installationId: string;
   licenseId: string;
   status: LicenseStatus;
@@ -46,6 +47,7 @@ export interface EvaluatedLicense {
   /** True when a license is persisted/served for this installation. */
   licensed: boolean;
   customerId: string | null;
+  customerCode: string | null;
   installationId: string | null;
   licenseId: string | null;
   status: EvaluatedStatus;
@@ -88,6 +90,7 @@ export function unlicensedEvaluation(context: {
   return {
     licensed: false,
     customerId: null,
+    customerCode: null,
     installationId: context.installationId,
     licenseId: null,
     status: 'UNLICENSED',

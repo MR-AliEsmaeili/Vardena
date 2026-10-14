@@ -139,7 +139,9 @@ gate, the unit/e2e suites, the migration rehearsal, and the decision records.
   `POST /api/v1/license/customer-transfer` requires **both**
   `Licensing.License.Activate` and `Licensing.Installation.TransferCustomer`
   (route guard + application re-check). `transfer-not-applicable` prevents
-  replay.
+  replay. *(The reason was renamed `transfer-requires-different-customer` by
+  [PDR-14](../decisions/product/PDR-14-licensing-customer-code.md) §3.5.4;
+  the replay protection is unchanged.)*
 - PDR-12 (OD-LIC-01) is implemented: only a document that *names* the version it
   retires may close an open end (`license-version.ts:1269–1316`, `namedByDocument`);
   that arm is never operator-resolvable.
@@ -482,6 +484,7 @@ equivalent in this repository, and this audit does not assume they are:
 **F-8 overall: NOT SATISFIED — two outstanding implementation items (L-05, L-06).**
 The identity relaxation itself needs no code change and is correctly implemented;
 the two gaps above are against the same decision and are not waived by this audit.
+*(Update 2026-10-14: **L-05** was implemented and merged in PR #146 (`0879db3f0a3740cfbe8e68bce98013fac7322791`), and **F-12** was implemented and merged in PR #149 (`d017636f5e339b26c0b5511009fb3aa450ddd288`). **L-06** was decided by the Product Owner in **[PDR-14](../decisions/product/PDR-14-licensing-customer-code.md)** (`OD-LIC-03`) and implemented on branch `arena/3e77bbc7-vardena`, see [`docs/tasks/licensing-post-merge-reconciliation.md` §19](./licensing-post-merge-reconciliation.md).)*
 
 ## 5. F-12 — initial System Administrator
 

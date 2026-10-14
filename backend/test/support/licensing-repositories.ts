@@ -38,11 +38,18 @@ import {
   resolutionAuditEvent,
   transferAuditEvent,
 } from '../../src/modules/licensing/data/licenses.repository.js';
+import {
+  assertValidCustomerName,
+  assertValidCustomerRecord,
+  LicenseCustomerError,
+  type LicenseCustomer,
+} from '../../src/modules/licensing/domain/customer.js';
 import type { InstallationIdentity } from '../../src/modules/licensing/domain/installation.js';
 import {
   evaluateImportConflicts,
   lapsedLicenseContext,
   reductionConflicts,
+  resolveEffectiveVersion,
   supersessionCeaseInstant,
   type RetainedLicenseVersion,
 } from '../../src/modules/licensing/domain/license-version.js';
@@ -56,6 +63,8 @@ export interface LicensingStores {
   auditEvents: LicenseAuditEventRow[];
   self: () => InstallationIdentity | null;
   customers: Map<string, string>;
+  customerCodes: Map<string, string>;
+  customerRecords: Map<string, LicenseCustomer>;
 }
 
 /** A Prisma-shaped unique violation, as the kernel classifier expects. */
@@ -73,6 +82,8 @@ export function createLicensingStores(
   const versions: RetainedLicenseVersion[] = [];
   const auditEvents: LicenseAuditEventRow[] = [];
   const customers = new Map<string, string>();
+  const customerCodes = new Map<string, string>();
+  const customerRecords = new Map<string, LicenseCustomer>();
   let eventCounter = 0;
 
   const installations = {
@@ -133,6 +144,102 @@ export function createLicensingStores(
       return row === undefined ? null : cloneVersion(row);
     },
 
+    async findCustomerById(
+      customerId: string,
+    ): Promise<LicenseCustomer | null> {
+      const record = customerRecords.get(customerId);
+      return record === undefined ? null : { ...record };
+    },
+
+    async findCustomerByCode(
+      customerCode: string,
+    ): Promise<LicenseCustomer | null> {
+      for (const record of customerRecords.values()) {
+        if (record.customerCode === customerCode) {
+          return { ...record };
+        }
+      }
+      return null;
+    },
+
+    async findCustomersForImport(params: {
+      customerId: string;
+      customerCode: string;
+      installationCustomerId: string | null;
+    }): Promise<{
+      installationCustomerCode: string | null;
+      knownCustomers: Array<{ customerId: string; customerCode: string }>;
+    }> {
+      const installationCustomerCode =
+        params.installationCustomerId === null
+          ? null
+          : (customerRecords.get(params.installationCustomerId)?.customerCode ??
+            null);
+      const knownCustomers = [...customerRecords.values()].map((record) => ({
+        customerId: record.customerId,
+        customerCode: record.customerCode,
+      }));
+      return { installationCustomerCode, knownCustomers };
+    },
+
+    async createCustomer(params: {
+      customerId: string;
+      customerCode: string;
+      displayName: string;
+      now?: Date;
+    }): Promise<LicenseCustomer> {
+      const validated = assertValidCustomerRecord(params);
+      if (customerRecords.has(validated.customerId)) {
+        throw new LicenseCustomerError(
+          'duplicate-customer',
+          `Customer id "${validated.customerId}" already exists.`,
+        );
+      }
+      for (const existing of customerRecords.values()) {
+        if (existing.customerCode === validated.customerCode) {
+          throw new LicenseCustomerError(
+            'duplicate-customer',
+            `Customer code "${validated.customerCode}" already exists.`,
+          );
+        }
+      }
+      const now = params.now ?? new Date();
+      const record: LicenseCustomer = {
+        customerId: validated.customerId,
+        customerCode: validated.customerCode,
+        displayName: validated.displayName,
+        createdAt: now,
+        updatedAt: now,
+      };
+      customerRecords.set(record.customerId, record);
+      customers.set(record.customerId, record.displayName);
+      customerCodes.set(record.customerId, record.customerCode);
+      return { ...record };
+    },
+
+    async updateCustomerDisplayName(params: {
+      customerId: string;
+      displayName: string;
+      now?: Date;
+    }): Promise<LicenseCustomer> {
+      const displayName = assertValidCustomerName(params.displayName);
+      const existing = customerRecords.get(params.customerId);
+      if (existing === undefined) {
+        throw new LicenseCustomerError(
+          'customer-not-found',
+          `Customer "${params.customerId}" does not exist.`,
+        );
+      }
+      const updated: LicenseCustomer = {
+        ...existing,
+        displayName,
+        updatedAt: params.now ?? new Date(),
+      };
+      customerRecords.set(updated.customerId, updated);
+      customers.set(updated.customerId, updated.displayName);
+      return { ...updated };
+    },
+
     async importVersion(
       command: ImportLicenseVersionCommand,
     ): Promise<ImportVersionResult> {
@@ -163,6 +270,14 @@ export function createLicensingStores(
         self !== null && self.installationId === command.installationId
           ? self.customerId
           : null;
+      const installationCustomerCode =
+        installationCustomerId === null
+          ? null
+          : (customerRecords.get(installationCustomerId)?.customerCode ?? null);
+      const knownCustomers = [...customerRecords.values()].map((record) => ({
+        customerId: record.customerId,
+        customerCode: record.customerCode,
+      }));
       // §8.6 usage read (L-04): the caller supplies the read as a closure; the
       // in-memory store has no allocation locks, but the read still happens
       // after the caller's own evaluation would have — parity with the real
@@ -174,6 +289,7 @@ export function createLicensingStores(
           validUntil: command.validUntil,
           licenseId: command.licenseId,
           customerId: command.customerId,
+          customerCode: command.customerCode,
           organizationLimit: command.organizationLimit,
           userLimit: command.userLimit,
           entitlements: command.entitlements,
@@ -184,6 +300,8 @@ export function createLicensingStores(
         versions: retained,
         at: command.now,
         installationCustomerId,
+        installationCustomerCode,
+        knownCustomers,
         customerTransfer: command.customerTransfer,
         usage,
         gapRecovery: command.gapRecovery,
@@ -206,12 +324,41 @@ export function createLicensingStores(
         });
       }
 
-      customers.set(command.customerId, command.customerName);
+      if (!customerRecords.has(command.customerId)) {
+        for (const existing of customerRecords.values()) {
+          if (existing.customerCode === command.customerCode) {
+            throw new ImportConflictError({
+              reason: 'customer-code-mismatch',
+              overlapping: 0,
+            });
+          }
+        }
+        const record: LicenseCustomer = {
+          customerId: command.customerId,
+          customerCode: command.customerCode,
+          displayName: command.customerName,
+          createdAt: command.now,
+          updatedAt: command.now,
+        };
+        customerRecords.set(command.customerId, record);
+        customers.set(command.customerId, command.customerName);
+        customerCodes.set(command.customerId, command.customerCode);
+      }
       const previousCustomerId = installationCustomerId;
+      const previousCustomerCode = installationCustomerCode;
       const bindingChanged =
         self !== null &&
         self.installationId === command.installationId &&
         previousCustomerId !== command.customerId;
+      // L-06 (PDR-14 §3.5.4): the license governing immediately before an
+      // explicit transfer, resolved from the retained versions this call read —
+      // the same authority and the same rule the real repository applies under
+      // the installation lock.
+      const previousLicenseId =
+        command.customerTransfer !== null && bindingChanged
+          ? (resolveEffectiveVersion(retained, command.now).version
+              ?.licenseId ?? null)
+          : null;
       if (bindingChanged && self !== null) {
         self = { ...self, customerId: command.customerId };
       }
@@ -254,7 +401,14 @@ export function createLicensingStores(
           : null;
       const auditEvents = [
         ...(bindingChanged && previousCustomerId !== null
-          ? [transferAuditEvent(command, previousCustomerId)]
+          ? [
+              transferAuditEvent(
+                command,
+                previousCustomerId,
+                previousCustomerCode,
+                previousLicenseId,
+              ),
+            ]
           : []),
         ...command.auditEvents,
         ...(recovery !== null
@@ -285,6 +439,7 @@ export function createLicensingStores(
         versionId: command.versionId,
         licenseId: command.licenseId,
         customerId: command.customerId,
+        customerCode: command.customerCode,
         installationId: command.installationId,
         operationId: command.operationId,
         status: command.status,
@@ -351,7 +506,9 @@ export function createLicensingStores(
       return {
         version: cloneVersion(created),
         previousCustomerId,
+        previousCustomerCode,
         bindingChanged,
+        previousLicenseId,
         recovery,
         resolution,
       };
@@ -387,6 +544,8 @@ export function createLicensingStores(
     auditEvents,
     self: () => (self === null ? null : { ...self }),
     customers,
+    customerCodes,
+    customerRecords,
   };
 }
 

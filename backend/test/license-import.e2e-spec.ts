@@ -181,11 +181,25 @@ describe('License document import (e2e)', () => {
    * cases (another customer, another license) are constructed.
    */
   function licenseFile(
-    options: Parameters<typeof issueLicenseFile>[0],
+    options: Partial<Parameters<typeof issueLicenseFile>[0]> & {
+      installationId: string;
+    },
     key: Parameters<typeof issueLicenseFile>[1] = authority.privateKey,
   ): ReturnType<typeof issueLicenseFile> {
+    const customerId =
+      options.customer?.customerId ?? options.customerId ?? CUSTOMER;
     return issueLicenseFile(
-      { customerId: CUSTOMER, licenseId: LICENSE, ...options },
+      {
+        customerId,
+        customerCode:
+          options.customer?.customerCode ??
+          options.customerCode ??
+          (customerId === CUSTOMER
+            ? 'CUST-ACME-01'
+            : `CUST-${customerId.replace(/[^A-Za-z0-9]/g, '').slice(-12)}`),
+        licenseId: LICENSE,
+        ...options,
+      },
       key,
     );
   }
@@ -310,8 +324,15 @@ describe('License document import (e2e)', () => {
 
   it('accepts the same artifact as text and retains it identically', async () => {
     const installationId = (await state()).installationId as string;
+    // L-06 (PDR-14 §3.4): issuance requires an explicit customer identity and
+    // business code; it never generates or derives them.
     const { document } = issueLicenseDocument(
-      { installationId, customerName: 'Acme Holding' },
+      {
+        installationId,
+        customerId: CUSTOMER,
+        customerCode: 'CUST-ACME-01',
+        customerName: 'Acme Holding',
+      },
       authority.privateKey,
     );
 
@@ -766,6 +787,7 @@ describe('License document import (e2e)', () => {
     const { code } = issueLicenseCode(
       {
         customerId: CUSTOMER,
+        customerCode: 'CUST-ACME-01',
         licenseId: LICENSE,
         installationId,
         organizationLimit: 4,

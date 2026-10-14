@@ -32,6 +32,7 @@ const INSTALLATION = '01K7INSTALLATION0000000000';
 const NOW = new Date('2026-06-01T00:00:00.000Z');
 const LICENSE = '01K7LICENSE0000000000000000';
 const CUSTOMER = '01K7CUSTOMER000000000000000';
+const CUSTOMER_CODE = 'CUST-ACME-01';
 
 let counter = 0;
 
@@ -40,10 +41,17 @@ function version(
 ): RetainedLicenseVersion {
   counter += 1;
   const index = String(counter).padStart(4, '0');
+  const customerId = overrides.customerId ?? CUSTOMER;
+  const customerCode =
+    overrides.customerCode ??
+    (customerId === CUSTOMER
+      ? CUSTOMER_CODE
+      : `CUST-${customerId.replace(/[^A-Za-z0-9]/g, '').slice(0, 12)}`);
   return {
     versionId: `01K7VERSION${index}0000000000`,
     licenseId: LICENSE,
-    customerId: CUSTOMER,
+    customerId,
+    customerCode,
     installationId: INSTALLATION,
     operationId: `01K7OPERATION${index}00000000`,
     status: 'ACTIVE' as LicenseStatus,
@@ -1101,7 +1109,10 @@ describe('import conflict evaluation', () => {
         installationCustomerId: CUSTOMER,
         customerTransfer: { reason: 'Repeating the same transfer.' },
       }).conflict,
-    ).toEqual({ reason: 'transfer-not-applicable', overlapping: 0 });
+    ).toEqual({
+      reason: 'transfer-requires-different-customer',
+      overlapping: 0,
+    });
   });
 
   it('refuses a document that lands inside the effective window of a retired version (OQ-86 Option C)', () => {
@@ -1880,5 +1891,58 @@ describe('continuation baseline of a renewal that retires nothing (L-05)', () =>
       },
     });
     expect(result.supersedes).toBeNull();
+  });
+
+  it('rejects customer-code-mismatch when customerId or customerCode disagrees with retained or known customers (L-06)', () => {
+    const existing = version(
+      window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+    );
+
+    // Same customerId, different customerCode -> customer-code-mismatch.
+    const changedCode = version({
+      ...window('2027-01-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'),
+      customerId: CUSTOMER,
+      customerCode: 'CUST-DIFFERENT-99',
+    });
+    expect(
+      evaluateImportConflicts({
+        candidate: changedCode,
+        operationId: changedCode.operationId,
+        documentHash: changedCode.documentHash,
+        supersession: { kind: 'none' },
+        versions: [existing],
+        at: NOW,
+        installationCustomerId: CUSTOMER,
+        installationCustomerCode: CUSTOMER_CODE,
+      }).conflict,
+    ).toEqual({
+      reason: 'customer-code-mismatch',
+      overlapping: 0,
+    });
+
+    // Different customerId claiming existing customerCode -> customer-code-mismatch
+    // even if customerTransfer is supplied!
+    const hijackedCode = version({
+      ...window('2027-01-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'),
+      licenseId: '01K7OTHERLICENSE00000000000',
+      customerId: '01K7OTHERCUSTOMER0000000000',
+      customerCode: CUSTOMER_CODE,
+    });
+    expect(
+      evaluateImportConflicts({
+        candidate: hijackedCode,
+        operationId: hijackedCode.operationId,
+        documentHash: hijackedCode.documentHash,
+        supersession: { kind: 'none' },
+        versions: [existing],
+        at: NOW,
+        installationCustomerId: CUSTOMER,
+        installationCustomerCode: CUSTOMER_CODE,
+        customerTransfer: { reason: 'Attempted transfer with hijacked code.' },
+      }).conflict,
+    ).toEqual({
+      reason: 'customer-code-mismatch',
+      overlapping: 0,
+    });
   });
 });

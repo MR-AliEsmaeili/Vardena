@@ -146,12 +146,13 @@ either a retained or a new identifier (corrective task **L-05**, report §4.4.1 
 a requirement defect; PR #142 stays `HOLD` until it is fixed and verified, and
 narrowing §8.6 is not an accepted alternative). The old text above is preserved as
 the record of what was decided on 2026-10-12; it is not rewritten.
+*(Update 2026-10-14: **L-05** was implemented and merged in PR #146 (`0879db3f0a3740cfbe8e68bce98013fac7322791`); **L-06** was decided by the Product Owner in **[PDR-14](../decisions/product/PDR-14-licensing-customer-code.md)** (`OD-LIC-03`) and implemented on branch `arena/3e77bbc7-vardena`, introducing `licensing.customers.customer_code`, signed `customerCode` in `VLIC2`/`VLIC1`, explicit issuance/CLI validation, non-overwrite of `display_name`, and `customer-code-mismatch` conflict enforcement.)*
 
 ### 8.4 Q4 — customer transfer is an explicit, audited operation
 
 - An ordinary import may never change the installation's commercial customer: a document naming a different customer is refused (`installation-customer-mismatch`, 409, nothing written).
 - A customer change happens **only** through the dedicated, permission-gated, explicitly authorized transfer operation (`Licensing.Installation.TransferCustomer`), which carries the intent, audits the old and new customer, the installation, the operation, the actor/source and the instant as the typed `license.installation.customer-transferred` event, and is atomic with the binding write.
-- A transfer request that names the customer the installation already has is refused (`transfer-not-applicable`, 409, nothing written), so a repeat or a concurrent duplicate cannot silently re-apply. The cross-installation conflict protection is unchanged.
+- A transfer request that names the customer the installation already has is refused (`transfer-not-applicable`, 409, nothing written — **renamed `transfer-requires-different-customer` by [PDR-14](../decisions/product/PDR-14-licensing-customer-code.md) §3.5.4; the refusal itself is unchanged**), so a repeat or a concurrent duplicate cannot silently re-apply. The cross-installation conflict protection is unchanged.
 - **Contract note for the Owner:** the signed document payload carries no field that could express transfer intent, and none was added; the intent is produced by the dedicated operation, not inferred from the document. A future field would be a signed-payload contract change with its own migration/test consequences and is **not** part of this slice.
 
 ### 8.5 `license-binding-conflict` — ratified

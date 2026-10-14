@@ -90,8 +90,24 @@ export interface LicenseImportResult {
 export interface LicenseCustomerTransferResult extends LicenseImportResult {
   /** The installation's commercial customer before the transfer. */
   previousCustomerId: string | null;
+  /** The installation's business customer code before the transfer (L-06). */
+  previousCustomerCode: string | null;
+  /**
+   * The license that governed this installation immediately before the
+   * transfer, as the transaction observed it under the installation lock
+   * (L-06, PDR-14 §3.5.4); null when nothing was governing then. The NEW
+   * license identity is `license.licenseId` in this same receipt.
+   */
+  previousLicenseId: string | null;
   /** True when the transaction changed the installation's binding. */
   bindingChanged: boolean;
+  /**
+   * The operator-supplied reason exactly as recorded on the typed
+   * `license.installation.customer-transferred` audit event (L-06, PDR-14
+   * §3.5.4), so a consumer never has to infer it from the current license
+   * snapshot or parse the audit trail.
+   */
+  reason: string;
 }
 
 /**
@@ -127,7 +143,10 @@ export interface LicenseReductionResolutionResult extends LicenseImportResult {
  */
 interface LicenseImportExecution extends LicenseImportResult {
   previousCustomerId: string | null;
+  previousCustomerCode: string | null;
   bindingChanged: boolean;
+  /** The license governing before an explicit transfer; null otherwise. */
+  previousLicenseId: string | null;
   /** Set when this transaction WAS the dedicated gap recovery. */
   recovery: ImportVersionResult['recovery'];
   /** Set when this transaction WAS a reduction resolution. */
@@ -176,8 +195,9 @@ export type LicenseImportRejectionReason =
   | 'overlapping-range'
   | 'unknown-supersession'
   | 'license-binding-conflict'
+  | 'customer-code-mismatch'
   | 'installation-customer-mismatch'
-  | 'transfer-not-applicable'
+  | 'transfer-requires-different-customer'
   | 'transfer-requires-signed-document'
   | 'resolution-requires-signed-document'
   | 'renewal-gap'
@@ -193,9 +213,11 @@ export type LicenseImportRejectionReason =
  * the defect is in the document's own temporal window relative to the import,
  * so it is answered 422 and the form asks for a re-issued document.
  *
- * `installation-customer-mismatch`, `transfer-not-applicable`, `renewal-gap`
- * and `reduction-requires-resolution` joined the family with the Owner
- * decisions of 2026-10-12 (Q4, OQ-80 G2, OQ-80 Option B with PDR-11 §8.6).
+ * `installation-customer-mismatch`, `transfer-requires-different-customer`,
+ * `renewal-gap` and `reduction-requires-resolution` joined the family with the
+ * Owner decisions of 2026-10-12 (Q4, OQ-80 G2, OQ-80 Option B with PDR-11
+ * §8.6); PDR-14 §3.5.4 renamed the transfer refusal from the earlier
+ * `transfer-not-applicable`.
  * `post-gap-recovery-requires-dedicated-operation`, `recovery-not-applicable`
  * and `resolution-not-applicable` carry the OQ-87 Option B decision (PDR-13)
  * and the L-04 resolution flow of the same date.
@@ -209,8 +231,9 @@ const CONFLICT_REASONS: ReadonlySet<LicenseImportRejectionReason> = new Set([
   'overlapping-range',
   'unknown-supersession',
   'license-binding-conflict',
+  'customer-code-mismatch',
   'installation-customer-mismatch',
-  'transfer-not-applicable',
+  'transfer-requires-different-customer',
   'renewal-gap',
   'reduction-requires-resolution',
   'post-gap-recovery-requires-dedicated-operation',
@@ -547,6 +570,14 @@ export class LicenseImportService {
     //    `LicensesRepository.importVersion` that decides, so a concurrent
     //    import can never invalidate it silently.
     const versions = await this.licenses.listVersions(installationId);
+    const customerPrecheck =
+      typeof this.licenses.findCustomersForImport === 'function'
+        ? await this.licenses.findCustomersForImport({
+            customerId: payload.customerId,
+            customerCode: payload.customerCode,
+            installationCustomerId,
+          })
+        : { installationCustomerCode: null, knownCustomers: [] };
     const supersession: ImportSupersessionIntent =
       payload.supersedesOperationId === null
         ? { kind: 'none' }
@@ -556,6 +587,7 @@ export class LicenseImportService {
       validUntil: payload.validUntil,
       licenseId: payload.licenseId,
       customerId: payload.customerId,
+      customerCode: payload.customerCode,
       organizationLimit: payload.organizationLimit,
       userLimit: payload.userLimit,
       entitlements: licenseVersionEntitlements(payload),
@@ -568,6 +600,8 @@ export class LicenseImportService {
       versions,
       at: now,
       installationCustomerId,
+      installationCustomerCode: customerPrecheck.installationCustomerCode,
+      knownCustomers: customerPrecheck.knownCustomers,
       customerTransfer: options.customerTransfer ?? null,
       usage: precheckUsage,
       gapRecovery: options.gapRecovery ?? null,
@@ -647,7 +681,9 @@ export class LicenseImportService {
       outcome: 'APPLIED',
       license: await this.licensing.current(now),
       previousCustomerId: execution.previousCustomerId,
+      previousCustomerCode: execution.previousCustomerCode,
       bindingChanged: execution.bindingChanged,
+      previousLicenseId: execution.previousLicenseId,
       recovery: execution.recovery,
       resolution: execution.resolution,
     };
@@ -672,17 +708,30 @@ export class LicenseImportService {
    * on the normal import path that is refused as
    * `installation-customer-mismatch`, and a transfer request that names the
    * customer the installation already has is refused as
-   * `transfer-not-applicable` (nothing to transfer; the document can be
-   * imported normally instead).
+   * `transfer-requires-different-customer` (PDR-14 §3.5.4: nothing to
+   * transfer; the document can be imported normally instead).
    */
   async transferCustomer(
     rawDocument: string,
     reason: string,
   ): Promise<LicenseCustomerTransferResult> {
     assertOperationReason(reason, 'transfer');
-    return await this.runImport(rawDocument, {
+    const execution = await this.runImport(rawDocument, {
       customerTransfer: { reason },
     });
+    return {
+      changed: execution.changed,
+      outcome: execution.outcome,
+      license: execution.license,
+      previousCustomerId: execution.previousCustomerId,
+      previousCustomerCode: execution.previousCustomerCode,
+      previousLicenseId: execution.previousLicenseId,
+      bindingChanged: execution.bindingChanged,
+      // PDR-14 §3.5.4: the operator reason is part of the receipt. The trimmed
+      // form is returned because that is exactly what the typed audit event
+      // recorded, so the receipt can never disagree with the trail.
+      reason: reason.trim(),
+    };
   }
 
   /**
@@ -807,7 +856,9 @@ export class LicenseImportService {
         outcome: 'UNCHANGED',
         license: await this.licensing.current(now),
         previousCustomerId: null,
+        previousCustomerCode: null,
         bindingChanged: false,
+        previousLicenseId: null,
         recovery: null,
         resolution: null,
       };
@@ -825,6 +876,14 @@ export class LicenseImportService {
     // still-governing version that has no recorded supersession; anything else
     // is refused rather than guessed (fail-closed; same authority as v2 —
     // `evaluateImportConflicts`, re-run under the lock inside the transaction).
+    const customerPrecheck =
+      typeof this.licenses.findCustomersForImport === 'function'
+        ? await this.licenses.findCustomersForImport({
+            customerId: payload.customerId,
+            customerCode: payload.customerCode,
+            installationCustomerId,
+          })
+        : { installationCustomerCode: null, knownCustomers: [] };
     const supersession: ImportSupersessionIntent = { kind: 'implicit' };
     const precheck = evaluateImportConflicts({
       candidate: {
@@ -832,6 +891,7 @@ export class LicenseImportService {
         validUntil: payload.validUntil,
         licenseId: payload.licenseId,
         customerId: payload.customerId,
+        customerCode: payload.customerCode,
         organizationLimit: payload.organizationLimit,
         userLimit: payload.userLimit,
         entitlements: legacyEntitlements(payload),
@@ -842,6 +902,8 @@ export class LicenseImportService {
       versions,
       at: now,
       installationCustomerId,
+      installationCustomerCode: customerPrecheck.installationCustomerCode,
+      knownCustomers: customerPrecheck.knownCustomers,
       customerTransfer: null,
       usage: precheckUsage,
     });
@@ -904,7 +966,9 @@ export class LicenseImportService {
       outcome: 'APPLIED',
       license: await this.licensing.current(now),
       previousCustomerId: execution.previousCustomerId,
+      previousCustomerCode: execution.previousCustomerCode,
       bindingChanged: execution.bindingChanged,
+      previousLicenseId: execution.previousLicenseId,
       recovery: execution.recovery,
       resolution: execution.resolution,
     };
@@ -966,6 +1030,7 @@ export class LicenseImportService {
         now: context.now,
         licenseId: context.payload.licenseId,
         customerId: context.payload.customerId,
+        customerCode: context.payload.customerCode,
         customerName: context.payload.customerName,
         versionId,
         operationId,
@@ -1451,12 +1516,14 @@ function documentConflictMessage(conflict: ImportConflict): string {
       return 'This license version overlaps a retained version, including versions that have already been retired, and does not start later than the version it would take over. Issue a document that starts later and takes it over, that explicitly retires it, or a non-overlapping renewal.';
     case 'license-binding-conflict':
       return LICENSE_BINDING_CONFLICT_MESSAGE;
+    case 'customer-code-mismatch':
+      return CUSTOMER_CODE_MISMATCH_MESSAGE;
     case 'backdated-supersession':
       return 'This license version would retire the version it names from an instant that is already in the past, which would rewrite which version governed then. Issue the document with a start that has not yet passed, or after the version it retires has ended.';
     case 'installation-customer-mismatch':
       return INSTALLATION_CUSTOMER_MISMATCH_MESSAGE;
-    case 'transfer-not-applicable':
-      return TRANSFER_NOT_APPLICABLE_MESSAGE;
+    case 'transfer-requires-different-customer':
+      return TRANSFER_REQUIRES_DIFFERENT_CUSTOMER_MESSAGE;
     case 'renewal-gap':
       return 'This renewal would start after the license it renews has ended, leaving a gap in coverage. Issue the renewal to start at or before the end of the version it follows.';
     case 'reduction-requires-resolution':
@@ -1479,6 +1546,15 @@ const LICENSE_BINDING_CONFLICT_MESSAGE =
   'This license identifier is already bound to a different customer or installation, so the document cannot add a version to it. Nothing was changed.';
 
 /**
+ * The signed `(customerId, customerCode)` pair disagrees with a persisted or
+ * retained customer record (L-06, PDR-14 / OD-LIC-03). Either `customerId` is
+ * already bound to a different `customerCode`, or `customerCode` is already
+ * bound to a different `customerId`.
+ */
+const CUSTOMER_CODE_MISMATCH_MESSAGE =
+  'This license document carries a customer code that does not match the customer record (either the customer id is already bound to a different customer code, or the customer code belongs to a different customer id). Nothing was changed.';
+
+/**
  * The installation-level binding (Owner decision 2026-10-12, Q4). Distinct from
  * the license-identifier binding above: this document is for another customer
  * than the one this installation belongs to, and an import never moves an
@@ -1488,14 +1564,14 @@ const INSTALLATION_CUSTOMER_MISMATCH_MESSAGE =
   'This license document belongs to a different customer than this installation is bound to, and importing a license never changes that binding. Nothing was changed. A customer transfer is a separate, explicitly authorized operation.';
 
 /** A transfer request whose target is the customer the installation already has. */
-const TRANSFER_NOT_APPLICABLE_MESSAGE =
+const TRANSFER_REQUIRES_DIFFERENT_CUSTOMER_MESSAGE =
   'This installation is already bound to the customer this transfer names, so there is nothing to transfer. Import the document instead.';
 
 /**
  * A recovery request whose candidate is not a post-gap one (OQ-87 Option B,
  * PDR-13): coverage has not lapsed, so there is nothing to recover. Mirrors
- * `transfer-not-applicable`: a repeat or a concurrent recovery of live
- * coverage refuses instead of silently re-applying.
+ * `transfer-requires-different-customer`: a repeat or a concurrent recovery
+ * of live coverage refuses instead of silently re-applying.
  */
 const RECOVERY_NOT_APPLICABLE_MESSAGE =
   'The license coverage of this installation has not lapsed, so there is nothing to recover. Import this document through the ordinary import instead.';
@@ -1519,12 +1595,14 @@ function legacyConflictMessage(conflict: ImportConflict): string {
       return 'This license code overlaps more than one retained version, or a version that is already retired, and cannot be applied.';
     case 'license-binding-conflict':
       return LICENSE_BINDING_CONFLICT_MESSAGE;
+    case 'customer-code-mismatch':
+      return CUSTOMER_CODE_MISMATCH_MESSAGE;
     case 'backdated-supersession':
       return 'This license code would replace the current version from an instant that is already in the past, which would rewrite which version governed then. Start the code at or after the end of the version it follows, or retire that version with a signed document whose start has not yet passed.';
     case 'installation-customer-mismatch':
       return INSTALLATION_CUSTOMER_MISMATCH_MESSAGE;
-    case 'transfer-not-applicable':
-      return TRANSFER_NOT_APPLICABLE_MESSAGE;
+    case 'transfer-requires-different-customer':
+      return TRANSFER_REQUIRES_DIFFERENT_CUSTOMER_MESSAGE;
     case 'renewal-gap':
       return 'This license code would start after the license it renews has ended, leaving a gap in coverage. Start the code at or before the end of the version it follows.';
     case 'reduction-requires-resolution':
@@ -1558,11 +1636,14 @@ function conflictLostRaceMessage(
   if (conflict.reason === 'license-binding-conflict') {
     return LICENSE_BINDING_CONFLICT_MESSAGE;
   }
+  if (conflict.reason === 'customer-code-mismatch') {
+    return CUSTOMER_CODE_MISMATCH_MESSAGE;
+  }
   if (conflict.reason === 'installation-customer-mismatch') {
     return INSTALLATION_CUSTOMER_MISMATCH_MESSAGE;
   }
-  if (conflict.reason === 'transfer-not-applicable') {
-    return TRANSFER_NOT_APPLICABLE_MESSAGE;
+  if (conflict.reason === 'transfer-requires-different-customer') {
+    return TRANSFER_REQUIRES_DIFFERENT_CUSTOMER_MESSAGE;
   }
   if (conflict.reason === 'renewal-gap') {
     return 'This renewal would start after the license it renews has ended, leaving a gap in coverage. Issue the renewal to start at or before the end of the version it follows.';

@@ -19,7 +19,7 @@
 
 `Customer → Installation → License → LicenseVersion → Entitlement → assignable Permission → Role → Organization Membership → Access`
 
-- **Customer:** minimal commercial identity; not the Organization party/customer master and not CRM.
+- **Customer:** minimal commercial identity (`licensing.customers`: internal `id` / `customerId`, unique business `customer_code` / `customerCode`, and mutable `display_name` / `customerName` — [PDR-14](decisions/product/PDR-14-licensing-customer-code.md)); not the Organization party/customer master and not CRM.
 - **Installation:** deployed Vardena instance. The current deployment is one installation and may contain multiple Organizations. Since L-02 it has a persistent backend-owned identity (below).
 - **License:** installation-scoped commercial right, bound to exactly one customer and one installation (`licensing.licenses`). Since L-03 it holds no dates, limits or entitlements of its own — those belong to its versions. It is the future home of license-level revocation state (PDR-11 §10, OQ-78).
 - **LicenseVersion:** one retained, signed version of a license (`licensing.license_versions`): validity window, status, limits, entitlements, signing key id, document hash, operation id, source, import facts and supersession state. Retained, never overwritten.
@@ -253,17 +253,19 @@ application table:
 ```
 npm run license:keygen                                   # prints a key pair
 LICENSE_SIGNING_PRIVATE_KEY=<base64> npm run license:issue -- \
-  --installation <installation-id> --users 25 --modules organization,users \
+  --installation <installation-id> --customer <customer-id> --customer-code <customer-code> \
+  --users 25 --modules organization,users \
   --valid-from 2027-01-01 --valid-until 2028-01-01 --out renewal.vlic
 ```
 
 `--out <path>` writes the signed **file** (the primary transport). Without it the
 CLI prints the signed file to stdout; `--artifact` prints the bare `VLIC2` artifact
 instead, and `--format v1` still prints a `VLIC1` code for L-02 compatibility tests.
+`--customer` and `--customer-code` are required and bind customer identity and
+business customer code ([PDR-14](decisions/product/PDR-14-licensing-customer-code.md) / L-06);
 `--operation-id`, `--supersedes` and `--key-id` cover operation identity, explicit
-supersession and key rotation. The issuer always generates a new `licenseId`; it has
-no option to issue another version of an existing license (see the post-merge
-reconciliation report, finding F-8). A
+supersession and key rotation. The CLI always generates a new `licenseId` and
+has no `--license-id` flag (F-8 Decision #4). A
 superseding document retires its target from its own `validFrom`, so it must
 start at or after the instant it is imported: pass a current or future
 `--valid-from` (the default start would be refused as `backdated-supersession`;

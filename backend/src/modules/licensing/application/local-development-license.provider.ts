@@ -36,6 +36,7 @@ export class LocalDevelopmentLicenseProvider implements LicenseProvider {
     const configured = this.config.licensing;
     return {
       customerId: '01JLOCALCUSTOMER0000000000',
+      customerCode: 'CUST-LOCAL-DEV',
       installationId: DEVELOPMENT_INSTALLATION_ID,
       licenseId: '01JLOCALDEVELOPMENT0000000',
       status: configured.status,

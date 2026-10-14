@@ -206,3 +206,18 @@ protection and migration before any code changes (G-10, AR-29).
   unimplemented and gated by their open items (PDR-11 §15).
 - The version table is the future home of revocation/reactivation state; adding
   it now avoids a second lossy migration later.
+- *Addendum (2026-10-14, L-06 / OD-LIC-03, [PDR-14](../decisions/product/PDR-14-licensing-customer-code.md)):*
+  Every licensing customer row in `licensing.customers` carries a stable,
+  independent business `customer_code` (`VARCHAR(64) NOT NULL`, unique via
+  `uq_customers_customer_code`, validated by `customers_customer_code_check`
+  and distinct from `id`) alongside internal database identity `id`
+  (`customerId`) and mutable display name `display_name` (`customerName`).
+  Signed `VLIC2` and `VLIC1` payloads include `customerCode` in canonical wire
+  order (`customerId`, `customerCode`, `customerName`) covered by the Ed25519
+  signature; issuance and CLI require explicit valid `customerId` and
+  `customerCode`; ordinary license import never overwrites an existing
+  customer's stored `display_name`; and `evaluateImportConflicts` /
+  `LicensesRepository.importVersion` reject any mismatch between `(customerId,
+  customerCode)` and persisted customer records as `customer-code-mismatch`
+  (HTTP 409, nothing written).
+

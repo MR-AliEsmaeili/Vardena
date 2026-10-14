@@ -151,12 +151,29 @@ describe('Installation identity and license activation (e2e)', () => {
     return response.body.installationId as string;
   };
 
+  const DEFAULT_CUSTOMER = '01K7ACTIVATIONCUSTOMER0000';
   const issue = (
     overrides: Partial<Parameters<typeof issueLicenseCode>[0]> & {
       installationId: string;
     },
     key = authority.privateKey,
-  ): string => issueLicenseCode(overrides, key).code;
+  ): string => {
+    const customerId =
+      overrides.customer?.customerId ??
+      overrides.customerId ??
+      DEFAULT_CUSTOMER;
+    return issueLicenseCode(
+      {
+        customerId,
+        customerCode:
+          overrides.customer?.customerCode ??
+          overrides.customerCode ??
+          `CUST-${customerId.replace(/[^A-Za-z0-9]/g, '').slice(-12)}`,
+        ...overrides,
+      },
+      key,
+    ).code;
+  };
 
   const activate = (code: string, session = agent): request.Test =>
     session.post('/api/v1/license/activate').send({ code });

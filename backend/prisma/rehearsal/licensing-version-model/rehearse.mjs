@@ -80,6 +80,9 @@ const RECOVERY_AUDIT_SQL = readMigration(
 const AUDIT_DETAIL_SQL = readMigration(
   '20261018000000_licensing_audit_detail_text',
 );
+const CUSTOMER_CODE_SQL = readMigration(
+  '20261020000000_licensing_customer_code',
+);
 const AUDIT_DETAIL_FIXTURE = {
   id: 'rehearsal-preserved-audit-detail',
   preserved: 'H'.repeat(500),
@@ -551,6 +554,98 @@ async function assertAuditDetailWidening(client) {
   assert.equal(longer.rows[0].detail.length, 750);
 }
 
+async function assertCustomerCodeMigration(client) {
+  // 1. Applying 20261020000000 on populated rows without owner-assigned
+  //    business codes must fail closed and never fabricate codes.
+  let missingError = null;
+  try {
+    await client.query('BEGIN');
+    await client.query(CUSTOMER_CODE_SQL);
+  } catch (error) {
+    missingError = error.message;
+  } finally {
+    await client.query('ROLLBACK');
+  }
+  assert.ok(
+    missingError !== null &&
+      /without an explicit customer_code/i.test(missingError),
+    `migration must refuse populated rows missing customer_code (got: ${String(missingError)})`,
+  );
+
+  // 2. Staged owner-supplied business customer_code values allow the migration
+  //    to succeed and enforce NOT NULL, CHECK, and UNIQUE constraints.
+  await client.query(
+    `ALTER TABLE "licensing"."customers" ADD COLUMN IF NOT EXISTS "customer_code" VARCHAR(64)`,
+  );
+  await client.query(`
+    UPDATE "licensing"."customers"
+       SET "customer_code" = CASE "id"
+         WHEN '01K7CUSTOMERAAAAAAAAAAAAAA' THEN 'CUST-ACME-001'
+         WHEN '01K7CUSTOMERBBBBBBBBBBBBBB' THEN 'CUST-BRAVO-002'
+       END
+  `);
+  await client.query(CUSTOMER_CODE_SQL);
+
+  const customers = await client.query(
+    `SELECT "id", "customer_code", "display_name"
+       FROM "licensing"."customers" ORDER BY "id"`,
+  );
+  assert.deepEqual(
+    customers.rows.map((row) => ({ ...row })),
+    [
+      {
+        id: '01K7CUSTOMERAAAAAAAAAAAAAA',
+        customer_code: 'CUST-ACME-001',
+        display_name: 'Acme Holding',
+      },
+      {
+        id: '01K7CUSTOMERBBBBBBBBBBBBBB',
+        customer_code: 'CUST-BRAVO-002',
+        display_name: 'Bravo Industries',
+      },
+    ],
+  );
+
+  const invalidCases = [
+    {
+      label: 'duplicate customer_code',
+      id: '01K7CUSTOMERCCCCCCCCCCCCCC',
+      code: 'CUST-ACME-001',
+    },
+    {
+      label: 'empty customer_code',
+      id: '01K7CUSTOMERDDDDDDDDDDDDDD',
+      code: '',
+    },
+    {
+      label: 'whitespace customer_code',
+      id: '01K7CUSTOMEREEEEEEEEEEEEEE',
+      code: '   ',
+    },
+    {
+      label: 'customer_code equal to id',
+      id: '01K7CUSTOMERFFFFFFFFFFFFFF',
+      code: '01K7CUSTOMERFFFFFFFFFFFFFF',
+    },
+  ];
+  for (const invalid of invalidCases) {
+    let rejected = false;
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO "licensing"."customers" ("id", "customer_code", "display_name")
+         VALUES ($1, $2, 'Invalid Customer')`,
+        [invalid.id, invalid.code],
+      );
+    } catch {
+      rejected = true;
+    } finally {
+      await client.query('ROLLBACK');
+    }
+    assert.ok(rejected, `${invalid.label} must be rejected by the database`);
+  }
+}
+
 async function rehearsal() {
   await createDatabase(REHEARSAL_DB);
   await withClient(REHEARSAL_DB, async (client) => {
@@ -590,6 +685,10 @@ async function rehearsal() {
     await assertAuditDetailWidening(client);
     log(
       '  audit detail preservation and >500-character round-trip assertions passed',
+    );
+    await assertCustomerCodeMigration(client);
+    log(
+      '  applied 20261020000000_licensing_customer_code and verified customer_code constraints',
     );
   });
 }

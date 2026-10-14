@@ -99,7 +99,10 @@ export class LicenseCustomerTransferController {
       changed: result.changed,
       outcome: result.outcome,
       previousCustomerId: result.previousCustomerId,
+      previousCustomerCode: result.previousCustomerCode,
+      previousLicenseId: result.previousLicenseId,
       bindingChanged: result.bindingChanged,
+      reason: result.reason,
     };
   }
 }

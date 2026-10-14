@@ -84,12 +84,25 @@ describe.skipIf(DATABASE_URL === undefined)(
      * exercise the customer rules build their documents.
      */
     function licenseFor(
-      options: Parameters<typeof issueLicenseFile>[0],
+      options: Partial<Parameters<typeof issueLicenseFile>[0]> & {
+        installationId: string;
+      },
       key: Parameters<typeof issueLicenseFile>[1] = authority.privateKey,
       file: { keyId?: string } = {},
     ): IssuedFile {
+      const customerId =
+        options.customer?.customerId ?? options.customerId ?? SELF_CUSTOMER;
       return issueLicenseFile(
-        { customerId: SELF_CUSTOMER, ...options },
+        {
+          customerId,
+          customerCode:
+            options.customer?.customerCode ??
+            options.customerCode ??
+            (customerId === SELF_CUSTOMER
+              ? 'CUST-LIVE-SELF'
+              : `CUST-${customerId.replace(/[^A-Za-z0-9]/g, '').slice(-12)}`),
+          ...options,
+        },
         key,
         file,
       );
@@ -376,6 +389,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           // The suite's customer: this first import is what binds the
           // installation, and every later document in this file names it.
           customerId: SELF_CUSTOMER,
+          customerCode: 'CUST-LIVE-SELF',
           customerName: 'Live customer',
           organizationLimit: 2,
           moduleEntitlements: ['organization', 'users'],
@@ -423,6 +437,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         {
           installationId: identity.installationId,
           customerId: SELF_CUSTOMER,
+          customerCode: 'CUST-LIVE-SELF',
           customerName: 'Live customer',
           organizationLimit: 5,
           moduleEntitlements: ['organization', 'users'],
@@ -504,8 +519,15 @@ describe.skipIf(DATABASE_URL === undefined)(
     }, 120_000);
 
     it('rejects a license bound to another installation against the real database', async () => {
+      // L-06 (PDR-14 §3.4): issuance requires an explicit customer identity and
+      // business code. The suite's own customer is named so the ONLY defect of
+      // this code is the foreign installation the test asserts on.
       const foreign = issueLicenseCode(
-        { installationId: '01K7OTHERINSTALLATION0000' },
+        {
+          installationId: '01K7OTHERINSTALLATION0000',
+          customerId: SELF_CUSTOMER,
+          customerCode: 'CUST-LIVE-SELF',
+        },
         authority.privateKey,
       ).code;
 
@@ -578,6 +600,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           now,
           licenseId: '01K7DOOMEDLICENSE000000000',
           customerId: '01K7DOOMEDCUSTOMER00000000',
+          customerCode: 'CUST-DOOMED-01',
           customerName: 'Doomed customer',
           versionId: '01K7DOOMEDVERSION000000000',
           // Deliberately collides with a retained operation.
@@ -658,6 +681,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           now,
           licenseId: '01K7DOOMEDLICENSE000000000',
           customerId: '01K7DOOMEDCUSTOMER00000000',
+          customerCode: 'CUST-DOOMED-01',
           customerName: 'Doomed customer',
           versionId: '01K7DOOMEDVERSION000000001',
           operationId: 'doomed-operation-late-failure',
@@ -1236,8 +1260,8 @@ describe.skipIf(DATABASE_URL === undefined)(
       const foreignInstallation = '01K7FOREIGNINSTALLATION00001';
       const foreignLicense = '01K7FOREIGNLICENSE000000001';
       await client.$executeRawUnsafe(
-        `INSERT INTO "licensing"."customers" ("id", "display_name", "created_at", "updated_at")
-         VALUES ($1, 'Foreign customer', now(), now())`,
+        `INSERT INTO "licensing"."customers" ("id", "customer_code", "display_name", "created_at", "updated_at")
+         VALUES ($1, 'CUST-FOREIGN-01', 'Foreign customer', now(), now())`,
         foreignCustomer,
       );
       await client.$executeRawUnsafe(
@@ -1312,6 +1336,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         now,
         licenseId: payload.licenseId,
         customerId: payload.customerId,
+        customerCode: payload.customerCode,
         customerName,
         versionId,
         operationId: payload.operationId,
@@ -1416,9 +1441,10 @@ describe.skipIf(DATABASE_URL === undefined)(
         ): Promise<T>;
       }>();
       await client0.$executeRawUnsafe(
-        `INSERT INTO "licensing"."customers" ("id", "display_name", "created_at", "updated_at")
-         VALUES ($1, 'Self customer', now(), now())`,
+        `INSERT INTO "licensing"."customers" ("id", "customer_code", "display_name", "created_at", "updated_at")
+         VALUES ($1, $2, 'Self customer', now(), now())`,
         selfCustomer,
+        `CUST-${selfCustomer.replace(/[^A-Za-z0-9]/g, '').slice(-12)}`,
       );
       // Test fixture: bind this installation to the customer the document will
       // name. A document may only name the binding it already has (a customer
@@ -2382,5 +2408,147 @@ describe.skipIf(DATABASE_URL === undefined)(
         ),
       ).toBe(1);
     }, 120_000);
+
+    it('enforces customer_code uniqueness, preserves stored display_name/customer_code on import, and rejects customer-code-mismatch (L-06, PDR-14)', async () => {
+      // Self-contained: a fresh installation with its own contiguous history,
+      // so the verdicts below cannot depend on the retained windows that
+      // earlier tests in this file left behind (a renewal starting after that
+      // coverage ended is post-gap recovery under PDR-13, not an import).
+      await resetApplicationForFreshInstallation();
+      const identity = await app.get(InstallationIdentityService).current();
+      const repository = app.get(LicensesRepository);
+      // One unchanged grant throughout, so the §8.6 / L-05 continuation guard
+      // has nothing to refuse and only the customer rules are exercised.
+      const grant = {
+        organizationLimit: null,
+        userLimit: 100,
+        moduleEntitlements: ['organization', 'users', 'rbac'],
+      };
+
+      const baseline = licenseFor({
+        installationId: identity.installationId,
+        licenseId: generateId(),
+        customerId: SELF_CUSTOMER,
+        customerCode: 'CUST-LIVE-SELF',
+        customerName: 'Live customer',
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2046-01-01T00:00:00.000Z'),
+        ...grant,
+      });
+      const bound = await importOutcome(baseline);
+      expect(bound, bound.message).toMatchObject({ applied: true });
+      expect(await repository.findCustomerById(SELF_CUSTOMER)).toMatchObject({
+        customerId: SELF_CUSTOMER,
+        customerCode: 'CUST-LIVE-SELF',
+        displayName: 'Live customer',
+      });
+
+      // Rename the bound customer's display_name via updateCustomerDisplayName;
+      // customerId and customerCode stay unchanged.
+      const renamed = await repository.updateCustomerDisplayName({
+        customerId: SELF_CUSTOMER,
+        displayName: 'Renamed Live Customer Ltd.',
+      });
+      expect(renamed.customerId).toBe(SELF_CUSTOMER);
+      expect(renamed.customerCode).toBe('CUST-LIVE-SELF');
+      expect(renamed.displayName).toBe('Renamed Live Customer Ltd.');
+
+      // A contiguous renewal under a NEW licenseId (the L-05 path) whose signed
+      // customerName differs applies, and does NOT overwrite the stored
+      // display_name or customer_code. `importOutcome` reports status 0 on
+      // success (no HTTP layer is involved).
+      const renewalWithDifferentName = licenseFor({
+        installationId: identity.installationId,
+        customerId: SELF_CUSTOMER,
+        customerCode: 'CUST-LIVE-SELF',
+        customerName: 'Different Label In Artifact',
+        validFrom: new Date('2046-01-01T00:00:00.000Z'),
+        validUntil: new Date('2047-01-01T00:00:00.000Z'),
+        ...grant,
+      });
+      expect(renewalWithDifferentName.payload.licenseId).not.toBe(
+        baseline.payload.licenseId,
+      );
+      const applied = await importOutcome(renewalWithDifferentName);
+      expect(applied, applied.message).toMatchObject({
+        applied: true,
+        status: 0,
+      });
+
+      const afterImport = await repository.findCustomerById(SELF_CUSTOMER);
+      expect(afterImport).toMatchObject({
+        customerId: SELF_CUSTOMER,
+        customerCode: 'CUST-LIVE-SELF',
+        displayName: 'Renamed Live Customer Ltd.',
+      });
+
+      // The same customerId with a different customerCode fails closed with
+      // 409 customer-code-mismatch, and nothing is written.
+      const mismatchedCode = licenseFor({
+        installationId: identity.installationId,
+        customerId: SELF_CUSTOMER,
+        customerCode: 'CUST-WRONG-LIVE-99',
+        customerName: 'Renamed Live Customer Ltd.',
+        validFrom: new Date('2047-01-01T00:00:00.000Z'),
+        validUntil: new Date('2048-01-01T00:00:00.000Z'),
+        ...grant,
+      });
+      const refused = await importOutcome(mismatchedCode);
+      expect(refused).toMatchObject({
+        applied: false,
+        status: 409,
+        reason: 'customer-code-mismatch',
+      });
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          mismatchedCode.payload.operationId,
+        ),
+      ).toBe(0);
+
+      // Another customerId claiming the bound customer's code is the same
+      // conflict: no customer row is created for it and the binding is kept.
+      const otherCustomer = '01K7LIVEOTHERCUSTOMER00000';
+      const codeReuse = licenseFor({
+        installationId: identity.installationId,
+        customerId: otherCustomer,
+        customerCode: 'CUST-LIVE-SELF',
+        customerName: 'Other Customer',
+        validFrom: new Date('2047-01-01T00:00:00.000Z'),
+        validUntil: new Date('2048-01-01T00:00:00.000Z'),
+        ...grant,
+      });
+      const reuseRefused = await importOutcome(codeReuse);
+      expect(reuseRefused).toMatchObject({
+        applied: false,
+        status: 409,
+        reason: 'customer-code-mismatch',
+      });
+      expect(await repository.findCustomerById(otherCustomer)).toBeNull();
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          codeReuse.payload.operationId,
+        ),
+      ).toBe(0);
+
+      // The database itself enforces uq_customers_customer_code.
+      const client = await prisma.getClient<{
+        $executeRawUnsafe(
+          query: string,
+          ...values: unknown[]
+        ): Promise<unknown>;
+      }>();
+      await expect(
+        client.$executeRawUnsafe(
+          `INSERT INTO "licensing"."customers" ("id", "customer_code", "display_name", "created_at", "updated_at")
+           VALUES ($1, 'CUST-LIVE-SELF', 'Duplicate code', now(), now())`,
+          otherCustomer,
+        ),
+      ).rejects.toThrow();
+      expect(await repository.findCustomerById(otherCustomer)).toBeNull();
+    }, 60_000);
   },
 );

@@ -1,12 +1,20 @@
 import { generateKeyPairSync, type KeyObject } from 'node:crypto';
 import { generateId } from '../kernel/ids/ulid.js';
 import {
+  assertValidCustomerCode,
+  assertValidCustomerId,
+  assertValidCustomerName,
+  LicenseCustomerError,
+} from '../modules/licensing/domain/customer.js';
+import {
+  LicenseCodeError,
   parsePrivateKey,
   signLicenseCode,
   type LicensePayload,
 } from '../modules/licensing/domain/license-code.js';
 import {
   LICENSE_DOCUMENT_KIND,
+  LicenseDocumentError,
   serializeLicenseFile,
   signLicenseDocument,
   type LicenseVersionPayload,
@@ -53,9 +61,24 @@ export function generateAuthorityKeyPair(): GeneratedKeyPair {
   };
 }
 
+export interface IssueLicenseCustomerTarget {
+  customerId: string;
+  customerCode: string;
+  displayName?: string;
+}
+
 export interface IssueLicenseOptions {
   installationId: string;
+  /**
+   * Explicit persisted customer record for which the license is issued, or
+   * supply `customerId` and `customerCode` directly. Both `customerId` and
+   * `customerCode` are required; issuance never auto-generates `customerId` or
+   * `customerCode`, never derives `customerCode` from `customerName`, and
+   * never defaults `customerCode` to `customerId` (PDR-14 / L-06).
+   */
+  customer?: IssueLicenseCustomerTarget;
   customerId?: string;
+  customerCode?: string;
   customerName?: string;
   licenseId?: string;
   status?: LicensePayload['status'];
@@ -67,14 +90,82 @@ export interface IssueLicenseOptions {
   featureEntitlements?: readonly string[];
 }
 
+function resolveIssuedCustomer(options: IssueLicenseOptions): {
+  customerId: string;
+  customerCode: string;
+  customerName: string;
+} {
+  if (options.customer !== undefined) {
+    if (typeof options.customer !== 'object' || options.customer === null) {
+      throw new LicenseCustomerError(
+        'customer-id',
+        'customer record must be an object with customerId and customerCode.',
+      );
+    }
+    const targetId = assertValidCustomerId(options.customer.customerId);
+    const targetCode = assertValidCustomerCode(
+      options.customer.customerCode,
+      targetId,
+    );
+    if (options.customerId !== undefined && options.customerId !== targetId) {
+      throw new LicenseCustomerError(
+        'customer-code-mismatch',
+        'The requested customerId does not match the customer record.',
+      );
+    }
+    if (
+      options.customerCode !== undefined &&
+      options.customerCode !== targetCode
+    ) {
+      throw new LicenseCustomerError(
+        'customer-code-mismatch',
+        'The requested customerCode does not match the customer record.',
+      );
+    }
+    const customerName = assertValidCustomerName(
+      options.customerName ??
+        options.customer.displayName ??
+        'Development customer',
+    );
+    return {
+      customerId: targetId,
+      customerCode: targetCode,
+      customerName,
+    };
+  }
+  const customerId = assertValidCustomerId(options.customerId);
+  const customerCode = assertValidCustomerCode(
+    options.customerCode,
+    customerId,
+  );
+  const customerName = assertValidCustomerName(
+    options.customerName ?? 'Development customer',
+  );
+  return { customerId, customerCode, customerName };
+}
+
 export function buildLicensePayload(
   options: IssueLicenseOptions,
 ): LicensePayload {
+  let customer: {
+    customerId: string;
+    customerCode: string;
+    customerName: string;
+  };
+  try {
+    customer = resolveIssuedCustomer(options);
+  } catch (error) {
+    if (error instanceof LicenseCustomerError) {
+      throw new LicenseCodeError('payload', error.message);
+    }
+    throw error;
+  }
   return {
     version: 1,
     licenseId: options.licenseId ?? generateId(),
-    customerId: options.customerId ?? generateId(),
-    customerName: options.customerName ?? 'Development customer',
+    customerId: customer.customerId,
+    customerCode: customer.customerCode,
+    customerName: customer.customerName,
     installationId: options.installationId,
     status: options.status ?? 'ACTIVE',
     validFrom: options.validFrom ?? new Date('2020-01-01T00:00:00.000Z'),
@@ -111,13 +202,22 @@ export interface IssueLicenseVersionOptions extends IssueLicenseOptions {
 export function buildLicenseVersionPayload(
   options: IssueLicenseVersionOptions,
 ): LicenseVersionPayload {
-  const legacy = buildLicensePayload(options);
+  let legacy: LicensePayload;
+  try {
+    legacy = buildLicensePayload(options);
+  } catch (error) {
+    if (error instanceof LicenseCodeError) {
+      throw new LicenseDocumentError(error.reason, error.message);
+    }
+    throw error;
+  }
   return {
     version: 2,
     kind: LICENSE_DOCUMENT_KIND,
     operationId: options.operationId ?? generateId(),
     licenseId: legacy.licenseId,
     customerId: legacy.customerId,
+    customerCode: legacy.customerCode,
     customerName: legacy.customerName,
     installationId: legacy.installationId,
     status: legacy.status,

@@ -56,17 +56,30 @@ const STRANGER = generateAuthorityKeyPair();
  * exercise the refusal paths on purpose.
  */
 const CUSTOMER = '01K7CUSTOMER000000000000000';
+const CUSTOMER_CODE = 'CUST-ACME-01';
 const LICENSE = '01K7LICENSE0000000000000000';
+
+function defaultCustomerCode(customerId: string): string {
+  return customerId === CUSTOMER
+    ? CUSTOMER_CODE
+    : `CUST-${customerId.replace(/[^A-Za-z0-9]/g, '').slice(-12)}`;
+}
 
 /** `issueLicenseFile` for the suite's installation, customer and license. */
 function signedDocument(
   options: Partial<Parameters<typeof issueLicenseFile>[0]> = {},
   key: Parameters<typeof issueLicenseFile>[1] = AUTHORITY.privateKey,
 ): ReturnType<typeof issueLicenseFile> {
+  const customerId =
+    options.customer?.customerId ?? options.customerId ?? CUSTOMER;
   return issueLicenseFile(
     {
       installationId: INSTALLATION,
-      customerId: CUSTOMER,
+      customerId,
+      customerCode:
+        options.customer?.customerCode ??
+        options.customerCode ??
+        defaultCustomerCode(customerId),
       licenseId: LICENSE,
       ...options,
     },
@@ -79,10 +92,16 @@ function signedArtifact(
   options: Partial<Parameters<typeof issueLicenseDocument>[0]> = {},
   key: Parameters<typeof issueLicenseDocument>[1] = AUTHORITY.privateKey,
 ): ReturnType<typeof issueLicenseDocument> {
+  const customerId =
+    options.customer?.customerId ?? options.customerId ?? CUSTOMER;
   return issueLicenseDocument(
     {
       installationId: INSTALLATION,
-      customerId: CUSTOMER,
+      customerId,
+      customerCode:
+        options.customer?.customerCode ??
+        options.customerCode ??
+        defaultCustomerCode(customerId),
       licenseId: LICENSE,
       ...options,
     },
@@ -95,10 +114,16 @@ function signedCode(
   options: Partial<Parameters<typeof issueLicenseCode>[0]> = {},
   key: Parameters<typeof issueLicenseCode>[1] = AUTHORITY.privateKey,
 ): ReturnType<typeof issueLicenseCode> {
+  const customerId =
+    options.customer?.customerId ?? options.customerId ?? CUSTOMER;
   return issueLicenseCode(
     {
       installationId: INSTALLATION,
-      customerId: CUSTOMER,
+      customerId,
+      customerCode:
+        options.customer?.customerCode ??
+        options.customerCode ??
+        defaultCustomerCode(customerId),
       licenseId: LICENSE,
       ...options,
     },
@@ -150,6 +175,7 @@ interface Harness {
 
 function buildHarness(
   options: {
+    stores?: LicensingStores;
     withIdentity?: boolean;
     allowed?: boolean;
     keys?: string[];
@@ -157,18 +183,20 @@ function buildHarness(
     usage?: { organizations?: number; activeUsers?: number };
   } = {},
 ): Harness {
-  const stores = createLicensingStores(
-    options.withIdentity === false
-      ? {}
-      : {
-          installation: {
-            installationId: INSTALLATION,
-            name: 'Vardena',
-            customerId: null,
-            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  const stores =
+    options.stores ??
+    createLicensingStores(
+      options.withIdentity === false
+        ? {}
+        : {
+            installation: {
+              installationId: INSTALLATION,
+              name: 'Vardena',
+              customerId: null,
+              createdAt: new Date('2026-01-01T00:00:00.000Z'),
+            },
           },
-        },
-  );
+    );
   const identity = new InstallationIdentityService(
     stores.installations,
     loggerStub(),
@@ -218,10 +246,16 @@ function issuedFile(
   key = AUTHORITY.privateKey,
   file: { keyId?: string } = {},
 ): string {
+  const customerId =
+    overrides.customer?.customerId ?? overrides.customerId ?? CUSTOMER;
   return issueLicenseFile(
     {
       installationId: INSTALLATION,
-      customerId: CUSTOMER,
+      customerId,
+      customerCode:
+        overrides.customer?.customerCode ??
+        overrides.customerCode ??
+        defaultCustomerCode(customerId),
       licenseId: LICENSE,
       customerName: 'Acme Holding',
       validFrom: new Date('2026-01-01T00:00:00.000Z'),
@@ -2105,7 +2139,13 @@ describe('explicit installation customer transfer (Q4)', () => {
       installationId: INSTALLATION,
       outcome: 'APPLIED',
       previousCustomerId: CUSTOMER,
+      previousCustomerCode: CUSTOMER_CODE,
       newCustomerId: OTHER_CUSTOMER,
+      newCustomerCode: defaultCustomerCode(OTHER_CUSTOMER),
+      // L-06 (PDR-14 §3.5.4): the license that governed immediately before the
+      // transfer is recorded machine-readably, and the NEW license identity is
+      // the event's own `licenseId`.
+      previousLicenseId: LICENSE,
       licenseId: OTHER_LICENSE,
       operationId: harness.stores.versions[1]?.operationId,
       versionId: harness.stores.versions[1]?.versionId,
@@ -2115,7 +2155,7 @@ describe('explicit installation customer transfer (Q4)', () => {
       occurredAt: expect.any(Date),
     });
     expect(transfer?.detail).toBe(
-      `transfer to ${OTHER_CUSTOMER}: ${transferReason}`,
+      `transfer from license ${LICENSE} to ${OTHER_CUSTOMER} license ${OTHER_LICENSE}: ${transferReason}`,
     );
   });
 
@@ -2128,7 +2168,9 @@ describe('explicit installation customer transfer (Q4)', () => {
       (event) =>
         event.eventType === 'license.installation.customer-transferred',
     );
-    expect(transfer?.detail).toBe(`transfer to ${OTHER_CUSTOMER}: abc`);
+    expect(transfer?.detail).toBe(
+      `transfer from license ${LICENSE} to ${OTHER_CUSTOMER} license ${OTHER_LICENSE}: abc`,
+    );
   });
 
   it('rejects invalid or overlong transfer reasons before writing', async () => {
@@ -2163,7 +2205,7 @@ describe('explicit installation customer transfer (Q4)', () => {
         event.eventType === 'license.installation.customer-transferred',
     );
     expect(transfer?.detail).toBe(
-      `transfer to ${OTHER_CUSTOMER}: ${transferReason}`,
+      `transfer from license ${LICENSE} to ${OTHER_CUSTOMER} license ${OTHER_LICENSE}: ${transferReason}`,
     );
   });
 
@@ -2211,11 +2253,25 @@ describe('explicit installation customer transfer (Q4)', () => {
 
     expect(rejection.status).toBe(409);
     expect(rejection.message).toMatch(/nothing to transfer/);
+    // PDR-14 §3.5.4 names the exact reason; nothing at all is written.
+    expect(rejection.details).toEqual({
+      reason: 'transfer-requires-different-customer',
+    });
     expect(harness.stores.self()?.customerId).toBe(CUSTOMER);
     expect(harness.stores.versions).toHaveLength(versionsBefore);
+    expect(harness.stores.customerRecords.has(OTHER_CUSTOMER)).toBe(false);
+    expect(harness.stores.customerCodes.has(OTHER_CUSTOMER)).toBe(false);
+    // No successful transfer event: only the REJECTED row exists.
+    expect(
+      harness.stores.auditEvents.some(
+        (event) =>
+          event.eventType === 'license.installation.customer-transferred' &&
+          event.outcome === 'APPLIED',
+      ),
+    ).toBe(false);
     expect(harness.stores.auditEvents.at(-1)).toMatchObject({
       outcome: 'REJECTED',
-      reason: 'transfer-not-applicable',
+      reason: 'transfer-requires-different-customer',
     });
   });
 
@@ -3212,5 +3268,294 @@ describe('renewal-path reduction control (PDR-11 §8.6, L-05)', () => {
       reason: 'reduction-requires-resolution',
     });
     expect(harness.stores.versions).toHaveLength(1);
+  });
+});
+
+describe('stable customerCode across the license lifecycle (L-06, PDR-14)', () => {
+  const NOW = new Date('2026-06-01T12:00:00.000Z');
+  const OTHER_CUSTOMER = '01K7OTHERCUSTOMER000000000';
+  const OTHER_CUSTOMER_CODE = 'CUST-GLOBEX-02';
+  const NEW_LICENSE = '01K7RENEWEDLICENSE00000000';
+  let harness: Harness;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    harness = buildHarness();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('requires a valid, unique customerCode when creating a customer and preserves customerId/customerCode when renaming displayName', async () => {
+    const created = await harness.stores.licenses.createCustomer({
+      customerId: CUSTOMER,
+      customerCode: CUSTOMER_CODE,
+      displayName: 'Acme Holding',
+      now: NOW,
+    });
+    expect(created).toMatchObject({
+      customerId: CUSTOMER,
+      customerCode: CUSTOMER_CODE,
+      displayName: 'Acme Holding',
+    });
+
+    // Duplicate customerId or duplicate customerCode is rejected.
+    await expect(
+      harness.stores.licenses.createCustomer({
+        customerId: CUSTOMER,
+        customerCode: 'CUST-ANOTHER-99',
+        displayName: 'Duplicate ID',
+      }),
+    ).rejects.toThrow(/already exists/);
+    await expect(
+      harness.stores.licenses.createCustomer({
+        customerId: OTHER_CUSTOMER,
+        customerCode: CUSTOMER_CODE,
+        displayName: 'Duplicate Code',
+      }),
+    ).rejects.toThrow(/already exists/);
+
+    // Invalid or customerId-equal customerCode is rejected.
+    await expect(
+      harness.stores.licenses.createCustomer({
+        customerId: OTHER_CUSTOMER,
+        customerCode: OTHER_CUSTOMER,
+        displayName: 'Bad Code',
+      }),
+    ).rejects.toThrow(/must not equal customerId/);
+
+    // Renaming displayName keeps customerId and customerCode unchanged.
+    const renamed = await harness.stores.licenses.updateCustomerDisplayName({
+      customerId: CUSTOMER,
+      displayName: 'Acme Industrial Group',
+      now: new Date('2026-06-02T00:00:00.000Z'),
+    });
+    expect(renamed.customerId).toBe(CUSTOMER);
+    expect(renamed.customerCode).toBe(CUSTOMER_CODE);
+    expect(renamed.displayName).toBe('Acme Industrial Group');
+  });
+
+  it('issues and imports a license for a renamed customer and preserves customerId and customerCode across a new-licenseId renewal without overwriting stored displayName', async () => {
+    await harness.stores.licenses.createCustomer({
+      customerId: CUSTOMER,
+      customerCode: CUSTOMER_CODE,
+      displayName: 'Acme Holding',
+      now: NOW,
+    });
+    const renamed = await harness.stores.licenses.updateCustomerDisplayName({
+      customerId: CUSTOMER,
+      displayName: 'Acme Industrial Group',
+      now: NOW,
+    });
+
+    // Issue for the renamed customer record; embeds the unchanged customerCode.
+    const initial = signedDocument({
+      customer: renamed,
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      validUntil: new Date('2027-01-01T00:00:00.000Z'),
+    });
+    expect(initial.payload.customerId).toBe(CUSTOMER);
+    expect(initial.payload.customerCode).toBe(CUSTOMER_CODE);
+    expect(initial.payload.customerName).toBe('Acme Industrial Group');
+
+    const imported = await harness.service.importDocument(initial.file);
+    expect(imported.outcome).toBe('APPLIED');
+    expect(imported.license).toMatchObject({
+      customerId: CUSTOMER,
+      customerCode: CUSTOMER_CODE,
+      licenseId: LICENSE,
+    });
+
+    // Importing a renewal with a new licenseId AND a different customerName in
+    // the signed payload preserves customerId + customerCode AND does NOT
+    // overwrite the stored customer displayName!
+    const renewalWithDifferentDisplay = signedDocument({
+      licenseId: NEW_LICENSE,
+      customerId: CUSTOMER,
+      customerCode: CUSTOMER_CODE,
+      customerName: 'Unverified Label Change In Artifact',
+      validFrom: new Date('2027-01-01T00:00:00.000Z'),
+      validUntil: new Date('2028-01-01T00:00:00.000Z'),
+    });
+    const renewed = await harness.service.importDocument(
+      renewalWithDifferentDisplay.file,
+    );
+    expect(renewed.outcome).toBe('APPLIED');
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(harness.stores.versions[1]).toMatchObject({
+      licenseId: NEW_LICENSE,
+      customerId: CUSTOMER,
+      customerCode: CUSTOMER_CODE,
+    });
+    // Stored displayName remains 'Acme Industrial Group', never overwritten by import.
+    expect(harness.stores.customers.get(CUSTOMER)).toBe(
+      'Acme Industrial Group',
+    );
+    expect(
+      (await harness.stores.licenses.findCustomerById(CUSTOMER))?.displayName,
+    ).toBe('Acme Industrial Group');
+  });
+
+  it('rejects missing, blank, malformed, or tampered customerCode in a signed artifact on import', async () => {
+    const valid = signedArtifact({
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      validUntil: new Date('2027-01-01T00:00:00.000Z'),
+    }).document;
+    const [prefix, body, signature] = valid.split('.');
+    const decoded = JSON.parse(
+      Buffer.from(body!, 'base64url').toString('utf8'),
+    ) as Record<string, unknown>;
+    decoded['customerCode'] = 'CUST-TAMPERED-99';
+    const tampered = [
+      prefix,
+      Buffer.from(JSON.stringify(decoded), 'utf8').toString('base64url'),
+      signature,
+    ].join('.');
+
+    const tamperedRejection = await rejectionOf(
+      harness.service.importDocument(tampered),
+    );
+    expect(tamperedRejection.status).toBe(422);
+    expect(tamperedRejection.details).toEqual({ reason: 'signature' });
+    expect(harness.stores.versions).toHaveLength(0);
+  });
+
+  it('rejects a validly signed license whose customerCode mismatches the target customer (409 customer-code-mismatch) without mutating state', async () => {
+    await harness.service.importDocument(
+      signedDocument({
+        customerId: CUSTOMER,
+        customerCode: CUSTOMER_CODE,
+        customerName: 'Acme Holding',
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2027-01-01T00:00:00.000Z'),
+      }).file,
+    );
+
+    // 1. Same customerId, different customerCode -> 409 customer-code-mismatch.
+    const wrongCodeForCustomer = signedDocument({
+      customerId: CUSTOMER,
+      customerCode: 'CUST-WRONG-99',
+      validFrom: new Date('2027-01-01T00:00:00.000Z'),
+      validUntil: new Date('2028-01-01T00:00:00.000Z'),
+    });
+    const mismatchById = await rejectionOf(
+      harness.service.importDocument(wrongCodeForCustomer.file),
+    );
+    expect(mismatchById.status).toBe(409);
+    expect(mismatchById.details).toEqual({ reason: 'customer-code-mismatch' });
+
+    // 2. Different customerId claiming the bound customer's customerCode ->
+    //    409 customer-code-mismatch on both ordinary import and transfer!
+    const hijackedCodeDoc = signedDocument({
+      licenseId: NEW_LICENSE,
+      customerId: OTHER_CUSTOMER,
+      customerCode: CUSTOMER_CODE,
+      validFrom: new Date('2027-01-01T00:00:00.000Z'),
+      validUntil: new Date('2028-01-01T00:00:00.000Z'),
+    });
+    const mismatchOnImport = await rejectionOf(
+      harness.service.importDocument(hijackedCodeDoc.file),
+    );
+    expect(mismatchOnImport.status).toBe(409);
+    expect(mismatchOnImport.details).toEqual({
+      reason: 'customer-code-mismatch',
+    });
+
+    const mismatchOnTransfer = await rejectionOf(
+      harness.service.transferCustomer(
+        hijackedCodeDoc.file,
+        'Attempted transfer reusing existing customerCode.',
+      ),
+    );
+    expect(mismatchOnTransfer.status).toBe(409);
+    expect(mismatchOnTransfer.details).toEqual({
+      reason: 'customer-code-mismatch',
+    });
+
+    // Installation binding and customer records remain untouched.
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.self()?.customerId).toBe(CUSTOMER);
+    expect(harness.stores.customerCodes.get(CUSTOMER)).toBe(CUSTOMER_CODE);
+    expect(harness.stores.customerRecords.has(OTHER_CUSTOMER)).toBe(false);
+  });
+
+  it('rejects a different customer and customerCode on ordinary import (409 installation-customer-mismatch), enforces 403 when unauthorized, and records previousCustomerCode/newCustomerCode on authorized transfer', async () => {
+    await harness.service.importDocument(
+      signedDocument({
+        customerId: CUSTOMER,
+        customerCode: CUSTOMER_CODE,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2027-01-01T00:00:00.000Z'),
+      }).file,
+    );
+
+    const transferDoc = signedDocument({
+      licenseId: NEW_LICENSE,
+      customerId: OTHER_CUSTOMER,
+      customerCode: OTHER_CUSTOMER_CODE,
+      customerName: 'Globex Corp',
+      validFrom: new Date('2027-01-01T00:00:00.000Z'),
+      validUntil: new Date('2028-01-01T00:00:00.000Z'),
+    });
+
+    // Ordinary import of another customer + customerCode fails with 409 installation-customer-mismatch.
+    const ordinaryRefusal = await rejectionOf(
+      harness.service.importDocument(transferDoc.file),
+    );
+    expect(ordinaryRefusal.status).toBe(409);
+    expect(ordinaryRefusal.details).toEqual({
+      reason: 'installation-customer-mismatch',
+    });
+    expect(harness.stores.self()?.customerId).toBe(CUSTOMER);
+    expect(harness.stores.customerRecords.has(OTHER_CUSTOMER)).toBe(false);
+
+    // Unauthorized transfer attempt fails with 403.
+    const unauthorizedHarness = buildHarness({
+      stores: harness.stores,
+      allowed: false,
+    });
+    const forbidden = await rejectionOf(
+      unauthorizedHarness.service.transferCustomer(
+        transferDoc.file,
+        'Unauthorized transfer attempt.',
+      ),
+    );
+    expect(forbidden.status).toBe(403);
+    expect(harness.stores.self()?.customerId).toBe(CUSTOMER);
+
+    // Authorized transfer moves both customerId and customerCode and writes typed audit fields.
+    const transferred = await harness.service.transferCustomer(
+      transferDoc.file,
+      'Contract novation 2026-10-14 to Globex Corp.',
+    );
+    expect(transferred).toMatchObject({
+      changed: true,
+      outcome: 'APPLIED',
+      previousCustomerId: CUSTOMER,
+      previousCustomerCode: CUSTOMER_CODE,
+      // The license governing at the transfer instant (PDR-14 §3.5.4), and the
+      // operator reason exactly as the typed audit event recorded it.
+      previousLicenseId: LICENSE,
+      bindingChanged: true,
+      reason: 'Contract novation 2026-10-14 to Globex Corp.',
+    });
+    expect(harness.stores.self()?.customerId).toBe(OTHER_CUSTOMER);
+    expect(harness.stores.customerCodes.get(OTHER_CUSTOMER)).toBe(
+      OTHER_CUSTOMER_CODE,
+    );
+    const transferEvent = harness.stores.auditEvents.find(
+      (event) =>
+        event.eventType === 'license.installation.customer-transferred',
+    );
+    expect(transferEvent).toMatchObject({
+      outcome: 'APPLIED',
+      previousCustomerId: CUSTOMER,
+      previousCustomerCode: CUSTOMER_CODE,
+      newCustomerId: OTHER_CUSTOMER,
+      newCustomerCode: OTHER_CUSTOMER_CODE,
+      detail: `transfer from license ${LICENSE} to ${OTHER_CUSTOMER} license ${NEW_LICENSE}: Contract novation 2026-10-14 to Globex Corp.`,
+    });
   });
 });

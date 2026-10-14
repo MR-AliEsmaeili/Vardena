@@ -21,6 +21,7 @@ describe.skipIf(DATABASE_URL === undefined)(
     let users: UsersService;
     const license: InstallationLicense = {
       customerId: 'live-customer',
+      customerCode: 'CUST-LIVE-01',
       installationId: '01JLOCALINSTALLATION000000',
       licenseId: 'live-license',
       status: 'ACTIVE',

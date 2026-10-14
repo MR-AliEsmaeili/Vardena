@@ -3554,6 +3554,8 @@ export interface components {
             inactiveReason: string | null;
             installationId: string | null;
             customerId: string | null;
+            /** @description Stable business customer code (L-06, PDR-14). */
+            customerCode: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;
@@ -3589,6 +3591,8 @@ export interface components {
             inactiveReason: string | null;
             installationId: string | null;
             customerId: string | null;
+            /** @description Stable business customer code (L-06, PDR-14). */
+            customerCode: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;
@@ -3640,6 +3644,8 @@ export interface components {
             inactiveReason: string | null;
             installationId: string | null;
             customerId: string | null;
+            /** @description Stable business customer code (L-06, PDR-14). */
+            customerCode: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;
@@ -3662,8 +3668,14 @@ export interface components {
             outcome: "APPLIED" | "UNCHANGED";
             /** @description The commercial customer this installation was bound to before the transfer. */
             previousCustomerId: string | null;
+            /** @description The business customer code this installation was bound to before the transfer (L-06). */
+            previousCustomerCode: string | null;
+            /** @description The license that governed this installation immediately before the transfer, observed under the installation transaction lock (L-06, PDR-14 §3.5.4). Null when no license was governing then. The new license identity is `licenseId` in this same response. */
+            previousLicenseId: string | null;
             /** @description True when the transfer changed the binding. */
             bindingChanged: boolean;
+            /** @description The operator-supplied transfer reason exactly as recorded on the typed `license.installation.customer-transferred` audit event (L-06, PDR-14 §3.5.4). */
+            reason: string;
         };
         RecoverAfterGapDto: {
             /**
@@ -3688,6 +3700,8 @@ export interface components {
             inactiveReason: string | null;
             installationId: string | null;
             customerId: string | null;
+            /** @description Stable business customer code (L-06, PDR-14). */
+            customerCode: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;
@@ -3760,6 +3774,8 @@ export interface components {
             inactiveReason: string | null;
             installationId: string | null;
             customerId: string | null;
+            /** @description Stable business customer code (L-06, PDR-14). */
+            customerCode: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;

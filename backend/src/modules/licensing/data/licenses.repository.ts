@@ -2,6 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
+import {
+  assertValidCustomerName,
+  assertValidCustomerRecord,
+  LicenseCustomerError,
+  type LicenseCustomer,
+} from '../domain/customer.js';
 import type {
   EntitlementKind,
   LicenseEntitlement,
@@ -12,6 +18,7 @@ import {
   evaluateImportConflicts,
   lapsedLicenseContext,
   reductionConflicts,
+  resolveEffectiveVersion,
   supersessionCeaseInstant,
   type CustomerTransferIntent,
   type GapRecoveryIntent,
@@ -74,6 +81,7 @@ export interface ImportLicenseVersionCommand {
   now: Date;
   licenseId: string;
   customerId: string;
+  customerCode: string;
   customerName: string;
   /** Locally generated version identity (ULID). */
   versionId: string;
@@ -161,8 +169,12 @@ export interface LicenseAuditEventCommand {
    * decision 2026-10-12, Q4); null everywhere else.
    */
   previousCustomerId?: string | null;
+  /** The business customer code BEFORE that transfer (L-06, PDR-14). */
+  previousCustomerCode?: string | null;
   /** The customer it is bound to AFTER that transfer. */
   newCustomerId?: string | null;
+  /** The business customer code AFTER that transfer (L-06, PDR-14). */
+  newCustomerCode?: string | null;
   /**
    * The license whose retained coverage had ended before a dedicated
    * post-gap recovery (Owner decision 2026-10-12, OQ-87). Set only on
@@ -205,9 +217,11 @@ function conflictErrorDefaultMessage(reason: ImportConflictReason): string {
       return 'The version named by this document is no longer eligible for supersession.';
     case 'license-binding-conflict':
       return 'This license identifier is already bound to a different customer or installation.';
+    case 'customer-code-mismatch':
+      return 'This license document carries a customer code that does not match the customer record.';
     case 'installation-customer-mismatch':
       return 'This license document belongs to a different customer than the installation is bound to.';
-    case 'transfer-not-applicable':
+    case 'transfer-requires-different-customer':
       return 'The installation is already bound to the customer this transfer names.';
     case 'renewal-gap':
       return 'This renewal would leave a gap in the license coverage.';
@@ -243,8 +257,18 @@ export interface ImportVersionResult {
   version: RetainedLicenseVersion;
   /** The installation's customer before this import (null = was unbound). */
   previousCustomerId: string | null;
+  /** The installation's customer code before this import (null = was unbound). */
+  previousCustomerCode: string | null;
   /** True when this import changed the installation's customer binding. */
   bindingChanged: boolean;
+  /**
+   * The license that governed this installation immediately before an explicit
+   * customer transfer took effect (L-06, PDR-14 §3.5.4) — the retained version
+   * this document retired or took over, read under the installation lock. Null
+   * on a non-transfer import, and null on a transfer whose installation had no
+   * governing license at that instant.
+   */
+  previousLicenseId: string | null;
   /** Set only when this transaction WAS the dedicated gap recovery. */
   recovery: {
     /** The license whose retained coverage had ended (the lapse). */
@@ -282,7 +306,10 @@ interface VersionRow {
   importedAt: Date;
   source: string;
   entitlements: Array<{ kind: EntitlementKind; code: string }>;
-  license: { customerId: string };
+  license: {
+    customerId: string;
+    customer?: { customerCode: string };
+  };
 }
 
 interface VersionDelegate {
@@ -290,7 +317,12 @@ interface VersionDelegate {
     where: { installationId: string };
     include: {
       entitlements: { select: { kind: true; code: true } };
-      license: { select: { customerId: true } };
+      license: {
+        select: {
+          customerId: true;
+          customer: { select: { customerCode: true } };
+        };
+      };
     };
   }): Promise<VersionRow[]>;
   findFirst(args: {
@@ -301,7 +333,12 @@ interface VersionDelegate {
     };
     include: {
       entitlements: { select: { kind: true; code: true } };
-      license: { select: { customerId: true } };
+      license: {
+        select: {
+          customerId: true;
+          customer: { select: { customerCode: true } };
+        };
+      };
     };
   }): Promise<VersionRow | null>;
   updateMany(args: {
@@ -350,22 +387,47 @@ interface VersionDelegate {
     };
     include: {
       entitlements: { select: { kind: true; code: true } };
-      license: { select: { customerId: true } };
+      license: {
+        select: {
+          customerId: true;
+          customer: { select: { customerCode: true } };
+        };
+      };
     };
   }): Promise<VersionRow>;
 }
 
+interface CustomerRow {
+  id: string;
+  customerCode: string;
+  displayName: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 interface CustomerDelegate {
-  upsert(args: {
-    where: { id: string };
-    create: {
+  findUnique(args: {
+    where: { id?: string; customerCode?: string };
+  }): Promise<CustomerRow | null>;
+  create(args: {
+    data: {
       id: string;
+      customerCode: string;
       displayName: string;
       createdAt: Date;
       updatedAt: Date;
+      createdBy?: string | null;
+      updatedBy?: string | null;
     };
-    update: { displayName: string; updatedAt: Date };
-  }): Promise<unknown>;
+  }): Promise<CustomerRow>;
+  update(args: {
+    where: { id: string };
+    data: {
+      displayName: string;
+      updatedAt: Date;
+      updatedBy?: string | null;
+    };
+  }): Promise<CustomerRow>;
 }
 
 interface LicenseDelegate {
@@ -422,7 +484,9 @@ interface AuditDelegate {
       reason: string | null;
       detail: string | null;
       previousCustomerId: string | null;
+      previousCustomerCode: string | null;
       newCustomerId: string | null;
+      newCustomerCode: string | null;
       previousLicenseId: string | null;
       occurredAt: Date;
       createdAt: Date;
@@ -448,7 +512,9 @@ interface AuditDelegate {
       reason: string | null;
       detail: string | null;
       previousCustomerId: string | null;
+      previousCustomerCode: string | null;
       newCustomerId: string | null;
+      newCustomerCode: string | null;
       previousLicenseId: string | null;
       occurredAt: Date;
     }>
@@ -529,10 +595,145 @@ export class LicensesRepository {
       },
       include: {
         entitlements: { select: { kind: true, code: true } },
-        license: { select: { customerId: true } },
+        license: {
+          select: {
+            customerId: true,
+            customer: { select: { customerCode: true } },
+          },
+        },
       },
     });
     return row === null ? null : toRetainedVersion(row);
+  }
+
+  /** Read a persisted licensing customer by internal `customerId` (L-06). */
+  async findCustomerById(customerId: string): Promise<LicenseCustomer | null> {
+    const client = await this.client();
+    const row = await client.licenseCustomer.findUnique({
+      where: { id: customerId },
+    });
+    return row === null ? null : toLicenseCustomer(row);
+  }
+
+  /** Read a persisted licensing customer by business `customerCode` (L-06). */
+  async findCustomerByCode(
+    customerCode: string,
+  ): Promise<LicenseCustomer | null> {
+    const client = await this.client();
+    const row = await client.licenseCustomer.findUnique({
+      where: { customerCode },
+    });
+    return row === null ? null : toLicenseCustomer(row);
+  }
+
+  /**
+   * Read the persisted customer rows relevant to one import pre-check so the
+   * read-side evaluation sees the same `(customerId, customerCode)` bindings as
+   * the authoritative in-transaction check.
+   */
+  async findCustomersForImport(params: {
+    customerId: string;
+    customerCode: string;
+    installationCustomerId: string | null;
+  }): Promise<{
+    installationCustomerCode: string | null;
+    knownCustomers: Array<{ customerId: string; customerCode: string }>;
+  }> {
+    const lookup = await readCustomersForImport(await this.client(), params);
+    return {
+      installationCustomerCode: lookup.installationCustomerCode,
+      knownCustomers: lookup.knownCustomers,
+    };
+  }
+
+  /**
+   * Create a licensing customer with a valid, unique business `customerCode`
+   * (L-06, PDR-14). Never derives `customerCode` from `displayName` or
+   * defaults `customerCode` to `customerId`.
+   */
+  async createCustomer(params: {
+    customerId: string;
+    customerCode: string;
+    displayName: string;
+    now?: Date;
+    actorId?: string | null;
+  }): Promise<LicenseCustomer> {
+    const validated = assertValidCustomerRecord(params);
+    const now = params.now ?? new Date();
+    const client = await this.client();
+    const existingById = await client.licenseCustomer.findUnique({
+      where: { id: validated.customerId },
+    });
+    if (existingById !== null) {
+      throw new LicenseCustomerError(
+        'duplicate-customer',
+        `Customer id "${validated.customerId}" already exists.`,
+      );
+    }
+    const existingByCode = await client.licenseCustomer.findUnique({
+      where: { customerCode: validated.customerCode },
+    });
+    if (existingByCode !== null) {
+      throw new LicenseCustomerError(
+        'duplicate-customer',
+        `Customer code "${validated.customerCode}" already exists.`,
+      );
+    }
+    try {
+      const created = await client.licenseCustomer.create({
+        data: {
+          id: validated.customerId,
+          customerCode: validated.customerCode,
+          displayName: validated.displayName,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: params.actorId ?? null,
+          updatedBy: params.actorId ?? null,
+        },
+      });
+      return toLicenseCustomer(created);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new LicenseCustomerError(
+          'duplicate-customer',
+          'Customer id or customerCode already exists.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Rename a customer's `displayName` (`display_name`) without altering
+   * `customerId` (`id`) or `customerCode` (`customer_code`) (L-06, PDR-14).
+   */
+  async updateCustomerDisplayName(params: {
+    customerId: string;
+    displayName: string;
+    now?: Date;
+    actorId?: string | null;
+  }): Promise<LicenseCustomer> {
+    const displayName = assertValidCustomerName(params.displayName);
+    const now = params.now ?? new Date();
+    const client = await this.client();
+    const existing = await client.licenseCustomer.findUnique({
+      where: { id: params.customerId },
+    });
+    if (existing === null) {
+      throw new LicenseCustomerError(
+        'customer-not-found',
+        `Customer "${params.customerId}" does not exist.`,
+      );
+    }
+    const updated = await client.licenseCustomer.update({
+      where: { id: params.customerId },
+      data: {
+        displayName,
+        updatedAt: now,
+        updatedBy: params.actorId ?? null,
+      },
+    });
+    return toLicenseCustomer(updated);
   }
 
   /**
@@ -573,11 +774,17 @@ export class LicensesRepository {
       //    service may have run before another import committed; THIS one runs
       //    under the lock, so it decides.
       const retained = await readVersions(tx, command.installationId);
+      const customerLookup = await readCustomersForImport(tx, {
+        customerId: command.customerId,
+        customerCode: command.customerCode,
+        installationCustomerId: installation.customerId,
+      });
       const candidate = {
         validFrom: command.validFrom,
         validUntil: command.validUntil,
         licenseId: command.licenseId,
         customerId: command.customerId,
+        customerCode: command.customerCode,
         organizationLimit: command.organizationLimit,
         userLimit: command.userLimit,
         entitlements: command.entitlements,
@@ -590,6 +797,8 @@ export class LicensesRepository {
         versions: retained,
         at: command.now,
         installationCustomerId: installation.customerId,
+        installationCustomerCode: customerLookup.installationCustomerCode,
+        knownCustomers: customerLookup.knownCustomers,
         customerTransfer: command.customerTransfer,
         usage,
         gapRecovery: command.gapRecovery,
@@ -639,19 +848,30 @@ export class LicensesRepository {
         });
       }
 
-      await tx.licenseCustomer.upsert({
-        where: { id: command.customerId },
-        create: {
-          id: command.customerId,
-          displayName: command.customerName,
-          createdAt: command.now,
-          updatedAt: command.now,
-        },
-        update: {
-          displayName: command.customerName,
-          updatedAt: command.now,
-        },
-      });
+      // L-06 (PDR-14 / OD-LIC-03): Create the customer row only when
+      // `command.customerId` is not yet persisted; NEVER overwrite an existing
+      // customer's stored `display_name` or `customer_code` on import.
+      if (customerLookup.byId === null) {
+        try {
+          await tx.licenseCustomer.create({
+            data: {
+              id: command.customerId,
+              customerCode: command.customerCode,
+              displayName: command.customerName,
+              createdAt: command.now,
+              updatedAt: command.now,
+            },
+          });
+        } catch (error) {
+          if (isUniqueViolation(error)) {
+            throw new ImportConflictError({
+              reason: 'customer-code-mismatch',
+              overlapping: 0,
+            });
+          }
+          throw error;
+        }
+      }
       // The license identifier is claimed by a plain INSERT, never an upsert. An
       // upsert is `INSERT … ON CONFLICT DO UPDATE` when the row already exists:
       // on a concurrent claim by ANOTHER installation (which the installation
@@ -706,6 +926,7 @@ export class LicensesRepository {
       // is skipped when nothing changes, so an ordinary import touches the
       // binding not at all.
       const previousCustomerId = installation.customerId;
+      const previousCustomerCode = customerLookup.installationCustomerCode;
       const bindingChanged = previousCustomerId !== command.customerId;
       if (bindingChanged) {
         await tx.installation.update({
@@ -715,14 +936,42 @@ export class LicensesRepository {
       }
       // An explicit transfer is audited as its own typed event, written from
       // the values the lock guarantees: the customer that was, the customer
-      // that is, the operation, the actor, the source, the instant and the
-      // operator's reason. It is built HERE rather than by the caller because
-      // only the transaction knows the real "previous" value under concurrency.
+      // that is, the license that governed before, the operation, the actor,
+      // the source, the instant and the operator's reason. It is built HERE
+      // rather than by the caller because only the transaction knows the real
+      // "previous" values under concurrency.
+      //
+      // L-06 (PDR-14 §3.5.4): the license that governed this installation
+      // immediately before the transfer took effect. It is resolved HERE from
+      // `retained` — the versions this transaction read UNDER the installation
+      // lock — never from the unlocked pre-check, so a concurrent writer
+      // cannot make the audit row name a predecessor that was not governing.
+      //
+      // `resolveEffectiveVersion` is the same authority the read path uses, so
+      // the recorded predecessor is exactly the license an as-of query would
+      // have returned at that instant: the version this document retired or
+      // took over when it overlapped one, and the still-governing version when
+      // the transfer document is a future-dated or contiguous successor. Null
+      // when nothing was governing then.
+      //
+      // Recorded only for a transfer that actually changed the binding: every
+      // other import leaves the column null as before (PDR-13 records the
+      // recovery's own predecessor on `license.import.recovered`).
+      const previousLicenseId =
+        command.customerTransfer !== null && bindingChanged
+          ? (resolveEffectiveVersion(retained, command.now).version
+              ?.licenseId ?? null)
+          : null;
       const auditEvents =
         bindingChanged && previousCustomerId !== null
           ? [
               ...command.auditEvents,
-              transferAuditEvent(command, previousCustomerId),
+              transferAuditEvent(
+                command,
+                previousCustomerId,
+                previousCustomerCode,
+                previousLicenseId,
+              ),
             ]
           : [...command.auditEvents];
 
@@ -803,7 +1052,12 @@ export class LicensesRepository {
         },
         include: {
           entitlements: { select: { kind: true, code: true } },
-          license: { select: { customerId: true } },
+          license: {
+            select: {
+              customerId: true,
+              customer: { select: { customerCode: true } },
+            },
+          },
         },
       });
 
@@ -854,7 +1108,9 @@ export class LicensesRepository {
             reason: event.reason,
             detail: event.detail,
             previousCustomerId: event.previousCustomerId ?? null,
+            previousCustomerCode: event.previousCustomerCode ?? null,
             newCustomerId: event.newCustomerId ?? null,
+            newCustomerCode: event.newCustomerCode ?? null,
             previousLicenseId: event.previousLicenseId ?? null,
             occurredAt: event.occurredAt,
             createdAt: event.occurredAt,
@@ -866,7 +1122,9 @@ export class LicensesRepository {
       return {
         version,
         previousCustomerId,
+        previousCustomerCode,
         bindingChanged,
+        previousLicenseId,
         recovery: recoveryReceipt,
         resolution: resolutionReceipt,
       };
@@ -874,7 +1132,9 @@ export class LicensesRepository {
     return {
       version: toRetainedVersion(committed.version),
       previousCustomerId: committed.previousCustomerId,
+      previousCustomerCode: committed.previousCustomerCode,
       bindingChanged: committed.bindingChanged,
+      previousLicenseId: committed.previousLicenseId,
       recovery: committed.recovery,
       resolution: committed.resolution,
     };
@@ -905,7 +1165,9 @@ export class LicensesRepository {
         reason: clampText(command.reason, 60),
         detail: clampText(command.detail, 500),
         previousCustomerId: command.previousCustomerId ?? null,
+        previousCustomerCode: command.previousCustomerCode ?? null,
         newCustomerId: command.newCustomerId ?? null,
+        newCustomerCode: command.newCustomerCode ?? null,
         previousLicenseId: command.previousLicenseId ?? null,
         occurredAt: command.occurredAt,
         createdAt: command.occurredAt,
@@ -939,7 +1201,9 @@ export class LicensesRepository {
       reason: row.reason,
       detail: row.detail,
       previousCustomerId: row.previousCustomerId,
+      previousCustomerCode: row.previousCustomerCode,
       newCustomerId: row.newCustomerId,
+      newCustomerCode: row.newCustomerCode,
       previousLicenseId: row.previousLicenseId,
       occurredAt: row.occurredAt,
     }));
@@ -959,12 +1223,66 @@ async function readVersions(
     where: { installationId },
     include: {
       entitlements: { select: { kind: true, code: true } },
-      license: { select: { customerId: true } },
+      license: {
+        select: {
+          customerId: true,
+          customer: { select: { customerCode: true } },
+        },
+      },
     },
   });
   return rows
     .map(toRetainedVersion)
     .sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
+}
+
+async function readCustomersForImport(
+  client: LicensesTxClient,
+  params: {
+    customerId: string;
+    customerCode: string;
+    installationCustomerId: string | null;
+  },
+): Promise<{
+  byId: CustomerRow | null;
+  installationCustomerCode: string | null;
+  knownCustomers: Array<{ customerId: string; customerCode: string }>;
+}> {
+  const byId = await client.licenseCustomer.findUnique({
+    where: { id: params.customerId },
+  });
+  const byCode = await client.licenseCustomer.findUnique({
+    where: { customerCode: params.customerCode },
+  });
+  const bound =
+    params.installationCustomerId === null
+      ? null
+      : params.installationCustomerId === params.customerId
+        ? byId
+        : await client.licenseCustomer.findUnique({
+            where: { id: params.installationCustomerId },
+          });
+  const map = new Map<string, { customerId: string; customerCode: string }>();
+  for (const row of [byId, byCode, bound]) {
+    if (row !== null) {
+      map.set(row.id, { customerId: row.id, customerCode: row.customerCode });
+    }
+  }
+  return {
+    byId,
+    installationCustomerCode: bound?.customerCode ?? null,
+    knownCustomers: [...map.values()],
+  };
+}
+
+function toLicenseCustomer(row: CustomerRow): LicenseCustomer {
+  return {
+    customerId: row.id,
+    customerCode: row.customerCode,
+    displayName: row.displayName,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
 }
 
 /**
@@ -1023,15 +1341,27 @@ export async function lockInstallationRow(
 
 /**
  * The typed audit event of one explicit customer transfer (Owner decision
- * 2026-10-12, Q4): old customer, new customer, installation, operation, actor,
- * source, document hash, outcome, instant and the complete operator reason are
- * preserved in their typed fields and `detail` (the machine-readable
- * classifier is the event type itself). `reason` stays null: it carries
- * rejection reasons.
+ * 2026-10-12, Q4; L-06, PDR-14 §3.5.4): old customer, new customer, installation,
+ * operation, actor, source, document hash, outcome, instant and the complete
+ * operator reason are preserved in their typed fields and `detail` (the
+ * machine-readable classifier is the event type itself). `reason` stays null:
+ * it carries rejection reasons, and the audit schema documents `detail` as the
+ * place a successful event retains the full reason.
+ *
+ * The license pair PDR-14 §3.5.4 requires is carried as:
+ * - `previousLicenseId` — the license that governed this installation
+ *   immediately before the transfer took effect, computed by the importing
+ *   transaction under the installation lock (never inferred from an unlocked
+ *   pre-check); null when the installation had no governing license then.
+ * - `licenseId` — the NEW license identity the transfer applied, following the
+ *   existing `licenseId` convention every other audit event uses for the
+ *   license it describes.
  */
 export function transferAuditEvent(
   command: ImportLicenseVersionCommand,
   previousCustomerId: string,
+  previousCustomerCode: string | null = null,
+  previousLicenseId: string | null = null,
 ): LicenseAuditEventCommand {
   const reason = command.customerTransfer?.reason.trim() ?? '';
   return {
@@ -1045,9 +1375,15 @@ export function transferAuditEvent(
     source: command.source,
     documentHash: command.documentHash,
     reason: null,
-    detail: `transfer to ${command.customerId}${reason === '' ? '' : `: ${reason}`}`,
+    detail:
+      `transfer from license ${previousLicenseId ?? 'none'} ` +
+      `to ${command.customerId} license ${command.licenseId}` +
+      `${reason === '' ? '' : `: ${reason}`}`,
     previousCustomerId,
+    previousCustomerCode,
     newCustomerId: command.customerId,
+    newCustomerCode: command.customerCode,
+    previousLicenseId,
     occurredAt: command.now,
   };
 }
@@ -1148,6 +1484,7 @@ function toRetainedVersion(row: VersionRow): RetainedLicenseVersion {
     versionId: row.id,
     licenseId: row.licenseId,
     customerId: row.license.customerId,
+    customerCode: row.license.customer?.customerCode ?? '',
     installationId: row.installationId,
     operationId: row.operationId,
     status: row.status,
