@@ -17,8 +17,18 @@ import { createTestApp } from './support/test-app.js';
  * Production bootstrap acceptance coverage. CI runs the real post-migration
  * command before this suite; the explicit re-runs below prove that the same
  * operation is idempotent against already-populated PostgreSQL state.
+ *
+ * The suite provisions its own administrator fixture through the real service
+ * with the configured `bootstrapSystemAdminPassword` and removes it again in
+ * `afterAll`, so no test run depends on a previous run or on a pre-existing
+ * administrator whose password is unknown. Direct database manipulation is
+ * limited to that test-only fixture lifecycle and to the deliberate corruption
+ * cases below (role grant / membership removal); nothing ever flips
+ * `mustChangePassword` or the password hash in the database — the mandatory
+ * first-login change is always completed through the real API.
  */
 const DATABASE_URL = process.env['VARDENA_TEST_DATABASE_URL'];
+/** Disposable credentials for the ephemeral CI/local test database only. */
 const INITIAL_BOOTSTRAP_PASSWORD = 'vardena_ci_bootstrap_password';
 const ROTATED_ADMIN_PASSWORD = 'vardena_rotated_admin_password';
 
@@ -45,6 +55,21 @@ describe.skipIf(DATABASE_URL === undefined)(
       app = built.app;
       prisma = built.module.get(PrismaService);
 
+      // Test-only fixture isolation (mirrors the afterAll cleanup below): a
+      // crashed previous run must not leave behind an administrator whose
+      // password this run does not know. The real bootstrap service then
+      // provisions the fixture; nothing here touches the security state.
+      const setupClient = await prisma.getClient<{
+        user: { deleteMany: (args: unknown) => Promise<unknown> };
+        role: { deleteMany: (args: unknown) => Promise<unknown> };
+      }>();
+      await setupClient.user.deleteMany({
+        where: { username: BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME },
+      });
+      await setupClient.role.deleteMany({
+        where: { name: SYSTEM_ADMINISTRATOR_ROLE_NAME },
+      });
+
       const bootstrap = app.get(SystemAdministratorBootstrapService);
       const first = await bootstrap.run();
       const second = await bootstrap.run();
@@ -59,6 +84,58 @@ describe.skipIf(DATABASE_URL === undefined)(
         userRoleCreated: false,
       });
     }, 60_000);
+
+    /**
+     * Opens a fully authenticated, unrestricted administrator session through
+     * the real first-login flow: login with the configured bootstrap
+     * credential and, while `mustChangePassword` is still true, complete the
+     * mandatory change via the real self-service endpoint. Every scenario that
+     * needs ordinary (post-change) access starts here, so none of them depend
+     * on which test ran before them and none of them ever bypass the feature
+     * by mutating `mustChangePassword` in the database.
+     */
+    const openAdministratorSession = async () => {
+      // Candidates are tried rotated-first: after an earlier scenario (or this
+      // one below) has completed the mandatory change, the rotated credential
+      // is the current one, and the login endpoint is deliberately rate
+      // limited (10 attempts / 15 min) — the suite must not burn a failed
+      // attempt per scenario on the retired credential. The configured
+      // initial credential is still tried for a fresh fixture (e.g. a
+      // scenario running in isolation), and both are suite constants — never
+      // a hardcoded `1`.
+      const attempts: string[] = [];
+      for (const password of [
+        ROTATED_ADMIN_PASSWORD,
+        INITIAL_BOOTSTRAP_PASSWORD,
+      ]) {
+        const admin = request.agent(app!.getHttpServer());
+        const login = await admin.post('/api/v1/auth/login').send({
+          username: BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME,
+          password,
+        });
+        attempts.push(`${password}: ${login.status}`);
+        if (login.status !== 200) continue;
+        expect(login.body).toMatchObject({ isActive: true });
+        if (login.body.mustChangePassword === true) {
+          const changed = await admin
+            .post('/api/v1/auth/change-password')
+            .send({
+              currentPassword: password,
+              newPassword: ROTATED_ADMIN_PASSWORD,
+            })
+            .expect(200);
+          expect(changed.body).toMatchObject({ mustChangePassword: false });
+        } else {
+          expect(login.body).toMatchObject({ mustChangePassword: false });
+        }
+        const me = await admin.get('/api/v1/auth/me').expect(200);
+        expect(me.body).toMatchObject({ mustChangePassword: false });
+        return admin;
+      }
+      throw new Error(
+        `administrator login failed with both the configured initial credential and the rotated credential (${attempts.join(', ')})`,
+      );
+    };
 
     afterAll(async () => {
       if (app === undefined) return;
@@ -139,6 +216,9 @@ describe.skipIf(DATABASE_URL === undefined)(
     });
 
     it('authenticates the configured initial credential with mustChangePassword=true, blocks ordinary APIs until change-password, and rejects wrong passwords', async () => {
+      // The removed hardcoded `'1'` credential is not a valid password: this is
+      // a negative security-contract assertion (401), never an assumption that
+      // the bootstrap administrator's password is `'1'`.
       await request(app!.getHttpServer())
         .post('/api/v1/auth/login')
         .send({ username: 'مدیر', password: '1' })
@@ -154,6 +234,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       });
       expect(JSON.stringify(rejected.body)).not.toContain('wrong');
 
+      // Successful first login with the configured initial credential.
       const admin = request.agent(app!.getHttpServer());
       const accepted = await admin
         .post('/api/v1/auth/login')
@@ -168,25 +249,41 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(accepted.body).not.toHaveProperty('password');
       expect(accepted.body).not.toHaveProperty('passwordHash');
 
+      // While mustChangePassword is true the restricted session keeps
+      // GET /api/v1/auth/me available...
       const meBefore = await admin.get('/api/v1/auth/me').expect(200);
       expect(meBefore.body).toMatchObject({
         id: userId,
         mustChangePassword: true,
       });
 
-      // Ordinary protected APIs are blocked while mustChangePassword is true.
-      const blockedUsers = await admin.get('/api/v1/users').expect(403);
-      expect(blockedUsers.body).toMatchObject({
-        code: 'PermissionDenied',
-        details: { reason: 'password_change_required' },
-      });
+      // ...but ordinary protected APIs are denied with
+      // 403 PermissionDenied + reason: "password_change_required" —
+      // representative administration, RBAC, and business-domain routes alike.
+      for (const path of [
+        '/api/v1/users',
+        '/api/v1/permissions/effective',
+        '/api/v1/inventory/items',
+      ]) {
+        const blocked = await admin.get(path).expect(403);
+        expect(blocked.body).toMatchObject({
+          code: 'PermissionDenied',
+          details: { reason: 'password_change_required' },
+        });
+      }
 
-      const blockedPermissions = await admin
-        .get('/api/v1/permissions/effective')
-        .expect(403);
-      expect(blockedPermissions.body).toMatchObject({
-        code: 'PermissionDenied',
-        details: { reason: 'password_change_required' },
+      // The self-service change endpoint stays usable for the restricted
+      // session and enforces the correct current password.
+      const wrongCurrent = await admin
+        .post('/api/v1/auth/change-password')
+        .send({
+          currentPassword: 'wrong-attempt',
+          newPassword: ROTATED_ADMIN_PASSWORD,
+        })
+        .expect(400);
+      expect(wrongCurrent.body).toMatchObject({
+        code: 'ValidationFailed',
+        details: [{ field: 'currentPassword', code: 'invalidCurrentPassword' }],
       });
 
       const changed = await admin
@@ -208,19 +305,22 @@ describe.skipIf(DATABASE_URL === undefined)(
       const rerun = await app!.get(SystemAdministratorBootstrapService).run();
       expect(rerun.userCreated).toBe(false);
 
+      // The forced-change state is cleared and ordinary business access
+      // resumes without a logout/re-login cycle.
       const meAfter = await admin.get('/api/v1/auth/me').expect(200);
       expect(meAfter.body).toMatchObject({
         id: userId,
         mustChangePassword: false,
       });
+      await admin.get('/api/v1/users').expect(200);
+      await admin.get('/api/v1/roles').expect(200);
     });
 
     it('uses normal RBAC and organization membership across implemented domains', async () => {
-      const admin = request.agent(app!.getHttpServer());
-      await admin
-        .post('/api/v1/auth/login')
-        .send({ username: 'مدیر', password: ROTATED_ADMIN_PASSWORD })
-        .expect(200);
+      // Establish the administrator session through the real first-login flow
+      // (completing the mandatory password change when the fixture still
+      // requires it) before exercising ordinary RBAC below.
+      const admin = await openAdministratorSession();
 
       const effective = await admin
         .get('/api/v1/permissions/effective')
@@ -271,11 +371,9 @@ describe.skipIf(DATABASE_URL === undefined)(
     }, 60_000);
 
     it('gives no administrator authority to a different user with a similar username', async () => {
-      const admin = request.agent(app!.getHttpServer());
-      await admin
-        .post('/api/v1/auth/login')
-        .send({ username: 'مدیر', password: ROTATED_ADMIN_PASSWORD })
-        .expect(200);
+      // The mandatory password-change flow is completed first; the scenario
+      // below then proves the username itself grants nothing.
+      const admin = await openAdministratorSession();
 
       // A real, ordinary user whose name merely resembles the bootstrap one.
       const impostorName = `مدیر-${generateId().slice(-6)}`;
@@ -319,11 +417,9 @@ describe.skipIf(DATABASE_URL === undefined)(
       });
       expect(permission).not.toBeNull();
 
-      const admin = request.agent(app!.getHttpServer());
-      await admin
-        .post('/api/v1/auth/login')
-        .send({ username: 'مدیر', password: ROTATED_ADMIN_PASSWORD })
-        .expect(200);
+      // The mandatory password-change flow is completed first; the scenario
+      // below then proves that ordinary per-permission RBAC still applies.
+      const admin = await openAdministratorSession();
       await admin.get('/api/v1/users').expect(200);
 
       await client.rolePermission.delete({
@@ -357,11 +453,9 @@ describe.skipIf(DATABASE_URL === undefined)(
           create: (args: unknown) => Promise<unknown>;
         };
       }>();
-      const admin = request.agent(app!.getHttpServer());
-      await admin
-        .post('/api/v1/auth/login')
-        .send({ username: 'مدیر', password: ROTATED_ADMIN_PASSWORD })
-        .expect(200);
+      // The mandatory password-change flow is completed first; the scenario
+      // below then proves that ODR-3 organization scoping still applies.
+      const admin = await openAdministratorSession();
       await admin
         .get('/api/v1/inventory/items')
         .query({ organizationId })
@@ -424,6 +518,22 @@ describe.skipIf(DATABASE_URL === undefined)(
       });
       app = built.app;
       prisma = built.module.get(PrismaService);
+
+      // Test-only fixture isolation (mirrors the afterAll cleanup below): the
+      // fresh-install scenarios require an administrator this run provisioned
+      // itself with the configured initial credential, never a leftover
+      // account whose password is unknown. The pinned organization id is
+      // unique per run, so only the shared bootstrap user/role can leak in.
+      const setupClient = await prisma.getClient<{
+        user: { deleteMany: (args: unknown) => Promise<unknown> };
+        role: { deleteMany: (args: unknown) => Promise<unknown> };
+      }>();
+      await setupClient.user.deleteMany({
+        where: { username: BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME },
+      });
+      await setupClient.role.deleteMany({
+        where: { name: SYSTEM_ADMINISTRATOR_ROLE_NAME },
+      });
     }, 60_000);
 
     afterAll(async () => {
@@ -503,10 +613,16 @@ describe.skipIf(DATABASE_URL === undefined)(
         mustChangePassword: true,
       });
 
-      await admin
+      // First login is restricted: organization-scoped business access is
+      // denied with the quarantine reason until the password is changed.
+      const blocked = await admin
         .get('/api/v1/inventory/items')
         .query({ organizationId: pin })
         .expect(403);
+      expect(blocked.body).toMatchObject({
+        code: 'PermissionDenied',
+        details: { reason: 'password_change_required' },
+      });
 
       await admin
         .post('/api/v1/auth/change-password')

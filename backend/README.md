@@ -30,6 +30,8 @@ and daily workflows; the architecture contract lives in `docs/` + `.vardena/`
 cd backend
 npm install
 cp .env.example .env   # then fill in DATABASE_URL (placeholders only in the example)
+                       # and BOOTSTRAP_SYSTEM_ADMIN_PASSWORD when provisioning
+                       # a fresh administrator (no default is supplied)
 npm run prisma:generate
 ```
 
@@ -159,18 +161,27 @@ fixtures driven by `npm run test:migration-rehearsal` and
 
 ## Docker
 
-From the repository root, a fresh clone can be started without creating an
-`.env` file:
+From the repository root, create a local, untracked `.env` from
+`.env.example` and set `BOOTSTRAP_SYSTEM_ADMIN_PASSWORD` (8–128 characters,
+not `CHANGE_ME`) before the first start — the compose file passes the variable
+through with an empty default and **supplies no placeholder or default
+password**:
 
 ```bash
+cp .env.example .env
+# Edit .env and set BOOTSTRAP_SYSTEM_ADMIN_PASSWORD to a local-only value.
 docker-compose up
 ```
 
 The newer `docker compose up` spelling is equivalent. Compose builds the
 backend images, waits for PostgreSQL, applies `prisma migrate deploy`, runs the
 idempotent System Administrator bootstrap, and then starts `api` and `worker`.
-The API is available at `http://localhost:3000`; `/api/v1/health/live` is the
-liveness probe and `/api/docs` is the local Swagger UI.
+If `مدیر` does not exist yet and `BOOTSTRAP_SYSTEM_ADMIN_PASSWORD` is missing
+or empty, the bootstrap fails with a clear error instead of provisioning a
+known credential; once the administrator exists, later starts (including
+without the variable) are idempotent. The API is available at
+`http://localhost:3000`; `/api/v1/health/live` is the liveness probe and
+`/api/docs` is the local Swagger UI.
 
 Initial login: username `مدیر`, initial password from
 `BOOTSTRAP_SYSTEM_ADMIN_PASSWORD` (8–128 characters; required whenever the

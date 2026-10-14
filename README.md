@@ -34,25 +34,34 @@ today, cloud-ready.
 
 ## Run with Docker
 
-Docker Compose is the zero-configuration quick start. After cloning the
-repository, run:
+Docker Compose is the quick start. After cloning the repository, create a
+local, untracked `.env` from the template and configure the one-time initial
+administrator password (`.env` is gitignored — never commit a real credential):
 
 ```bash
+cp .env.example .env
+# Edit .env and set BOOTSTRAP_SYSTEM_ADMIN_PASSWORD to a local-only value
+# (8–128 characters, not CHANGE_ME).
 docker-compose up
 ```
 
 The command also works with the newer `docker compose` syntax. It builds the
 backend images, starts PostgreSQL, applies the Prisma migrations, provisions
 the idempotent real Users/RBAC `System Administrator`, and then starts the API
-and worker. No `.env` file is required for local use; the compose file supplies
-development defaults. The API is available at <http://localhost:3000>, the
-liveness probe is at <http://localhost:3000/api/v1/health/live>, and Swagger is
-enabled at <http://localhost:3000/api/docs>.
+and worker. `docker-compose.yml` passes `BOOTSTRAP_SYSTEM_ADMIN_PASSWORD`
+through to the bootstrap with an empty default — **no placeholder or default
+password is supplied**. A fresh installation must configure the variable
+explicitly (in the untracked `.env` or in the shell environment): when `مدیر`
+does not exist yet and the variable is missing, the bootstrap fails with a
+clear error instead of provisioning a known credential. Subsequent starts of an
+already-provisioned installation may leave it unset. The API is available at
+<http://localhost:3000>, the liveness probe is at
+<http://localhost:3000/api/v1/health/live>, and Swagger is enabled at
+<http://localhost:3000/api/docs>.
 
-Initial login is `مدیر` with the initial password configured via
+Initial login is `مدیر` with the initial password you configured via
 `BOOTSTRAP_SYSTEM_ADMIN_PASSWORD` (required when provisioning a new `مدیر`
-account; Docker Compose supplies a local-only placeholder if unset in `.env`,
-which must be overridden outside local development). The password is stored only
+account; never a fixed default). The password is stored only
 as an Argon2id hash and the newly provisioned administrator is flagged with
 `mustChangePassword = true`: on first login, all protected business APIs are
 blocked until the password is changed via `POST /api/v1/auth/change-password`
@@ -66,9 +75,11 @@ first membership before using organization-scoped capabilities. See
 [backend/README.md](backend/README.md) for the exact procedure and limitations.
 
 To stop the stack, press `Ctrl+C`. To remove the containers and the local
-PostgreSQL volume as well, run `docker-compose down -v`. Copy `.env.example`
-to `.env` only when you need to override ports, credentials, or other
-configuration. The default local database is intentionally private to the
+PostgreSQL volume as well, run `docker-compose down -v`. The untracked `.env`
+file carries your local configuration, including
+`BOOTSTRAP_SYSTEM_ADMIN_PASSWORD` for a fresh bootstrap; copy `.env.example`
+to `.env` for ports and other settings as needed. The default local database
+is intentionally private to the
 Compose network; password authentication should be configured for a shared or
 production deployment.
 
