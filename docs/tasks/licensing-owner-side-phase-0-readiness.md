@@ -13,6 +13,8 @@ split into **D-2(a)** and **D-2(b)**, and Phase 1 is gated on D-2(a) plus 0.5B.
 **No product decision was made by this correction**, no escaping behaviour was
 ratified, no signed format changed, and no OQ moved.
 **Baseline SHA:** `961a696fbff16893dc69f93d6409af5430790a6c`
+
+**D-2 recorded (2026-10-15):** D-2(a)=`VECTORS_ONLY`, D-2(b)=`APPROVE` (conditional on executable verification). Recorded as [PDR-16](../decisions/product/PDR-16-licensing-protocol-canonical-byte-contract-and-vectors.md). This does not approve D-1, D-3, D-4, D-5, D-6, D-7 or any other open question; OQ-83 and OQ-85 remain OPEN; ADR-0048 remains Proposed.
 **Baseline verification:** `origin/main` fetched on 2026-10-15 resolves to
 exactly the expected SHA — **no drift**, so no re-baselining was needed. No open
 PR existed at task start; `main` CI was green (run `38704831986`, the merge of

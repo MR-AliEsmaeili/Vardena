@@ -146,7 +146,9 @@ interface WirePayload {
  * logical license always produces the same bytes (and therefore the same
  * signature and the same code hash).
  */
-function canonicalize(payload: LicensePayload): string {
+export function canonicalizeLicenseCodePayload(
+  payload: LicensePayload,
+): string {
   const wire: WirePayload = {
     v: 1,
     licenseId: payload.licenseId,
@@ -171,7 +173,7 @@ export function signLicenseCode(
   privateKey: KeyObject,
 ): string {
   assertPayload(payload);
-  const body = Buffer.from(canonicalize(payload), 'utf8');
+  const body = Buffer.from(canonicalizeLicenseCodePayload(payload), 'utf8');
   const signature = cryptoSign(null, body, privateKey);
   return [
     LICENSE_CODE_PREFIX,
@@ -259,7 +261,7 @@ export function parseLicenseCode(
   assertPayload(payload);
   // A signed payload must round-trip to exactly the signed bytes; anything
   // else means the canonical form and the signed form disagree.
-  if (canonicalize(payload) !== body.toString('utf8')) {
+  if (canonicalizeLicenseCodePayload(payload) !== body.toString('utf8')) {
     throw new LicenseCodeError(
       'payload',
       'The license code payload is not in canonical form.',

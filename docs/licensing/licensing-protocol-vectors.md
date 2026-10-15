@@ -1,10 +1,9 @@
 # Licensing protocol conformance vectors — contract and gap analysis
 
-**Status:** DESIGN PROPOSAL — Phase 0. No vector file is published by this
-document yet, and publishing one is gated on explicit Product Owner decisions
-**D-2(a)** (package versus vectors) and **D-2(b)** (ratification of the
-canonical escaping wording) — see §6. **Nothing here ratifies the current JSON
-escaping behaviour, decides D-2, or changes a signed format.**
+**Status:** Phase 1 implemented (2026-10-15). D-2(a)=VECTORS_ONLY and D-2(b)=APPROVE
+recorded in [PDR-16](../decisions/product/PDR-16-licensing-protocol-canonical-byte-contract-and-vectors.md).
+Vector corpus published under `docs/licensing/vectors/`. Canonical byte contract ratified in
+`version-model-and-file-exchange.md` §2.1.
 **Baseline:** `main` @ `961a696fbff16893dc69f93d6409af5430790a6c`.
 **Companion:** [Owner-side architecture](./owner-side-system-architecture.md) ·
 [Phase 0 readiness report](../tasks/licensing-owner-side-phase-0-readiness.md).
