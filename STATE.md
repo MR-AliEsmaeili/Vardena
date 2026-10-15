@@ -2362,7 +2362,7 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   constraints, partial unique indexes, and finite/unlimited constraint behavior.
   The backend CI step is renamed to describe this populated chain and invokes
   `test:licensing-migration-rehearsal`; PostgreSQL execution is CI-only. Exact
-  PR-head CI is pending and must not be inferred from prior runs.
+  PR-head CI evidence is recorded below.
 - **Operational investigation:**
   [the bounded plan](docs/tasks/licensing-oq-83-operational-plan.md) records that
   the customer server already verifies client proofs and VDRP1 but neither a
@@ -2414,4 +2414,12 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   PostgreSQL's 63-byte identifier limit. The expectation now uses the actual
   catalog-truncated name while retaining the full migration-declared name in
   the lookup; no constraint, migration, fixture, or product behavior changed.
-  A later exact-head run is the only valid verification.
+- **Passing exact-head CI:** run
+  [38703580888](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38703580888)
+  passed on `bccaa471583db2969c9e1c38d0edec142d1322d2`: `classify`, docs,
+  generated API client, frontend, backend and `ci-gate`. Backend passed the
+  populated Licensing migration chain through OQ-83, all other migration
+  rehearsals, E2E, Licensing persistence live PostgreSQL and OQ-83
+  client-device live PostgreSQL suites. This supplies migration and test
+  evidence for review; it does not approve the proposed operational components
+  or close OQ-83.
