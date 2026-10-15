@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient } from '@tanstack/react-query';
@@ -133,6 +139,52 @@ describe('audit explorer filters', () => {
     });
   });
 
+  it('trims a typed draft when applied, so the URL and the request are canonical', async () => {
+    const user = userEvent.setup();
+    mount('/app/audit');
+    await screen.findByText('ویرایش مشتری');
+    await user.type(screen.getByLabelText(o.auditEventType), '  AUTH_LOGIN  ');
+    await user.click(screen.getByRole('button', { name: o.auditApply }));
+
+    await waitFor(() => expect(search()).toBe('?eventType=AUTH_LOGIN'));
+    expect(lastQuery()).toEqual({ page: 1, eventType: 'AUTH_LOGIN' });
+  });
+
+  it('keeps an unapplied draft when paging, and the URL keeps the applied filters', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.auditEvents).mockResolvedValue(page([event()], true));
+    mount('/app/audit?outcome=SUCCESS');
+    await screen.findByText('ویرایش مشتری');
+    await user.type(screen.getByLabelText(o.auditActorId), ulid);
+
+    const nav = screen.getByRole('navigation', { name: o.page });
+    await user.click(within(nav).getByRole('button', { name: o.next }));
+
+    await waitFor(() => expect(search()).toBe('?outcome=SUCCESS&page=2'));
+    expect(lastQuery()).toEqual({ page: 2, outcome: 'SUCCESS' });
+    expect(screen.getByLabelText(o.auditActorId)).toHaveValue(ulid);
+  });
+
+  it('explains that 9999-12-31 cannot be an upper bound and sends no bound', async () => {
+    const user = userEvent.setup();
+    mount('/app/audit');
+    await screen.findByText('ویرایش مشتری');
+    fireEvent.change(screen.getByLabelText(o.auditTo), {
+      target: { value: '9999-12-31' },
+    });
+    await user.click(screen.getByRole('button', { name: o.auditApply }));
+
+    expect(
+      await screen.findByText(o.auditDateUpperBoundUnsupported),
+    ).toBeInTheDocument();
+    expect(search()).toBe('');
+    expect(
+      vi
+        .mocked(api.auditEvents)
+        .mock.calls.every(([q]) => q.occurredBefore === undefined),
+    ).toBe(true);
+  });
+
   it('does not query while a draft is typed, only when applied', async () => {
     const user = userEvent.setup();
     mount('/app/audit');
@@ -203,6 +255,10 @@ describe('audit explorer filters', () => {
     ['an unknown parameter', '/app/audit?actor=01ARZ3NDEKTSV4RRFFQ69G5FAV'],
     ['a malformed page', '/app/audit?outcome=DENIED&page=abc'],
     ['a date before year 1000', '/app/audit?from=0999-01-01'],
+    ['a padded event type', '/app/audit?eventType=%20AUTH_LOGIN%20'],
+    ['a padded actor id', `/app/audit?actorId=%20${ulid}`],
+    ['a plus-encoded padded target id', `/app/audit?targetId=${ulid}+`],
+    ['an upper bound of 9999-12-31', '/app/audit?to=9999-12-31'],
   ])(
     'refuses %s in the URL instead of showing silently different results',
     async (_label, path) => {

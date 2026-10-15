@@ -4,6 +4,7 @@ import {
   auditOutcomes,
   auditTargetTypes,
   isCalendarDay,
+  utcExclusiveEnd,
 } from './audit-filters';
 
 /**
@@ -26,16 +27,30 @@ function oneOf(allowed: readonly string[]) {
       o.auditFilterInvalidChoice,
     );
 }
-const optionalDay = z.string().superRefine((value, ctx) => {
-  if (value === '' || isCalendarDay(value)) return;
-  // Years before 1000 get their own message so the user sees the rule that applies.
-  ctx.addIssue({
-    code: 'custom',
-    message: /^0\d{3}-/.test(value)
-      ? o.auditDateYearTooEarly
-      : o.auditDateInvalid,
+function optionalDay(bound: 'from' | 'to') {
+  return z.string().superRefine((value, ctx) => {
+    if (value === '') return;
+    if (!isCalendarDay(value)) {
+      // Years before 1000 get their own message so the user sees the rule that applies.
+      ctx.addIssue({
+        code: 'custom',
+        message: /^0\d{3}-/.test(value)
+          ? o.auditDateYearTooEarly
+          : o.auditDateInvalid,
+      });
+      return;
+    }
+    // `to` is inclusive, so it needs an exclusive end. For 9999-12-31 that end is
+    // year 10000, which the contract cannot express. Reject it instead of dropping
+    // the upper bound. `from` has no such limit.
+    if (bound === 'to' && utcExclusiveEnd(value) === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: o.auditDateUpperBoundUnsupported,
+      });
+    }
   });
-});
+}
 
 export const auditFilterSchema = z
   .object({
@@ -50,8 +65,8 @@ export const auditFilterSchema = z
     targetType: oneOf(auditTargetTypes),
     targetId: optionalUlid,
     outcome: oneOf(auditOutcomes),
-    from: optionalDay,
-    to: optionalDay,
+    from: optionalDay('from'),
+    to: optionalDay('to'),
   })
   .refine(
     (value) => value.from === '' || value.to === '' || value.from <= value.to,

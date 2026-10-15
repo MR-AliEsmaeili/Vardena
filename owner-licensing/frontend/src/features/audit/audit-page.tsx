@@ -114,11 +114,17 @@ export function AuditPage() {
     reset(filtersFromParams(new URLSearchParams(appliedKey)));
   }, [appliedKey, reset]);
 
+  // Undefined only when the `to` day has no representable end. The schema rejects
+  // that input first; the query stays disabled rather than running without the bound.
   const auditQuery = toAuditQuery(applied, page);
   const query = useQuery({
-    queryKey: queryKeys.auditEvents(auditQuery),
-    queryFn: ({ signal }) => api.auditEvents(auditQuery, signal),
-    enabled: permissions.has('audit.view') && filtersValid,
+    queryKey: queryKeys.auditEvents(auditQuery ?? { page }),
+    queryFn: ({ signal }) => {
+      if (auditQuery === undefined) throw new Error(o.auditInvalidFilters);
+      return api.auditEvents(auditQuery, signal);
+    },
+    enabled:
+      permissions.has('audit.view') && filtersValid && auditQuery !== undefined,
   });
 
   if (!permissions.loaded) return <LoadingState />;

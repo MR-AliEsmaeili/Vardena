@@ -80,13 +80,19 @@ const urlKeys: readonly string[] = ['page', ...filterKeys];
 
 /**
  * True only when every URL parameter is one the backend accepts, supplied once,
- * with a valid page. Anything else makes the URL invalid, so the page can say so
- * instead of silently showing different results from what the URL states.
+ * with a valid page, and each filter value is already canonical (no leading or
+ * trailing whitespace). Trimming a value here would query something other than
+ * what the URL states, so such a URL is refused instead. Trimming still happens
+ * when the user applies a draft, which writes the canonical value to the URL.
  */
 export function auditUrlIsWellFormed(params: URLSearchParams): boolean {
   for (const key of new Set(params.keys())) {
     if (!urlKeys.includes(key)) return false;
     if (params.getAll(key).length > 1) return false;
+  }
+  for (const key of filterKeys) {
+    const value = params.get(key);
+    if (value !== null && value !== value.trim()) return false;
   }
   const page = params.get('page');
   return page === null || pagePattern.test(page);
@@ -144,7 +150,11 @@ export function isCalendarDay(value: string): boolean {
   );
 }
 
-/** Exclusive upper bound: the start of the UTC day after `day`, or none past year 9999. */
+/**
+ * Exclusive upper bound: the start of the UTC day after `day`. Returns `undefined`
+ * for 9999-12-31, because the next day is year 10000, which the four-digit-year
+ * contract cannot express. The schema rejects that input so it is never dropped.
+ */
 export function utcExclusiveEnd(day: string): string | undefined {
   const [year = 0, month = 1, date = 1] = day.split('-').map(Number);
   // Date.UTC maps years 0–99 onto 1900–1999, so the year is set explicitly.
@@ -157,11 +167,14 @@ export function utcExclusiveEnd(day: string): string | undefined {
 /**
  * Maps the applied filters to the API contract. Calendar days are UTC because the
  * Owner application has no organization calendar or zone; the UI labels them as UTC.
+ * Returns `undefined` when the `to` day has no representable exclusive end, rather
+ * than omitting the bound and widening the range. Draft values are trimmed here;
+ * applied values from the URL are already canonical (see `auditUrlIsWellFormed`).
  */
 export function toAuditQuery(
   values: AuditFilterValues,
   page: number,
-): AuditQuery {
+): AuditQuery | undefined {
   const query: AuditQuery = { page };
   const eventType = values.eventType.trim();
   const actorId = values.actorId.trim();
@@ -175,7 +188,8 @@ export function toAuditQuery(
   if (values.from) query.occurredFrom = `${values.from}T00:00:00.000Z`;
   if (values.to) {
     const before = utcExclusiveEnd(values.to);
-    if (before !== undefined) query.occurredBefore = before;
+    if (before === undefined) return undefined;
+    query.occurredBefore = before;
   }
   return query;
 }

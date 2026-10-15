@@ -68,7 +68,11 @@ read, even if a future writer stores them.
 
 The UI converts the calendar-day range to UTC: `from` becomes `00:00:00Z`, and
 `to` becomes the start of the following UTC day (exclusive). The UI labels the
-dates as UTC.
+dates as UTC. The one day with no representable exclusive end is `9999-12-31`
+(the next day is year 10000): the UI rejects it with its own message rather than
+dropping the bound, and the backend's last accepted instant is
+`9999-12-31T23:59:59.999Z`. Filter values in the URL must already be canonical;
+a value with leading or trailing whitespace is refused, not trimmed.
 
 ## Authorization
 
@@ -109,7 +113,7 @@ such as "verified" or "proof", and no claim that a signature was produced or tha
 | Filter reject table, UTC instant rules, parameter binding, projection, hasNext, allowlist | Included in the 42 passed | `test/audit-query.test.ts` in `npm test` |
 | PostgreSQL explorer: AND semantics, half-open window, tie-break and paging, LIKE-free hostile inputs, secret-key projection, role matrix (all four roles), direct-ID denial, trail links | Not run locally (live PostgreSQL is CI-only) | `test/api.test.ts` in `test:integration` |
 | Frontend lint, format, typecheck | Passed: 0 warnings/errors, format clean, `tsc --noEmit` exit 0 | Existing frontend job repeats these |
-| Frontend pure tests (URL state and well-formedness, UTC mapping, schema, Persian copy) | 49 of 49 passed | `audit-filters.test.ts` in `npm test` |
+| Frontend pure tests (URL state and well-formedness, UTC mapping, schema, Persian copy) | 77 of 77 passed (latest run, including the canonical-URL and year-9999 cases) | `audit-filters.test.ts` in `npm test` |
 | Audit page flow: forbidden, apply/reset, URL coherence, invalid input, repeated/unknown/malformed URL, empty/error, pagination, observation copy, customer link | Not run locally (jsdom flow; CI only) | `audit-page.test.tsx` in `npm test` |
 | Migration rehearsal, Docker, E2E, customer suites | Not run locally | Existing CI jobs only |
 
@@ -168,6 +172,41 @@ Not changed, and recorded as limits for a decision:
 - **External review status.** The Codex code review on the PR head reported a
   failure with a usage-limit message and published no findings. See the PR
   follow-up report for details.
+
+## Canonical URL values and the year-9999 upper bound (PR #162)
+
+Two gaps remained after the round above:
+
+- **A URL could query a value other than the one it stated.** The schema trims
+  `eventType`, `actorId` and `targetId` to validate them, and `toAuditQuery()`
+  trimmed them again before the request. A URL such as `?eventType=%20AUTH_LOGIN%20`
+  passed the well-formedness check and queried `AUTH_LOGIN`. Fixed: a URL whose
+  filter value differs from its trimmed form is refused, like any other malformed
+  URL, so no request is sent and the invalid-filters message appears. Draft values
+  are still trimmed when applied. Tests: `audit-filters.test.ts` (leading,
+  trailing, encoded and `+` whitespace for each of the three fields, plus padded
+  outcome and dates), `audit-page.test.tsx` (refused URLs; a typed draft is
+  trimmed on apply; an unapplied draft survives paging).
+- **`to=9999-12-31` silently lost its upper bound.** The UI accepted the day, but
+  its exclusive end is year 10000, which the four-digit-year instant contract
+  cannot express, so `occurredBefore` was omitted. Fixed without changing the API
+  contract: the schema rejects that one `to` day with its own Persian message, and
+  `toAuditQuery()` returns `undefined` rather than omitting the bound, which keeps
+  the query disabled. `from=9999-12-31` remains valid, because it has no exclusive
+  end. Tests: `audit-filters.test.ts` (the end-of-range helper, `toAuditQuery`,
+  the schema), `audit-page.test.tsx` (form message, URL refusal, no request), and
+  backend `audit-query.test.ts` (`9999-12-31T23:59:59.999Z` accepted, `10000-…`
+  rejected). The year-1000 boundary tests are unchanged and still pass.
+
+Local checks for this change: frontend Prettier, oxlint and `tsc --noEmit`, and
+`audit-filters.test.ts` (77 of 77). Backend Prettier, oxlint and `tsc --noEmit`,
+and `audit-query.test.ts` (39 of 39). The jsdom flow test `audit-page.test.tsx` and
+the PostgreSQL suites are CI-only. The CI result for the exact PR head is the
+review gate, and no result is carried over from an earlier commit.
+
+Product Owner decision, unchanged by this fix: whether to keep `to=9999-12-31`
+unsupported, or to change the instant contract to allow a year-10000 exclusive
+bound. This change does not make that decision.
 
 ## Known limits
 

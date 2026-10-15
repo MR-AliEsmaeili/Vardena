@@ -176,6 +176,8 @@ export const o = {
     'هر دو روز ابتدا و انتها در بازه قرار می‌گیرند. تاریخ‌ها بر اساس روز تقویمی UTC تفسیر می‌شوند.',
   auditDateInvalid: 'تاریخ معتبر نیست.',
   auditDateYearTooEarly: 'سال تاریخ باید ۱۰۰۰ یا بعد از آن باشد.',
+  auditDateUpperBoundUnsupported:
+    'تاریخ پایان ۹۹۹۹-۱۲-۳۱ پشتیبانی نمی‌شود، زیرا روز بعد از سقف سال چهاررقمی سامانه است.',
   auditFilterInvalidChoice: 'مقدار انتخاب‌شده معتبر نیست.',
   auditDateRange: 'تاریخ شروع نباید بعد از تاریخ پایان باشد.',
   auditInvalidFilters:

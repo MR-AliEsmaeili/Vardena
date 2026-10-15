@@ -139,6 +139,18 @@ describe("audit explorer query contract", () => {
       expectValidationFailure(() => utcInstant(early, "x"), /year 1000/);
   });
 
+  it("accepts 9999-12-31T23:59:59.999Z as the last representable instant", () => {
+    // The UI rejects `to=9999-12-31` because its exclusive end is year 10000, which
+    // this four-digit-year contract cannot express. This pins the upper limit.
+    expect(utcInstant("9999-12-31T23:59:59.999Z", "x")).toBe(
+      "9999-12-31T23:59:59.999Z",
+    );
+    expectValidationFailure(
+      () => utcInstant("10000-01-01T00:00:00Z", "x"),
+      /must be a UTC instant ending with Z/,
+    );
+  });
+
   it("validates UTC instants on the calendar, not only by pattern", () => {
     expect(utcInstant("2028-02-29T00:00:00Z", "x")).toBe(
       "2028-02-29T00:00:00.000Z",

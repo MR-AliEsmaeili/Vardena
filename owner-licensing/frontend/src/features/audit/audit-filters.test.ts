@@ -87,6 +87,43 @@ describe('audit query mapping', () => {
     expect(utcExclusiveEnd('2026-12-31')).toBe('2027-01-01T00:00:00.000Z');
   });
 
+  it('sends an ordinary inclusive end day as the next day, exclusive', () => {
+    expect(toAuditQuery({ ...emptyAuditFilters, to: '2026-10-31' }, 1)).toEqual(
+      {
+        page: 1,
+        occurredBefore: '2026-11-01T00:00:00.000Z',
+      },
+    );
+    expect(toAuditQuery({ ...emptyAuditFilters, to: '9999-12-30' }, 1)).toEqual(
+      { page: 1, occurredBefore: '9999-12-31T00:00:00.000Z' },
+    );
+  });
+
+  it('keeps the year-1000 boundary as a valid from and to range', () => {
+    expect(
+      toAuditQuery(
+        { ...emptyAuditFilters, from: '1000-01-01', to: '1000-01-01' },
+        1,
+      ),
+    ).toEqual({
+      page: 1,
+      occurredFrom: '1000-01-01T00:00:00.000Z',
+      occurredBefore: '1000-01-02T00:00:00.000Z',
+    });
+  });
+
+  it('never drops the upper bound for 9999-12-31: the query is undefined instead', () => {
+    // The exclusive end would be year 10000, which the contract cannot express.
+    expect(utcExclusiveEnd('9999-12-31')).toBeUndefined();
+    expect(toAuditQuery({ ...emptyAuditFilters, to: '9999-12-31' }, 1)).toBe(
+      undefined,
+    );
+    // Without `to`, the same final day is an ordinary lower bound and is kept.
+    expect(
+      toAuditQuery({ ...emptyAuditFilters, from: '9999-12-31' }, 1),
+    ).toEqual({ page: 1, occurredFrom: '9999-12-31T00:00:00.000Z' });
+  });
+
   it('rejects years below 1000, the documented minimum, and accepts the boundary', () => {
     expect(isCalendarDay('1000-01-01')).toBe(true);
     expect(isCalendarDay('0999-12-31')).toBe(false);
@@ -143,6 +180,29 @@ describe('audit filter schema', () => {
     expect(
       auditFilterSchema.safeParse({ ...emptyAuditFilters, ...patch }).success,
     ).toBe(false);
+  });
+
+  it('rejects an upper bound of 9999-12-31 with its own message, and accepts 9999-12-30', () => {
+    const rejected = auditFilterSchema.safeParse({
+      ...emptyAuditFilters,
+      to: '9999-12-31',
+    });
+    expect(rejected.success).toBe(false);
+    expect(rejected.error?.issues[0]?.message).toBe(
+      o.auditDateUpperBoundUnsupported,
+    );
+    expect(rejected.error?.issues[0]?.path).toEqual(['to']);
+    expect(
+      auditFilterSchema.safeParse({ ...emptyAuditFilters, to: '9999-12-30' })
+        .success,
+    ).toBe(true);
+  });
+
+  it('still accepts 9999-12-31 as a lower bound, because it has no exclusive-end problem', () => {
+    expect(
+      auditFilterSchema.safeParse({ ...emptyAuditFilters, from: '9999-12-31' })
+        .success,
+    ).toBe(true);
   });
 
   it('accepts the year-1000 boundary as a date range', () => {
@@ -214,6 +274,38 @@ describe('URL well-formedness (no silent fallback)', () => {
     expect(
       auditUrlIsWellFormed(new URLSearchParams('page=12&eventType=')),
     ).toBe(true);
+  });
+
+  it('accepts canonical filter values as they appear in the URL', () => {
+    expect(
+      auditUrlIsWellFormed(
+        new URLSearchParams(
+          `eventType=AUTH_LOGIN&actorId=${ulid}&targetId=${ulid}&outcome=DENIED`,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  // The request would send the trimmed value, so a padded URL value would query
+  // something other than what the URL states. Such URLs are refused, not trimmed.
+  it.each([
+    ['leading space in eventType', 'eventType=%20AUTH_LOGIN'],
+    ['trailing space in eventType', 'eventType=AUTH_LOGIN%20'],
+    ['padded eventType', 'eventType=%20AUTH_LOGIN%20'],
+    ['encoded tab in eventType', 'eventType=%09AUTH_LOGIN%09'],
+    ['plus-encoded space in eventType', 'eventType=+AUTH_LOGIN+'],
+    ['whitespace-only eventType', 'eventType=%20%20'],
+    ['leading space in actorId', `actorId=%20${ulid}`],
+    ['trailing space in actorId', `actorId=${ulid}%20`],
+    ['plus-encoded space in actorId', `actorId=+${ulid}`],
+    ['leading space in targetId', `targetId=%20${ulid}`],
+    ['trailing space in targetId', `targetId=${ulid}%20`],
+    ['encoded newline in targetId', `targetId=${ulid}%0A`],
+    ['padded outcome', 'outcome=%20DENIED'],
+    ['padded from date', 'from=%202026-10-01'],
+    ['padded to date', 'to=2026-10-31%20'],
+  ])('refuses a URL with %s', (_label, query) => {
+    expect(auditUrlIsWellFormed(new URLSearchParams(query))).toBe(false);
   });
 });
 
