@@ -20,6 +20,17 @@ import type {
 export type SessionStatus =
   'loading' | 'authenticated' | 'unauthenticated' | 'error';
 
+/**
+ * Outcome of a session probe after a 401 that may mean either a rejected
+ * credential or an ended session.
+ *
+ * - `alive` — `GET /auth/me` answered with the current user.
+ * - `ended` — the probe answered 401; the local session cleanup has run.
+ * - `unverified` — the probe itself failed (network/5xx), so no cause is
+ *   claimed and nothing was cleared.
+ */
+export type SessionProbe = 'alive' | 'ended' | 'unverified';
+
 export interface SessionContextValue {
   user: AuthenticatedUser | null;
   status: SessionStatus;
@@ -42,6 +53,11 @@ export interface SessionContextValue {
   resetChangePasswordError: () => void;
   logout: () => Promise<void>;
   isLoggingOut: boolean;
+  /**
+   * Re-reads `GET /auth/me` to tell an ended session apart from a rejected
+   * credential. `'ended'` performs the same local cleanup as an intercepted 401.
+   */
+  verifySessionAlive: () => Promise<SessionProbe>;
   acknowledgeSessionExpiry: () => void;
 }
 
@@ -96,14 +112,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // A 401 on ANY other request means the session ended server-side
   // (idle/absolute expiry, logout elsewhere, user disabled). Drop every
   // cached server value so no stale, cross-session data can be rendered.
-  useEffect(() => {
-    setUnauthorizedHandler(() => {
-      setSessionExpired(true);
-      queryClient.clear();
-      queryClient.setQueryData(queryKeys.session(), null);
-    });
-    return () => setUnauthorizedHandler(null);
+  // `POST /auth/change-password` is excluded in the transport layer: its 401 may
+  // be a rejected current password, and the page asks `verifySessionAlive` first.
+  const endSessionLocally = useCallback(() => {
+    setSessionExpired(true);
+    queryClient.clear();
+    queryClient.setQueryData(queryKeys.session(), null);
   }, [queryClient]);
+
+  useEffect(() => {
+    setUnauthorizedHandler(endSessionLocally);
+    return () => setUnauthorizedHandler(null);
+  }, [endSessionLocally]);
+
+  const verifySessionAlive = useCallback(async (): Promise<SessionProbe> => {
+    try {
+      await identityApi.getCurrentUser();
+      return 'alive';
+    } catch (error) {
+      // Only a 401 proves the session ended; a transport failure proves nothing.
+      if (!normalizeApiError(error).isUnauthorized) return 'unverified';
+      endSessionLocally();
+      return 'ended';
+    }
+  }, [endSessionLocally]);
 
   const loginMutation = useMutation({
     mutationFn: (credentials: LoginRequest) => identityApi.login(credentials),
@@ -196,6 +228,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       resetChangePasswordError,
       logout,
       isLoggingOut: logoutMutation.isPending,
+      verifySessionAlive,
       acknowledgeSessionExpiry: () => setSessionExpired(false),
     }),
     [
@@ -216,6 +249,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       resetChangePasswordError,
       logout,
       logoutMutation.isPending,
+      verifySessionAlive,
     ],
   );
 

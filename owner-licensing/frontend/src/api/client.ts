@@ -44,12 +44,32 @@ export function setUnauthorizedHandler(
   unauthorizedHandler = handler;
 }
 
-/** Requests whose 401 is an expected answer, not an expired session. */
-const SESSION_PROBE_PATHS = ['/auth/login', '/auth/logout', '/auth/me'];
+/**
+ * Requests whose 401 is an expected answer, not an ended session.
+ *
+ * `POST /auth/change-password` belongs here because the Owner API answers 401
+ * `Unauthorized` for **two different facts** on that route: the session has ended,
+ * or the submitted current password was rejected ("Invalid current password.").
+ * A status code cannot tell them apart, and this layer must not guess: treating a
+ * rejected credential as an ended session would clear every cached server value
+ * and send the operator to `/login` with a false "session expired" notice.
+ * The caller asks the session instead (`SessionProvider.verifySessionAlive`, which
+ * re-reads `GET /auth/me`) and reports only the cause it could verify.
+ */
+export const expectedUnauthorizedPaths = [
+  '/auth/login',
+  '/auth/logout',
+  '/auth/me',
+  '/auth/change-password',
+] as const;
 
-function isSessionProbe(config: InternalAxiosRequestConfig): boolean {
-  const url = config.url ?? '';
-  return SESSION_PROBE_PATHS.some((path) => url.startsWith(path));
+/** True when a 401 from this request must not be reported as an ended session. */
+export function isExpectedUnauthorized(url: string): boolean {
+  return expectedUnauthorizedPaths.some((path) => url.startsWith(path));
+}
+
+function expectsUnauthorized(config: InternalAxiosRequestConfig): boolean {
+  return isExpectedUnauthorized(config.url ?? '');
 }
 
 export const apiClient: AxiosInstance = axios.create({
@@ -77,7 +97,7 @@ apiClient.interceptors.response.use(
     if (
       apiError.isUnauthorized &&
       unauthorizedHandler !== null &&
-      (config === undefined || !isSessionProbe(config))
+      (config === undefined || !expectsUnauthorized(config))
     ) {
       unauthorizedHandler(apiError);
     }
