@@ -1031,3 +1031,49 @@ class ProductionArtifactGateTest(unittest.TestCase):
             }), encoding="utf-8")
             errors = self.checker.inspect_package_scripts(pkg)
             self.assertTrue(any("Production script 'start:prod' invokes development issuer" in err for err in errors))
+
+    def test_docker_production_stage_parity_fails_when_issuer_injected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            backend_mock = Path(tmp) / "backend"
+            dist = backend_mock / "dist"
+            dist.mkdir(parents=True)
+            for req in self.checker.REQUIRED_FILES:
+                p = dist / req
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("export const ok = 1;", encoding="utf-8")
+            (backend_mock / "package.json").write_text("{}", encoding="utf-8")
+            (backend_mock / "package-lock.json").write_text("{}", encoding="utf-8")
+
+            # Inject forbidden issuer into dist
+            bad = dist / "tools" / "development-license-authority.js"
+            bad.parent.mkdir(parents=True, exist_ok=True)
+            bad.write_text("export function generateAuthorityKeyPair() {}", encoding="utf-8")
+
+            errors = self.checker.verify_docker_production_stage_parity(backend_mock)
+            self.assertTrue(any("development-license-authority.js" in err for err in errors))
+
+    def test_license_verification_negative_control_fails_on_broken_key(self):
+        # Pointing to an empty directory where dist does not exist should fail verification
+        with tempfile.TemporaryDirectory() as tmp:
+            errors = self.checker.execute_customer_license_verification(Path(tmp))
+            self.assertTrue(len(errors) > 0)
+
+    def test_key_hygiene_scanner_detects_prohibited_key_material(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            # init git repo
+            git(repo, "init")
+            # add a tracked .key file
+            bad_key = repo / "server.key"
+            bad_key.write_text("dummy key content", encoding="utf-8")
+            git(repo, "add", "server.key")
+
+            # add a tracked script with PEM private key header
+            bad_script = repo / "scripts" / "leak.py"
+            bad_script.parent.mkdir(parents=True, exist_ok=True)
+            bad_script.write_text("key = '''-----BEGIN PRIVATE KEY-----\nMIG...'''", encoding="utf-8")
+            git(repo, "add", "scripts/leak.py")
+
+            errors = self.checker.scan_key_hygiene(repo)
+            self.assertTrue(any("forbidden private-key extension: server.key" in err for err in errors))
+            self.assertTrue(any("contains PEM private key pattern: scripts/leak.py" in err for err in errors))
