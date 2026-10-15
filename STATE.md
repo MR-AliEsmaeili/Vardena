@@ -2325,10 +2325,14 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   despite their Prisma stub, and the OQ-83 race test was recreating challenges
   already created by the test. Added an explicit zero-device repository double
   to the in-memory license import/recovery/activation E2E fixtures and changed
-  the PostgreSQL race to activate its already-issued challenges. The live test
-  now reports settlement reasons on failure. A new exact-head run is still
-  required; this entry does not claim the remaining E2E/live failures are
-  resolved.
+  the PostgreSQL race to activate its already-issued challenges. Run
+  [38697060051](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38697060051)
+  on `5cc3a88be143894a3eff74fb85340b18dd11aebd` confirmed the OQ-83 live suite,
+  license-import fixtures, Prisma, migration rehearsals and generated client
+  passed; the general E2E step then found one stale exact-key assertion in
+  `license-state-route.e2e-spec.ts` that omitted the new device fields. Updated
+  its response and OpenAPI expectations. The new exact-head run is pending; no
+  acceptance or final CI-green claim is made here.
 - **Review/acceptance guardrails:** license-import rejection audit remains
   best-effort as previously designed. OQ-83 implementation is submitted for
   review, not accepted or merged. No main push, merge, auto-merge or repository
