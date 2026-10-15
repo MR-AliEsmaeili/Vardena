@@ -13,7 +13,8 @@ page shows the forbidden message and sends no request.
   id, target type, target id, outcome, and a from/to UTC calendar-day range. The
   event code and identifiers are checked before a request is sent, and each
   rejection explains itself in Persian. The range is inclusive of both days and
-  is interpreted in UTC.
+  is interpreted in UTC. Dates must be real calendar days in years 1000 or later,
+  matching the backend; a year before 1000 gets its own message.
 - **Apply and reset**: nothing is queried while the user types. Apply writes the
   applied filters to the URL and returns to page one. Reset clears the draft and
   removes every filter parameter from the URL. Browser back and forward and deep

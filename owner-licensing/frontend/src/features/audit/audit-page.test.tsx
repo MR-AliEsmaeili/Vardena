@@ -202,6 +202,7 @@ describe('audit explorer filters', () => {
     ],
     ['an unknown parameter', '/app/audit?actor=01ARZ3NDEKTSV4RRFFQ69G5FAV'],
     ['a malformed page', '/app/audit?outcome=DENIED&page=abc'],
+    ['a date before year 1000', '/app/audit?from=0999-01-01'],
   ])(
     'refuses %s in the URL instead of showing silently different results',
     async (_label, path) => {

@@ -13,15 +13,17 @@ import {
 const ulidA = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 const ulidB = "01BX5ZZKBKACTAV9WEVGEMMVRZ";
 
-function expectValidationFailure(run: () => unknown) {
+function expectValidationFailure(run: () => unknown, message?: RegExp) {
   let caught: unknown;
   try {
     run();
   } catch (error) {
     caught = error;
   }
+  // The error contract: a 400 ValidationFailed whose message names the rule broken.
   expect(caught).toBeDefined();
   expect(caught).toMatchObject({ status: 400, code: "ValidationFailed" });
+  if (message) expect((caught as Error).message).toMatch(message);
 }
 
 function recordingTx(rows: unknown[] = []) {
@@ -83,10 +85,16 @@ describe("audit explorer query contract", () => {
     ["instant without zone", { occurredFrom: "2026-10-01T00:00:00" }],
     ["calendar rollover", { occurredFrom: "2026-02-31T00:00:00Z" }],
     ["leap second", { occurredFrom: "2026-06-30T23:59:60Z" }],
+    // Documented minimum: years below 1000 are invalid. 0099 and 0999 are the
+    // boundary cases the rule must catch; 0099 is also a Date.UTC two-digit year.
+    ["year 0050 (below 1000)", { occurredFrom: "0050-01-01T00:00:00Z" }],
+    ["year 0099 (below 1000)", { occurredFrom: "0099-12-31T23:59:59Z" }],
+    ["year 0999 (below 1000)", { occurredFrom: "0999-12-31T23:59:59.999Z" }],
     [
-      "year below 100 (Date.UTC two-digit mapping)",
-      { occurredFrom: "0050-01-01T00:00:00Z" },
+      "year 0999 as exclusive bound",
+      { occurredBefore: "0999-06-01T00:00:00Z" },
     ],
+    ["year 0000", { occurredFrom: "0000-01-01T00:00:00Z" }],
     [
       "inverted window",
       {
@@ -109,6 +117,26 @@ describe("audit explorer query contract", () => {
     expectValidationFailure(() =>
       auditFilters(query as Record<string, unknown>),
     );
+  });
+
+  it("requires years from 1000 onward and accepts the year-1000 boundary", () => {
+    expect(utcInstant("1000-01-01T00:00:00Z", "x")).toBe(
+      "1000-01-01T00:00:00.000Z",
+    );
+    expect(utcInstant("1000-12-31T23:59:59.999Z", "x")).toBe(
+      "1000-12-31T23:59:59.999Z",
+    );
+    // 1000 is divisible by 100 but not by 400, so it is not a leap year.
+    expectValidationFailure(
+      () => utcInstant("1000-02-29T00:00:00Z", "x"),
+      /valid calendar instant/,
+    );
+    for (const early of [
+      "0999-12-31T23:59:59.999Z",
+      "0099-12-31T00:00:00Z",
+      "0000-01-01T00:00:00Z",
+    ])
+      expectValidationFailure(() => utcInstant(early, "x"), /year 1000/);
   });
 
   it("validates UTC instants on the calendar, not only by pattern", () => {

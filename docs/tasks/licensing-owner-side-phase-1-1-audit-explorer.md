@@ -47,7 +47,10 @@ return 400 `ValidationFailed` before any SQL is built. An unauthorized caller ge
 | `occurredBefore` | canonical UTC instant ending in `Z` | exclusive upper bound; must be later than `occurredFrom` |
 
 Filters combine with AND. Instants must be on the real calendar (no February 31,
-no leap second, no year below 1000) and must not carry an offset. Ordering is
+no leap second) and in years 1000 through 9999, and must not carry an offset. The
+backend checks the year-1000 minimum explicitly, before `Date.UTC`, because
+`Date.UTC` maps years 0–99 onto 1900–1999. The frontend `isCalendarDay` and the
+audit filter schema apply the same rule, so the UI and the API agree. Ordering is
 `sequence DESC`. `sequence` is UNIQUE and monotonic, so it is a total order and
 serves as the tie-breaker when several rows share `occurred_at`. The query fetches
 51 rows: 50 are returned, and the 51st sets `hasNext`. The response has no `total`,
@@ -138,8 +141,18 @@ An independent review of the PR diff found these items:
   empty value as absent. That is true for filters but not for `page`, which the
   shared `page()` helper rejects with 400. The README is corrected, and a
   characterization test locks in `page=` → 400.
-- **Test label accuracy.** The case named "year below 1000" actually uses year 0050.
-  It is renamed to match what it tests.
+- **Date-validation contract mismatch.** The documented rule is "no year below
+  1000", but neither side enforced it. The round-trip check only caught years 0–99
+  (by accident, because `Date.UTC` remaps them), so year 0999 was accepted by the
+  backend and the frontend. Fixed: an explicit minimum-year check in
+  `utcInstant()` (backend, 400 `ValidationFailed`) and in `isCalendarDay()`
+  (frontend, which the schema uses, with its own Persian message). Regression
+  tests: backend `audit-query.test.ts` covers 0000, 0050, 0099 and 0999 (both
+  bounds), a valid year-1000 boundary, and year-1000 leap rollover, and asserts
+  the error message. Frontend `audit-filters.test.ts` covers the same, and
+  `audit-page.test.tsx` covers a `from=0999-01-01` URL.
+- **Test label accuracy.** The case previously labelled "year below 1000" was
+  renamed to say what it tested, and the cases for years 0099 and 0999 were added.
 
 Not changed, and recorded as limits for a decision:
 

@@ -87,6 +87,17 @@ describe('audit query mapping', () => {
     expect(utcExclusiveEnd('2026-12-31')).toBe('2027-01-01T00:00:00.000Z');
   });
 
+  it('rejects years below 1000, the documented minimum, and accepts the boundary', () => {
+    expect(isCalendarDay('1000-01-01')).toBe(true);
+    expect(isCalendarDay('0999-12-31')).toBe(false);
+    expect(isCalendarDay('0099-12-31')).toBe(false);
+    expect(isCalendarDay('0050-01-01')).toBe(false);
+    expect(isCalendarDay('0000-01-01')).toBe(false);
+    // 1000 is divisible by 100 but not by 400, so 29 February does not exist.
+    expect(isCalendarDay('1000-02-29')).toBe(false);
+    expect(isCalendarDay('2000-02-29')).toBe(true);
+  });
+
   it('accepts only real calendar days', () => {
     expect(isCalendarDay('2028-02-29')).toBe(true);
     expect(isCalendarDay('2027-02-29')).toBe(false);
@@ -122,6 +133,35 @@ describe('audit filter schema', () => {
     expect(
       auditFilterSchema.safeParse({ ...emptyAuditFilters, ...patch }).success,
     ).toBe(false);
+  });
+
+  it.each([
+    ['from', { from: '0999-12-31' }],
+    ['to', { to: '0999-12-31' }],
+    ['from (year 0099)', { from: '0099-01-01' }],
+  ])('rejects a %s date before year 1000', (_label, patch) => {
+    expect(
+      auditFilterSchema.safeParse({ ...emptyAuditFilters, ...patch }).success,
+    ).toBe(false);
+  });
+
+  it('accepts the year-1000 boundary as a date range', () => {
+    expect(
+      auditFilterSchema.safeParse({
+        ...emptyAuditFilters,
+        from: '1000-01-01',
+        to: '1000-12-31',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('explains a year-before-1000 date with the year rule, not a generic message', () => {
+    const result = auditFilterSchema.safeParse({
+      ...emptyAuditFilters,
+      from: '0999-01-01',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toBe(o.auditDateYearTooEarly);
   });
 
   it('explains an invalid event code in Persian', () => {
@@ -178,8 +218,13 @@ describe('URL well-formedness (no silent fallback)', () => {
 });
 
 describe('UTC day arithmetic', () => {
-  it('computes the exclusive end for years below 100 without the two-digit year mapping', () => {
-    // Date.UTC maps 0–99 onto 1900–1999; the day after 0099-12-31 is 0100-01-01.
+  it('computes the exclusive end at the year-1000 boundary', () => {
+    expect(utcExclusiveEnd('1000-12-31')).toBe('1001-01-01T00:00:00.000Z');
+  });
+
+  it('keeps helper arithmetic correct for years 0–99 that Date.UTC would remap', () => {
+    // Validation rejects these years before the helper runs; this guards the
+    // helper itself, which must not depend on Date.UTC's two-digit mapping.
     expect(utcExclusiveEnd('0099-12-31')).toBe('0100-01-01T00:00:00.000Z');
   });
 });

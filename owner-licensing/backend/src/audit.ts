@@ -32,6 +32,8 @@ const filterNames = [
 ] as const;
 const eventTypePattern = /^[A-Z][A-Z0-9_]{0,119}$/;
 const ulidPattern = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+/** Documented minimum year for instants (backend and frontend share this rule). */
+const minimumAuditYear = 1000;
 // Canonical UTC wire form only: `Z` suffix, no offsets, optional 1–3 digit fraction.
 const instantPattern =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
@@ -98,6 +100,10 @@ export function utcInstant(value: string, field: string): string {
   const [year, month, day, hour, minute, second] = match
     .slice(1, 7)
     .map(Number) as [number, number, number, number, number, number];
+  // Documented minimum. Checked explicitly, before Date.UTC: that constructor maps
+  // years 0–99 onto 1900–1999, so the round-trip below alone cannot enforce it.
+  if (year < minimumAuditYear)
+    invalid(`${field} must be a UTC instant in year 1000 or later.`);
   const millis = Number((match[7] ?? "0").padEnd(3, "0"));
   const date = new Date(
     Date.UTC(year, month - 1, day, hour, minute, second, millis),

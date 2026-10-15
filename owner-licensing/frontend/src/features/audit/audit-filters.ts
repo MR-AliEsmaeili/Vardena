@@ -124,12 +124,18 @@ export function paramsFromFilters(
   return next;
 }
 
+/** Documented minimum year for audit filter dates; mirrors the backend rule. */
+export const MIN_AUDIT_YEAR = 1000;
+
 export function isCalendarDay(value: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return false;
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
+  // Same documented minimum as the backend. Checked before Date.UTC, which maps
+  // years 0–99 onto 1900–1999.
+  if (year < MIN_AUDIT_YEAR) return false;
   const date = new Date(Date.UTC(year, month - 1, day));
   return (
     date.getUTCFullYear() === year &&

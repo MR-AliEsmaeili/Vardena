@@ -26,9 +26,16 @@ function oneOf(allowed: readonly string[]) {
       o.auditFilterInvalidChoice,
     );
 }
-const optionalDay = z
-  .string()
-  .refine((value) => value === '' || isCalendarDay(value), o.auditDateInvalid);
+const optionalDay = z.string().superRefine((value, ctx) => {
+  if (value === '' || isCalendarDay(value)) return;
+  // Years before 1000 get their own message so the user sees the rule that applies.
+  ctx.addIssue({
+    code: 'custom',
+    message: /^0\d{3}-/.test(value)
+      ? o.auditDateYearTooEarly
+      : o.auditDateInvalid,
+  });
+});
 
 export const auditFilterSchema = z
   .object({

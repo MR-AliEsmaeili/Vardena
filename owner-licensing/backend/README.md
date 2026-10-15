@@ -25,6 +25,12 @@ supplied". `page` is strict: when present it must match the table, so `page=` is
 | `occurredFrom` | `YYYY-MM-DDTHH:MM:SS` + optional 1–3 digit fraction + `Z` | inclusive lower bound |
 | `occurredBefore` | same instant format | exclusive upper bound, later than `occurredFrom` |
 
+Instants must be real calendar instants in years **1000 through 9999**. A year
+below 1000 is rejected with 400 `ValidationFailed` ("must be a UTC instant in year
+1000 or later."), checked explicitly before any `Date.UTC` call. Impossible dates
+(for example 29 February 1000, which is not a leap year), leap seconds, and any
+offset are also rejected.
+
 - Filters combine with AND. No substring search exists, so there is no LIKE and
   no LIKE escaping.
 - Unknown keys, repeated keys, values outside the rules above, impossible
