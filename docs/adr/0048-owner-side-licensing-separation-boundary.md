@@ -29,7 +29,8 @@ artifact checks. **Accepted for this boundary only**; the original Proposed
 wording below remains historical context and does not defer these new choices.
 [PDR-17](../decisions/product/PDR-17-owner-web-application-phase-1.md) records
 approved single-operator RBAC/audit, manual activation/server-replacement policies
-and the precise conservative permission subset where the full proposal is absent.
+and the Product Owner-corrected permission matrix: specialist customer/audit
+reads and Support identity/status-only customer reads enforced by field allowlists.
 No role grants routine key access, no dual control is added, and U-1 stays deferred.
 OQ-77's exact option C wording is unavailable: durable audit viewing without purge.
 No OQ is closed and no operational signer or lifecycle protocol is authorized.

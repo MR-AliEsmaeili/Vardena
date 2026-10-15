@@ -43,6 +43,24 @@ async function customer(cookie = adminCookie, code = `C-${ulid()}`) {
   });
 }
 
+async function expectUnavailableOperations(cookie: string) {
+  // No audit mutation or fabricated lifecycle endpoint is available to ANY role.
+  for (const method of ["post", "patch", "delete"] as const)
+    expect((await write(method, "/audit-events", cookie).send({})).status).toBe(
+      404,
+    );
+  for (const path of [
+    "/licenses/issue",
+    "/licenses/activate",
+    "/licenses/deactivate",
+    "/server-replacement",
+    "/device-replacement",
+    "/licenses/revoke",
+    "/licenses/recover",
+  ])
+    expect((await write("post", path, cookie).send({})).status).toBe(404);
+}
+
 beforeAll(async () => {
   await migrate(db);
   await migrate(db); // idempotent checksummed fresh deployment
@@ -290,7 +308,14 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       );
       const { cookie } = await login(uid, pw);
       expect((await customer(cookie)).status).toBe(403);
-      const cid = (await customer()).body.id;
+      const code = `Support-${ulid()}`;
+      const created = await write("post", "/customers", adminCookie).send({
+        customerCode: code,
+        displayName: "Support-safe name",
+        contractReference: "CONFIDENTIAL-CONTRACT-REFERENCE",
+      });
+      expect(created.status).toBe(201);
+      const cid = created.body.id;
       expect(
         (
           await write("patch", `/customers/${cid}`, cookie).send({
@@ -299,14 +324,53 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
           })
         ).status,
       ).toBe(403);
-      expect(
-        (await request(app).get("/api/v1/customers").set("Cookie", cookie))
-          .status,
-      ).toBe(role === "READ_ONLY_OBSERVER" ? 200 : 403);
+      const effective = await request(app)
+        .get("/api/v1/permissions/effective")
+        .set("Cookie", cookie);
+      expect(effective.status).toBe(200);
+      expect(effective.body.permissions).toEqual(
+        role === "SUPPORT_SPECIALIST"
+          ? ["customers.view"]
+          : ["customers.view", "audit.view"],
+      );
+      const list = await request(app)
+        .get("/api/v1/customers")
+        .query({ search: code })
+        .set("Cookie", cookie);
+      const detail = await request(app)
+        .get(`/api/v1/customers/${cid}`)
+        .set("Cookie", cookie);
+      expect(list.status).toBe(200);
+      expect(detail.status).toBe(200);
+      expect(list.body.items).toHaveLength(1);
+      for (const record of [list.body.items[0], detail.body]) {
+        expect(record.id).toBe(cid);
+        expect(record.customerCode).toBe(code);
+        if (role === "SUPPORT_SPECIALIST") {
+          expect(Object.keys(record).sort()).toEqual(
+            ["id", "customerCode", "displayName", "status"].sort(),
+          );
+          expect(JSON.stringify(record)).not.toContain(
+            "CONFIDENTIAL-CONTRACT-REFERENCE",
+          );
+        } else
+          expect(record.contractReference).toBe(
+            "CONFIDENTIAL-CONTRACT-REFERENCE",
+          );
+      }
+      if (role === "SUPPORT_SPECIALIST") {
+        const byContract = await request(app)
+          .get("/api/v1/customers")
+          .query({ search: "CONFIDENTIAL-CONTRACT-REFERENCE" })
+          .set("Cookie", cookie);
+        expect(byContract.status).toBe(200);
+        expect(byContract.body.items).toEqual([]);
+      }
       expect(
         (await request(app).get("/api/v1/audit-events").set("Cookie", cookie))
           .status,
-      ).toBe(role === "READ_ONLY_OBSERVER" ? 200 : 403);
+      ).toBe(role === "SUPPORT_SPECIALIST" ? 403 : 200);
+      await expectUnavailableOperations(cookie);
       expect(
         (await request(app).get("/api/v1/users").set("Cookie", cookie)).status,
       ).toBe(403);
@@ -339,6 +403,9 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       ).toBe(401);
     },
   );
+  it("keeps audit/lifecycle mutations unavailable even to Administrators", async () => {
+    await expectUnavailableOperations(adminCookie);
+  });
   it("administers roles, disables and resets with session invalidation and safe audit output", async () => {
     const created = await write("post", "/users", adminCookie).send({
       username: "managed",

@@ -3,17 +3,18 @@ import type {
   AuditEvent,
   AuthenticatedUser,
   Customer,
+  CustomerRead,
   CustomerInput,
   Paginated,
   Role,
 } from './contracts';
 export const customers = (search: string, page: number, signal?: AbortSignal) =>
-  apiGet<Paginated<Customer>>('/customers', {
+  apiGet<Paginated<CustomerRead>>('/customers', {
     params: { search: search || undefined, page },
     ...(signal ? { signal } : {}),
   });
 export const customer = (id: string, signal?: AbortSignal) =>
-  apiGet<Customer>(
+  apiGet<CustomerRead>(
     `/customers/${encodeURIComponent(id)}`,
     signal ? { signal } : {},
   );

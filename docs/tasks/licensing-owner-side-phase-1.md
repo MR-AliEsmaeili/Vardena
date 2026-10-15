@@ -3,6 +3,36 @@
 Date: 2026-10-15. Status: implementation submitted for exact-head CI and review;
 not Product Owner acceptance, operational rollout, or permission to merge.
 
+## PR #160 Product Owner correction
+
+Starting PR head fetched and verified:
+`5835bf9fa2b7ff8877c74c8258661a910ad726eb`, on the same session branch/PR.
+The restored workspace matched that exact tree byte-for-byte; the local branch
+pointer/index were aligned to it without changing working files or branches.
+
+- Dev/preview no longer use `host: true` or `allowedHosts: true`. Default binding
+  is loopback; explicit, validated `OWNER_VITE_BIND_HOST` and exact
+  `OWNER_VITE_ALLOWED_HOSTS` enable remote access. Both server hooks enforce the
+  same exact-host middleware, including Vite's implicit IP/HTTPS allowances.
+  Server-only configuration, working API proxy, no production Vite dependency.
+- Issuance Specialist: customer list/detail and audit reads; no customer/user/
+  audit mutations. Observer remains read-only. Support: customer list/detail
+  restricted server-side to id/code/display name/status; no contract, attribution,
+  audit or user data. Administrator unchanged. No wildcard/prefix grants.
+- PDR-17's corrected matrix supersedes initial zero-business-permission policy.
+  Future lifecycle mutations remain unavailable, not fabricated or inferred.
+- Local: changed-file lint/format, two focused role/projection unit tests, six
+  deterministic host-policy tests, diff whitespace. The initial host wiring
+  test exposed a jsdom `import.meta.url` scheme issue; file inspection now uses
+  the frontend package working directory. No suite hung or was expanded.
+  No local full suites, API/integration/PostgreSQL/migration/Docker/build checks.
+- CI: existing applicable jobs retain all gates and execute the full Owner API,
+  UI and host tests plus customer artifact/signing exclusion. Exact corrective
+  head/results are recorded in the PR verification comment/final delivery report.
+
+Everything below is the **initial Phase 1 implementation record**; initial role
+restrictions are historical and superseded by this correction and current PDR-17.
+
 ## Repository-first verification and discrepancies
 
 Fetched `origin/main`: **c63fc2356f6d99ed18059594cda52e3db46d33cd**. Session

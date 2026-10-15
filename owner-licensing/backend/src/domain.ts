@@ -9,11 +9,13 @@ export const roles = [
 export type Role = (typeof roles)[number];
 export type Permission =
   "customers.view" | "customers.write" | "users.manage" | "audit.view";
-// PDR-17: absent proposal is not a grant. Specialist/support business scope is restricted.
+// PDR-17 / PR #160 Owner correction: exact grants; no wildcards or prefix expansion.
 export function permissions(role: string): Permission[] {
   if (role === "SYSTEM_ADMIN")
     return ["customers.view", "customers.write", "users.manage", "audit.view"];
-  if (role === "READ_ONLY_OBSERVER") return ["customers.view", "audit.view"];
+  if (role === "READ_ONLY_OBSERVER" || role === "LICENSE_ISSUANCE")
+    return ["customers.view", "audit.view"];
+  if (role === "SUPPORT_SPECIALIST") return ["customers.view"];
   return [];
 }
 export class ApiError extends Error {
@@ -111,5 +113,26 @@ export function safeUser(u: User) {
     isActive: u.is_active,
     mustChangePassword: u.must_change_password,
     createdAt: u.created_at.toISOString(),
+  };
+}
+
+/** Explicit response allowlist for list AND detail; new DB columns cannot leak. */
+export function customerResponse(c: Record<string, unknown>, actorRole: Role) {
+  if (!permissions(actorRole).includes("customers.view"))
+    fail(403, "Forbidden", "Customer read is not permitted.");
+  const identity = {
+    id: c.id,
+    customerCode: c.customer_code,
+    displayName: c.display_name,
+    status: c.status,
+  };
+  if (actorRole === "SUPPORT_SPECIALIST") return identity;
+  return {
+    ...identity,
+    contractReference: c.contract_reference,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
+    createdBy: c.created_by,
+    updatedBy: c.updated_by,
   };
 }

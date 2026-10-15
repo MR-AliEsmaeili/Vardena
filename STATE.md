@@ -5,8 +5,9 @@
 > application, separate PostgreSQL/SQL chain/auth/RBAC/customer/audit slice under
 > `owner-licensing/`; see [task/evidence](docs/tasks/licensing-owner-side-phase-1.md)
 > and [PDR-17](docs/decisions/product/PDR-17-owner-web-application-phase-1.md).
-> No signer, production key, protocol change or OQ closure. Missing full matrix
-> and OQ-77 option C wording stay explicit/restricted. Exact-head CI required;
+> No signer, production key, protocol change or OQ closure. PR #160 Owner
+> correction confirms specialist customer/audit reads and Support identity/status
+> reads with server-side filtering. OQ-77 option C wording remains unresolved. Exact-head CI required;
 > no acceptance or merge is inferred. Historical state below is retained.
 
 ## 1. Source of Truth

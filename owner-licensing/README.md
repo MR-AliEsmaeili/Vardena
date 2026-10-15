@@ -44,10 +44,29 @@ No production connection string or usable bootstrap password is supplied.
    The browser uses relative `/api/v1`; Vite proxies `/api` to the Owner API.
    No browser code calls localhost. For a remote development preview set
    `OWNER_PUBLIC_ORIGIN` to the exact preview origin and keep the browser base URL
-   relative. Vite binds all interfaces and accepts preview hosts.
+   relative. Vite binds only `127.0.0.1` by default and rejects unapproved hosts.
+   For remote development **and** preview, configure server-only variables in
+   `frontend/.env.local` (or the Vite process environment):
+
+   ```dotenv
+   OWNER_VITE_BIND_HOST=0.0.0.0
+   OWNER_VITE_ALLOWED_HOSTS=5174-your-sandbox.e2b.app,owner-dev.example
+   ```
+
+   Use exact hostnames/IPs, without schemes, ports, leading dots or wildcards.
+   Defaults allow only `localhost`, `127.0.0.1` and `::1`; suffix/prefix matches
+   are not accepted. Non-loopback binding requires an explicit additional host.
+   These `OWNER_VITE_*` values are server-only, not Vite client-exposed variables.
+   The guard applies to dev and preview HTTP requests, even for IP hosts/HTTPS
+   where Vite's built-in checks may be permissive. Restart Vite after changes.
+   Binding to all interfaces is an explicit network-exposure decision: also
+   restrict firewall/ingress access and use only authorized development hosts.
+   Do not use Vite dev/preview for production; deploy the independently built
+   static assets behind the documented production server/ingress. API proxying
+   remains `/api` → the Owner API; never put secrets in any `VITE_*` variable.
 6. Sign in and change the initial password. Until then, ordinary API operations
-   and the UI workspace are blocked. A support/specialist account with unresolved
-   business scope sees an explicit restriction notice, not fabricated records.
+   and the UI workspace are blocked. Issuance Specialists can read customers and
+   audit history; Support can read only customer identity/status fields.
 
 ## Production/deployment
 
@@ -117,8 +136,12 @@ confirmation. They have **no application write endpoints yet**.
   intentionally shares the bucket. Plan ingress rate limits/worker capacity for
   your operators; expired bucket housekeeping is infrastructure data, **not an
   audit retention rule**. No raw IP/username retained in failed-login audit.
-- Permission subset/ambiguities: PDR-17. Unspecified specialist/support operations
-  deny. No dual control. Audit is durable/append-only to application operations,
+- Role policy: PDR-17 / Product Owner correction to PR #160. Issuance Specialist
+  and Observer have customer/audit reads only. Support customer reads serialize
+  only id/code/display name/status, never contract/audit/user data. Administrator
+  retains customer/user administration and audit reads. Unknown or unimplemented
+  operations deny; no wildcard expansion and no dual control. Audit is durable/
+  append-only to application operations,
   **not tamper-proof against database owners**. No general audit deletion API.
 - OQ-77 option C's wording is absent from current sources: no retention duration,
   purge schedule or inferred deletion behavior. OQ-77 remains OPEN.
@@ -153,3 +176,12 @@ logout and login throttle. Frontend steps: Owner lint/format/typecheck, schema
 and observable React flow tests, production build. Existing customer checks and
 published protocol vectors remain untouched. See the
 [Phase 1 task record](../docs/tasks/licensing-owner-side-phase-1.md).
+
+### PR #160 correction verification
+
+Targeted deterministic Vite configuration/middleware tests cover local defaults,
+explicit approved remote hosts, rejection of arbitrary hosts/IPs/lookalikes,
+invalid broad configuration and both server hook registrations. No Vite server
+or production build is needed for these focused tests. CI also exercises API
+reads/projections/forbidden mutations for each role, backend effective permissions
+and observable UI read-only/support rendering. No lifecycle API is introduced.

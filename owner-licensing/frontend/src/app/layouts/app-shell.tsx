@@ -74,6 +74,7 @@ export function AppShell() {
 }
 export function OwnerHome() {
   const permissions = usePermissions();
+  const session = useSession();
   return (
     <section className="space-y-4">
       <h1 className="text-xl font-bold">{o.home}</h1>
@@ -82,6 +83,7 @@ export function OwnerHome() {
           {o.scope}
         </output>
       )}
+      {session.user?.role === 'SUPPORT_SPECIALIST' && <p>{o.supportScope}</p>}
       <LifecyclePage />
     </section>
   );

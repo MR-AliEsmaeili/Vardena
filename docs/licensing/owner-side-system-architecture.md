@@ -19,9 +19,11 @@ Runtime: one small modular Node/Express/pg API and independent React/Vite UI.
 Own numbered SQL/checksum-ledger migrations, not the customer Prisma chain.
 Password hashes/first-login restriction and session revocation commit atomically
 with durable audit. Permissions are checked using the authenticated current
-user/session, never a client actor or hidden button. Exact permitted subset and
-source gaps (absent matrix proposal and OQ-77 option-C wording) are in PDR-17;
-unresolved specialist/support business operations deny and no audit purge exists.
+user/session, never a client actor or hidden button. The Product Owner correction to PR #160 confirms Issuance Specialist customer/
+audit reads and Support customer identity/status reads with a server-side field
+allowlist; see the current PDR-17 matrix. Observer remains read-only and Admin
+retains administrative operations. No audit purge exists; OQ-77 option-C wording
+is still unavailable. Unimplemented lifecycle operations remain unavailable.
 
 Manual activation is an explicit authorized operator confirmation of issued →
 activated, retaining actor, server time, reason and available evidence reference,

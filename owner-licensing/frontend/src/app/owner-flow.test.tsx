@@ -138,17 +138,84 @@ describe('Owner browser vertical slice (mocked API boundary, CI)', () => {
     await userEvent.click(screen.getByRole('button', { name: t.app.retry }));
     expect(await screen.findByText(o.empty)).toBeInTheDocument();
   });
-  it('does not fetch operational data for restricted support and labels unavailable lifecycle work', async () => {
+  it('enables Support customer navigation and shows the explicitly unavailable lifecycle work', async () => {
     vi.mocked(identity.getCurrentUser).mockResolvedValue({
       ...admin,
       role: 'SUPPORT_SPECIALIST',
     });
     vi.mocked(identity.getEffectivePermissions).mockResolvedValue({
-      permissions: [],
+      permissions: ['customers.view'],
     });
     mount('/app');
-    expect(await screen.findByText(o.scope)).toBeInTheDocument();
+    expect(await screen.findByText(o.supportScope)).toBeInTheDocument();
     expect(screen.getAllByText(o.unavailable)).toHaveLength(6);
+    expect(
+      await screen.findByRole('link', { name: o.customers }),
+    ).toHaveAttribute('href', '/app/customers');
+    expect(
+      screen.queryByRole('link', { name: o.audit }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: o.users }),
+    ).not.toBeInTheDocument();
+  });
+  it('renders the Support customer identity/status DTO without contract fields or edit controls', async () => {
+    vi.mocked(identity.getCurrentUser).mockResolvedValue({
+      ...admin,
+      role: 'SUPPORT_SPECIALIST',
+    });
+    vi.mocked(identity.getEffectivePermissions).mockResolvedValue({
+      permissions: ['customers.view'],
+    });
+    vi.mocked(api.customer).mockResolvedValue({
+      id: record.id,
+      customerCode: record.customerCode,
+      displayName: record.displayName,
+      status: record.status,
+    });
+    mount(`/app/customers/${record.id}`);
+    expect(await screen.findByText(record.customerCode)).toBeInTheDocument();
+    expect(screen.getByText(o.supportScope)).toBeInTheDocument();
+    expect(screen.queryByText(o.reference)).not.toBeInTheDocument();
+    expect(screen.queryByText(o.created)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: o.edit }),
+    ).not.toBeInTheDocument();
+  });
+  it.each(['LICENSE_ISSUANCE', 'READ_ONLY_OBSERVER'] as const)(
+    'shows %s read-only customers/audit navigation using effective API permissions',
+    async (role) => {
+      vi.mocked(identity.getCurrentUser).mockResolvedValue({ ...admin, role });
+      vi.mocked(identity.getEffectivePermissions).mockResolvedValue({
+        permissions: ['customers.view', 'audit.view'],
+      });
+      vi.mocked(api.customer).mockResolvedValue({
+        ...record,
+        contractReference: 'VISIBLE-OPERATIONAL-REFERENCE',
+      });
+      mount(`/app/customers/${record.id}`);
+      expect(
+        await screen.findByText('VISIBLE-OPERATIONAL-REFERENCE'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: o.audit })).toHaveAttribute(
+        'href',
+        '/app/audit',
+      );
+      expect(
+        screen.queryByRole('link', { name: o.users }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('link', { name: o.edit }),
+      ).not.toBeInTheDocument();
+      expect(api.createCustomer).not.toHaveBeenCalled();
+    },
+  );
+  it('does not expand wildcard-looking effective permission strings', async () => {
+    vi.mocked(identity.getEffectivePermissions).mockResolvedValue({
+      permissions: ['customers.*', 'users', 'audit'],
+    });
+    mount('/app/customers');
+    expect(await screen.findByText(o.forbidden)).toBeInTheDocument();
     expect(api.customers).not.toHaveBeenCalled();
   });
   it('does not offer mutation controls to an observer viewing customers', async () => {

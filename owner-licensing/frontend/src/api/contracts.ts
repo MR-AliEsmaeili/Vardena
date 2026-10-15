@@ -29,17 +29,21 @@ export interface Paginated<T> {
   pageSize: number;
   total?: number;
 }
-export interface Customer {
+/** The only customer fields available to Support, on both list and detail. */
+export interface CustomerIdentity {
   id: string;
   customerCode: string;
   displayName: string;
   status: 'ACTIVE' | 'INACTIVE';
+}
+export interface Customer extends CustomerIdentity {
   contractReference: string;
   createdAt: string;
   updatedAt: string;
   createdBy: string;
   updatedBy: string;
 }
+export type CustomerRead = CustomerIdentity | Customer;
 export interface CustomerInput {
   customerCode: string;
   displayName: string;

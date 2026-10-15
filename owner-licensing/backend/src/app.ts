@@ -11,6 +11,7 @@ import { Database, audit } from "./db.js";
 import {
   ApiError,
   customerCode,
+  customerResponse,
   digest,
   fail,
   id,
@@ -404,23 +405,12 @@ export async function createApp(db: Database, cfg: Config) {
     },
     true,
   );
-  const safeCustomer = (c: Record<string, unknown>) => ({
-    id: c.id,
-    customerCode: c.customer_code,
-    displayName: c.display_name,
-    status: c.status,
-    contractReference: c.contract_reference,
-    createdAt: c.created_at,
-    updatedAt: c.updated_at,
-    createdBy: c.created_by,
-    updatedBy: c.updated_by,
-  });
   route(
     "get",
     "/customers",
     "customers.view",
     true,
-    async (tx, _a, req, res) => {
+    async (tx, a, req, res) => {
       const p = page(req.query.page);
       const search =
         req.query.search === undefined
@@ -438,7 +428,7 @@ export async function createApp(db: Database, cfg: Config) {
         [pattern, (p - 1) * 50],
       );
       res.locals.body = {
-        items: rows.rows.map(safeCustomer),
+        items: rows.rows.map((c) => customerResponse(c, a.user.role)),
         total: Number(total.rows[0]!.count),
         page: p,
         pageSize: 50,
@@ -450,14 +440,14 @@ export async function createApp(db: Database, cfg: Config) {
     "/customers/:id",
     "customers.view",
     true,
-    async (tx, _a, req, res) => {
+    async (tx, a, req, res) => {
       const row = (
         await tx.query("SELECT * FROM owner.customers WHERE id=$1", [
           id(req.params.id),
         ])
       ).rows[0];
       if (!row) fail(404, "EntityNotFound", "Customer not found.");
-      res.locals.body = safeCustomer(row);
+      res.locals.body = customerResponse(row, a.user.role);
     },
   );
   route(
@@ -500,7 +490,7 @@ export async function createApp(db: Database, cfg: Config) {
         },
       });
       res.locals.status = 201;
-      res.locals.body = safeCustomer(c);
+      res.locals.body = customerResponse(c, a.user.role);
     },
   );
   route(
@@ -558,7 +548,7 @@ export async function createApp(db: Database, cfg: Config) {
           contractReference: reference,
         },
       });
-      res.locals.body = safeCustomer(updated);
+      res.locals.body = customerResponse(updated, a.user.role);
     },
   );
   route(

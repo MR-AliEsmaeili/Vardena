@@ -16,31 +16,46 @@ keys, customer Owner mode, microservices or automatic callbacks. CRM/accounting/
 billing/ticketing are excluded. Public-source hygiene applies to every artifact.
 No mandatory second-person approval or pending-approval workflow.
 
-## Permission source reconciliation (before implementation corrections)
+## Approved role-access policy — PR #160 Product Owner correction
 
-The instruction approves a proposed operation-level matrix, but the current tree's
-PDR-11 §13, Phase 0 D-6 and OQ-75 contain **categories only**, explicitly leaving
-operation-level permissions open. The inspected merged design PR #156 contains no
-such proposal. We cannot reconstruct an absent proposal as an approved grant.
-The following is the **conservative implemented subset**, derived from the explicit
-minimums in this instruction, not a claim to recover the missing full matrix:
+The initial implementation restricted specialist/support business permissions
+because the referenced proposal was absent from the earlier tree. Product Owner
+review of PR #160 explicitly clarified the required intent. **This section
+supersedes that initial restriction**, without inventing unimplemented lifecycle
+operations or imposing a second approver.
 
 | Operation | System Administrator | Issuance Specialist | Observer | Support |
 | --- | --- | --- | --- | --- |
 | Login, own identity, own password change, logout | yes | yes | yes | yes |
-| Customer list/detail | yes | restricted pending matrix evidence | yes | restricted pending limited-support scope |
-| Customer create/edit name/status/reference | yes | restricted pending matrix evidence | no | no |
+| Customer list/detail | full current DTO | full current DTO | full current DTO | identity/status projection only |
+| Customer create/edit name/status/reference | yes | no | no | no |
 | User list/create, role assignment, enable/disable/reset | yes | no | no | no |
-| Audit view | yes | restricted pending matrix evidence | yes | no |
-| Audit edit/delete/purge | no | no | no | no |
-| Settings mutations | no endpoint | no | no | no |
+| Audit view | yes | yes | yes | no |
+| Audit edit/delete/purge | no endpoint | no endpoint | no endpoint | no endpoint |
+| Settings mutations | no endpoint | no endpoint | no endpoint | no endpoint |
 | License issuance/activation/deactivation/replacement/revocation/recovery | unavailable | unavailable | unavailable | unavailable |
 
-Unknown roles/operations deny. Pending initial password change permits only own
-identity, password change and logout. Restricted roles retain a usable shell with
-an explicit scope notice, not a misleading empty customer list. **OQ-75 remains
-OPEN** for the missing matrix, especially specialist customer writes and limited
-support fields/actions. No new business permission is granted by inference.
+Exact backend grants:
+- Administrator: `customers.view`, `customers.write`, `users.manage`, `audit.view`.
+- Issuance Specialist and Observer: `customers.view`, `audit.view`.
+- Support: `customers.view`, with **server-enforced field filtering**.
+
+Both customer list items and detail use the same explicit response allowlist.
+Support receives **only** `id`, `customerCode`, `displayName`, `status`. No
+contract reference, user attribution, timestamps, arbitrary metadata or future
+columns are serialized for Support. Search uses only code/name, not contract
+fields. The full current DTO for other authorized readers additionally contains
+contractReference, createdAt, updatedAt, createdBy and updatedBy. UI types/rendering
+handle the reduced DTO and use backend effective permissions; hiding controls is
+not authorization. Direct API requests enforce the same permissions/projection.
+
+Unknown roles and operations deny. There is no wildcard/prefix expansion.
+Pending initial-password change permits only own identity/change/logout. Issuance
+Specialist licensing mutations remain deferred **because those workflows do not
+exist**, not because customer/audit reads lack an approved policy. Support has no
+licensing mutation authority; adding such authority needs a separate decision.
+OQ-75 remains OPEN for broader future operation/acceptance tracking, not as a
+reason to deny the now-approved read access. No unrelated OQ is closed.
 
 ## Audit and OQ-77
 

@@ -2,6 +2,7 @@ import { fileURLToPath, URL } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv } from 'vite';
+import { devHostPolicy, strictHostGuard } from './dev-host-policy';
 
 /**
  * Vite configuration (ADR-0002: React + TypeScript + Vite + Tailwind).
@@ -18,20 +19,18 @@ export default defineConfig(({ mode }) => {
   const apiProxyTarget =
     env['VITE_DEV_API_PROXY_TARGET'] ?? 'http://127.0.0.1:3001';
 
+  const hosts = devHostPolicy(loadEnv(mode, process.cwd(), 'OWNER_VITE_'));
+
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [strictHostGuard(hosts.allowedHosts), react(), tailwindcss()],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
       },
     },
     server: {
-      // Bind on all interfaces so the dev server is reachable from a remote
-      // browser / container preview. Dev server only — the production
-      // artifact is a static bundle served by a real web server.
-      host: true,
+      ...hosts,
       port: 5174,
-      allowedHosts: true,
       proxy: {
         '/api': {
           target: apiProxyTarget,
@@ -40,9 +39,8 @@ export default defineConfig(({ mode }) => {
       },
     },
     preview: {
-      host: true,
+      ...hosts,
       port: 4174,
-      allowedHosts: true,
     },
     build: {
       outDir: 'dist',

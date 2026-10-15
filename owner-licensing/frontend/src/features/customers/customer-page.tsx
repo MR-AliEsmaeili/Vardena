@@ -35,7 +35,12 @@ export function CustomerPage({ mode }: { mode: 'new' | 'detail' | 'edit' }) {
       <ApiErrorAlert error={query.error} onRetry={() => void query.refetch()} />
     );
   const c = query.data;
-  if (mode === 'edit') return <CustomerForm customer={c} />;
+  if (mode === 'edit')
+    return 'contractReference' in c ? (
+      <CustomerForm customer={c} />
+    ) : (
+      <p>{o.forbidden}</p>
+    );
   return (
     <section className="space-y-4">
       <h1 className="text-xl font-bold">{c.displayName}</h1>
@@ -47,9 +52,13 @@ export function CustomerPage({ mode }: { mode: 'new' | 'detail' | 'edit' }) {
           [o.id, c.id],
           [o.code, c.customerCode],
           [o.status, c.status === 'ACTIVE' ? o.active : o.inactive],
-          [o.reference, c.contractReference],
-          [o.created, c.createdAt],
-          [o.updated, c.updatedAt],
+          ...('contractReference' in c
+            ? [
+                [o.reference, c.contractReference],
+                [o.created, c.createdAt],
+                [o.updated, c.updatedAt],
+              ]
+            : []),
         ].map(([label, value]) => (
           <div key={label}>
             <dt className="text-sm text-slate-500">{label}</dt>
@@ -60,6 +69,7 @@ export function CustomerPage({ mode }: { mode: 'new' | 'detail' | 'edit' }) {
         ))}
       </dl>
       <p className="text-sm text-slate-500">{o.immutable}</p>
+      {!('contractReference' in c) && <p>{o.supportScope}</p>}
       <div className="flex gap-3">
         {permissions.has('customers.write') && (
           <Button asChild>
