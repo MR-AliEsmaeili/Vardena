@@ -32,6 +32,7 @@ import { APP_CONFIG, loadAppConfig } from '../src/kernel/config/app-config.js';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
 import { InstallationsRepository } from '../src/modules/licensing/data/installations.repository.js';
 import { LicensesRepository } from '../src/modules/licensing/data/licenses.repository.js';
+import { ClientDevicesRepository } from '../src/modules/licensing/data/client-devices.repository.js';
 import { LICENSING_PERMISSIONS } from '../src/modules/licensing/domain/licensing-permissions.js';
 import { OrganizationMembershipsRepository } from '../src/modules/organization/data/organization-memberships.repository.js';
 import { OrganizationsRepository } from '../src/modules/organization/data/organizations.repository.js';
@@ -112,6 +113,10 @@ describe('License gap recovery and reduction resolution (e2e)', () => {
           .useValue(licensing.installations)
           .overrideProvider(LicensesRepository)
           .useValue(licensing.licenses)
+          // This in-memory fixture has no device rows; provide its exact usage
+          // count rather than letting the production adapter touch Prisma.
+          .overrideProvider(ClientDevicesRepository)
+          .useValue({ countActiveDevices: async () => 0 })
           .overrideProvider(UsersRepository)
           .useValue(stores.users)
           .overrideProvider(SessionsRepository)

@@ -2308,7 +2308,7 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   remains blocked by the schema-engine download from `binaries.prisma.sh` and
   was not retried. Heavy/full suites, E2E, live PostgreSQL, migration rehearsals
   and Docker were not run locally.
-- **Exact-head CI diagnosis/fix pending verification:** initial run
+- **Exact-head CI diagnosis and follow-up:** initial run
   [38671941305](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38671941305)
   on `8b9de9550b0be612e00945dad7695e3ab2cead5b` failed at Prisma validate and
   Prisma generate. The supplied Prisma output identified P1012 for the
@@ -2316,10 +2316,19 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   relations: the defining-side composite unique fields existed, but in reverse
   order from the relation scalar fields. Added matching ordered unique
   attributes and corresponding constraints to the additive lifecycle migration.
-  This is a schema-integrity correction, not a policy change. Prisma
-  validate/generate, generated-client drift and the dedicated serial live
-  PostgreSQL suite remain pending CI on the new exact head; the initial live
-  suite was skipped after validation failed.
+  This is a schema-integrity correction, not a policy change. Follow-up run
+  [38695826741](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38695826741)
+  on `9fb3b9721f9b38646b1508c531b8f7b5934eed0b` confirmed Prisma validate,
+  Prisma generate, generated-client drift, docs, frontend and classify passed;
+  backend and `ci-gate` failed at E2E/live tests. The available annotations
+  showed eight license-import E2E cases reaching the real device repository
+  despite their Prisma stub, and the OQ-83 race test was recreating challenges
+  already created by the test. Added an explicit zero-device repository double
+  to the in-memory license import/recovery/activation E2E fixtures and changed
+  the PostgreSQL race to activate its already-issued challenges. The live test
+  now reports settlement reasons on failure. A new exact-head run is still
+  required; this entry does not claim the remaining E2E/live failures are
+  resolved.
 - **Review/acceptance guardrails:** license-import rejection audit remains
   best-effort as previously designed. OQ-83 implementation is submitted for
   review, not accepted or merged. No main push, merge, auto-merge or repository

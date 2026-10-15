@@ -5,6 +5,7 @@ import { APP_CONFIG, loadAppConfig } from '../src/kernel/config/app-config.js';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
 import { InstallationsRepository } from '../src/modules/licensing/data/installations.repository.js';
 import { LicensesRepository } from '../src/modules/licensing/data/licenses.repository.js';
+import { ClientDevicesRepository } from '../src/modules/licensing/data/client-devices.repository.js';
 import { LICENSING_PERMISSIONS } from '../src/modules/licensing/domain/licensing-permissions.js';
 import { UsersService } from '../src/modules/users/application/users.service.js';
 import { UsersRepository } from '../src/modules/users/data/users.repository.js';
@@ -85,6 +86,10 @@ describe('License document import (e2e)', () => {
           .useValue(licensing.installations)
           .overrideProvider(LicensesRepository)
           .useValue(licensing.licenses)
+          // This suite seeds no device records; keep the OQ-83 usage count
+          // explicit instead of letting the production repository touch Prisma.
+          .overrideProvider(ClientDevicesRepository)
+          .useValue({ countActiveDevices: async () => 0 })
           .overrideProvider(UsersRepository)
           .useValue(stores.users)
           .overrideProvider(SessionsRepository)

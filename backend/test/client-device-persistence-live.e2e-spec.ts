@@ -13,6 +13,7 @@ import {
   type ClientDeviceRow,
   type CreateEnrollmentChallengeInput,
   type CreateReplacementChallengeInput,
+  type DeviceEnrollmentChallengeRow,
 } from '../src/modules/licensing/data/client-devices.repository.js';
 import {
   canonicalizeDeviceReplacementResponse,
@@ -178,13 +179,10 @@ describe.skipIf(DATABASE_URL === undefined)(
       };
     }
 
-    async function activate(
-      input: CreateEnrollmentChallengeInput,
+    async function activateChallenge(
+      challenge: DeviceEnrollmentChallengeRow,
       key: ReturnType<typeof deviceKeyPair>,
     ): Promise<ClientDeviceRow> {
-      const challenge = await app
-        .get(ClientDevicesRepository)
-        .createEnrollmentChallenge(input);
       const signature = signText(challenge.canonicalPayload, key.privateKey);
       return app.get(ClientDevicesRepository).activateEnrollment({
         installationId: ids.installationId,
@@ -194,6 +192,16 @@ describe.skipIf(DATABASE_URL === undefined)(
         actorId: null,
         now: NOW,
       });
+    }
+
+    async function activate(
+      input: CreateEnrollmentChallengeInput,
+      key: ReturnType<typeof deviceKeyPair>,
+    ): Promise<ClientDeviceRow> {
+      const challenge = await app
+        .get(ClientDevicesRepository)
+        .createEnrollmentChallenge(input);
+      return activateChallenge(challenge, key);
     }
 
     async function responseFor(params: {
@@ -366,7 +374,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         enrollmentInput(firstKey),
         enrollmentInput(secondKey),
       ]);
-      await Promise.all([
+      const [firstChallenge, secondChallenge] = await Promise.all([
         devices.createEnrollmentChallenge(firstInput),
         devices.createEnrollmentChallenge(secondInput),
       ]);
@@ -374,8 +382,8 @@ describe.skipIf(DATABASE_URL === undefined)(
       // Two one-use challenges race for one signed slot. The shared PostgreSQL
       // installation/device lock lets exactly one proof consume quota.
       const attempts = await Promise.allSettled([
-        activate(firstInput, firstKey),
-        activate(secondInput, secondKey),
+        activateChallenge(firstChallenge, firstKey),
+        activateChallenge(secondChallenge, secondKey),
       ]);
       const activated = attempts.filter(
         (result): result is PromiseFulfilledResult<ClientDeviceRow> =>
@@ -385,7 +393,19 @@ describe.skipIf(DATABASE_URL === undefined)(
         (result): result is PromiseRejectedResult =>
           result.status === 'rejected',
       );
-      expect(activated).toHaveLength(1);
+      const settlementSummary = attempts.map((result) =>
+        result.status === 'fulfilled'
+          ? `activated:${result.value.id}`
+          : result.reason instanceof DeviceLifecycleError
+            ? `${result.reason.reason}: ${result.reason.message}`
+            : result.reason instanceof Error
+              ? `${result.reason.name}: ${result.reason.message}`
+              : String(result.reason),
+      );
+      expect(
+        activated,
+        `Concurrent enrollment settlements: ${settlementSummary.join('; ')}`,
+      ).toHaveLength(1);
       expect(rejected).toHaveLength(1);
       expect(rejected[0]?.reason).toBeInstanceOf(DeviceLifecycleError);
       expect(rejected[0]?.reason).toMatchObject({
