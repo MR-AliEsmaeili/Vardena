@@ -2400,5 +2400,12 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   from scalar` in `snapshotPreDeviceState`: PostgreSQL resolved the snapshot
   alias `source` as the scalar `source` column on version/audit rows instead of
   the composite table row. The alias was made unambiguous as `row_source`; no
-  fixture, migration, assertion, or product behavior changed. A later
-  exact-head run is the only valid verification.
+  fixture, migration, assertion, or product behavior changed. Run
+  [38702844251](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38702844251)
+  on `b40323a31e4d192a360e6f62363388ec47983d34` passed the migration and
+  preservation phases, then exposed a harness representation mismatch in the
+  enum-schema assertion: node-postgres returned the schema-qualified custom
+  enum array as PostgreSQL array text. The introspection now aggregates labels
+  as JSON so the driver yields the asserted JavaScript arrays; no expected enum
+  value, migration, fixture, or product behavior changed. A later exact-head
+  run is the only valid verification.

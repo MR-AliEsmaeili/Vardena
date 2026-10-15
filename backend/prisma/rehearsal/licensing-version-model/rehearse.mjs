@@ -870,7 +870,7 @@ async function assertClientDeviceMigration(client, before) {
   }
 
   const enums = await client.query(
-    `SELECT t.typname AS "name", array_agg(e.enumlabel ORDER BY e.enumsortorder) AS "labels"
+    `SELECT t.typname AS "name", json_agg(e.enumlabel ORDER BY e.enumsortorder) AS "labels"
        FROM pg_type AS t
        JOIN pg_namespace AS n ON n.oid = t.typnamespace
        JOIN pg_enum AS e ON e.enumtypid = t.oid
