@@ -4,6 +4,35 @@ See [the independent Owner README](../README.md). The browser uses a relative
 same-origin API URL and receives only safe DTOs. It stores no session token,
 password, private key or business record in localStorage/sessionStorage.
 
+## Session and credential failures
+
+`POST /api/v1/auth/change-password` answers 401 `Unauthorized` for **two**
+different facts: the session has ended, or the submitted current password was
+rejected ("Invalid current password."). The transport layer therefore classifies
+that route as an _expected_ 401 (`src/api/client.ts`,
+`expectedUnauthorizedPaths`) instead of an ended session, and the page asks the
+session which fact applies (`SessionProvider.verifySessionAlive`, which re-reads
+`GET /auth/me`):
+
+- the probe answers with the current user → the attempt is reported as a rejected
+  current password (`t.auth.currentPasswordInvalid`) and the operator stays on the
+  form, with the field marked invalid;
+- the probe answers 401 → the session really ended: the local session and every
+  cached server value are cleared, and the operator is sent to `/login` with the
+  expiry notice;
+- the probe fails otherwise (network, 5xx) → neither cause is stated
+  (`t.errors.unauthorized`) and nothing is cleared, because a transport failure
+  proves nothing.
+
+A 401 from any session-gated request (`/customers`, `/users`,
+`/operational-records`, `/audit-events`, `/permissions/effective`) still means an
+ended session and still clears the cached values. No status code is ever reported
+as "your session expired" without that check, and the server remains the only
+authority on session validity.
+
+Tests: `src/api/client.test.ts` (pure: which requests are expected 401s) and
+`src/features/auth/change-password-page.test.tsx` (flow: the three outcomes).
+
 ## Audit explorer
 
 The audit page (`/app/audit`) is available only with `audit.view`. Without it the

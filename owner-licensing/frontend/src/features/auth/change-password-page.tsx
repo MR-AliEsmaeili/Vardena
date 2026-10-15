@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type UseFormSetError } from 'react-hook-form';
+import { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { normalizeApiError } from '@/api/errors';
 import { t } from '@/lib/i18n';
@@ -24,6 +25,17 @@ interface ValidationIssueLike {
   field?: unknown;
   code?: unknown;
 }
+
+/**
+ * Why the last attempt failed, once the page could verify it.
+ *
+ * `POST /auth/change-password` answers 401 `Unauthorized` both when the session
+ * has ended and when the submitted current password is rejected, so the page
+ * never guesses: it asks the session (`verifySessionAlive`) and then reports
+ * `'credential'` (the session is alive and rejected that password) or
+ * `'unverified'` (the probe could not answer, so no cause is claimed).
+ */
+type RejectedAttempt = 'credential' | 'unverified' | null;
 
 function mapValidationIssueMessage(
   field: 'currentPassword' | 'newPassword',
@@ -52,7 +64,9 @@ function applyServerValidationIssues(
     apiError.code !== 'ValidationFailed' ||
     !Array.isArray(apiError.details)
   ) {
-    return apiError.isUnauthorized ? t.auth.sessionExpired : undefined;
+    // A 401 is not stated as an ended session: the page verifies the session
+    // first (`RejectedAttempt`) and only then names the cause.
+    return apiError.isUnauthorized ? t.errors.unauthorized : undefined;
   }
 
   let firstDescription: string | undefined;
@@ -75,7 +89,9 @@ function resolveChangePasswordErrorDescription(
 ): string | undefined {
   const apiError = normalizeApiError(error);
   if (apiError.isUnauthorized) {
-    return t.auth.sessionExpired;
+    // Never claim expiry for this status: the same 401 answers for a rejected
+    // current password, and `RejectedAttempt` supplies the verified copy.
+    return t.errors.unauthorized;
   }
   if (
     apiError.code !== 'ValidationFailed' ||
@@ -106,6 +122,7 @@ export function ChangePasswordPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const session = useSession();
+  const [rejected, setRejected] = useState<RejectedAttempt>(null);
   const state = location.state as LocationState | null;
   const returnTo = safeReturnPath(state?.from);
 
@@ -144,6 +161,7 @@ export function ChangePasswordPage() {
 
   const onSubmit = form.handleSubmit(async (values) => {
     session.resetChangePasswordError();
+    setRejected(null);
     try {
       await session.changePassword({
         currentPassword: values.currentPassword,
@@ -154,6 +172,22 @@ export function ChangePasswordPage() {
       form.setValue('currentPassword', '');
       form.setValue('newPassword', '');
       form.setValue('confirmPassword', '');
+      if (normalizeApiError(caught).isUnauthorized) {
+        // Ambiguous 401: an ended session or a rejected current password. Ask
+        // the session, and report only what the answer supports. A confirmed
+        // end runs the local cleanup, so this page is replaced by `/login` with
+        // its (true) expiry notice.
+        setRejected('unverified');
+        const probe = await session.verifySessionAlive();
+        if (probe === 'alive') {
+          setRejected('credential');
+          form.setError('currentPassword', {
+            type: 'server',
+            message: t.auth.currentPasswordInvalid,
+          });
+        }
+        return;
+      }
       applyServerValidationIssues(caught, form.setError);
     }
   });
@@ -165,9 +199,13 @@ export function ChangePasswordPage() {
 
   const changePasswordError = session.changePasswordError;
   const errorDescription =
-    changePasswordError !== null && changePasswordError !== undefined
-      ? resolveChangePasswordErrorDescription(changePasswordError)
-      : undefined;
+    rejected === 'credential'
+      ? t.auth.currentPasswordInvalid
+      : rejected === 'unverified'
+        ? t.errors.unauthorized
+        : changePasswordError !== null && changePasswordError !== undefined
+          ? resolveChangePasswordErrorDescription(changePasswordError)
+          : undefined;
 
   const currentPasswordError = form.formState.errors.currentPassword?.message;
   const newPasswordError = form.formState.errors.newPassword?.message;
