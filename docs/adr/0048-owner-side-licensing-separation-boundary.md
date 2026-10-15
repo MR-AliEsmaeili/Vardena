@@ -39,11 +39,19 @@ licensing/recovery/audit/history views. Applying it must preserve independent
 builds and reuse the centralized foundation, not add per-screen conversion or
 cross-boundary application imports. No storage or signed-byte contract changes.
 
-## 2026-10-16 pure date-source compatibility addendum
+## 2026-10-16 exact date-source compatibility addendum
 
 Explicit Product Owner approval permits Owner to regenerate ignored,
-byte-identical build inputs from the canonical frontend's allowlisted pure date
-helpers. This is source projection, not an import of customer application code,
+byte-identical build inputs from the canonical frontend's exact date-source
+allowlist. Final corrective-review approval is specifically for `calendar.ts`,
+`dayjs.ts`, `numerals.ts`, `business-date.ts`, `time-zone.ts`, `instant.ts`,
+`instant-range.ts`, including existing bounded Day.js UTC/timezone initialization.
+The initializer is not pure; the prior general "pure helpers" description was
+insufficient approval for that seven-file boundary. No custom declaration is
+copied; Owner uses declarations from its independently installed locked packages.
+No additional source file, initialization, runtime dependency or application import
+is authorized by this approval. This is source projection, not an import of
+customer application code,
 a runtime dependency or a separately maintained calendar implementation. The
 staging command fails on missing/unapproved dependencies; no stale fallback.
 Owner installs its own locked dependencies and emits independent artifacts.

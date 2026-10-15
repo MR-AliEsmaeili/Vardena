@@ -61,6 +61,10 @@ remain available without commercial access or Owner/customer boundary bypass.
 This resolves the product-level restore/login conflict; authentication/session/
 signed recovery protocol and implementation remain **OQ-78** follow-ups. It is
 not an in-product Restore grant to normal users or an implemented emergency path.
+PQ-3 is decided at product level; G-9 no longer defers this policy pending PQ-3.
+Ordinary Restore stays on the already-approved authorized IT/server-administrator
+Runbook path. OQ-53 topology/authority/runbook/drill questions and U-2/OQ-78/OQ-82
+identity-key, encryption, authentication and recovery-design gates are preserved.
 The installation identity key that PDR-11 §6.1–§6.5 requires in the
 encrypted full backup is **designed but not implemented** (blocked by the
 backup-encryption design, PDR-11 U-2, and by the replacement workflow, OQ-82).

@@ -3,8 +3,10 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 // PO-approved build-time projection, not an independent implementation. Only
-// these framework-free source files can enter Owner. No settings/React/API/app
+// this exact framework-free seven-file boundary can enter Owner. No settings/React/API/app
 // imports, runtime customer dependency, rewriting, or stale fallback is allowed.
+// Explicit final-review PO approval includes dayjs.ts plugin initialization;
+// declarations come from Owner-installed locked dependencies, not source copies.
 export const files = [
   'calendar.ts',
   'dayjs.ts',
@@ -14,12 +16,28 @@ export const files = [
   'instant.ts',
   'instant-range.ts',
 ];
-const externalImports = new Set([
-  'jalaali-js',
-  'dayjs',
-  'dayjs/plugin/timezone',
-  'dayjs/plugin/utc',
-]);
+// Freeze the reviewed per-file graph, not just a union of allowed packages.
+// Changes to these edges (including removed imports) need boundary review.
+const approvedImports = {
+  'calendar.ts': ['jalaali-js'],
+  'dayjs.ts': ['dayjs', 'dayjs/plugin/timezone', 'dayjs/plugin/utc'],
+  'numerals.ts': [],
+  'business-date.ts': ['./calendar', './dayjs', './numerals'],
+  'time-zone.ts': [],
+  'instant.ts': [
+    './numerals',
+    './dayjs',
+    './calendar',
+    './business-date',
+    './time-zone',
+  ],
+  'instant-range.ts': [
+    './business-date',
+    './dayjs',
+    './instant',
+    './time-zone',
+  ],
+};
 export async function stageDateFoundation(
   source = new URL('../../../frontend/src/lib/datetime/', import.meta.url),
   target = new URL('../src/lib/.date-foundation/', import.meta.url),
@@ -35,15 +53,14 @@ export async function stageDateFoundation(
       );
       if (tree.parseDiagnostics.length)
         throw new Error(`Invalid date foundation: ${file}`);
+      const seen = new Set();
       function check(node) {
         if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
           const specifier = node.moduleSpecifier;
           if (specifier) {
             const name = ts.isStringLiteral(specifier) ? specifier.text : '';
-            if (
-              !externalImports.has(name) &&
-              !(name.startsWith('./') && files.includes(`${name.slice(2)}.ts`))
-            ) {
+            seen.add(name);
+            if (!approvedImports[file].includes(name)) {
               throw new Error(
                 `Unapproved date-foundation dependency in ${file}: ${name}`,
               );
@@ -66,6 +83,11 @@ export async function stageDateFoundation(
         ts.forEachChild(node, check);
       }
       check(tree);
+      if (seen.size !== approvedImports[file].length) {
+        throw new Error(
+          `Unapproved date-foundation dependency removal in ${file}`,
+        );
+      }
       return [file, data];
     }),
   );

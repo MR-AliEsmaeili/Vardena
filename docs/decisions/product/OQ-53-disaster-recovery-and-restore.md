@@ -7,6 +7,14 @@
 
 > **Cross-reference (2026-10-11, status unchanged).** [PDR-11](./PDR-11-vardena-licensing-product-requirements.md) §5 (server replacement workflow) and §6 (identity key in backup, no escrow, loss leads to replacement) record Owner-approved product rules that touch the "license re-activation mechanics" sub-question below. They do **not** close it: DR topologies, the runbook, verification gates, and drill cadence remain OPEN here. PDR-11 §10 (full revocation) may conflict with "restore must never be blocked by license state" (PDR-11 §15, PQ-3; §19, CF-10). This record stays **Open**.
 
+> **Current clarification (2026-10-16):** the dated cross-reference above is
+> historical. PDR-11 §10.3/§17.2 G-9 now resolves PQ-3's product access policy:
+> independently authenticated limited administrator recovery while ordinary
+> Restore remains the authorized IT/server-administrator Runbook path, never
+> normal ERP-user in-product Restore. OQ-53 remains OPEN for its listed residual
+> operational questions; identity-key/encryption/recovery design remains gated.
+> This annotation implements nothing and grants no additional permissions.
+
 ## Owner decision (2026-10-05) — restore authority & runbook requirement
 
 - **Normal ERP users must never have an in-product Restore capability.**

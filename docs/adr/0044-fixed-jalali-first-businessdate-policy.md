@@ -21,7 +21,12 @@ The Product Owner requires Persian digits for ordinary Iranian date/time
 presentation. Canonical/API/protocol values stay ASCII; input still accepts
 Latin/Persian/Arabic-Indic digits. Broader localization remains OQ-02. The
 approved independent Owner compatibility path projects an explicit allowlist of
-byte-identical pure frontend date helpers as regenerated ignored build inputs:
+byte-identical framework-free frontend date sources as regenerated ignored build inputs.
+Final corrective-review PO approval explicitly names the seven files and the
+bounded Day.js initialization (not pure); no custom declaration is copied and
+Owner resolves types from its independently installed locked packages. See
+[ADR-0048's exact boundary](0048-owner-side-licensing-separation-boundary.md).
+Requirements remain:
 fail closed on missing/unapproved dependencies, no stale fallback, runtime
 coupling, application imports or independently maintained implementation.
 Owner owns its form context, dependencies and artifact. Root Docker context is

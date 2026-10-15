@@ -30,10 +30,66 @@ This file is evidence/inventory, not a competing policy or ADR.
 
 **New explicit product approvals (2026-10-16):** Persian date/time digits for
 ordinary Iranian UI; canonical/API/protocol ASCII unchanged, accepted input
-forms unchanged, OQ-02 narrowed only. Owner may regenerate exact canonical pure
-helper sources as ignored build inputs, with allowlist/fail-closed staging and
+forms unchanged, OQ-02 narrowed only. Owner may regenerate exact canonical framework-free
+date sources as ignored build inputs, with allowlist/fail-closed staging and
 no second implementation or customer runtime dependency. Root-context Docker
 allowlists only Owner UI and those helpers.
+
+### Final corrective-review source-boundary approval and graph
+
+Reviewed actual head `a2af0abd7d5bd0d91d3082ccec842f06de04d496`, base/main
+`636c19b0a137dc2b602fb1be1861fafaeecb7332`, complete diff and successful
+exact-head run `38818709625` before corrections. That run does not cover the
+corrections below. No inline reviews/comments or merge/auto-merge were present.
+
+The earlier "pure helpers" approval description did not suffice for adding
+`instant-range.ts` or Day.js plugin side effects. Work paused; the Product Owner
+then **explicitly approved exactly seven files** and existing bounded UTC/timezone
+initialization, with no custom declaration copy, no additional runtime dependency
+or application imports. This approval does not retroactively label `dayjs.ts`
+pure. The file/import boundary is now pinned per file, not only a union of packages:
+
+| Canonical file | Complete source import graph |
+|---|---|
+| `calendar.ts` | `jalaali-js` |
+| `dayjs.ts` | `dayjs`, `dayjs/plugin/utc`, `dayjs/plugin/timezone`; existing `extend(utc)` / `extend(timezone)` registration |
+| `numerals.ts` | none |
+| `business-date.ts` | `./calendar`, `./dayjs`, `./numerals` |
+| `time-zone.ts` | none (IANA validation uses built-in Intl) |
+| `instant.ts` | `./numerals`, `./dayjs`, `./calendar`, `./business-date`, `./time-zone` |
+| `instant-range.ts` | `./business-date`, `./dayjs`, `./instant`, `./time-zone` |
+
+Owner's facade imports only its ignored staged copies. No settings/React/API/app
+module enters that graph. There is **no repository-local date declaration file**
+to copy: `jalaali-js@2.0.1` supplies `dist/index.d.ts`; `dayjs@1.11.23` supplies
+`index.d.ts` and plugin declarations. Owner resolves these from its own installed,
+locked dependencies, not customer `node_modules`. Staging copies exactly the
+seven canonical source bytes. Regression checks pin the staging/COPY/context
+allowlists, generated output contents, dependency graph and package type sources.
+
+### Final corrective-review midnight and decision consistency findings
+
+- A date-only check accepted Tehran `2022-03-22` / Santiago `2019-09-08`
+  midnight normalized to 01:00 **on the same date**. The corrected guard requires
+  exact `YYYY-MM-DD HH:mm:ss.SSS = requested-day 00:00:00.000`. Each start/end
+  remains independently resolved; helper/filter/UI regressions reject the entire
+  invalid query, never send it without a bound. Existing full-day skip, DST,
+  invalid/overflow and non-Tehran-process-TZ cases remain.
+- PDR-11 §5.5 and PDR-17 now distinguish manual observation/authorization from
+  customer-server revocation. Whether deliberate pre-completion revocation of a
+  reachable old server is permitted remains the exact OQ-82/U-9 PO question; no
+  new exception, permission or transition is chosen.
+- PDR-11 §17.2 G-9 no longer defers Restore policy until PQ-3: restricted recovery
+  is product-decided, ordinary Restore stays on the authorized administrator
+  Runbook path, and OQ-53/identity/encryption/recovery design gates remain open.
+- Existing signed half-open validity and date presentation do **not** determine
+  the exact 14-day Grace end Instant. OQ-45 now records explicit intraday/DST
+  alternatives and blocks deadline enforcement pending PO resolution; its distinct
+  termination question remains OPEN. These are documented questions, not new
+  product choices or runtime enforcement.
+- PDR-11 §4.4/§20.4 preserves no automatic invalidation solely for key compromise,
+  but no trust in new compromised-key artifacts; containment/provenance/trust
+  rollout/offline recovery/custody remain design-gated.
 
 **Existing accepted architecture:** branded Gregorian `BusinessDate`/PostgreSQL
 `date`; UTC `Instant`/`timestamptz`; explicitly declared Jalali input converts
@@ -51,8 +107,8 @@ focused regressions, independent image verification in Actions.
 
 **Not implemented here:** expiry/Grace/recovery/replacement enforcement, archive,
 future modules, all print/export/legal layouts, database migration or a whole
-customer deployment/history audit. No new product conflict remains after the two
-explicit approvals; technical follow-ups are not silently marked resolved.
+customer deployment/history audit. No source-staging approval conflict remains after explicit final-review
+approval; exact Grace deadline and replacement timing remain PO questions; technical follow-ups are not silently marked resolved.
 
 ## 3. Actual call-site audit matrix
 
@@ -82,7 +138,7 @@ executed test. Verification results belong to the exact PR head/Actions.
 | Owner security/audit display | `owner-licensing/frontend/src/features/audit/audit-page.tsx`: event time row | **Defective:** raw ISO primary | Shared Tehran formatter; raw ISO title; before/after JSON remains technical evidence | Actual near-midnight audit view test, retained security/permissions tests |
 | Owner audit date entry/query | `audit-page.tsx`, `audit-filters.ts`, `audit-filter-schema.ts`; `ui/patterns/date-input.tsx` | **Defective:** ordinary Gregorian-only input/UTC-day UX | Thin Jalali form adapter; invalid drafts cannot retain/widen prior bounds; new `dayZone=Asia/Tehran`; unmarked old date URLs stay UTC with explicit legacy hint | Actual UI valid/invalid entry and old-link tests; filter tests retain min/max-year, duplicates/unknown keys/range protections plus zone-marker cases |
 | Owner backend event boundary | `owner-licensing/backend/src/audit.ts`: strict `utcInstant`, query `occurred_at >= ::timestamptz`, `< ::timestamptz`; audit migrations | Existing canonical UTC Instant/half-open query compliant; no need to alter storage/API | Frontend converts selected local days only at explicit event-query boundary; lower-year overflow disables query | Existing backend audit/security/DB tests in Actions; frontend filter cases locally |
-| Independent Owner build | `owner-licensing/frontend/scripts/stage-date-foundation.mjs`, `Dockerfile`, `Dockerfile.dockerignore`, package pre-scripts; `src/lib/date-time.ts` | Approved compatibility path, no direct application imports | Seven pure files staged byte-identically, allowlisted imports, ignored generated outputs, fail closed/no fallback; own dependencies and static artifact | Node staging test compares every byte/removes stale files/rejects missing and unexpected dependency; Owner typecheck/tests; Docker build only in Actions |
+| Independent Owner build | `owner-licensing/frontend/scripts/stage-date-foundation.mjs`, `Dockerfile`, `Dockerfile.dockerignore`, package pre-scripts; `src/lib/date-time.ts` | Approved compatibility path, no direct application imports | Seven explicitly approved files staged byte-identically, allowlisted imports, ignored generated outputs, fail closed/no fallback; own dependencies and static artifact | Node staging test compares every byte/removes stale files/rejects missing and unexpected dependency; Owner typecheck/tests; Docker build only in Actions |
 | Contracts/fixtures/separation | Existing signed protocol vectors and frontend/backend API fixtures; `scripts/check-owner-isolation.py`; workflow customer image/artifact checks | No observed reason to modify signed/API/storage fixtures | Leave canonical files/bytes and isolation checker intact; no new package/calendar dependency | Diff review plus existing Actions artifact/protocol checks; no cryptographic approval inferred from display tests |
 | Mechanical enforcement | New `scripts/check-date-contract.py`, `scripts/tests/test_date_contract.py`, frontend CI step | Limited preventive coverage, not universal compliance proof | Reject direct calendar libraries, locale date formatting, unauthorized native inputs and simple raw-primary Instant JSX; permit technical evidence/dictionary labels | Focused Python tests and live scan; behavioral and reviewer gates still required |
 | Print/Excel/PDF/invoice templates, future Recovery/Grace/Owner issuance, other modules | No exhaustive field-by-field consumer inventory or deployed artifact sampled in this task | **UNVERIFIED** (some future surfaces not implemented) | Mandatory §0 gate applies, but no blanket compliance label | Follow-ups below; one screen/shared formatter does not prove these surfaces |
@@ -105,7 +161,19 @@ reported for final code in the PR description. The executed groups are:
 - Changed-file formatter/linter checks, source guard and its focused Python
   tests, docs-link check and `git diff --check`.
 
-Final pre-push local ledger: both UI typechecks PASS; frontend foundation/query
+Corrective-review local evidence (not a full suite): both UI typechecks PASS;
+`TZ=America/New_York` customer datetime/range/formatter tests **34 PASS**;
+`TZ=America/Los_Angeles` Owner audit filter/page tests **115 PASS**, including
+skipped-midnight no-request cases; exact-source/boundary/type-declaration Node
+regressions **3 PASS**, no skips. Changed-file formatting/lint PASS; source guard,
+its **2** focused Python tests and existing customer source isolation PASS. Focused
+document assertions preserve all OQ IDs, unrelated registry rows, PDR-11 §§18–19
+and dated OQ-45/OQ-53 history; only the existing OQ-45/OQ-82 registry rows are
+clarified. No licensing runtime/schema/API/migration/vector/dependency changes.
+The exact corrective SHA and Actions result are recorded in the PR description;
+old-head CI evidence is not reused. No local build, Docker, DB integration or E2E.
+
+Historical extension pre-push local ledger (`a2af0ab`, not corrective-head evidence): both UI typechecks PASS; frontend foundation/query
 48 tests PASS, dashboard/detail/GL 26 tests PASS, document-list/account-statement
 18 tests PASS, scheduled-license case 1 PASS / 12 deliberately skipped (93 unique
 selected customer tests, not a full suite). Owner selected files 116 tests PASS

@@ -399,7 +399,9 @@ permissions; valid renewal plus revalidation restores prior authorized operation
 not an unrelated emergency restriction. Outages alone do not suspend; emergency
 stops are immediate on valid applicable authority, not expiry Grace.
 
-Mechanism/deadline/worker/session/recovery tests remain implementation follow-ups
+**Exact Grace deadline arithmetic/zone/day-count requires PO resolution in OQ-45
+before deadline enforcement; signed half-open expiry alone does not decide it.**
+Mechanism/worker/session/recovery tests remain implementation follow-ups
 (PDR-11 §20.5–§20.6), not claims of completed enforcement. Frontend contract:
 `docs/frontend/ux/document-editing-and-system-alerts.md` §4. The retained-version
 resolver still determines **which version** governs; these decisions do not

@@ -43,6 +43,20 @@ describe('Iranian display / UTC event-query boundary', () => {
     );
   });
 
+  it.each([
+    ['2022-03-22', '2022-03-21', 'Asia/Tehran'],
+    ['2019-09-08', '2019-09-07', 'America/Santiago'],
+  ])(
+    'rejects a skipped midnight normalized within the same date (%s, %s, %s)',
+    (skipped, preceding, zone) => {
+      // Both zones jump from the preceding day to 01:00 on `skipped`.
+      // Checking only YYYY-MM-DD would silently accept that normalized 01:00.
+      expect(calendarDayStartInstant(skipped, zone)).toBeUndefined();
+      expect(calendarDayExclusiveEnd(preceding, zone)).toBeUndefined();
+      expect(calendarDayStartInstant(preceding, zone)).toBeDefined();
+    },
+  );
+
   it('fails invalid or unrepresentable bounds rather than widening a query', () => {
     expect(calendarDayStartInstant('2026-02-30', 'UTC')).toBeUndefined();
     expect(

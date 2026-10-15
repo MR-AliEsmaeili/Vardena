@@ -22,4 +22,4 @@
 - اگر Owner خواست تست‌ها فقط از GitHub CI اجرا شوند، suite محلی/E2E سنگین اجرا نکن؛ وضعیت checkها را برای SHA نهایی بررسی کن و نتیجهٔ تأییدنشده را سبز گزارش نکن.
 
 - در UI ایرانی، ارقام تاریخ/زمان فارسی الزامی است؛ API/protocol/canonical همچنان ASCII است و ارقام ورودی فارسی/عربی/لاتین پذیرفته می‌شوند. این تصمیم OQ-02 را برای پول/عدد/متن نمی‌بندد.
-- گارد محدود `python3 scripts/check-date-contract.py` و تست مصرف‌کننده الزامی‌اند؛ ممیزی شواهد در `docs/tasks/global-date-contract-audit.md` است. برای Owner فقط staging دقیق و regenerated منابع pure مجاز است، نه import گراف برنامهٔ مشتری یا پیاده‌سازی دوم تقویم.
+- گارد محدود `python3 scripts/check-date-contract.py` و تست مصرف‌کننده الزامی‌اند؛ ممیزی شواهد در `docs/tasks/global-date-contract-audit.md` است. برای Owner فقط staging دقیق و regenerated هفت فایل مصوب (شامل initialization محدود Day.js) مجاز است، نه import گراف برنامهٔ مشتری یا پیاده‌سازی دوم تقویم.

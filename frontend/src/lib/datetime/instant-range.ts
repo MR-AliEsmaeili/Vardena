@@ -18,8 +18,10 @@ export function calendarDayStartInstant(
     timeZone === 'UTC'
       ? dayjs.utc(`${day}T00:00:00.000Z`)
       : dayjs.tz(`${day} 00:00:00`, timeZone);
-  // Reject skipped calendar days / parser year coercion, never shift a bound.
-  if (local.format('YYYY-MM-DD') !== day) return undefined;
+  // A date-only round trip misses a midnight normalized to 01:00 on the
+  // SAME day (e.g. Tehran 2022-03-22). Never shift an event-query bound.
+  if (local.format('YYYY-MM-DD HH:mm:ss.SSS') !== `${day} 00:00:00.000`)
+    return undefined;
   const value = local.toISOString();
   return isInstant(value) ? value : undefined;
 }

@@ -309,8 +309,8 @@ normal-auth login, backup/status/renewal are preserved; backend/API/async busine
 mutation is blocked. PDR-11 §9 is normative; enforcement remains implementation
 follow-up, not approved or verified by documentation. Emergency restriction is a
 separate immediate authorized path with independent restricted administrator
-recovery (§10). OQ-45 remains open only for distinct contract-termination trigger/
-strictness beyond these defined cases; no extra stricter policy is invented.
+recovery (§10). OQ-45 remains open for exact Grace deadline arithmetic/zone/day-count and,
+independently, distinct contract-termination trigger/strictness beyond these defined cases; no extra stricter policy is invented.
 
 ---
 

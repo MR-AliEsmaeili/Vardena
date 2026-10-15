@@ -311,6 +311,14 @@ describe('audit explorer filters', () => {
     ['a padded actor id', `/app/audit?actorId=%20${ulid}`],
     ['a plus-encoded padded target id', `/app/audit?targetId=${ulid}+`],
     ['an upper bound of 9999-12-31', '/app/audit?to=9999-12-31'],
+    [
+      'a skipped Tehran start midnight',
+      '/app/audit?from=2022-03-22&dayZone=Asia%2FTehran',
+    ],
+    [
+      'a skipped Tehran exclusive-end midnight',
+      '/app/audit?to=2022-03-21&dayZone=Asia%2FTehran',
+    ],
   ])(
     'refuses %s in the URL instead of showing silently different results',
     async (_label, path) => {

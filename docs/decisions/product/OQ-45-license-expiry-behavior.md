@@ -1,7 +1,7 @@
 # OQ-45: License expiry — 14-calendar-day Grace then Read-Only
 
 - **Type:** OQ (product/business + operational policy)
-- **Status:** **Open — narrowed (2026-10-15). Expiry/Grace/Read-Only/extension policy decided; distinct contract-termination trigger/strictness remains open.** Documentation only; enforcement/verification remain separate follow-ups.
+- **Status:** **Open — narrowed (2026-10-15). 14-day duration/Read-Only capabilities/extension authority decided; exact Grace deadline and distinct contract-termination trigger/strictness remain open (clarified 2026-10-16).** Documentation only; enforcement/verification remain separate follow-ups.
 - **Owner / authority:** Product Owner Ali Esmaeili, explicit licensing decision instruction (2026-10-15).
 - **Created:** 2026-09-22 · Shape decided: 2026-10-05 · Current decision: 2026-10-15.
 - **Canonical requirements:** [PDR-11 §§9–10 and §20](PDR-11-vardena-licensing-product-requirements.md), [registry](../../open-questions.md), [date/time foundation](../../datetime.md) §0.
@@ -35,18 +35,58 @@ The original distinct contract-termination trigger/strictness question remains
 **OPEN**: these instructions do not decide whether termination alone mandates a
 stricter policy. Do not infer such a trigger or equate termination with a validated
 Owner emergency stop. This residual product question is why the OQ-45 registry
-row is not closed, despite the expiry decisions being complete.
+row is not closed. The exact Grace deadline question below is another narrowly
+scoped residual; it does not reopen the approved duration or access policy.
+
+## Exact Grace deadline — Product Owner question (OPEN)
+
+The approved 14-calendar-day duration does **not** unambiguously select an exact
+Read-Only Instant for intraday expiry. ADR-0046 and the existing half-open
+`[validFrom, validUntil)` contract define **expiry**, not Grace arithmetic.
+`docs/datetime.md` §0 defines presentation and zone handling, not a new license
+validity or Grace clock. A license is installation-scoped and can cover multiple
+organizations; an organization's display zone does not select a license deadline.
+
+**Question to the Product Owner:** from signed `validUntil`, should Grace end
+(a) after exactly 336 elapsed hours, (b) at the same local wall-clock time after
+14 calendar dates, or (c) at a local day boundary? For (b)/(c), which authoritative
+zone applies, does the partial expiry day count, and how are DST gaps/overlaps
+resolved? These are competing interpretations, **not approved options or an
+engineering default**. Preserve the approved 14-day duration and signed extension
+authority; do not alter signed `validUntil` or use UI-rendered strings as facts.
+
+Concrete example: expiry `2026-10-08T08:30:00.000Z` is 12:00 in Tehran. A 336-hour
+rule ends at `2026-10-22T08:30:00.000Z` (12:00 Tehran). If the expiry date counts
+as calendar day one, ending after that fourteenth date instead yields
+`2026-10-21T20:30:00.000Z` (start of October 22 in Tehran); counting fourteen
+full dates after the partial expiry date instead yields
+`2026-10-22T20:30:00.000Z` (start of October 23). None is selected here.
+
+DST also separates elapsed and wall-clock addition: `2022-09-15T08:30:00.000Z`
+is 13:00 Tehran before its historical offset change. 336 elapsed hours ends at
+`2022-09-29T08:30:00.000Z` (12:00 Tehran); preserving 13:00 across fourteen local
+dates instead gives `2022-09-29T09:30:00.000Z`. Historical examples are boundary
+requirements, not permission to reinterpret stored licenses.
+
+**Enforcement gate:** do not implement the Grace/Read-Only deadline until the PO
+resolves this question in this existing OQ-45 record. Afterwards add exact
+before/at/after, intraday and DST fixtures for the chosen UTC deadline, signed
+extension/restart behavior and any approved zone. No new OQ ID or runtime
+implementation/test of an invented policy is created. The separate
+contract-termination trigger/strictness question remains independently OPEN.
 
 ## Implementation requirements and status
 
 PDR-11 §20.5 lists source-backed gaps and §20.6 supplies future acceptance criteria.
-Engineering must specify deadline calculation, API/worker enforcement and renewal
-restoration against the existing time/security boundaries. This record implements
+Engineering must first obtain the PO deadline decision above, then specify
+API/worker enforcement and renewal restoration against existing time/security
+boundaries. Deadline arithmetic is not delegated as a free technical choice. This record implements
 none of them and claims no passing feature tests or module-wide compliance.
 The global Jalali-first display policy changes neither signed expiry Instants nor
 storage semantics. OQ-45's duration, outage distinction, override authority and
-Read-Only product questions are answered; mechanisms require a separate PR.
-The separate termination-trigger/strictness question still requires Product Owner input.
+Read-Only capability questions are answered; exact deadline semantics still need
+PO resolution before enforcement, and mechanisms require a separate PR. The
+separate termination-trigger/strictness question also still requires PO input.
 
 ## Historical record — superseded options and unresolved wording
 

@@ -83,13 +83,19 @@ automatic clearance after trustworthy-time validation, and exact-successful-repe
 result replay. These are required behaviors, **not implemented Owner/customer
 lifecycle operations**. They do not grant additional Owner roles/permissions or
 make manual observation an authorization artifact. OQ-78/76/81 track technical
-follow-ups.
+follow-ups. PQ-3 is decided at product-policy level, not pending: ordinary
+Restore remains the authorized IT/server-administrator Runbook path (OQ-53);
+limited authenticated recovery grants no normal-user in-product Restore and is
+not implemented. Identity/backup-encryption and recovery design gates remain.
+OQ-45 separately retains the exact Grace deadline and distinct termination
+questions; 14-calendar-day duration does not select deadline arithmetic.
 
 All Owner user-visible dates, including customer/license screens, expiry/Grace,
 activation/replacement history, audit views, reports and filters, must follow the
 project-wide Persian/Jalali-first [date/time contract](../../datetime.md) §0.
-Current raw-ISO Owner views are implementation gaps listed in PDR-11 §20.5,
-not an exception or a claim of compliance.
+PR #164 fixes the bounded raw-ISO Owner call sites identified in PDR-11 §20.5;
+[the audit matrix](../../tasks/global-date-contract-audit.md) records actual
+verification and remaining unverified surfaces, not blanket compliance.
 
 ## Manual lifecycle policies (not a new signed protocol)
 
@@ -104,13 +110,23 @@ history is sufficient for the approved scope. It is not signed customer evidence
 
 Every new customer-server installation/replacement requires **manual Owner
 approval** attributable to an authorized Owner user; never automatic unrestricted
-transfer. Server replacement: an authorized deployment specialist manually deactivates and
-revokes the old server's license lock. Administrator or Issuance Specialist decides
+transfer. The authorized deployment specialist's deployment tasks and the
+Owner-side old-server observations are **not themselves** authority, proof or
+execution of cryptographic revocation. Earlier wording that the specialist
+"manually deactivates and revokes" must not be read as an automatic or
+pre-completion customer-server transition. Administrator or Issuance Specialist decides
 whether replacement is authorized for the same customer. The authorized specialist
 obtains/installs the replacement. Administrator or Issuance Specialist records the
 observed state, retaining actor/time/reason/prior/new status. Emergency old-server
 loss is allowed with an attributable authorized decision; no old-server response
-is required. Client-device replacement (OQ-83) is separate.
+is required. That existing observation policy does not authorize a new emergency
+revocation exception or determine revocation timing. PDR-11 §5.5 prohibits
+premature invalidation from request/issuance alone and ties successful completion
+to its approved workflow, preserving continuity when activation fails. Whether a
+reachable old server may deliberately be revoked **before** successful replacement
+activation remains the precise PO question in OQ-82/U-9; do not infer an answer
+from observation statuses. Owner records do not execute changes on an offline
+customer server (PDR-11 §5.6/§10.4). Client-device replacement (OQ-83) is separate.
 
 U-1/OQ-74 product policy is now approved: existing issued licenses are not
 automatically invalidated solely by signing-key compromise (PDR-11 §4.4/§20.4).

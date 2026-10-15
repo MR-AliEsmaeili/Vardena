@@ -79,12 +79,16 @@ compiled `node dist/migrate.js` / `node dist/bootstrap.js` from the Owner image.
 Build UI: `cd frontend && npm ci --ignore-scripts && npm run build`.
 The API Dockerfile retains its own-directory context. The UI Dockerfile requires
 repository-root context: `docker build -f owner-licensing/frontend/Dockerfile .`.
-Its Dockerfile-specific ignore file allowlists Owner UI and seven pure canonical
+Its Dockerfile-specific ignore file allowlists Owner UI and the exact seven approved canonical
 date source files only (no customer runtime, dependencies, config or secrets).
 Before dev/typecheck/test/build, `scripts/stage-date-foundation.mjs` regenerates
 ignored byte-identical copies of those helpers; missing source or unapproved
 imports fail the command, never use stale copies. Owner installs its own locked
 dependencies and emits its own artifact; no second maintained calendar engine.
+`dayjs.ts` registers the existing UTC/timezone plugins: that bounded side effect
+and `instant-range.ts` are explicitly PO-approved in the final corrective review,
+not covered by a generic claim of pure helpers. No custom type declaration is
+staged; Owner uses types from its independently installed locked packages.
 Source projection and image checks run in CI. Changing the helper/dependency
 boundary requires deliberate review; see `docs/datetime.md` §0 and ADR-0048.
 New audit date filters use Jalali input and Tehran day bounds; saved date links

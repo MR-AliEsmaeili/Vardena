@@ -26,7 +26,7 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 
 > **Licensing decision reconciliation (2026-10-15):** PDR-11 §§9–10, 12, 15
 > and 20 record explicit current Product Owner policy; OQ-84 is product-closed.
-> OQ-45 expiry policy is decided, but its distinct termination question stays open. OQ-74/76/77/78/79/81 retain only documented technical/
+> OQ-45 duration/capabilities are decided, but exact Grace deadline arithmetic/zone/day-count and its separate termination question stay open. OQ-74/76/77/78/79/81 retain only documented technical/
 > security follow-ups; OQ-82/83/75/85 retain their separate outstanding scope.
 > PDR-17 now records permanent separate audit archive policy without inventing
 > historical option C. No new PDR number, implementation or merge is authorized.
@@ -38,7 +38,7 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 |---|---|---|---|---|
 | [PDR-17](./PDR-17-owner-web-application-phase-1.md) | Owner web app, separate PostgreSQL, RBAC subset, audit and manual observations | PDR | Decided directions; observation slice recorded; permanent separate audit archive policy decided, archive implementation outstanding | Owner first slice |
 | [OQ-44](./OQ-44-multi-device-offline-sync.md) | Multi-device offline sync: scope and timing | OQ | Open | No (excluded from MVP) |
-| [OQ-45](./OQ-45-license-expiry-behavior.md) | License expiry behavior (incl. internet outage, post-termination mode) | OQ | **Open — narrowed (2026-10-15)**: expiry policy decided (14-calendar-day Grace → Read-Only, signed Owner extension); distinct termination trigger/strictness still open | Enforcement follow-up; not implemented |
+| [OQ-45](./OQ-45-license-expiry-behavior.md) | License expiry behavior (incl. internet outage, post-termination mode) | OQ | **Open — narrowed (2026-10-15)**: expiry policy decided (14-calendar-day Grace → Read-Only, signed Owner extension); exact deadline arithmetic/zone/day-count and distinct termination trigger/strictness still open | Deadline enforcement blocked pending PO decision; not implemented |
 | [OQ-46](./OQ-46-customer-data-export-format.md) | Customer data export format and completeness | OQ | Open — **Excel = Business Export ≠ full technical backup decided (2026-10-05)**; contract-end boundary open | No (Excel confirmed) |
 | [OQ-47](./OQ-47-exchange-rate-and-multicurrency-rules.md) | Exchange-rate and multi-currency accounting rules | OQ | Open — **deferred by Owner ("do nothing for now", 2026-10-05)** | No (single-currency MVP) |
 | [OQ-48](./OQ-48-revaluation-and-fx-gain-loss.md) | Revaluation and foreign-exchange gain/loss | OQ | Open | No (single-currency MVP) |

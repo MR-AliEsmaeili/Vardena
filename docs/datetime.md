@@ -46,15 +46,27 @@ the separation boundary.
   field and use the owning feature contract; signed license validity is not
   reclassified as BusinessDate merely because a UI displays a Persian date.
   Display policy does not change expiry instants, storage, filters' domain
-  semantics, signature bytes or canonicalization/conformance vectors.
+  semantics, signature bytes or canonicalization/conformance vectors. It does not
+  decide Grace deadline arithmetic/zone/day-count: that exact PO question remains
+  in [OQ-45](decisions/product/OQ-45-license-expiry-behavior.md), blocking deadline
+  enforcement, without reopening its approved 14-day duration or deciding the
+  separate termination question.
 - Use shared kernel and frontend date-time primitives, inputs and formatters
   (§8–§9). **PO-approved independent-build integration (2026-10-16):** Owner
-  regenerates ignored, byte-identical copies of an explicit pure source allowlist
-  before dev/typecheck/test/build. Missing sources/unapproved imports fail the
+  regenerates ignored, byte-identical copies of an explicit framework-free source
+  allowlist before dev/typecheck/test/build. **Final corrective-review approval**
+  explicitly authorizes exactly `calendar.ts`, `dayjs.ts`, `numerals.ts`,
+  `business-date.ts`, `time-zone.ts`, `instant.ts`, `instant-range.ts` and the
+  existing bounded UTC/timezone plugin registration in `dayjs.ts` (which is not
+  side-effect-free). This corrects the earlier overbroad "pure helpers" approval
+  description; no additional files or initialization are authorized. No custom
+  declaration is copied: Owner uses types from its independently installed locked
+  `jalaali-js`/Day.js dependencies. Missing sources/unapproved imports fail the
   command; stale generated files are not a fallback. No second calendar policy,
   customer runtime dependency, settings store or cross-application import is
   allowed. Owner installs its own dependencies. Its Docker UI build uses root
-  context with allowlisted Owner files and seven canonical pure helpers only;
+  context with allowlisted Owner files and the seven explicitly approved canonical
+  date sources only;
   the final image contains only Owner's static artifact (ADR-0048).
 
 **Implementation and evidence (PR #164 extension, 2026-10-16):** centralized
@@ -63,7 +75,10 @@ Jalali audit input are implemented with focused regressions. New Owner audit
 links mark `dayZone=Asia/Tehran`; unmarked existing date links retain UTC day
 semantics and are labelled as legacy. The event API remains ISO UTC, with
 inclusive local days mapped to `[start, next-day-start)`; each midnight is
-resolved independently so historical DST is not treated as 24 hours.
+resolved independently so historical DST is not treated as 24 hours. A boundary
+must round-trip to the requested date **and exactly `00:00:00.000`**; a skipped
+midnight normalized to 01:00 on the same date is rejected, not shifted. Any invalid
+start/end disables the audit query rather than removing a bound.
 
 **Not a whole-repository compliance claim.** See the
 [call-site audit and verification matrix](tasks/global-date-contract-audit.md)

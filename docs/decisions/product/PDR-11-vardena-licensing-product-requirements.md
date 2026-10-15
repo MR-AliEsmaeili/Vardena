@@ -151,7 +151,7 @@ Owner side (Owner-controlled)                  Customer server (offline-capable)
 - Only the authorized issuance process may access it.
 - It must **never** be distributed to customer servers.
 - Ordinary signing-key rotation must not invalidate otherwise valid perpetual licenses issued under a previous key.
-- **Product Owner decision (2026-10-15, U-1/OQ-74):** existing issued licenses remain valid and are not automatically invalidated solely because a signing key is compromised. This does not make a compromised key safe. Engineering must document the consequences and compatible key-rotation/incident-response design for new issuance, trust updates, key revocation and controlled recovery (§20.4); production custody and unresolved security trade-offs remain gated. No signed format or existing artifact is changed by recording this policy.
+- **Product Owner decision (2026-10-15, U-1/OQ-74):** existing issued licenses remain valid and are not automatically invalidated solely because a signing key is compromised. This does not make a compromised key safe. Engineering must document the consequences and compatible key-rotation/incident-response design for new issuance, trust updates, key revocation and controlled recovery (§20.4); production custody and unresolved security trade-offs remain gated. No signed format or existing artifact is changed by recording this policy. Continued validity of issued licenses does not establish trust in new artifacts under the compromised key: signature verification alone cannot distinguish genuine new imports from forgeries. Issued-but-not-imported provenance, trust rollout, containment, offline recovery and production custody remain design-gated (§20.4); return any exact safety incompatibility to the Product Owner rather than blanket-invalidating existing licenses or trusting all future signatures.
 
 **4.5 Owner-side status tracking (Must).**
 
@@ -198,6 +198,26 @@ Owner side (Owner-controlled)                  Customer server (offline-capable)
 12. The Owner may cancel a pending request and issue another request.
 13. A canceled request must **not** be accepted as a valid new activation request.
 14. The replacement workflow must **not** leave the customer unnecessarily locked out if new activation fails. (Detailed recovery is **OPEN**, §15, U-9.)
+
+**Replacement authorization / observation boundary (consistency clarification,
+2026-10-16).** PDR-17's manual Owner authorization and operator observations do
+not execute a license-state transition on either customer server. Recording
+`OLD_SERVER_STATE_RECORDED` is not cryptographic revocation or proof of successful
+activation. Issuing/requesting/authorizing replacement alone must not prematurely
+invalidate the old installation (steps 3, 8–9, 14); disconnected execution remains
+subject to §5.6/§10.4. No new role, timing, emergency exception or transition is
+approved by this clarification.
+
+**Residual PO question — OQ-82/U-9:** if the old server is reachable, a replacement
+has been authorized/issued, and the new server has not yet activated successfully
+(or activation fails), may the authorized specialist deliberately deactivate or
+revoke the old installation before successful replacement completion? If so,
+under what explicitly approved condition and failure-continuity guarantee? The
+existing text prohibits automatic/premature invalidation from issuance alone but
+does not unambiguously authorize that separate pre-completion action. Do not
+implement or infer that timing from manual observation labels; return it to the
+Product Owner. The already recorded emergency-loss observation is not a new
+revocation exception.
 
 **5.6 Continuity of an isolated old server (Must).** An isolated old server may continue using its cached licensing state until it receives an applicable signed update or revocation. **Instant remote revocation of a disconnected server cannot be guaranteed.**
 
@@ -319,11 +339,16 @@ The atomic application algorithm is a design item (§16).
 The expiry path is **Active → Grace (14 calendar days) → Read-Only**.
 At subscription expiry enter Grace, clearly displaying the actual reason and
 current license status; normal authorized operation continues during Grace.
-At its end enter Read-Only. Use the authoritative license-time semantics:
-existing validity bounds remain half-open Instants, not UI date strings; calendar
-presentation does not change signed expiry. No silent rounding, undocumented
-period or restart-based extension is allowed. The calendar deadline calculation
-must be specified/tested against the existing date/time foundation before enforcement.
+At its end enter Read-Only. Existing validity bounds remain half-open Instants,
+not UI date strings; `validUntil` is the expiry instant and Jalali presentation
+never changes it. **Exact Grace deadline remains a Product Owner question in
+OQ-45**: the accepted date/time contract defines signed validity and display, not
+whether 14 calendar days means elapsed duration, preserving local wall-clock time
+across 14 days, or ending at a calendar boundary, nor the applicable zone/day count.
+Engineering must not choose or round that rule. Grace/Read-Only deadline enforcement
+is blocked until the Product Owner resolves the concrete alternatives in
+[OQ-45's deadline question](OQ-45-license-expiry-behavior.md#exact-grace-deadline--product-owner-question-open).
+The approved duration, permissions and signed extension authority are unchanged.
 
 Grace beyond 14 calendar days requires Owner authorization and a valid
 Owner-issued signed artifact through approved validation. Local settings,
@@ -355,7 +380,8 @@ an independent emergency or integrity restriction. Future-dated versions and
 post-gap recovery still follow their existing decisions, not a new bypass (§20.1).
 
 **9.4 Delegated technical design and status.** Engineering owns the enforcement
-mechanism, module/worker operation classification and acceptance tests, without
+mechanism, module/worker operation classification and acceptance tests **after the
+OQ-45 deadline decision**, without
 weakening §9.2. Grace/Read-Only enforcement is not implemented or verified by this
 PR. Follow-ups and acceptance criteria are in §20.5–§20.6.
 
@@ -560,13 +586,13 @@ central registry give current dispositions; older dated status notes are histori
 | U-6 | Clock rollback (OQ-76). | **Product behavior decided:** immediate restriction and automatic rollback-only clearance after trusted-time revalidation (§12.6). Exact detection, validation, persistence and recovery remain engineering work; no invented tolerance. |
 | U-7 | Audit (OQ-77). | **Retention/access policy decided:** permanent separate archive, authorized sensitive access, minimization, no contradictory purge (§12.8). Schema/archive/security controls remain design and implementation follow-ups. |
 | U-8 | **Backward compatibility**: versioning and migration rules for future signed-file formats. | Technical design item (§16). |
-| U-9 | **Offline replacement failure recovery**: a detailed protocol that ensures a failed activation does not strand the customer, while canceled requests cannot be reused (§5.5 steps 13–14, §7.10). | Technical design item. If the protocol needs a business trade-off, the alternatives must be documented and returned to the Owner. |
+| U-9 | **Offline replacement failure recovery**: a detailed protocol that ensures a failed activation does not strand the customer, while canceled requests cannot be reused (§5.5 steps 13–14, §7.10). | Technical design item, with the explicit pre-completion revocation timing question in §5.5 still requiring PO resolution (OQ-82). If the protocol needs another business trade-off, document alternatives and return them to the Owner. |
 
 ### 15.2 Product clarifications found during reconciliation
 
 | ID | Open question | Why it matters | Handling |
 |---|---|---|---|
-| PQ-1 | Grace at expiry (OQ-45). | Expiry timing and signed extension authority. | **Decided:** 14 calendar days, then Read-Only; Owner authorization + valid signed artifact for extension (§9). |
+| PQ-1 | Grace at expiry (OQ-45). | Expiry timing and signed extension authority. | **Decided:** 14 calendar days, then Read-Only; Owner authorization + valid signed artifact for extension (§9). **Exact deadline arithmetic/zone/day-count remains OPEN under OQ-45; enforcement blocked pending PO decision.** |
 | PQ-2 | Read-Only meaning (OQ-45). | One observable contract. | **Decided:** all existing users under normal auth, existing read/report/print/Excel rights, backup/status/renewal; no business mutation; backend/async enforcement and reversible restoration (§9). |
 | PQ-3 | Full revocation/recovery (OQ-78). | Recovery must not depend on commercial login. | **Product behavior decided:** restricted authenticated administrator recovery interface and backup path (§10.3), valid signed restoration (§10.6). Authentication/session/state/protocol design remains open. |
 | PQ-4 | Legacy `SUSPENDED` (OQ-79). | Compatibility and historical meaning. | **Product decision:** remove separate concept; explicit actual condition/reason. Stage safe consumer/data compatibility work (§20.3), no enum/schema/signed-byte change here. |
@@ -643,7 +669,13 @@ These are the originally delegated technical questions, not new product choices.
 - **G-6 — Idempotent and replay-safe.** Duplicate operations never change state twice (§10.8, §12.4).
 - **G-7 — No automatic offline execution.** Owner-side changes never execute automatically on an offline server (§11.6).
 - **G-8 — Text is transport.** A text code never substitutes for signature verification or operation binding (§7.12, §11.3).
-- **G-9 — Restore not license-blocked.** Restore is not blocked by license state, as recorded in OQ-53, until PQ-3 is decided (§6.7).
+- **G-9 — Restore not license-blocked; authority preserved.** OQ-53/§6.7 retain
+  ordinary Restore exclusively on the approved authorized IT/server-administrator
+  Runbook path, never normal ERP-user in-product Restore. PQ-3 is decided at the
+  product-policy level: §10.3 requires independently authenticated, limited
+  administrator recovery, not commercial access. Neither path is license-blocked;
+  identity-key/backup-encryption, authentication/session and recovery design remain
+  gated by OQ-53, U-2, OQ-78 and OQ-82. No recovery implementation is claimed.
 - **G-10 — Design gate.** No implementation starts from this record alone. Technical design (§16) and the explicit Product Owner instruction come first.
 
 ## 18. Decision traceability table
@@ -924,7 +956,7 @@ Preserved without reopening:
 | G | OQ-77; U-7 | §12.8/PDR-17: permanent separate archive/access policy decided; row stays OPEN for schema, minimization, archive design and implementation evidence. |
 | H | OQ-81; PQ-8; CF-12 | §10.8: product behavior decided; row stays OPEN for identity/content/result persistence, secure retrieval and conflict protocol. |
 | I | OQ-74; U-1 | §4.4 and §20.4: non-automatic-invalidation policy approved; row stays OPEN for compatible incident-response/key lifecycle design and security consequences. |
-| J | OQ-82; U-9 | §5.5/PDR-17 manual approval preserved; row stays OPEN for failure/cancellation/protocol and abandoned-observation handling. No new transfer policy. |
+| J | OQ-82; U-9 | §5.5/PDR-17 manual approval preserved; row stays OPEN for failure/cancellation/protocol, abandoned-observation handling and the explicit PO question on deliberate pre-completion revocation. No new transfer policy or revocation timing is chosen. |
 | K | OQ-84; PQ-9 | **Decided**, product question closed: no ordinary activation signed receipt; manual attributable history sufficient for approved scope. OQ-83 operation-specific evidence and OQ-82 design untouched. |
 | L | OQ-79; PQ-4; CF-11 | §3.5 and §20.3: concept removed; row stays OPEN for compatibility/data audit and staged technical removal/mapping. |
 | Global dates | Date/time digit scope decided 2026-10-16; broader OQ-02 OPEN | `docs/datetime.md` §0 and ADR-0044: global Jalali-first and PO-approved Persian date/time digits; canonical/API ASCII retained. Broader number/text localization is not inferred. |
@@ -994,7 +1026,7 @@ do not substitute blanket license invalidation or trust every future signature.
 
 | Baseline evidence | Required separate follow-up |
 |---|---|
-| `domain/license.ts` evaluates expiry directly; `application/licensing.service.ts` filters all non-platform permissions when inactive. No Grace/Read-Only operation classification. | Design deadline/enforcement; preserve authorized read/print/Excel, accounts/permissions and renewal restoration; gate business writes across APIs and workers. Current inactive permission filtering is not the approved Read-Only behavior. |
+| `domain/license.ts` evaluates expiry directly; `application/licensing.service.ts` filters all non-platform permissions when inactive. No Grace/Read-Only operation classification. | Obtain OQ-45 exact deadline decision before designing enforcement; preserve authorized read/print/Excel, accounts/permissions and renewal restoration; gate business writes across APIs and workers. Current inactive permission filtering is not the approved Read-Only behavior. |
 | `license.ts` has no rollback reason/watermark; PDR-11/OQ-76 records no detection/persisted time-integrity mechanism. | Durable anti-rollback detection, trusted-time revalidation, automatic rollback-only clearance, tamper/restart handling and approved recovery. No existing mechanism is claimed. |
 | OQ-78/ADR-0046 record no revocation artifact/state or login-blocking implementation; current licensing import exemption avoids bootstrap deadlock but is not independent emergency recovery. | Define restriction reasons, authorization, session behavior, independent authenticated recovery interface, signed import/state transition and backup path, including explicit security-incident responses. |
 | `domain/license-version.ts` and `application/license-import.service.ts` retain duplicate refusal behavior; legacy hash retry returns unchanged rather than a persisted original response. | Specify operation identity/content comparison, durable original result, authorized replay retrieval and atomic concurrent no-repeat effects (OQ-81); preserve formats/vectors. |
@@ -1010,9 +1042,13 @@ These are source-inspection findings, not executed feature tests or production a
 
 These are **requirements to test**, not passing tests in this documentation PR:
 
-- At signed expiry enter Grace with truthful reason/status; at the exact approved
-  14-calendar-day deadline enter Read-Only. Test before/at/after boundaries,
-  applicable timezone/calendar behavior, restarts and signed extension validation.
+- At signed expiry enter Grace with truthful reason/status. **Before implementing
+  the Read-Only deadline, obtain the unresolved OQ-45 arithmetic/zone/day-count
+  decision.** Then encode the PO-selected deadline as exact UTC fixture Instants
+  and test before/at/after, intraday expiry, historical DST, Tehran and any approved
+  zone, restarts and signed extensions. Neither the 336-hour alternative nor a
+  local-calendar boundary is approved merely by this test requirement. Signed
+  expiry, canonical bytes and the independent termination question stay unchanged.
 - Test all existing users under normal auth: authorized reads/reports/print/Excel
   succeed, unauthorized ones remain denied; business writes/inventory/accounting
   fail at API and async paths. Users/data/permissions/history remain unchanged.

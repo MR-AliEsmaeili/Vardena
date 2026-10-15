@@ -367,3 +367,16 @@ it('versions Tehran day links, preserves legacy UTC semantics and rejects unknow
     ),
   ).toBe(false);
 });
+
+it.each([
+  { from: '2022-03-22', to: '' },
+  { from: '', to: '2022-03-21' },
+  { from: '2022-03-20', to: '2022-03-21' },
+])(
+  'refuses the entire Tehran query when a local midnight is unrepresentable (%j)',
+  (bounds) => {
+    expect(
+      toAuditQuery({ ...emptyAuditFilters, ...bounds }, 1, 'Asia/Tehran'),
+    ).toBeUndefined();
+  },
+);

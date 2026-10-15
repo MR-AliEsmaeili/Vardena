@@ -972,7 +972,7 @@ customer stays the explicit, authorized, audited
 | Not implemented | Blocker |
 | --- | --- |
 | Full revocation, reactivation artifact and independent restricted administrator recovery | Product behavior decided (PDR-11 §10/§20); security/session/incident/protocol design and implementation remain OQ-78, with legacy compatibility work OQ-79. |
-| Grace / Read-Only enforcement | OQ-45 expiry policy decided: 14 calendar days, Owner-authorized signed extensions, defined reversible Read-Only; deadline/enforcement/worker implementation remains follow-up (PDR-11 §9/§20). Only the distinct termination product question stays open. |
+| Grace / Read-Only enforcement | OQ-45 expiry policy decided: 14 calendar days, Owner-authorized signed extensions, defined reversible Read-Only; exact deadline arithmetic/zone/day-count requires PO resolution under OQ-45 before enforcement/worker implementation (PDR-11 §9/§20). The distinct termination product question stays independently open. |
 | Installation identity key | PDR-11 U-2 + U-9/PQ-3 (see §7) |
 | Signed server replacement/failure recovery | Manual Owner approval/observations approved (PDR-17); failed activation/cancellation/protocol handling remains OQ-82/U-9. Ordinary activation needs no signed receipt (OQ-84 decided). |
 | Client-device licensing | OQ-83 policy decided by PDR-15 / OD-LIC-04; customer-server slice merged and CI-verified, while the external device client and Owner-side VDRP1 issuer remain operational dependencies. See [`client-device-lifecycle.md`](./client-device-lifecycle.md) and the [operational plan](../tasks/licensing-oq-83-operational-plan.md). |

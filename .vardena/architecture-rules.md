@@ -172,7 +172,7 @@ without an accepted ADR that supersedes it is a defect, not a style choice.
   behavior follows `docs/datetime.md` §0 (organization IANA zone, fixed Jalali-first
   calendar and Persian date/time digits across ERP and Owner surfaces); broader
   number/text localization stays open under OQ-02. Owner may only regenerate the
-  approved pure-source allowlist as ignored build input, never import customer
+  explicitly approved seven-file date-source allowlist (including bounded Day.js initialization) as ignored build input, never import customer
   application/runtime modules or maintain another calendar implementation.
 - UI text must come from a central i18n dictionary, not inline literals
   (language decision OQ-02).

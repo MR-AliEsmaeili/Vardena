@@ -68,6 +68,8 @@ designed against it.
   and warning while normal authorized operation continues. Use authoritative
   license-time semantics, not browser clock/countdown policy. Grace extension
   needs Owner authorization plus a valid Owner-issued signed artifact; no local bypass.
+  The exact deadline arithmetic/zone/day-count remains a PO question in OQ-45;
+  do not invent a countdown or enforce a deadline before that decision.
 - After Grace, all existing users may log in under normal auth and existing
   permissions for document/report views, printing and Excel export. License
   status, renewal and approved administrative/recovery backup remain accessible.
