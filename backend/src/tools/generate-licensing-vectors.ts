@@ -15,6 +15,8 @@ import {
   canonicalizeEnrollmentChallenge,
   canonicalizeDeviceReplacementChallenge,
   canonicalizeDeviceReplacementResponse,
+  serializeDeviceReplacementRequestArtifact,
+  DEVICE_REPLACEMENT_REQUEST_FORMAT,
 } from '../modules/licensing/domain/client-device.js';
 import type {
   EnrollmentChallengePayload,
@@ -365,6 +367,30 @@ canonVector(
   'requestHash is SHA-256 of the armored VDRQ1 artifact string.',
 );
 
+// Armored VDRQ1 request artifact, built ONCE here and reused both for the OK-03
+// fixture and for the VDRP1 `requestHash` below, so the corpus cannot drift
+// internally between the request it publishes and the response that references it.
+//
+// A VDRQ1 carries the NEW DEVICE's detached Ed25519 proof of possession over the
+// exact canonical request bytes — never an authority signature. Authority:
+// docs/licensing/licensing-protocol-vectors.md §4.3 ("VDRQ1 request, device
+// signature over exact canonical bytes") and the customer API contract
+// ("Exact fixed-order VDRQ1 challenge bytes to sign with the new device private
+// key"). The canonical payload advertises the device's own SPKI public key and
+// its full 64-hex fingerprint, so an authority-signed VDRQ1 fixture is one that
+// no conforming verifier can accept: the signature would not verify against the
+// key the artifact itself carries.
+const vdrqBody = Buffer.from(vdrqCanonical, 'utf8');
+const vdrqSig = cryptoSign(null, vdrqBody, dev.priv);
+const vdrqArtifact = serializeDeviceReplacementRequestArtifact({
+  canonicalPayload: vdrqCanonical,
+  signature: b64url(vdrqSig),
+});
+// `requestHash` is the SHA-256 hex digest of the armored artifact STRING as
+// UTF-8 (vectors §3.3) — not of the decoded canonical payload, and not of the
+// JSON file envelope that transports it.
+const vdrqRequestHash = sha256hex(vdrqArtifact);
+
 // VDRP1
 const vdrpInput = {
   format: 'VDRP1',
@@ -373,14 +399,7 @@ const vdrpInput = {
   requestId: '01TESTREQUEST000000000000',
   challengeId: '01TESTCHALLENGE0000000000',
   requestOperationId: OP,
-  requestHash: sha256hex(
-    'VDRQ1.' +
-      b64url(Buffer.from(vdrqCanonical, 'utf8')) +
-      '.' +
-      b64url(
-        cryptoSign(null, Buffer.from(vdrqCanonical, 'utf8'), authA.privateKey),
-      ),
-  ),
+  requestHash: vdrqRequestHash,
   installationId: INST,
   customerId: CUST,
   customerCode: CUSTCODE,
@@ -435,6 +454,7 @@ writeJson(join(ROOT, 'valid', 'OK-01.json'), {
   name: 'valid VLIC2 artifact signed by authority A',
   protocolVersion: 'VLIC2',
   artifact: vlic2Artifact,
+  signer: 'authority-a',
   keyId: a.json.keyId,
   expectedCanonicalUtf8Hex: vlic2Body.toString('hex'),
 });
@@ -454,23 +474,24 @@ writeJson(join(ROOT, 'valid', 'OK-02.json'), {
   name: 'valid VLIC1 legacy artifact signed by authority A',
   protocolVersion: 'VLIC1',
   artifact: vlic1Artifact,
+  signer: 'authority-a',
   keyId: a.json.keyId,
   expectedCanonicalUtf8Hex: vlic1Body.toString('hex'),
 });
 
-const vdrqBody = Buffer.from(vdrqCanonical, 'utf8');
-const vdrqSig = cryptoSign(null, vdrqBody, authA.privateKey);
-const vdrqArtifact = [
-  'VDRQ1',
-  vdrqBody.toString('base64url'),
-  vdrqSig.toString('base64url'),
-].join('.');
+// OK-03 is DEVICE-signed, so it carries no authority `keyId`. Its signer is
+// identified with the device `publicKeyFingerprint` convention — the full 64-hex
+// SHA-256 of the SPKI DER, with no `sha256-` prefix — deliberately not the
+// authority `keyId` convention (`sha256-<first 16 hex of SPKI DER>`). Conflating
+// the two is the interop trap vectors §3.2 warns about.
 writeJson(join(ROOT, 'valid', 'OK-03.json'), {
   id: 'OK-03',
-  name: 'valid VDRQ1 request artifact',
-  protocolVersion: 'VDRQ1',
+  name: 'valid VDRQ1 request artifact (new-device detached signature)',
+  protocolVersion: DEVICE_REPLACEMENT_REQUEST_FORMAT,
   artifact: vdrqArtifact,
-  keyId: a.json.keyId,
+  signer: 'device-01',
+  devicePublicKeyFingerprint: fp,
+  requestHash: vdrqRequestHash,
   expectedCanonicalUtf8Hex: vdrqBody.toString('hex'),
 });
 
@@ -489,7 +510,9 @@ writeJson(join(ROOT, 'valid', 'OK-04.json'), {
   name: 'valid VDRP1 approval response',
   protocolVersion: 'VDRP1',
   artifact: vdrpArtifact,
+  signer: 'authority-a',
   keyId: a.json.keyId,
+  approvesRequestHash: vdrqRequestHash,
   expectedCanonicalUtf8Hex: vdrpBody.toString('hex'),
 });
 
