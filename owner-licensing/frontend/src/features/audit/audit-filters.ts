@@ -1,3 +1,8 @@
+import {
+  isBusinessDay,
+  calendarDayStartInstant,
+  calendarDayExclusiveEnd,
+} from '@/lib/date-time';
 import type {
   AuditOutcome,
   AuditQuery,
@@ -49,9 +54,9 @@ export interface AuditFilterValues {
   targetType: string;
   targetId: string;
   outcome: string;
-  /** UTC calendar day, `YYYY-MM-DD`, inclusive. */
+  /** Canonical calendar day in the selected query zone, `YYYY-MM-DD`, inclusive. */
   from: string;
-  /** UTC calendar day, `YYYY-MM-DD`, inclusive. */
+  /** Canonical calendar day in the selected query zone, `YYYY-MM-DD`, inclusive. */
   to: string;
 }
 
@@ -76,10 +81,19 @@ const filterKeys = [
 ] as const satisfies readonly (keyof AuditFilterValues)[];
 
 const pagePattern = /^[1-9][0-9]{0,5}$/;
-const urlKeys: readonly string[] = ['page', ...filterKeys];
+const urlKeys: readonly string[] = ['page', 'dayZone', ...filterKeys];
+
+/** Preserve old UTC deep links explicitly; ordinary new filters use Tehran. */
+export function auditDayZone(params: URLSearchParams): 'UTC' | 'Asia/Tehran' {
+  return params.get('dayZone') === 'Asia/Tehran' ||
+    (!params.has('from') && !params.has('to'))
+    ? 'Asia/Tehran'
+    : 'UTC';
+}
 
 /**
- * True only when every URL parameter is one the backend accepts, supplied once,
+ * True only for known UI URL parameters supplied once (dayZone is client-only
+ * versioning metadata, never sent as an API parameter),
  * with a valid page, and each filter value is already canonical (no leading or
  * trailing whitespace). Trimming a value here would query something other than
  * what the URL states, so such a URL is refused instead. Trimming still happens
@@ -90,6 +104,8 @@ export function auditUrlIsWellFormed(params: URLSearchParams): boolean {
     if (!urlKeys.includes(key)) return false;
     if (params.getAll(key).length > 1) return false;
   }
+  if (params.has('dayZone') && params.get('dayZone') !== 'Asia/Tehran')
+    return false;
   for (const key of filterKeys) {
     const value = params.get(key);
     if (value !== null && value !== value.trim()) return false;
@@ -120,12 +136,15 @@ export function filtersFromParams(params: URLSearchParams): AuditFilterValues {
 export function paramsFromFilters(
   values: AuditFilterValues,
   page = 1,
+  timeZone: 'UTC' | 'Asia/Tehran' = 'UTC',
 ): URLSearchParams {
   const next = new URLSearchParams();
   for (const key of filterKeys) {
     const value = values[key].trim();
     if (value) next.set(key, value);
   }
+  if (timeZone === 'Asia/Tehran' && (values.from || values.to))
+    next.set('dayZone', timeZone);
   if (page > 1) next.set('page', String(page));
   return next;
 }
@@ -134,46 +153,19 @@ export function paramsFromFilters(
 export const MIN_AUDIT_YEAR = 1000;
 
 export function isCalendarDay(value: string): boolean {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return false;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  // Same documented minimum as the backend. Checked before Date.UTC, which maps
-  // years 0–99 onto 1900–1999.
-  if (year < MIN_AUDIT_YEAR) return false;
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return (
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day
-  );
+  return isBusinessDay(value) && Number(value.slice(0, 4)) >= MIN_AUDIT_YEAR;
 }
 
-/**
- * Exclusive upper bound: the start of the UTC day after `day`. Returns `undefined`
- * for 9999-12-31, because the next day is year 10000, which the four-digit-year
- * contract cannot express. The schema rejects that input so it is never dropped.
- */
+/** Retained for legacy UTC deep links; all calendar math lives in the foundation. */
 export function utcExclusiveEnd(day: string): string | undefined {
-  const [year = 0, month = 1, date = 1] = day.split('-').map(Number);
-  // Date.UTC maps years 0–99 onto 1900–1999, so the year is set explicitly.
-  const next = new Date(0);
-  next.setUTCFullYear(year, month - 1, date + 1);
-  if (next.getUTCFullYear() > 9999) return undefined;
-  return next.toISOString();
+  return calendarDayExclusiveEnd(day, 'UTC');
 }
 
-/**
- * Maps the applied filters to the API contract. Calendar days are UTC because the
- * Owner application has no organization calendar or zone; the UI labels them as UTC.
- * Returns `undefined` when the `to` day has no representable exclusive end, rather
- * than omitting the bound and widening the range. Draft values are trimmed here;
- * applied values from the URL are already canonical (see `auditUrlIsWellFormed`).
- */
+/** Explicit local-day -> UTC event-query boundary; no persistence/API change. */
 export function toAuditQuery(
   values: AuditFilterValues,
   page: number,
+  timeZone: 'UTC' | 'Asia/Tehran' = 'UTC',
 ): AuditQuery | undefined {
   const query: AuditQuery = { page };
   const eventType = values.eventType.trim();
@@ -185,9 +177,17 @@ export function toAuditQuery(
     query.targetType = values.targetType as AuditTargetType;
   if (targetId) query.targetId = targetId;
   if (values.outcome) query.outcome = values.outcome as AuditOutcome;
-  if (values.from) query.occurredFrom = `${values.from}T00:00:00.000Z`;
+  if (values.from) {
+    if (!isCalendarDay(values.from)) return undefined;
+    const start = calendarDayStartInstant(values.from, timeZone);
+    // Backend minimum applies to UTC wire instants, including Tehran midnight.
+    if (start === undefined || Number(start.slice(0, 4)) < MIN_AUDIT_YEAR)
+      return undefined;
+    query.occurredFrom = start;
+  }
   if (values.to) {
-    const before = utcExclusiveEnd(values.to);
+    if (!isCalendarDay(values.to)) return undefined;
+    const before = calendarDayExclusiveEnd(values.to, timeZone);
     if (before === undefined) return undefined;
     query.occurredBefore = before;
   }

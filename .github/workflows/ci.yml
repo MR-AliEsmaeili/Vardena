@@ -394,6 +394,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Cross-project date contract guard
+        run: python3 scripts/check-date-contract.py
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -440,6 +443,9 @@ jobs:
           npm run typecheck
           npm test
           npm run build
+
+      - name: Independent Owner UI image with canonical date sources
+        run: docker build -f owner-licensing/frontend/Dockerfile -t vardena-owner-ui-ci .
 
   # F-7: the committed generated TypeScript client must match the OpenAPI
   # document produced by this checkout. The dump boots Nest far enough to

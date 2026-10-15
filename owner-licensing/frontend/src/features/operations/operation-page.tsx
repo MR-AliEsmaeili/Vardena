@@ -1,3 +1,4 @@
+import { formatOwnerInstant } from '@/lib/date-time';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, type UseFormReturn } from 'react-hook-form';
@@ -240,13 +241,13 @@ export function OperationPage() {
           [o.noContact, o.noContact],
           [o.id, record.id],
           [o.actor, record.createdBy],
-          [o.created, record.createdAt],
-          [o.updated, record.updatedAt],
+          [o.created, formatOwnerInstant(record.createdAt), record.createdAt],
+          [o.updated, formatOwnerInstant(record.updatedAt), record.updatedAt],
           [o.installation, refs.join(' → ') || '—'],
-        ].map(([label, value]) => (
+        ].map(([label, value, canonical]) => (
           <div key={label}>
             <dt className="text-sm text-slate-500">{label}</dt>
-            <dd className="break-all" dir="auto">
+            <dd title={canonical ?? undefined} className="break-all" dir="auto">
               {value}
             </dd>
           </div>
@@ -277,7 +278,9 @@ export function OperationPage() {
                 {o.actor}: <span dir="ltr">{item.actorId}</span>
               </p>
               <p className="text-slate-500" dir="ltr">
-                {item.occurredAt}
+                <time dateTime={item.occurredAt} title={item.occurredAt}>
+                  {formatOwnerInstant(item.occurredAt)}
+                </time>
               </p>
               <p>
                 {o.evidence}: {item.evidenceReference || '—'}

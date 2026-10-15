@@ -1,3 +1,4 @@
+import { toPersianDigits } from './numerals';
 import {
   DATE_DISPLAY_FORMAT,
   DATE_TIME_DISPLAY_FORMAT,
@@ -56,9 +57,11 @@ export function formatInstant(
   const gregorianDay = zoned.format(DATE_DISPLAY_FORMAT);
   const rendered = zoned.format(format);
   if (!rendered.startsWith(gregorianDay)) return rendered;
-  return `${formatBusinessDay(gregorianDay, DEFAULT_CALENDAR_SYSTEM)}${rendered.slice(
-    gregorianDay.length,
-  )}`;
+  return toPersianDigits(
+    `${formatBusinessDay(gregorianDay, DEFAULT_CALENDAR_SYSTEM)}${rendered.slice(
+      gregorianDay.length,
+    )}`,
+  );
 }
 
 /** The instant rendered with seconds (detail and audit surfaces). */

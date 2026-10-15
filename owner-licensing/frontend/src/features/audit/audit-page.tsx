@@ -1,7 +1,8 @@
+import { formatOwnerInstant } from '@/lib/date-time';
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as api from '@/api/owner.api';
 import { queryKeys } from '@/api/query-keys';
@@ -10,12 +11,14 @@ import { usePermissions } from '@/features/permissions/use-permissions';
 import { o } from '@/lib/owner-i18n';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
+import { DateInput } from '@/ui/patterns/date-input';
 import { FormField } from '@/ui/patterns/form-field';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { EmptyState, LoadingState } from '@/ui/patterns/states';
 import { Pagination } from '@/ui/patterns/owner-states';
 import {
   auditOutcomes,
+  auditDayZone,
   auditTargetTypes,
   emptyAuditFilters,
   filtersFromParams,
@@ -48,10 +51,10 @@ function outcomeLabel(outcome: AuditEvent['outcome']): string {
 }
 
 function AuditEventCard({ event }: { event: AuditEvent }) {
-  const rows: [string, string | null | undefined][] = [
+  const rows: [string, string | null | undefined, string?][] = [
     [o.actor, event.actorId],
     [o.target, targetText(event)],
-    [o.time, event.occurredAt],
+    [o.time, formatOwnerInstant(event.occurredAt), event.occurredAt],
     [o.outcome, outcomeLabel(event.outcome)],
     [o.reason, event.reason],
   ];
@@ -65,10 +68,10 @@ function AuditEventCard({ event }: { event: AuditEvent }) {
         <p className="text-sm text-amber-800">{o.auditObservedNote}</p>
       ) : null}
       <dl className="grid gap-2 text-sm sm:grid-cols-2">
-        {rows.map(([label, value]) => (
+        {rows.map(([label, value, canonical]) => (
           <div key={label}>
             <dt className="text-slate-500">{label}</dt>
-            <dd dir="auto" className="break-all">
+            <dd title={canonical} dir="auto" className="break-all">
               {value ?? '—'}
             </dd>
           </div>
@@ -96,10 +99,13 @@ export function AuditPage() {
   const [params, setParams] = useSearchParams();
   const page = pageFromParams(params);
   const applied = filtersFromParams(params);
-  const appliedKey = paramsFromFilters(applied).toString();
+  const dayZone = auditDayZone(params);
+  const appliedKey = paramsFromFilters(applied, 1, dayZone).toString();
   // A URL the backend would reject (repeated, unknown or malformed parameters) is
   // not queried, so it can never show results that differ from what it states.
+  const auditQuery = toAuditQuery(applied, page, dayZone);
   const filtersValid =
+    auditQuery !== undefined &&
     auditUrlIsWellFormed(params) &&
     auditFilterSchema.safeParse(applied).success;
 
@@ -114,9 +120,8 @@ export function AuditPage() {
     reset(filtersFromParams(new URLSearchParams(appliedKey)));
   }, [appliedKey, reset]);
 
-  // Undefined only when the `to` day has no representable end. The schema rejects
-  // that input first; the query stays disabled rather than running without the bound.
-  const auditQuery = toAuditQuery(applied, page);
+  // Invalid/unrepresentable UTC bounds disable the query rather than silently
+  // removing a bound (including the backend year floor after local conversion).
   const query = useQuery({
     queryKey: queryKeys.auditEvents(auditQuery ?? { page }),
     queryFn: ({ signal }) => {
@@ -132,14 +137,14 @@ export function AuditPage() {
 
   // Applying a filter writes a new URL without `page`, so the result is page one.
   const apply = form.handleSubmit((values) => {
-    setParams(paramsFromFilters(values));
+    setParams(paramsFromFilters(values, 1, dayZone));
   });
   const resetFilters = () => {
     reset(emptyAuditFilters);
     setParams(new URLSearchParams());
   };
   const setPage = (next: number) => {
-    setParams(paramsFromFilters(applied, next));
+    setParams(paramsFromFilters(applied, next, dayZone));
   };
   const errors = form.formState.errors;
 
@@ -257,26 +262,38 @@ export function AuditPage() {
             error={errors.from?.message}
           >
             {(props) => (
-              <Input
-                {...props}
-                {...form.register('from')}
-                type="date"
-                dir="ltr"
+              <Controller
+                name="from"
+                control={form.control}
+                render={({ field }) => (
+                  <DateInput
+                    {...props}
+                    value={field.value}
+                    onChange={field.onChange}
+                  />
+                )}
               />
             )}
           </FormField>
           <FormField id="audit-to" label={o.auditTo} error={errors.to?.message}>
             {(props) => (
-              <Input
-                {...props}
-                {...form.register('to')}
-                type="date"
-                dir="ltr"
+              <Controller
+                name="to"
+                control={form.control}
+                render={({ field }) => (
+                  <DateInput
+                    {...props}
+                    value={field.value}
+                    onChange={field.onChange}
+                  />
+                )}
               />
             )}
           </FormField>
         </div>
-        <p className="text-xs text-slate-500">{o.auditRangeHint}</p>
+        <p className="text-xs text-slate-500">
+          {dayZone === 'UTC' ? o.auditLegacyRangeHint : o.auditRangeHint}
+        </p>
         <div className="flex flex-wrap gap-2">
           <Button type="submit">{o.auditApply}</Button>
           <Button type="button" variant="outline" onClick={resetFilters}>

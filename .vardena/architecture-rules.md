@@ -142,7 +142,7 @@ without an accepted ADR that supersedes it is a defect, not a style choice.
   `BusinessDate` is a calendar day persisted as canonical Gregorian PostgreSQL
   `date`; user-facing input/display is fixed Persian/Jalali-first under
   ADR-0044 and `docs/datetime.md` §0 across Vardena, including Owner Licensing
-  (with the established historical Gregorian fallback). An `Instant` is a UTC
+  (Persian date/time digits; established historical Gregorian fallback). An `Instant` is a UTC
   PostgreSQL `timestamptz`;
   wire Instants must be valid ISO UTC `Z` values, never naive local date-times
   or offset-bearing strings parsed in the browser. Render each valid Instant by
@@ -170,7 +170,9 @@ without an accepted ADR that supersedes it is a defect, not a style choice.
 - Day.js is used only through `frontend/src/lib/datetime/` for date-time handling;
   BusinessDate and Instant rendering follows AR-32 and ADR-0042. Calendar/zone
   behavior follows `docs/datetime.md` §0 (organization IANA zone, fixed Jalali-first
-  calendar across ERP and Owner surfaces), and Persian numeral preference remains
-  open under OQ-02.
+  calendar and Persian date/time digits across ERP and Owner surfaces); broader
+  number/text localization stays open under OQ-02. Owner may only regenerate the
+  approved pure-source allowlist as ignored build input, never import customer
+  application/runtime modules or maintain another calendar implementation.
 - UI text must come from a central i18n dictionary, not inline literals
   (language decision OQ-02).

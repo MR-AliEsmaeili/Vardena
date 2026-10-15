@@ -24,12 +24,13 @@ AR-32). A separate runtime is not an exemption and must not introduce ad hoc
 per-screen conversion logic or import Owner/customer application graphs across
 the separation boundary.
 
-- User-facing days use Jalali `YYYY/MM/DD` (for example `1405/07/16`). Existing
-  shared presentation uses Latin digits; Persian/Arabic-Indic digits are accepted
-  on input and normalized by `frontend/src/lib/datetime/numerals.ts`. Calendar
-  and numerals are separate: **OQ-02 remains open** for a Persian-numeral render
-  preference/broader localization. Do not invent a per-module digit policy or
-  claim that Latin digits make a Jalali day Gregorian.
+- **Product Owner confirmation, 2026-10-16:** ordinary Iranian-facing date/time
+  presentation uses **Persian digits**, e.g. `۱۴۰۵/۰۷/۱۶` and
+  `۱۴۰۵/۰۷/۱۷ ۰۰:۳۰`. Latin, Persian and Arabic-Indic input digits remain
+  accepted by the shared input normalization. Calendar conversion and numeral
+  rendering are separate; API/declared-calendar values, identifiers, technical
+  offsets and signed/canonical bytes remain ASCII. **OQ-02 is narrowed**, not
+  closed: broader number/money/text localization is not decided by this rule.
 - Instants render in the valid organization IANA zone, then Jalali local day/time:
   `YYYY/MM/DD HH:mm`, with seconds and explicit IANA zone/instant-specific offset
   for detail/audit (§6/§9). Follow the existing `Asia/Tehran` default. Owner views
@@ -47,15 +48,53 @@ the separation boundary.
   Display policy does not change expiry instants, storage, filters' domain
   semantics, signature bytes or canonicalization/conformance vectors.
 - Use shared kernel and frontend date-time primitives, inputs and formatters
-  (§8–§9). Engineering must provide a compatible centralized presentation
-  integration for the independent Owner build without violating ADR-0048;
-  no new shared runtime package or conversion implementation is approved here.
+  (§8–§9). **PO-approved independent-build integration (2026-10-16):** Owner
+  regenerates ignored, byte-identical copies of an explicit pure source allowlist
+  before dev/typecheck/test/build. Missing sources/unapproved imports fail the
+  command; stale generated files are not a fallback. No second calendar policy,
+  customer runtime dependency, settings store or cross-application import is
+  allowed. Owner installs its own dependencies. Its Docker UI build uses root
+  context with allowlisted Owner files and seven canonical pure helpers only;
+  the final image contains only Owner's static artifact (ADR-0048).
 
-**Status:** rule recorded, not a verification of every module. Source inspection
-found Owner customer detail, manual-operation history and audit views displaying
-raw ISO fields (PDR-11 §20.5). Correct these in a separate implementation PR and
-verify calendar/zone/input/filter behavior; this documentation PR changes no UI,
-storage or signed-artifact format and claims no all-module compliance.
+**Implementation and evidence (PR #164 extension, 2026-10-16):** centralized
+Persian date/time output, Owner customer/operation/audit Instant display and
+Jalali audit input are implemented with focused regressions. New Owner audit
+links mark `dayZone=Asia/Tehran`; unmarked existing date links retain UTC day
+semantics and are labelled as legacy. The event API remains ISO UTC, with
+inclusive local days mapped to `[start, next-day-start)`; each midnight is
+resolved independently so historical DST is not treated as 24 hours.
+
+**Not a whole-repository compliance claim.** See the
+[call-site audit and verification matrix](tasks/global-date-contract-audit.md)
+for exact evidence, defects fixed, historical fallback, unverified areas,
+regression commands and dependent follow-ups. Shared helper existence alone is
+never evidence that a module is compliant.
+
+### Mandatory implementation/review gate (current and future modules)
+
+For input, list/detail, documents/invoices, filters/reports, validation/messages,
+security/audit/history, expiry/Grace/devices/recovery, and every independent UI:
+
+1. Classify every field as BusinessDate or Instant at domain/DTO/storage/query
+   and presentation boundaries. Keep inclusive day filters, Inventory's specific
+   half-open BusinessDate validity windows and half-open Instant windows distinct.
+2. Reuse foundation parsing/validation, calendar/digits, input and formatting;
+   prove valid/invalid Jalali and leap days preserve the canonical day, and
+   near-midnight/DST Instants display in the correct local day without mutation.
+3. Exercise actual input/render/filter consumers, ASCII wire serialization and
+   the owning persistence/query contract. No ordinary Gregorian-only workflow;
+   keep only the explicit historical fallback and technical reconciliation.
+4. Reject malformed/overflowing bounds, never silently remove them. Preserve
+   existing saved-link semantics or version the new interpretation explicitly.
+5. `scripts/check-date-contract.py` runs in frontend CI and catches a limited
+   class of library/locale/native-input/raw-primary-Instant bypasses. It is a
+   structural guard, not a parser, all-field audit or proof of domain correctness.
+   Focused behavior tests and call-site evidence remain mandatory. Builds and
+   broad/integration/E2E verification run in Actions, not locally for this task.
+6. Historical/schema/semantic changes require a separately reviewed audit,
+   compatibility/backfill/rollback/rehearsal/test plan; this presentation change
+   authorizes none. Record unverified consumers instead of declaring compliance.
 
 ## 1. The model
 
@@ -425,8 +464,9 @@ Rendering is a view; the canonical BusinessDate/Instant is the fact.
 `document_date` is the reporting axis and `posting_timestamp` the event axis
 (OQ-43/Q14) — the two must never be conflated. `document_date` is a `date`
 with inclusive ranges (`accounting/domain/date-range.ts`), and that contract is
-unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
-(ADR-0036) and not decided here.
+unchanged. Ordinary report presentation follows §0. Statutory layouts,
+submission encodings and legal constraints remain expert-approved Legal Profile
+concerns (ADR-0036); this date display policy does not decide legal compliance.
 
 ## 9. Frontend
 
@@ -434,7 +474,7 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
   - `calendar.ts` — the ONLY importer of the Jalali library; conversion,
     validation, leap years;
   - `numerals.ts` — digit conversion, deliberately separate from calendars
-    (Persian-numeral rendering is a pending preference, OQ-02);
+    (Persian date/time digits are mandatory under §0; broader OQ-02 stays open);
   - `dayjs.ts` — the ONE Day.js configuration (plugins registered once);
   - `time-zone.ts` / `instant.ts` — valid IANA-zone handling and Instant →
     organization-zone local rendering followed by fixed Jalali-first
@@ -446,17 +486,23 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
   - `business-date.ts` — canonical days, today in the organization's zone, day
     input resolution; a business day is NEVER reinterpreted as an instant or
     shifted by the browser's timezone (OQ-73);
+  - `instant-range.ts` — explicit event-query local-day boundaries (not a
+    BusinessDate-to-Instant domain conversion), resolving two local midnights;
   - `settings.ts` + `use-date-time-settings.ts` — the active organization's
     IANA time zone as an external store; there is no calendar setting;
   - `api-mapping.ts` — the `{ gregorian, jalali|null }` / `{ instant, … }`
     boundary and the fixed Jalali-first declared-day request form, with
     canonical Gregorian fallback when the converter cannot render a day.
 - **One** shared BusinessDate field: `src/ui/patterns/date-input.tsx`. It always
-  uses a Jalali text field (`1405/07/16`, Persian digits accepted) for supported
+  uses a Jalali text field (`۱۴۰۵/۰۷/۱۶`, all three digit forms accepted) for supported
   dates and emits a canonical Gregorian day. For a valid historical day outside
   the Jalali envelope it automatically switches to a native Gregorian fallback;
   that is range handling, not a user or organization calendar choice. No screen
   builds its own date picker.
+- Independent Owner uses a thin controlled form adapter and formatter facade
+  over the exact staged helpers, not a second parser/calendar implementation.
+  Invalid Owner drafts remain invalid at submission instead of retaining a
+  previous canonical bound; historical values retain the explicit fallback.
 - Formatters live in `lib/format.ts` (`formatDateOnly`, `formatDateTime`, and
   the explicit-zone detail/audit formatter) and delegate to the shared layer; a
   component never imports `dayjs` or a Jalali conversion library. For an
@@ -514,8 +560,9 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
 
 ## 11. Open items
 
-- **OQ-02** — Persian-numeral rendering, primary UI language(s), and broader
-  localization remain open. The BusinessDate/Instant distinction and IANA-zone
+- **OQ-02** — primary UI language(s), broader number/text localization and
+  non-date numeral preferences remain open; Persian date/time display digits
+  were explicitly decided on 2026-10-16 (§0). The BusinessDate/Instant distinction and IANA-zone
   behavior are accepted in ADR-0042; the fixed Jalali-first MVP presentation is
   decided in ADR-0044, not stored as organization data.
 - ~~**OQ-73**~~ — **resolved**: every business-day column is PostgreSQL `date`

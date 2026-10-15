@@ -23,7 +23,7 @@ describe('DateInput', () => {
 
     const field = screen.getByRole('textbox');
     expect(field).toHaveAttribute('data-calendar', 'JALALI');
-    expect(field).toHaveValue('1405/07/16');
+    expect(field).toHaveValue('۱۴۰۵/۰۷/۱۶');
 
     await user.clear(field);
     await user.type(field, '۱۴۰۵/۰۷/۱۷');

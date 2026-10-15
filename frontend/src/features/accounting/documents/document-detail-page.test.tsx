@@ -185,7 +185,7 @@ describe('Document detail — rendering, loading and errors', () => {
     expect(screen.getAllByText(t.documents.stateFinal).length).toBeGreaterThan(
       0,
     );
-    expect(screen.getByText('1405/01/16 (2026-04-05)')).toBeInTheDocument();
+    expect(screen.getByText('۱۴۰۵/۰۱/۱۶ (2026-04-05)')).toBeInTheDocument();
     expect(await screen.findByText(/FIN/)).toBeInTheDocument();
 
     const table = screen.getByRole('table');

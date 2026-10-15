@@ -4,6 +4,7 @@ import {
   auditTrailHref,
   auditUrlIsWellFormed,
   emptyAuditFilters,
+  auditDayZone,
   filtersFromParams,
   hasAppliedFilters,
   isCalendarDay,
@@ -319,4 +320,50 @@ describe('UTC day arithmetic', () => {
     // helper itself, which must not depend on Date.UTC's two-digit mapping.
     expect(utcExclusiveEnd('0099-12-31')).toBe('0100-01-01T00:00:00.000Z');
   });
+});
+
+describe('Tehran date filter compatibility', () => {
+  it('maps a new local-day filter to explicit UTC boundaries without a day shift', () => {
+    expect(
+      toAuditQuery(
+        { ...emptyAuditFilters, from: '2026-10-09', to: '2026-10-09' },
+        1,
+        'Asia/Tehran',
+      ),
+    ).toEqual({
+      page: 1,
+      occurredFrom: '2026-10-08T20:30:00.000Z',
+      occurredBefore: '2026-10-09T20:30:00.000Z',
+    });
+  });
+  it('does not issue a UTC year below the API minimum at a Tehran boundary', () => {
+    expect(
+      toAuditQuery(
+        { ...emptyAuditFilters, from: '1000-01-01' },
+        1,
+        'Asia/Tehran',
+      ),
+    ).toBeUndefined();
+  });
+});
+
+it('versions Tehran day links, preserves legacy UTC semantics and rejects unknown/repeated zones', () => {
+  const local = paramsFromFilters(
+    { ...emptyAuditFilters, from: '2026-10-09' },
+    2,
+    'Asia/Tehran',
+  );
+  expect(local.get('dayZone')).toBe('Asia/Tehran');
+  expect(auditDayZone(local)).toBe('Asia/Tehran');
+  expect(auditUrlIsWellFormed(local)).toBe(true);
+  expect(auditDayZone(new URLSearchParams('from=2026-10-09'))).toBe('UTC');
+  expect(auditDayZone(new URLSearchParams())).toBe('Asia/Tehran');
+  expect(
+    auditUrlIsWellFormed(new URLSearchParams('dayZone=Europe/Stockholm')),
+  ).toBe(false);
+  expect(
+    auditUrlIsWellFormed(
+      new URLSearchParams('dayZone=Asia/Tehran&dayZone=Asia/Tehran'),
+    ),
+  ).toBe(false);
 });

@@ -77,7 +77,19 @@ Build API: `cd backend && npm ci --ignore-scripts && npm run build`.
 Run migration/bootstrap with the source toolchain **before** starting API, or use
 compiled `node dist/migrate.js` / `node dist/bootstrap.js` from the Owner image.
 Build UI: `cd frontend && npm ci --ignore-scripts && npm run build`.
-Separate Dockerfiles are provided; their build contexts are their own directories.
+The API Dockerfile retains its own-directory context. The UI Dockerfile requires
+repository-root context: `docker build -f owner-licensing/frontend/Dockerfile .`.
+Its Dockerfile-specific ignore file allowlists Owner UI and seven pure canonical
+date source files only (no customer runtime, dependencies, config or secrets).
+Before dev/typecheck/test/build, `scripts/stage-date-foundation.mjs` regenerates
+ignored byte-identical copies of those helpers; missing source or unapproved
+imports fail the command, never use stale copies. Owner installs its own locked
+dependencies and emits its own artifact; no second maintained calendar engine.
+Source projection and image checks run in CI. Changing the helper/dependency
+boundary requires deliberate review; see `docs/datetime.md` §0 and ADR-0048.
+New audit date filters use Jalali input and Tehran day bounds; saved date links
+without `dayZone=Asia/Tehran` keep their original UTC-day semantics and display a
+legacy explanation. Clearing filters starts the ordinary Tehran flow.
 Do not publish Owner images through the customer release channel. An Owner UI
 nginx sample proxies `/api/` to an internal service named `owner-api` on port 3001;
 this is deployment composition, not a customer endpoint. No new microservice.

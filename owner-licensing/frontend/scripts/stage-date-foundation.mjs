@@ -1,0 +1,79 @@
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
+
+// PO-approved build-time projection, not an independent implementation. Only
+// these framework-free source files can enter Owner. No settings/React/API/app
+// imports, runtime customer dependency, rewriting, or stale fallback is allowed.
+export const files = [
+  'calendar.ts',
+  'dayjs.ts',
+  'numerals.ts',
+  'business-date.ts',
+  'time-zone.ts',
+  'instant.ts',
+  'instant-range.ts',
+];
+const externalImports = new Set([
+  'jalaali-js',
+  'dayjs',
+  'dayjs/plugin/timezone',
+  'dayjs/plugin/utc',
+]);
+export async function stageDateFoundation(
+  source = new URL('../../../frontend/src/lib/datetime/', import.meta.url),
+  target = new URL('../src/lib/.date-foundation/', import.meta.url),
+) {
+  const sources = await Promise.all(
+    files.map(async (file) => {
+      const data = await readFile(new URL(file, source), 'utf8');
+      const tree = ts.createSourceFile(
+        file,
+        data,
+        ts.ScriptTarget.Latest,
+        true,
+      );
+      if (tree.parseDiagnostics.length)
+        throw new Error(`Invalid date foundation: ${file}`);
+      function check(node) {
+        if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+          const specifier = node.moduleSpecifier;
+          if (specifier) {
+            const name = ts.isStringLiteral(specifier) ? specifier.text : '';
+            if (
+              !externalImports.has(name) &&
+              !(name.startsWith('./') && files.includes(`${name.slice(2)}.ts`))
+            ) {
+              throw new Error(
+                `Unapproved date-foundation dependency in ${file}: ${name}`,
+              );
+            }
+          }
+        }
+        // No dynamic/require/import-type escape from the static allowlist.
+        if (
+          ts.isImportEqualsDeclaration(node) ||
+          ts.isImportTypeNode(node) ||
+          (ts.isCallExpression(node) &&
+            (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+              (ts.isIdentifier(node.expression) &&
+                node.expression.text === 'require')))
+        ) {
+          throw new Error(
+            `Unapproved dynamic date-foundation dependency in ${file}`,
+          );
+        }
+        ts.forEachChild(node, check);
+      }
+      check(tree);
+      return [file, data];
+    }),
+  );
+  await rm(target, { recursive: true, force: true });
+  await mkdir(target, { recursive: true });
+  await Promise.all(
+    sources.map(([file, data]) => writeFile(new URL(file, target), data)),
+  );
+}
+if (process.argv[1] === fileURLToPath(import.meta.url))
+  await stageDateFoundation();

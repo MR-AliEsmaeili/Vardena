@@ -143,7 +143,7 @@ describe('Documents list — loading, rendering, empty and error states', () => 
 
     const table = await screen.findByRole('table');
     expect(within(table).getByText('1001')).toBeInTheDocument();
-    expect(within(table).getByText('1405/01/16')).toBeInTheDocument();
+    expect(within(table).getByText('۱۴۰۵/۰۱/۱۶')).toBeInTheDocument();
     expect(within(table).getByText(t.documents.stateFinal)).toBeInTheDocument();
     // The financial area column resolves from its own query
     // (`listFinancialAreas`) — `findByText` rather than `getByText` because

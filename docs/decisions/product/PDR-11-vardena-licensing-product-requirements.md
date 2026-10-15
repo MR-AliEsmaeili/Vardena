@@ -927,7 +927,7 @@ Preserved without reopening:
 | J | OQ-82; U-9 | §5.5/PDR-17 manual approval preserved; row stays OPEN for failure/cancellation/protocol and abandoned-observation handling. No new transfer policy. |
 | K | OQ-84; PQ-9 | **Decided**, product question closed: no ordinary activation signed receipt; manual attributable history sufficient for approved scope. OQ-83 operation-specific evidence and OQ-82 design untouched. |
 | L | OQ-79; PQ-4; CF-11 | §3.5 and §20.3: concept removed; row stays OPEN for compatibility/data audit and staged technical removal/mapping. |
-| Global dates | OQ-02 remains separate | `docs/datetime.md` §0 and ADR-0044: project-wide Jalali-first; existing numeral convention retained, not an invented resolution of OQ-02. |
+| Global dates | Date/time digit scope decided 2026-10-16; broader OQ-02 OPEN | `docs/datetime.md` §0 and ADR-0044: global Jalali-first and PO-approved Persian date/time digits; canonical/API ASCII retained. Broader number/text localization is not inferred. |
 
 OQ-45 retains its distinct contract-termination trigger/strictness question: the
 instructions define expiry and authorized emergency stops, not a stricter policy
@@ -999,7 +999,7 @@ do not substitute blanket license invalidation or trust every future signature.
 | OQ-78/ADR-0046 record no revocation artifact/state or login-blocking implementation; current licensing import exemption avoids bootstrap deadlock but is not independent emergency recovery. | Define restriction reasons, authorization, session behavior, independent authenticated recovery interface, signed import/state transition and backup path, including explicit security-incident responses. |
 | `domain/license-version.ts` and `application/license-import.service.ts` retain duplicate refusal behavior; legacy hash retry returns unchanged rather than a persisted original response. | Specify operation identity/content comparison, durable original result, authorized replay retrieval and atomic concurrent no-repeat effects (OQ-81); preserve formats/vectors. |
 | Owner `migrations/001-foundation.sql`, `002-manual-operations.sql` and `backend/src/audit.ts` provide attributable stored events, not a separate permanent archive. | Archive boundary, durable retention/restore, least-privilege sensitive access and minimization; no purge or unproven tamper-proof claim (OQ-77). |
-| Owner `frontend/src/features/customers/customer-page.tsx` renders `createdAt` raw; `operations/operation-page.tsx` renders `createdAt`/`occurredAt`; `audit/audit-page.tsx` passes raw `occurredAt` into detail rows. | Apply centralized Jalali-first date presentation to Owner lists/detail/history/audit and filters under `docs/datetime.md` §0 while preserving independent builds. This is an evidenced gap, not project-wide compliance verification. |
+| Initial audit found Owner customer/operation/audit raw ISO primary fields and Gregorian audit inputs. | PR #164 was explicitly extended on 2026-10-16 with bounded code/regression fixes, exact-source independent Owner integration and versioned Tehran filter links preserving old UTC semantics. See `docs/tasks/global-date-contract-audit.md` for actual call sites, verification and unverified scope; no whole-module compliance claim. |
 | `SUSPENDED` consumers in §20.3 and trust-list limitations in §20.4. | Compatibility audit/migration and compatible incident-response design respectively. |
 
 Paths in the table's customer domain/application rows are relative to

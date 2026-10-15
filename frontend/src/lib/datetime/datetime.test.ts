@@ -135,7 +135,7 @@ describe('business days', () => {
   });
 
   it('renders a day in the active calendar and keeps the canonical value', () => {
-    expect(formatBusinessDay('2026-10-08', 'JALALI')).toBe('1405/07/16');
+    expect(formatBusinessDay('2026-10-08', 'JALALI')).toBe('۱۴۰۵/۰۷/۱۶');
     expect(formatBusinessDay('2026-10-08', 'GREGORIAN')).toBe('2026-10-08');
     // Unsupported legacy years remain visible as their canonical source day.
     expect(formatBusinessDay('0600-01-01', 'JALALI')).toBe('0600-01-01');
@@ -166,8 +166,8 @@ describe('business days', () => {
 describe('event timestamps', () => {
   it('renders an instant in the organization zone', () => {
     const instant = '2026-10-08T08:32:14.421Z';
-    expect(formatInstant(instant, 'Asia/Tehran')).toBe('1405/07/16 12:02');
-    expect(formatInstant(instant, 'UTC')).toBe('1405/07/16 08:32');
+    expect(formatInstant(instant, 'Asia/Tehran')).toBe('۱۴۰۵/۰۷/۱۶ ۱۲:۰۲');
+    expect(formatInstant(instant, 'UTC')).toBe('۱۴۰۵/۰۷/۱۶ ۰۸:۳۲');
     expect(isInstant(instant)).toBe(true);
     expect(isInstant('nope')).toBe(false);
     expect(isInstant('2026-10-08T08:32:14')).toBe(false);

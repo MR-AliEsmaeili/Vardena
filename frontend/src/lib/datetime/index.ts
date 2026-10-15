@@ -24,7 +24,11 @@ export {
   type CalendarSystem,
   type DayParts,
 } from './calendar';
-export { containsNonLatinDigits, toLatinDigits } from './numerals';
+export {
+  containsNonLatinDigits,
+  toLatinDigits,
+  toPersianDigits,
+} from './numerals';
 export {
   DATE_DISPLAY_FORMAT,
   DATE_TIME_DISPLAY_FORMAT,
@@ -67,3 +71,8 @@ export {
   type BusinessDateInput,
   type DeclaredBusinessDate,
 } from './api-mapping';
+
+export {
+  calendarDayStartInstant,
+  calendarDayExclusiveEnd,
+} from './instant-range';

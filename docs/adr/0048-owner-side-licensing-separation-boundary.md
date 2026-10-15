@@ -39,6 +39,20 @@ licensing/recovery/audit/history views. Applying it must preserve independent
 builds and reuse the centralized foundation, not add per-screen conversion or
 cross-boundary application imports. No storage or signed-byte contract changes.
 
+## 2026-10-16 pure date-source compatibility addendum
+
+Explicit Product Owner approval permits Owner to regenerate ignored,
+byte-identical build inputs from the canonical frontend's allowlisted pure date
+helpers. This is source projection, not an import of customer application code,
+a runtime dependency or a separately maintained calendar implementation. The
+staging command fails on missing/unapproved dependencies; no stale fallback.
+Owner installs its own locked dependencies and emits independent artifacts.
+Its UI Docker build uses repository-root context with an explicit source/context
+allowlist; no customer app runtime/config/secrets enter the image. The existing
+customer artifact/isolation checks remain intact. See [date contract §0](../datetime.md)
+and [the audit](../tasks/global-date-contract-audit.md) for boundaries and tests.
+No permission, database, issuer, signature or cryptographic-custody change.
+
 ## Phase 1 acceptance addendum — 2026-10-15
 
 The Product Owner's Phase 1 instruction accepts the separation boundary for this
