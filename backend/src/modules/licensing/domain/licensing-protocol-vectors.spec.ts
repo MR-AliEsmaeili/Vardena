@@ -28,7 +28,9 @@ describe('licensing protocol vector corpus (Phase 1)', () => {
       expect(v.id).toMatch(/^CAN-/);
       expect(typeof v.canonicalUtf8Hex).toBe('string');
       expect(typeof v.canonicalUtf8).toBe('string');
-      expect(Buffer.from(v.canonicalUtf8, 'utf8').toString('hex')).toBe(v.canonicalUtf8Hex);
+      expect(Buffer.from(v.canonicalUtf8, 'utf8').toString('hex')).toBe(
+        v.canonicalUtf8Hex,
+      );
       // canonical bytes must parse as JSON
       expect(() => JSON.parse(v.canonicalUtf8)).not.toThrow();
     }
@@ -49,8 +51,12 @@ describe('licensing protocol vector corpus (Phase 1)', () => {
     const vecs = loadDir('valid');
     expect(vecs.length).toBeGreaterThan(0);
     const v = vecs[0];
-    const keyJson = JSON.parse(readFileSync(join(VECTORS_ROOT, 'keys', 'authority-a.json'), 'utf8'));
-    const trusted = toTrustedKeys([{ key: parsePublicKey(keyJson.publicKeySpkiBase64) }]);
+    const keyJson = JSON.parse(
+      readFileSync(join(VECTORS_ROOT, 'keys', 'authority-a.json'), 'utf8'),
+    );
+    const trusted = toTrustedKeys([
+      { key: parsePublicKey(keyJson.publicKeySpkiBase64) },
+    ]);
     const verified = parseLicenseDocument(v.artifact, trusted);
     expect(verified.keyId).toBe(keyJson.keyId);
   });
@@ -58,8 +64,12 @@ describe('licensing protocol vector corpus (Phase 1)', () => {
   it('invalid artifacts are rejected with expected reasons', () => {
     const vecs = loadDir('invalid');
     expect(vecs.length).toBeGreaterThan(0);
-    const keyJson = JSON.parse(readFileSync(join(VECTORS_ROOT, 'keys', 'authority-a.json'), 'utf8'));
-    const trusted = toTrustedKeys([{ key: parsePublicKey(keyJson.publicKeySpkiBase64) }]);
+    const keyJson = JSON.parse(
+      readFileSync(join(VECTORS_ROOT, 'keys', 'authority-a.json'), 'utf8'),
+    );
+    const trusted = toTrustedKeys([
+      { key: parsePublicKey(keyJson.publicKeySpkiBase64) },
+    ]);
     for (const v of vecs) {
       // only VLIC2-shaped artifacts
       if (typeof v.artifact !== 'string' || !v.artifact.startsWith('VLIC2')) {
@@ -73,7 +83,12 @@ describe('licensing protocol vector corpus (Phase 1)', () => {
       }
       // expected reason may be 'malformed' etc; assert a throw occurred for bad artifacts
       // (some may parse but fail; ensure not silently accepted)
-      if (v.expectedReason === 'malformed' || v.expectedReason === 'signature' || v.expectedReason === 'unsupported-version' || v.expectedReason === 'payload') {
+      if (
+        v.expectedReason === 'malformed' ||
+        v.expectedReason === 'signature' ||
+        v.expectedReason === 'unsupported-version' ||
+        v.expectedReason === 'payload'
+      ) {
         expect(thrown).toBeTruthy();
       }
     }

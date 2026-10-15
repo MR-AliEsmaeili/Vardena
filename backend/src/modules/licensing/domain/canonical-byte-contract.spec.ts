@@ -6,7 +6,9 @@ import { canonicalizeEnrollmentChallenge } from './client-device.js';
 import type { EnrollmentChallengePayload } from './client-device.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
 
-function basePayload(overrides: Partial<LicenseVersionPayload> = {}): LicenseVersionPayload {
+function basePayload(
+  overrides: Partial<LicenseVersionPayload> = {},
+): LicenseVersionPayload {
   return {
     version: 2,
     kind: 'SERVER_LICENSE_VERSION',
@@ -74,7 +76,10 @@ describe('canonical byte contract (D-2(b) ratification)', () => {
   });
 
   it('sorts modules and features', () => {
-    const p = basePayload({ moduleEntitlements: ['users', 'accounting'], featureEntitlements: ['z', 'a'] });
+    const p = basePayload({
+      moduleEntitlements: ['users', 'accounting'],
+      featureEntitlements: ['z', 'a'],
+    });
     const out = canonicalizeLicenseVersion(p);
     expect(out).toContain('"modules":["accounting","users"]');
     expect(out).toContain('"features":["a","z"]');
