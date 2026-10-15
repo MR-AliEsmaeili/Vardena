@@ -833,6 +833,7 @@ class WorkflowContractTest(unittest.TestCase):
             "npm run test:licensing-migration-rehearsal",
             "test/licensing-persistence-live.e2e-spec.ts",
             "bash scripts/check-generated-api-client.sh",
+            "python3 scripts/check-production-artifacts.py",
         ):
             with self.subTest(step=needle):
                 self.assertIn(needle, self.text)
@@ -953,3 +954,126 @@ class DocsLinkCheckTest(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main(verbosity=2)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 0.5A Production Artifact & Secret Hygiene Scanner Tests
+# --------------------------------------------------------------------------- #
+
+class ProductionArtifactGateTest(unittest.TestCase):
+    def setUp(self):
+        self.checker = load("check-production-artifacts.py")
+
+    def test_clean_dist_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dist = Path(tmp) / "dist"
+            dist.mkdir()
+            for req in self.checker.REQUIRED_FILES:
+                p = dist / req
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("export const ok = 1;", encoding="utf-8")
+            errors = self.checker.inspect_dist(dist)
+            self.assertEqual(errors, [])
+
+    def test_forbidden_file_in_dist_fails_gate(self):
+        for forbidden in self.checker.FORBIDDEN_FILES:
+            with self.subTest(forbidden=forbidden):
+                with tempfile.TemporaryDirectory() as tmp:
+                    dist = Path(tmp) / "dist"
+                    dist.mkdir()
+                    for req in self.checker.REQUIRED_FILES:
+                        p = dist / req
+                        p.parent.mkdir(parents=True, exist_ok=True)
+                        p.write_text("export const ok = 1;", encoding="utf-8")
+                    bad = dist / forbidden
+                    bad.parent.mkdir(parents=True, exist_ok=True)
+                    bad.write_text("export const evil = 1;", encoding="utf-8")
+                    errors = self.checker.inspect_dist(dist)
+                    self.assertTrue(any("Forbidden development file" in err for err in errors))
+
+    def test_forbidden_symbol_in_dist_fails_gate(self):
+        for symbol in self.checker.FORBIDDEN_SYMBOLS:
+            with self.subTest(symbol=symbol.decode()):
+                with tempfile.TemporaryDirectory() as tmp:
+                    dist = Path(tmp) / "dist"
+                    dist.mkdir()
+                    for req in self.checker.REQUIRED_FILES:
+                        p = dist / req
+                        p.parent.mkdir(parents=True, exist_ok=True)
+                        p.write_text("export const ok = 1;", encoding="utf-8")
+                    # inject forbidden symbol into main.js
+                    (dist / "main.js").write_bytes(b"/* " + symbol + b" */")
+                    errors = self.checker.inspect_dist(dist)
+                    self.assertTrue(any(f"Forbidden symbol '{symbol.decode()}'" in err for err in errors))
+
+    def test_missing_required_entrypoint_fails_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dist = Path(tmp) / "dist"
+            dist.mkdir()
+            # Omit main.js
+            for req in self.checker.REQUIRED_FILES:
+                if req == "main.js":
+                    continue
+                p = dist / req
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("export const ok = 1;", encoding="utf-8")
+            errors = self.checker.inspect_dist(dist)
+            self.assertTrue(any("Required production file missing" in err for err in errors))
+
+    def test_forbidden_production_package_script_fails_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = Path(tmp) / "package.json"
+            pkg.write_text(json.dumps({
+                "scripts": {
+                    "start:prod": "node dist/issue-development-license.js",
+                    "start:worker": "node dist/worker.js"
+                }
+            }), encoding="utf-8")
+            errors = self.checker.inspect_package_scripts(pkg)
+            self.assertTrue(any("Production script 'start:prod' invokes development issuer" in err for err in errors))
+
+    def test_docker_production_stage_parity_fails_when_issuer_injected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            backend_mock = Path(tmp) / "backend"
+            dist = backend_mock / "dist"
+            dist.mkdir(parents=True)
+            for req in self.checker.REQUIRED_FILES:
+                p = dist / req
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("export const ok = 1;", encoding="utf-8")
+            (backend_mock / "package.json").write_text("{}", encoding="utf-8")
+            (backend_mock / "package-lock.json").write_text("{}", encoding="utf-8")
+
+            # Inject forbidden issuer into dist
+            bad = dist / "tools" / "development-license-authority.js"
+            bad.parent.mkdir(parents=True, exist_ok=True)
+            bad.write_text("export function generateAuthorityKeyPair() {}", encoding="utf-8")
+
+            errors = self.checker.verify_docker_production_stage_parity(backend_mock)
+            self.assertTrue(any("development-license-authority.js" in err for err in errors))
+
+    def test_license_verification_negative_control_fails_on_broken_key(self):
+        # Pointing to an empty directory where dist does not exist should fail verification
+        with tempfile.TemporaryDirectory() as tmp:
+            errors = self.checker.execute_customer_license_verification(Path(tmp))
+            self.assertTrue(len(errors) > 0)
+
+    def test_key_hygiene_scanner_detects_prohibited_key_material(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            # init git repo
+            git(repo, "init")
+            # add a tracked .key file
+            bad_key = repo / "server.key"
+            bad_key.write_text("dummy key content", encoding="utf-8")
+            git(repo, "add", "server.key")
+
+            # add a tracked script with PEM private key header
+            bad_script = repo / "scripts" / "leak.py"
+            bad_script.parent.mkdir(parents=True, exist_ok=True)
+            bad_script.write_text("key = '''-----BEGIN PRIVATE KEY-----\nMIG...'''", encoding="utf-8")
+            git(repo, "add", "scripts/leak.py")
+
+            errors = self.checker.scan_key_hygiene(repo)
+            self.assertTrue(any("forbidden private-key extension: server.key" in err for err in errors))
+            self.assertTrue(any("contains PEM private key pattern: scripts/leak.py" in err for err in errors))

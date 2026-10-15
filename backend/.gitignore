@@ -1,5 +1,6 @@
 # compiled output
 /dist
+/dist-tools
 /node_modules
 /build
 *.tsbuildinfo
@@ -52,6 +53,12 @@ lerna-debug.log*
 .env.test.local
 .env.production.local
 .env.local
+
+# Private keys and authority credentials (never commit key material)
+*.key
+*.pem
+*.p8
+*.pkcs8
 
 # temp directory
 .temp

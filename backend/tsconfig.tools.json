@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist-tools"
+  },
+  "include": [
+    "src/issue-development-license.ts",
+    "src/tools/development-license-authority.ts"
+  ]
+}

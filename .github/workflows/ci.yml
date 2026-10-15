@@ -165,6 +165,9 @@ jobs:
         working-directory: backend
         run: npm run build
 
+      - name: Verify production artifacts and secret hygiene
+        run: python3 scripts/check-production-artifacts.py
+
       - name: Migrate test database
         working-directory: backend
         env:
