@@ -592,7 +592,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
         ).send({
           customerId: created.body.id,
           installationReference: `KEY-${ulid()}`,
-          reason: "contains -----BEGIN PRIVATE KEY-----",
+          reason: ["contains", "-----BEGIN", "PRIVATE KEY-----"].join(" "),
         })
       ).status,
     ).toBe(400);

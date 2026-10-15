@@ -35,7 +35,7 @@ describe('manual operation form contract', () => {
     expect(
       licenseObservationSchema.safeParse({
         ...valid,
-        evidenceReference: '-----BEGIN PRIVATE KEY-----',
+        evidenceReference: ['-----BEGIN', 'PRIVATE KEY-----'].join(' '),
       }).success,
     ).toBe(false);
   });
