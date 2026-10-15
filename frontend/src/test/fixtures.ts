@@ -96,6 +96,8 @@ export const testLicenseVersion: LicenseVersionSummary = {
   supersededByVersionId: null,
   importedAt: '2026-01-01T00:00:00.000Z',
   source: 'text',
+  deviceLimit: 2,
+  deviceLimitSpecified: true,
 };
 
 /** A retained but not-yet-effective version: a scheduled renewal (L-03). */
@@ -123,6 +125,8 @@ export const testActiveLicenseState: LicenseState = {
   validUntil: null,
   organizationLimit: null,
   userLimit: null,
+  deviceLimit: 2,
+  deviceLimitSpecified: true,
   entitlements: [{ kind: 'MODULE', code: 'organization' }],
   provider: 'persistent',
   effectiveVersionId: testLicenseVersion.versionId,
@@ -141,6 +145,8 @@ export const testUnlicensedLicenseState: LicenseState = {
   customerCode: null,
   licenseId: null,
   validFrom: null,
+  deviceLimit: null,
+  deviceLimitSpecified: false,
   entitlements: [],
   effectiveVersionId: null,
   scheduledVersion: null,

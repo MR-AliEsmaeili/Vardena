@@ -24,9 +24,10 @@ import { createTestApp } from './support/test-app.js';
  * If that registration is dropped, the route disappears from the Nest router
  * and the fallback answers 404 — these two assertions fail loudly instead.
  *
- * The contract itself is unchanged: `AuthGuard` only (no RBAC permission),
+ * Authorization remains unchanged: `AuthGuard` only (no RBAC permission),
  * so unauthenticated requests get the established 401 envelope and an
- * authenticated session reads the evaluated license state.
+ * authenticated session reads the evaluated license state, including the
+ * explicit device-entitlement-presence fields.
  */
 describe('License state route registration (e2e)', () => {
   let app: INestApplication;
@@ -99,6 +100,8 @@ describe('License state route registration (e2e)', () => {
       validUntil: null,
       organizationLimit: null,
       userLimit: null,
+      deviceLimit: null,
+      deviceLimitSpecified: false,
       provider: 'route-test-provider',
     });
     expect(response.body.entitlements).toEqual(
@@ -130,6 +133,8 @@ describe('License state route registration (e2e)', () => {
         'validUntil',
         'organizationLimit',
         'userLimit',
+        'deviceLimit',
+        'deviceLimitSpecified',
         'entitlements',
         'provider',
         'effectiveVersionId',

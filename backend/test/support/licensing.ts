@@ -16,6 +16,8 @@ export function licensingTestDouble(
       validUntil: null,
       organizationLimit: null,
       userLimit: null,
+      deviceLimit: null,
+      deviceLimitSpecified: false,
       provider: 'test',
       entitlements: [
         'accounting',

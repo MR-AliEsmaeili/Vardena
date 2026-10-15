@@ -228,6 +228,15 @@ export class LicenseVersionSummaryDto implements LicenseVersionSummary {
 
   @ApiProperty({ enum: ['file', 'text', 'legacy-code'] })
   source!: LicenseVersionSource;
+
+  @ApiProperty({ type: Number, nullable: true })
+  deviceLimit!: number | null;
+
+  @ApiProperty({
+    description:
+      'Whether deviceLimit was explicitly present in the signed payload.',
+  })
+  deviceLimitSpecified!: boolean;
 }
 
 /**
@@ -297,6 +306,15 @@ export class LicenseStateDto implements LicenseStateView {
 
   @ApiProperty({ type: Number, nullable: true })
   userLimit!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true })
+  deviceLimit!: number | null;
+
+  @ApiProperty({
+    description:
+      'False when the governing signed license predates the deviceLimit field; a missing field is not treated as unlimited.',
+  })
+  deviceLimitSpecified!: boolean;
 
   @ApiProperty({ type: [LicenseEntitlementDto] })
   entitlements!: LicenseEntitlementDto[];
@@ -395,16 +413,20 @@ export class ReductionConflictDto {
     enum: [
       'organization-capacity',
       'user-capacity',
+      'device-capacity',
+      'device-entitlement-removed',
       'entitlement-removed',
       'open-end-closed',
       'usage-unavailable',
     ],
     description:
-      'organization-capacity / user-capacity: the new limit is below current usage. entitlement-removed: the retired version grants an entitlement the new one does not. open-end-closed: a perpetual version would be handed over to a time-limited one (never operator-resolvable). usage-unavailable: current usage could not be counted, so the check fails closed.',
+      'organization-capacity / user-capacity / device-capacity: the new finite limit is below current usage. Under PDR-15 §2.15, device conflicts may be resolved by explicitly deactivating devices or using the existing authorized, audited reduction-resolution flow; that flow never auto-deactivates, and new enrollment remains blocked while active usage is at or above the finite limit. device-entitlement-removed: the signed version removes device capacity while devices remain registered. entitlement-removed: the retired version grants an entitlement the new one does not. open-end-closed: a perpetual version would be handed over to a time-limited one (never operator-resolvable). usage-unavailable: current usage could not be counted, so the check fails closed.',
   })
   kind!:
     | 'organization-capacity'
     | 'user-capacity'
+    | 'device-capacity'
+    | 'device-entitlement-removed'
     | 'entitlement-removed'
     | 'open-end-closed'
     | 'usage-unavailable';
@@ -433,13 +455,13 @@ export class ReductionConflictDto {
   entitlement?: ReductionConflictEntitlementDto | null;
 
   @ApiProperty({
-    enum: ['organizations', 'active-users'],
+    enum: ['organizations', 'active-users', 'devices'],
     nullable: true,
     required: false,
     description:
       'Which count was unavailable, for a usage-unavailable conflict.',
   })
-  scope?: 'organizations' | 'active-users' | null;
+  scope?: 'organizations' | 'active-users' | 'devices' | null;
 }
 
 export class ReductionConflictEntitlementDto {

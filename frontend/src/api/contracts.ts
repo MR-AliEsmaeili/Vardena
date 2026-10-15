@@ -131,6 +131,10 @@ export interface LicenseVersionSummary {
   supersededByVersionId: string | null;
   importedAt: string;
   source: LicenseVersionSource;
+  /** Effective version's authoritative registered-device quota. */
+  deviceLimit: number | null;
+  /** False means the signed version did not specify a device quota. */
+  deviceLimitSpecified: boolean;
 }
 
 /**
@@ -157,6 +161,9 @@ export interface LicenseState {
   validUntil: string | null;
   organizationLimit: number | null;
   userLimit: number | null;
+  deviceLimit: number | null;
+  /** False when the governing signed version omitted its device quota. */
+  deviceLimitSpecified: boolean;
   entitlements: LicenseEntitlement[];
   provider: string;
   effectiveVersionId: string | null;
@@ -208,6 +215,99 @@ export const LICENSE_IMPORT_RECEIPT_MATCHES_OPENAPI: LicenseImportReceiptMatches
 type LicenseStateMatchesOpenApi =
   LicenseState extends Schemas['LicenseStateDto'] ? true : never;
 export const LICENSE_STATE_MATCHES_OPENAPI: LicenseStateMatchesOpenApi = true;
+
+// ---------------------------------------------------------------------------
+// Registered client-device lifecycle (OQ-83)
+//
+// Wire DTOs are derived from the backend-generated OpenAPI contract. Swagger
+// currently omits the underlying scalar type for nullable properties, so only
+// those verified nullable strings/numbers are refined here.
+// ---------------------------------------------------------------------------
+
+export type ClientDeviceStatus = Schemas['ClientDeviceDto']['status'];
+export type ClientDevice = NullableString<
+  Schemas['ClientDeviceDto'],
+  | 'deactivatedAt'
+  | 'deactivatedBy'
+  | 'replacedAt'
+  | 'replacedByDeviceId'
+  | 'replacementRequestId'
+>;
+export type DeviceReplacement = NullableString<
+  Schemas['DeviceReplacementDto'],
+  'requestHash' | 'completedAt' | 'cancelledAt' | 'expiredAt'
+>;
+export type ClientDeviceInventory = Omit<
+  Schemas['ClientDeviceInventoryDto'],
+  'deviceLimit' | 'availableDeviceSlots' | 'devices' | 'replacements'
+> & {
+  deviceLimit: number | null;
+  availableDeviceSlots: number | null;
+  devices: ClientDevice[];
+  replacements: DeviceReplacement[];
+};
+export type DeviceAuditEvent = NullableString<
+  Schemas['DeviceAuditEventDto'],
+  | 'operationId'
+  | 'deviceId'
+  | 'replacementRequestId'
+  | 'source'
+  | 'documentHash'
+  | 'reason'
+  | 'detail'
+>;
+export interface ClientDeviceHistory {
+  device: ClientDevice;
+  events: DeviceAuditEvent[];
+}
+export type CreateDeviceEnrollmentChallengeRequest =
+  Schemas['CreateDeviceEnrollmentChallengeDto'];
+export type DeviceEnrollmentChallenge = Schemas['DeviceEnrollmentChallengeDto'];
+export type ProveDeviceEnrollmentRequest = Schemas['ProveDeviceEnrollmentDto'];
+export type CreateDeviceReplacementChallengeRequest =
+  Schemas['CreateDeviceReplacementChallengeDto'];
+export type DeviceReplacementChallenge =
+  Schemas['DeviceReplacementChallengeDto'];
+export type ProveDeviceReplacementRequest =
+  Schemas['ProveDeviceReplacementDto'];
+export type DeviceReplacementRequestExport =
+  Schemas['DeviceReplacementRequestExportDto'];
+export type ImportDeviceReplacementResponseRequest =
+  Schemas['ImportDeviceReplacementResponseDto'];
+export interface DeviceReplacementCompletion {
+  oldDevice: ClientDevice;
+  newDevice: ClientDevice;
+  replacement: DeviceReplacement;
+}
+export interface DeviceReplacementResult {
+  replacement: DeviceReplacement;
+}
+
+// Compile-time key-drift checks for backend device DTOs. Nullable scalar
+// values are intentionally corrected above because Swagger currently emits
+// `Record<string, never> | null` for those properties; the generated contract
+// remains authoritative for every field name and every non-nullable shape.
+type SameKeys<T, U> = [
+  Exclude<keyof T, keyof U>,
+  Exclude<keyof U, keyof T>,
+] extends [never, never]
+  ? true
+  : never;
+type ClientDeviceKeysMatchOpenApi = SameKeys<
+  ClientDevice,
+  Schemas['ClientDeviceDto']
+>;
+export const CLIENT_DEVICE_KEYS_MATCH_OPENAPI: ClientDeviceKeysMatchOpenApi = true;
+type DeviceInventoryKeysMatchOpenApi = SameKeys<
+  ClientDeviceInventory,
+  Schemas['ClientDeviceInventoryDto']
+>;
+export const DEVICE_INVENTORY_KEYS_MATCH_OPENAPI: DeviceInventoryKeysMatchOpenApi = true;
+type DeviceReplacementKeysMatchOpenApi = SameKeys<
+  DeviceReplacement,
+  Schemas['DeviceReplacementDto']
+>;
+export const DEVICE_REPLACEMENT_KEYS_MATCH_OPENAPI: DeviceReplacementKeysMatchOpenApi = true;
 
 // ---------------------------------------------------------------------------
 // Organization

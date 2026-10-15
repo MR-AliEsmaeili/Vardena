@@ -23,6 +23,32 @@ enum EntitlementKind {
   @@schema("licensing")
 }
 
+enum ClientDeviceStatus {
+  ACTIVE
+  DEACTIVATED
+  REPLACED
+
+  @@schema("licensing")
+}
+
+enum DeviceEnrollmentState {
+  PENDING
+  CONSUMED
+  EXPIRED
+
+  @@schema("licensing")
+}
+
+enum DeviceReplacementState {
+  CHALLENGE
+  PENDING
+  COMPLETED
+  CANCELLED
+  EXPIRED
+
+  @@schema("licensing")
+}
+
 model LicenseCustomer {
   id           String   @id
   customerCode String   @unique(map: "uq_customers_customer_code") @map("customer_code") @db.VarChar(64)
@@ -50,9 +76,12 @@ model Installation {
   createdBy  String?  @map("created_by")
   updatedBy  String?  @map("updated_by")
 
-  customer        LicenseCustomer?     @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  licenses        License[]
-  auditEvents     LicenseAuditEvent[]
+  customer          LicenseCustomer?                @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  licenses          License[]
+  auditEvents       LicenseAuditEvent[]
+  clientDevices     ClientDevice[]
+  deviceChallenges  DeviceEnrollmentChallenge[]
+  deviceReplacements ClientDeviceReplacementRequest[]
 
   @@index([customerId], map: "idx_installations_customer_id")
   @@map("installations")
@@ -85,34 +114,38 @@ model License {
 
 /// One signed, retained LicenseVersion. Immutable except for supersession.
 model LicenseVersion {
-  id           String @id
-  licenseId    String @map("license_id")
+  id             String @id
+  licenseId      String @map("license_id")
   installationId String @map("installation_id")
   /// Unique operation identity (replay protection, PDR-11 §10.7/§12.4).
-  operationId  String @map("operation_id")
-  status       LicenseStatus
-  provider     String @db.VarChar(80)
+  operationId String @map("operation_id")
+  status      LicenseStatus
+  provider    String @db.VarChar(80)
   /// Payload/document version of the artifact this version was imported from
   /// (1 = legacy code, 2 = signed document).
   documentVersion Int @map("document_version")
   /// SHA-256 of the verified artifact. The artifact itself is NEVER persisted.
   documentHash String @map("document_hash")
   /// Trusted key id that verified the signature (null for legacy rows).
-  keyId        String? @map("key_id") @db.VarChar(120)
-  source       String  @db.VarChar(20)
-  validFrom    DateTime @map("valid_from") @db.Timestamptz(6)
+  keyId  String? @map("key_id") @db.VarChar(120)
+  source String  @db.VarChar(20)
+  validFrom DateTime  @map("valid_from") @db.Timestamptz(6)
   /// Exclusive end. null means perpetual.
-  validUntil   DateTime? @map("valid_until") @db.Timestamptz(6)
+  validUntil DateTime? @map("valid_until") @db.Timestamptz(6)
   organizationLimit Int? @map("organization_limit")
   userLimit         Int? @map("user_limit")
-  importedAt   DateTime @map("imported_at") @db.Timestamptz(6)
-  importedBy   String?  @map("imported_by")
+  /// Null is unlimited only when deviceLimitSpecified is true.
+  deviceLimit Int? @map("device_limit")
+  /// False for pre-OQ-83 signed artifacts whose canonical payload omitted the field.
+  deviceLimitSpecified Boolean @default(false) @map("device_limit_specified")
+  importedAt DateTime @map("imported_at") @db.Timestamptz(6)
+  importedBy String?  @map("imported_by")
   /// Explicit signed supersession (the only way windows may overlap), or the
   /// version a legacy text code replaced.
-  supersedesVersionId   String? @map("supersedes_version_id")
+  supersedesVersionId String? @map("supersedes_version_id")
   /// WHEN the supersession was recorded (the successor's import instant).
   /// Audit/traceability only — it never decides eligibility.
-  supersededAt          DateTime? @map("superseded_at") @db.Timestamptz(6)
+  supersededAt DateTime? @map("superseded_at") @db.Timestamptz(6)
   /// The instant FROM which this version no longer governs: the retiring
   /// successor's `valid_from`, so a future-dated renewal does not interrupt a
   /// license that is still valid (PDR-11 §3.2, CF-1). The import refuses a
@@ -120,12 +153,12 @@ model LicenseVersion {
   /// before the import instant (`backdated-supersession`, OQ-86) — a rule in
   /// `evaluateImportConflicts`, deliberately NOT a database constraint. Set
   /// together with `superseded_at`; both null while never retired.
-  governsUntil          DateTime? @map("governs_until") @db.Timestamptz(6)
+  governsUntil DateTime? @map("governs_until") @db.Timestamptz(6)
   supersededByVersionId String?   @map("superseded_by_version_id")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
-  createdBy    String?  @map("created_by")
-  updatedBy    String?  @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
 
   license License @relation(fields: [licenseId, installationId], references: [id, installationId], onDelete: Restrict)
 
@@ -172,27 +205,30 @@ model LicenseAuditEvent {
   /// e.g. `license.import.applied` / `license.import.rejected`.
   eventType      String   @map("event_type") @db.VarChar(60)
   /// APPLIED | REJECTED | UNCHANGED
-  outcome        String   @db.VarChar(20)
+  outcome     String   @db.VarChar(20)
   /// Recorded only when the signature verified (never trusted otherwise).
-  operationId    String?  @map("operation_id")
-  licenseId      String?  @map("license_id")
-  versionId      String?  @map("version_id")
-  actorId        String?  @map("actor_id")
-  source         String   @db.VarChar(20)
-  documentHash   String?  @map("document_hash")
+  operationId String?  @map("operation_id")
+  licenseId   String?  @map("license_id")
+  versionId   String?  @map("version_id")
+  /// Device context for OQ-83 events; never a private key or raw document.
+  deviceId              String? @map("device_id")
+  replacementRequestId  String? @map("replacement_request_id")
+  actorId               String? @map("actor_id")
+  source                String  @db.VarChar(20)
+  documentHash          String? @map("document_hash")
   /// Bounded, machine-readable rejection reason (never a stack trace).
-  reason         String?  @db.VarChar(60)
+  reason String? @db.VarChar(60)
   /// Human-readable audit detail. Successful events retain the full reason and required context.
-  detail         String?  @db.Text
+  detail String? @db.Text
   /// The commercial customer the installation was bound to BEFORE an explicit
   /// transfer; null on every other event (Q4, 2026-10-12).
-  previousCustomerId   String? @map("previous_customer_id")
+  previousCustomerId String? @map("previous_customer_id")
   /// The business customer code BEFORE that transfer (L-06, PDR-14); null on every other event.
   previousCustomerCode String? @map("previous_customer_code") @db.VarChar(64)
   /// The customer it is bound to AFTER that transfer; null on every other event.
-  newCustomerId        String? @map("new_customer_id")
+  newCustomerId String? @map("new_customer_id")
   /// The business customer code AFTER that transfer (L-06, PDR-14); null on every other event.
-  newCustomerCode      String? @map("new_customer_code") @db.VarChar(64)
+  newCustomerCode String? @map("new_customer_code") @db.VarChar(64)
   /// The license governing immediately before the event it is recorded on:
   /// - `license.import.recovered` — the license whose lapsed coverage a
   ///   dedicated post-gap recovery follows (OQ-87 Option B, PDR-13);
@@ -205,17 +241,141 @@ model LicenseAuditEvent {
   /// history the Owner decisions require — and neither a recovery nor a
   /// transfer re-binds a license identity, so this is context, not a foreign
   /// key: a license id is retained forever, even if its rows were ever removed.
-  previousLicenseId  String? @map("previous_license_id")
-  occurredAt     DateTime @map("occurred_at") @db.Timestamptz(6)
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
-  createdBy      String?  @map("created_by")
-  updatedBy      String?  @map("updated_by")
+  previousLicenseId String?  @map("previous_license_id")
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy  String?  @map("created_by")
+  updatedBy  String?  @map("updated_by")
 
   installation Installation @relation(fields: [installationId], references: [id], onDelete: Restrict)
 
   @@index([installationId, occurredAt], map: "idx_license_audit_events_installation_occurred_at")
   @@index([eventType], map: "idx_license_audit_events_event_type")
+  @@index([installationId, deviceId, occurredAt], map: "idx_license_audit_events_installation_device_occurred_at")
+  @@index([installationId, replacementRequestId, occurredAt], map: "idx_license_audit_events_installation_replacement_occurred_at")
   @@map("license_audit_events")
+  @@schema("licensing")
+}
+
+/// One cryptographic client device registered against a server installation.
+/// Only the public key is persisted; the non-extractable private key stays on
+/// the client device. Rows are retained after deactivation or replacement.
+model ClientDevice {
+  id                   String            @id
+  installationId       String            @map("installation_id")
+  operationId          String            @map("operation_id")
+  keyFingerprint       String            @map("key_fingerprint") @db.VarChar(64)
+  publicKey            String            @map("public_key") @db.Text
+  status               ClientDeviceStatus
+  activatedAt          DateTime          @map("activated_at") @db.Timestamptz(6)
+  deactivatedAt        DateTime?         @map("deactivated_at") @db.Timestamptz(6)
+  deactivatedBy        String?           @map("deactivated_by")
+  replacedAt           DateTime?         @map("replaced_at") @db.Timestamptz(6)
+  replacedByDeviceId   String?           @map("replaced_by_device_id")
+  enrollmentChallengeId String?          @map("enrollment_challenge_id")
+  replacementRequestId String?           @map("replacement_request_id")
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy            String?           @map("created_by")
+  updatedBy            String?           @map("updated_by")
+
+  installation       Installation                    @relation(fields: [installationId], references: [id], onDelete: Restrict)
+  replacedBy         ClientDevice?                   @relation("ClientDeviceReplacement", fields: [replacedByDeviceId, installationId], references: [id, installationId], onDelete: Restrict)
+  replaces           ClientDevice[]                  @relation("ClientDeviceReplacement")
+  enrollmentChallenge DeviceEnrollmentChallenge?    @relation(fields: [enrollmentChallengeId, installationId], references: [id, installationId], onDelete: Restrict)
+  replacementRequest ClientDeviceReplacementRequest? @relation("ReplacementActivation", fields: [replacementRequestId, installationId], references: [id, installationId], onDelete: Restrict)
+  pendingReplacements ClientDeviceReplacementRequest[] @relation("ReplacementOldDevice")
+
+  @@unique([id, installationId], map: "uq_client_devices_id_installation")
+  @@unique([installationId, operationId], map: "uq_client_devices_installation_operation")
+  @@unique([installationId, keyFingerprint], map: "uq_client_devices_installation_fingerprint")
+  @@unique([installationId, replacedByDeviceId], map: "uq_client_devices_installation_replaced_by")
+  @@unique([installationId, enrollmentChallengeId], map: "uq_client_devices_installation_enrollment_challenge")
+  @@unique([installationId, replacementRequestId], map: "uq_client_devices_installation_replacement_request")
+  // Prisma requires a unique constraint on the exact ordered relation scalar fields.
+  @@unique([enrollmentChallengeId, installationId], map: "uq_client_devices_enrollment_challenge_installation")
+  @@unique([replacementRequestId, installationId], map: "uq_client_devices_replacement_request_installation")
+  @@index([installationId, status, activatedAt], map: "idx_client_devices_installation_status_activated_at")
+  @@map("client_devices")
+  @@schema("licensing")
+}
+
+/// A one-use, server-issued challenge for ordinary direct device enrollment.
+model DeviceEnrollmentChallenge {
+  id              String                @id
+  installationId  String                @map("installation_id")
+  operationId     String                @map("operation_id")
+  deviceId        String                @map("device_id")
+  keyFingerprint  String                @map("key_fingerprint") @db.VarChar(64)
+  publicKey       String                @map("public_key") @db.Text
+  customerId      String                @map("customer_id")
+  customerCode    String                @map("customer_code") @db.VarChar(64)
+  licenseId       String                @map("license_id")
+  licenseVersionId String               @map("license_version_id")
+  canonicalPayload String               @map("canonical_payload") @db.Text
+  issuedAt        DateTime              @map("issued_at") @db.Timestamptz(6)
+  expiresAt       DateTime              @map("expires_at") @db.Timestamptz(6)
+  state           DeviceEnrollmentState
+  consumedAt      DateTime?             @map("consumed_at") @db.Timestamptz(6)
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy       String?               @map("created_by")
+
+  installation Installation @relation(fields: [installationId], references: [id], onDelete: Restrict)
+  device        ClientDevice?
+
+  @@unique([id, installationId], map: "uq_device_enrollment_challenges_id_installation")
+  @@unique([installationId, operationId], map: "uq_device_enrollment_challenges_installation_operation")
+  @@index([installationId, state, expiresAt], map: "idx_device_enrollment_challenges_installation_state_expires")
+  @@map("device_enrollment_challenges")
+  @@schema("licensing")
+}
+
+/// Durable signed exchange for replacing one device without access to its old
+/// private key. CHALLENGE rows are not valid pending replacements until the
+/// new device proves possession of its own key.
+model ClientDeviceReplacementRequest {
+  id                    String                  @id
+  installationId        String                  @map("installation_id")
+  challengeId           String                  @map("challenge_id")
+  operationId           String                  @map("operation_id")
+  oldDeviceId           String                  @map("old_device_id")
+  newDeviceId           String                  @map("new_device_id")
+  keyFingerprint        String                  @map("key_fingerprint") @db.VarChar(64)
+  publicKey             String                  @map("public_key") @db.Text
+  nonce                 String                  @db.VarChar(128)
+  canonicalPayload      String                  @map("canonical_payload") @db.Text
+  requestSignature      String?                 @map("request_signature") @db.Text
+  requestHash           String?                 @map("request_hash") @db.VarChar(64)
+  customerId            String                  @map("customer_id")
+  customerCode          String                  @map("customer_code") @db.VarChar(64)
+  licenseId             String                  @map("license_id")
+  licenseVersionId      String                  @map("license_version_id")
+  issuedAt              DateTime                @map("issued_at") @db.Timestamptz(6)
+  challengeExpiresAt    DateTime                @map("challenge_expires_at") @db.Timestamptz(6)
+  requestExpiresAt      DateTime                @map("request_expires_at") @db.Timestamptz(6)
+  state                 DeviceReplacementState
+  responseOperationId   String?                 @map("response_operation_id")
+  responseHash          String?                 @map("response_hash") @db.VarChar(64)
+  responseKeyId         String?                 @map("response_key_id") @db.VarChar(120)
+  completedAt           DateTime?               @map("completed_at") @db.Timestamptz(6)
+  cancelledAt           DateTime?               @map("cancelled_at") @db.Timestamptz(6)
+  expiredAt             DateTime?               @map("expired_at") @db.Timestamptz(6)
+  createdAt             DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy             String?                 @map("created_by")
+  updatedBy             String?                 @map("updated_by")
+
+  installation Installation @relation(fields: [installationId], references: [id], onDelete: Restrict)
+  oldDevice    ClientDevice @relation("ReplacementOldDevice", fields: [oldDeviceId, installationId], references: [id, installationId], onDelete: Restrict)
+  activatedDevice ClientDevice? @relation("ReplacementActivation")
+
+  @@unique([id, installationId], map: "uq_device_replacement_requests_id_installation")
+  @@unique([installationId, challengeId], map: "uq_device_replacement_requests_installation_challenge")
+  @@unique([installationId, operationId], map: "uq_device_replacement_requests_installation_operation")
+  @@unique([installationId, responseOperationId], map: "uq_device_replacement_requests_installation_response_operation")
+  @@index([installationId, oldDeviceId, state], map: "idx_device_replacement_requests_installation_old_state")
+  @@index([installationId, state, requestExpiresAt], map: "idx_device_replacement_requests_installation_state_expires")
+  @@map("client_device_replacement_requests")
   @@schema("licensing")
 }

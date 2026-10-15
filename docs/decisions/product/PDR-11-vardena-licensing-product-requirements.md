@@ -210,7 +210,7 @@ Owner side (Owner-controlled)                  Customer server (offline-capable)
 
 **7.1 Counting (Must).** Client-device entitlement is counted by **registered devices**. It is not counted by concurrent sessions, and it is not the number of user accounts.
 
-**7.2 Quota consumption (Must).** A registered device consumes quota until it is explicitly deactivated or replaced.
+**7.2 Quota consumption (Must).** A registered device consumes quota until it is explicitly deactivated or replaced. **Decision update (2026-10-15, PDR-15 / OD-LIC-04):** replacement is a one-for-one exchange and does not increase consumed quota. While replacement is pending, the old active device continues to consume one unit; only successful atomic completion changes the old device to replaced and activates the new device. Pending replacement requests do not consume a second unit.
 
 **7.3 Administration in the GUI (Must).** The customer's System Administrator manages devices through Vardena's graphical interface. The licensing UI must expose:
 
@@ -231,14 +231,15 @@ Owner side (Owner-controlled)                  Customer server (offline-capable)
 
 - A device's identity must **not** rely solely on its IP address or machine name.
 - The intended identity model is a **dedicated cryptographic key per device**. The device's private key stays on the client. The server associates the device's public key with its authorization.
+- **Decision update (2026-10-15, PDR-15 / OD-LIC-04):** the private key remains client-side and is never sent to or persisted by the server; device enrollment and replacement use proof signed by that device's key.
 
 **7.8 Reinstallation (Must).** Reinstallation may destroy a device key. A recovery or replacement workflow is therefore required.
 
 **7.9 Replacement without the old device (Must).** The customer's System Administrator may replace a lost or reinstalled device **without access to the old device**, even if its old key is unavailable.
 
-**7.10 Replacement properties (Must).** Device replacement must be controlled, auditable, and atomic from the server's perspective. It must avoid leaving the customer locked out if activation fails.
+**7.10 Replacement properties (Must).** Device replacement must be controlled, auditable, and atomic from the server's perspective. It must avoid leaving the customer locked out if activation fails. **Decision update (2026-10-15, PDR-15 / OD-LIC-04):** the old device is retired only in the transaction that activates the new device and completes the correlated replacement; invalid, expired, cancelled, stale or replayed evidence leaves the old device active and does not partially create a new device. Replacement is allowed without the old device or key, and only one valid pending request is allowed per replacement scope.
 
-**7.11 Offline replacement (Must).** In an offline replacement, final completion may remain **pending** until the signed response or receipt is imported.
+**7.11 Offline replacement (Must).** In an offline replacement, final completion may remain **pending** until the signed response or receipt is imported. **Decision update (2026-10-15, PDR-15 / OD-LIC-04):** the client device signs a request, and the customer server completes only after importing a trusted, signed response that is correlated to that request and the current installation/customer/license binding. Signed files are primary; a text fallback must carry the same signed data and pass the same verification. This replacement-specific evidence does not decide general activation receipts (OQ-84).
 
 **7.12 Activation paths (Must).**
 
@@ -249,9 +250,10 @@ Owner side (Owner-controlled)                  Customer server (offline-capable)
 
 **7.13 Quota reduction (Must).**
 
-- If the entitled device count is reduced below the number of registered devices, the **administrator manually selects** the excess devices for deactivation.
-- Until the conflict is resolved, **new device registration is blocked**.
-- **Never silently auto-deactivate devices.**
+- If the signed entitled device count is reduced below the number of active registered devices, the **administrator explicitly selects** the excess devices for deactivation. Deactivation is a separate, audited operation; a license import or replacement never silently selects devices.
+- Until the active count is within the new finite limit, **new device registration is blocked**. The signed reduction may be applied after either the administrator explicitly deactivates selected devices and retries it, or the administrator resolves the conflict through the existing authorized, audited licensing reduction flow. The latter does not select or deactivate devices; retained active devices may remain above the new limit while new registration stays blocked.
+- **Never silently auto-deactivate or delete devices.** History is retained.
+- **Decision update (2026-10-15, PDR-15 / OD-LIC-04):** a successful replacement does not add quota use; it atomically exchanges one active device for another. PDR-15 §2.15 confirms the existing authorized licensing reduction flow as an alternative to manual deactivation, superseding the earlier reason-only no-bypass sentence.
 
 ## 8. User, device, and module entitlements
 
@@ -463,7 +465,7 @@ These items are **not decided**. They must be preserved as open. Nothing here ma
 | PQ-3 | **Full revocation and recovery.** Full revocation stops System Administrator login (§10.1), but OQ-53 and `docs/operations/backup-and-restore.md` §3 say restore must never be blocked by license state. §10.3 says recovery requires an external process. Two sub-questions follow: (a) which process is the external recovery path, and does it preserve the restore rule? (b) If login is blocked, how is a signed reactivation file imported (§10.6)? | Without an answer, an administrator might be unable to recover a revoked installation, or the restore rule might be breached. | Owner decision. Conflict CF-4 and CF-10 (§19). |
 | PQ-4 | **Existing `SUSPENDED` status.** Is `SUSPENDED` (implemented in ADR-0030 and ADR-0036) retained, renamed, or mapped to a distinct approved state such as revocation or restricted mode? | Two lifecycle vocabularies would otherwise coexist. | Owner decision. |
 | PQ-5 | **Overlapping or gapped subscription versions.** The approved text says the current version stays valid until its end date and the new version takes effect at its start date (§3.2). It does not say what happens when the two periods overlap, or when a gap exists. | Determines which entitlements apply on a given day. | Owner decision. |
-| PQ-6 | **Quota effect of device replacement.** The approved text implies that replacing a device does not increase quota consumption. This should be confirmed explicitly. | Affects whether a replacement can exceed quota. | Owner confirmation. |
+| PQ-6 | **Quota effect of device replacement.** The approved text implies that replacing a device does not increase quota consumption. This should be confirmed explicitly. | Affects whether a replacement can exceed quota. | **Decided 2026-10-15 by the Product Owner:** replacement exchanges one active device for one and does not increase consumed quota; pending requests keep the old device active. PDR-15 §2.15 also confirms that an over-quota device reduction may be resolved either by explicitly deactivating devices or through the existing authorized, audited licensing reduction flow; that flow never auto-deactivates, and new enrollment remains blocked while usage is at or above the finite limit. See [PDR-15 / OD-LIC-04](./PDR-15-client-device-licensing-and-replacement.md) and §7.13. OQ-83 remains OPEN for implementation review and exact-head CI. |
 | PQ-7 | **Owner-side system ownership and location.** Is the Owner-side licensing system part of Vardena or a separate tool? Existing records defer CRM and commercial providers (ADR-0030; `docs/licensing-architecture.md`), and OQ-61 is Open on CRM ownership and timing. | Determines where Owner-side requirements are built and who owns the data. | Owner decision. Linked to OQ-61. |
 | PQ-8 | **Duplicate-operation rule scope.** §10.8 requires rejection with a clear message for a duplicate reactivation. The existing activation implementation treats a repeated activation as an idempotent success (§19, CF-12). Does the rule apply to every operation type? | Avoids two different behaviors for the same kind of event. | Owner decision. |
 | PQ-9 | **Activation receipts for ordinary activation.** Receipts are specified for replacement (§5.5 step 6). It is not stated whether ordinary license activation and device activation also produce signed receipts. | Affects the offline evidence trail. | Owner decision. |
@@ -498,6 +500,18 @@ These are design questions, not product decisions. Each needs technical design b
 > documented API contract (OpenAPI) is the resolution surface — no GUI flow is
 > implemented or claimed (item 15 stays deferred). This note changes no other
 > item and no §1–§15 policy text.
+>
+> **PDR-15 design addendum (2026-10-15).** The Product Owner decision
+> **OD-LIC-04** records the client-device product policy and resolves the
+> replacement/quota ambiguity in OQ-83. The customer-side technical design for
+> device identity proof, signed replacement exchange, state transitions,
+> authorization, persistence, and verification is maintained in
+> [`docs/licensing/client-device-lifecycle.md`](../../licensing/client-device-lifecycle.md).
+> This answers the device-specific parts of item 5 and the device-specific
+> portions of items 8, 11, 13 and 15 only. It does **not** decide the general
+> activation receipt question (PQ-9/OQ-84), server replacement, revocation,
+> Owner-side issuance, backup-key design, or any other open item. OQ-83 remains
+> OPEN for implementation review and exact-head CI.
 
 ## 17. Scope exclusions and implementation guardrails
 
@@ -575,18 +589,18 @@ Rows are traced by section, because no Owner decision IDs were assigned. **Statu
 | 41 | Restore authority | Admin-only via Runbook; never in-product for normal users | §6.7 | OQ-53 (Owner decision 2026-10-05) | Approved · existing decision (consistent) |
 | 42 | Restore not license-blocked | Restore never blocked by license state | §6.7, G-9 | OQ-53; `docs/operations/backup-and-restore.md` §3 | Approved · **conflict with §10** (CF-10, PQ-3) |
 | 43 | Device counting | Registered devices, not sessions or accounts | §7.1 | None (OQ-44 concerns offline sync, not device quota) | Approved · not implemented |
-| 44 | Device quota consumption | Consumes quota until deactivated or replaced | §7.2 | None | Approved · quota effect of replacement to confirm (PQ-6) |
-| 45 | Device GUI | Admin GUI exposes devices, activation, deactivation, replacement, license info, quota | §7.3 | None | Approved · not implemented |
-| 46 | Direct device activation | No approval stage | §7.4 | None | Approved |
-| 47 | Deactivation vs replacement | Distinct operations; history retained; no deletion | §7.5, §7.6 | None | Approved |
-| 48 | Device identity | Not IP or machine name alone; per-device key | §7.7 | None | Approved · design item (§16) |
-| 49 | Reinstallation | Recovery or replacement workflow required | §7.8 | None | Approved |
-| 50 | Replace without old device | Admin may replace without old device or old key | §7.9 | None | Approved |
-| 51 | Device replacement properties | Controlled, auditable, atomic, no lockout | §7.10 | None | Approved · protocol OPEN (U-9) |
-| 52 | Offline device replacement | Completion may await signed receipt | §7.11 | None | Approved |
-| 53 | Activation paths | Local server; Vardena-generated code; offline file or USB transfer | §7.12, §11.4 | ADR-0036 (license code activation only) | Approved · device paths not implemented |
+| 44 | Device quota consumption | Consumes quota until deactivated or replaced; replacement is a one-for-one exchange | §7.2 | PDR-15 / OD-LIC-04 | Approved · policy decided; OQ-83 implementation in progress |
+| 45 | Device GUI | Admin GUI exposes devices, activation, deactivation, replacement, license info, quota | §7.3 | PDR-15 / OD-LIC-04 | Approved · implementation in progress |
+| 46 | Direct device activation | No approval stage | §7.4 | PDR-15 / OD-LIC-04 | Approved |
+| 47 | Deactivation vs replacement | Distinct operations; history retained; no deletion | §7.5, §7.6 | PDR-15 / OD-LIC-04 | Approved · implementation in progress |
+| 48 | Device identity | Not IP or machine name alone; per-device key; private key stays client-side | §7.7 | PDR-15 / OD-LIC-04 | Approved · implementation in progress |
+| 49 | Reinstallation | Recovery or replacement workflow required | §7.8 | PDR-15 / OD-LIC-04 | Approved · replacement path in progress |
+| 50 | Replace without old device | Admin may replace without old device or old key | §7.9 | PDR-15 / OD-LIC-04 | Approved · implementation in progress |
+| 51 | Device replacement properties | Controlled, auditable, atomic, no lockout; old device retires only after successful completion | §7.10 | PDR-15 / OD-LIC-04 | Approved · implementation in progress |
+| 52 | Offline device replacement | Completion may await a correlated, trusted signed response | §7.11 | PDR-15 / OD-LIC-04 | Approved · implementation in progress; OQ-84 remains separate |
+| 53 | Activation paths | Local server; Vardena-generated code; offline file or USB transfer | §7.12, §11.4 | ADR-0036 (license code activation only); PDR-15 / OD-LIC-04 | Approved · customer-side device exchange in progress; Owner issuer out of scope |
 | 54 | Signed files primary | Text code is fallback transport only | §7.12, §11.3, G-8 | ADR-0036 Decision 4 | Approved · **conflict** (CF-3) |
-| 55 | Device quota reduction | Admin manually selects excess devices; registration blocked; never auto-deactivate | §7.13, §8.5 | None | Approved |
+| 55 | Device quota reduction | Admin explicitly selects excess devices; registration blocked until resolved; never auto-deactivate/delete | §7.13, §8.5 | PDR-15 / OD-LIC-04 | Approved · implementation in progress |
 | 56 | User capacity at limit | Existing users continue; new users blocked; no silent increase | §8.3 | ADR-0030 Decision 3; `docs/licensing-architecture.md` (advisory-locked limit) | Approved · partially implemented |
 | 57 | User capacity reduced | Admin manually deactivates excess users; no deletion | §8.4 | `docs/licensing-architecture.md` (active-user limit) | Approved · reduction flow not implemented |
 | 58 | Module entitlement removed | Use stops; data kept; backup and export remain; no destructive correction | §8.2 | ADR-0030 Decision 5 (grants stored but ineffective) | Approved · partially implemented (export exception not implemented) |
@@ -736,4 +750,6 @@ remediation path is now decided — the initial password remains exactly `1`, an
 forced first-login password change enforced in the backend and the frontend is
 **outstanding implementation**, with its acceptance tests in the same audit §5.
 
-*End of PDR-11. This record is an approved product-requirements reference. It is not an implementation specification and does not authorize any implementation work.*
+*End of PDR-11. This record is an approved product-requirements reference. Except for the narrowly scoped OQ-83 slice authorized by PDR-15 / OD-LIC-04, it is not an implementation specification and does not authorize other implementation work.*
+
+**OQ-83 implementation addendum (2026-10-15; limited scope).** The Product Owner's final decision is recorded in [PDR-15](./PDR-15-client-device-licensing-and-replacement.md) and the registry row remains OPEN while implementation, review and exact-head CI are in progress. This addendum authorizes only the customer-side device enrollment, quota, lifecycle, explicit deactivation, signed offline replacement, authorization, REST/OpenAPI/client/UI, migration and tests described by PDR-15 and the linked technical design. It does not close OQ-84, OQ-78, OQ-82 or OQ-85, and it does not authorize general activation receipts, server replacement, revocation/recovery, Owner-side issuance, or offline operation of Vardena.

@@ -32,6 +32,8 @@ describe('Licensing capability gate (e2e)', () => {
     validUntil: null,
     organizationLimit: 1,
     userLimit: null,
+    deviceLimit: null,
+    deviceLimitSpecified: false,
     provider: 'e2e-provider',
     entitlements: ['organization', 'rbac', 'users'].map((code) => ({
       kind: 'MODULE' as const,

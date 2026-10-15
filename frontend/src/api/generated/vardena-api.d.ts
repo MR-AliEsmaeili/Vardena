@@ -158,6 +158,200 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/license/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the retained client-device inventory and authoritative quota.
+         * @description Returns installation-scoped device states, replacement history and the effective signed device limit. Public keys and private keys are not returned.
+         */
+        get: operations["ClientDevicesController_inventory_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/license/devices/{deviceId}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read retained audit history for one client device. */
+        get: operations["ClientDevicesController_deviceHistory_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/license/devices/enrollment-challenges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a one-use challenge for a client device public key.
+         * @description The client signs the returned canonicalPayload locally with its Ed25519 private key and submits the detached signature to the activate endpoint. Challenge creation does not activate a device or consume quota.
+         */
+        post: operations["ClientDevicesController_createEnrollmentChallenge_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/license/devices/enrollment-challenges/{challengeId}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify device proof of possession and activate the registered device.
+         * @description Rechecks the effective signed license, current quota, installation/customer binding, challenge expiry and one-use state under the shared installation/device allocation lock.
+         */
+        post: operations["ClientDevicesController_activateEnrollment_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/license/devices/{deviceId}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Explicitly deactivate an active device without deleting its history.
+         * @description Deactivation is distinct from replacement. A signed pending replacement must first be explicitly cancelled; the device row is retained.
+         */
+        post: operations["ClientDevicesController_deactivate_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/license/devices/{deviceId}/replacement-challenges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a signed replacement challenge for a new device key.
+         * @description The old device private key is not required. The new device signs the canonical VDRQ1 request challenge; quota remains consumed by the old active device until a trusted signed response completes the exchange.
+         */
+        post: operations["ClientDevicesController_createReplacementChallenge_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/license/devices/replacements/{requestId}/prove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify the new device proof and retain a pending VDRQ1 request.
+         * @description Returns the primary JSON file and text transport for the same signed VDRQ1 request. The private key is never included.
+         */
+        post: operations["ClientDevicesController_proveReplacement_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/license/devices/replacements/{requestId}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export a retained signed pending replacement request. */
+        get: operations["ClientDevicesController_replacementRequestExport_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/license/devices/replacements/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify and import an authority-signed VDRP1 replacement response.
+         * @description Accepts the signed JSON file envelope or the identical VDRP1 text artifact. Verification, binding, expiry, replay and atomic one-for-one device exchange are enforced on the server.
+         */
+        post: operations["ClientDevicesController_importReplacementResponse_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/license/devices/replacements/{requestId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Durably cancel a challenge or pending replacement request.
+         * @description Cancellation is terminal. A matching response imported later cannot revive or complete the cancelled request.
+         */
+        post: operations["ClientDevicesController_cancelReplacement_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -3542,6 +3736,9 @@ export interface components {
             importedAt: string;
             /** @enum {string} */
             source: "file" | "text" | "legacy-code";
+            deviceLimit: number | null;
+            /** @description Whether deviceLimit was explicitly present in the signed payload. */
+            deviceLimitSpecified: boolean;
         };
         LicenseStateDto: {
             /** @description Whether an installation license is evaluated. */
@@ -3563,6 +3760,9 @@ export interface components {
             validUntil: string | null;
             organizationLimit: number | null;
             userLimit: number | null;
+            deviceLimit: number | null;
+            /** @description False when the governing signed license predates the deviceLimit field; a missing field is not treated as unlimited. */
+            deviceLimitSpecified: boolean;
             entitlements: components["schemas"]["LicenseEntitlementDto"][];
             /** @description The license provider that evaluated the state. */
             provider: string;
@@ -3600,6 +3800,9 @@ export interface components {
             validUntil: string | null;
             organizationLimit: number | null;
             userLimit: number | null;
+            deviceLimit: number | null;
+            /** @description False when the governing signed license predates the deviceLimit field; a missing field is not treated as unlimited. */
+            deviceLimitSpecified: boolean;
             entitlements: components["schemas"]["LicenseEntitlementDto"][];
             /** @description The license provider that evaluated the state. */
             provider: string;
@@ -3653,6 +3856,9 @@ export interface components {
             validUntil: string | null;
             organizationLimit: number | null;
             userLimit: number | null;
+            deviceLimit: number | null;
+            /** @description False when the governing signed license predates the deviceLimit field; a missing field is not treated as unlimited. */
+            deviceLimitSpecified: boolean;
             entitlements: components["schemas"]["LicenseEntitlementDto"][];
             /** @description The license provider that evaluated the state. */
             provider: string;
@@ -3709,6 +3915,9 @@ export interface components {
             validUntil: string | null;
             organizationLimit: number | null;
             userLimit: number | null;
+            deviceLimit: number | null;
+            /** @description False when the governing signed license predates the deviceLimit field; a missing field is not treated as unlimited. */
+            deviceLimitSpecified: boolean;
             entitlements: components["schemas"]["LicenseEntitlementDto"][];
             /** @description The license provider that evaluated the state. */
             provider: string;
@@ -3747,10 +3956,10 @@ export interface components {
         };
         ReductionConflictDto: {
             /**
-             * @description organization-capacity / user-capacity: the new limit is below current usage. entitlement-removed: the retired version grants an entitlement the new one does not. open-end-closed: a perpetual version would be handed over to a time-limited one (never operator-resolvable). usage-unavailable: current usage could not be counted, so the check fails closed.
+             * @description organization-capacity / user-capacity / device-capacity: the new finite limit is below current usage. Under PDR-15 §2.15, device conflicts may be resolved by explicitly deactivating devices or using the existing authorized, audited reduction-resolution flow; that flow never auto-deactivates, and new enrollment remains blocked while active usage is at or above the finite limit. device-entitlement-removed: the signed version removes device capacity while devices remain registered. entitlement-removed: the retired version grants an entitlement the new one does not. open-end-closed: a perpetual version would be handed over to a time-limited one (never operator-resolvable). usage-unavailable: current usage could not be counted, so the check fails closed.
              * @enum {string}
              */
-            kind: "organization-capacity" | "user-capacity" | "entitlement-removed" | "open-end-closed" | "usage-unavailable";
+            kind: "organization-capacity" | "user-capacity" | "device-capacity" | "device-entitlement-removed" | "entitlement-removed" | "open-end-closed" | "usage-unavailable";
             /** @description The new (lower) limit, for a capacity conflict. */
             limit?: number | null;
             /** @description Current counted usage the new limit would fall below. */
@@ -3761,7 +3970,7 @@ export interface components {
              * @description Which count was unavailable, for a usage-unavailable conflict.
              * @enum {string|null}
              */
-            scope?: "organizations" | "active-users" | null;
+            scope?: "organizations" | "active-users" | "devices" | null;
         };
         ReductionResolutionResultDto: {
             /** @description Whether an installation license is evaluated. */
@@ -3783,6 +3992,9 @@ export interface components {
             validUntil: string | null;
             organizationLimit: number | null;
             userLimit: number | null;
+            deviceLimit: number | null;
+            /** @description False when the governing signed license predates the deviceLimit field; a missing field is not treated as unlimited. */
+            deviceLimitSpecified: boolean;
             entitlements: components["schemas"]["LicenseEntitlementDto"][];
             /** @description The license provider that evaluated the state. */
             provider: string;
@@ -3800,6 +4012,147 @@ export interface components {
             resolvedPredecessorVersionId: string;
             /** @description The conflicts the resolution authorized. */
             resolvedConflicts: components["schemas"]["ReductionConflictDto"][];
+        };
+        ClientDeviceDto: {
+            /** @description Server-generated retained device id. */
+            id: string;
+            /** @description SHA-256 fingerprint of the Ed25519 public key; not the key itself. */
+            keyFingerprint: string;
+            /** @enum {string} */
+            status: "ACTIVE" | "DEACTIVATED" | "REPLACED";
+            /** Format: date-time */
+            activatedAt: string;
+            /** Format: date-time */
+            deactivatedAt: Record<string, never> | null;
+            deactivatedBy: Record<string, never> | null;
+            /** Format: date-time */
+            replacedAt: Record<string, never> | null;
+            replacedByDeviceId: Record<string, never> | null;
+            replacementRequestId: Record<string, never> | null;
+        };
+        DeviceReplacementDto: {
+            /** @description Server-generated replacement request id. */
+            id: string;
+            oldDeviceId: string;
+            newDeviceId: string;
+            /** @description Fingerprint of the replacement device public key. */
+            keyFingerprint: string;
+            /** @enum {string} */
+            state: "CHALLENGE" | "PENDING" | "COMPLETED" | "CANCELLED" | "EXPIRED";
+            requestHash: Record<string, never> | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            challengeExpiresAt: string;
+            /** Format: date-time */
+            requestExpiresAt: string;
+            /** Format: date-time */
+            completedAt: Record<string, never> | null;
+            /** Format: date-time */
+            cancelledAt: Record<string, never> | null;
+            /** Format: date-time */
+            expiredAt: Record<string, never> | null;
+        };
+        ClientDeviceInventoryDto: {
+            installationId: string;
+            licenseActive: boolean;
+            /** @description False when the effective signed LicenseVersion did not specify deviceLimit; this is distinct from signed unlimited. */
+            deviceLimitSpecified: boolean;
+            /** @description Null means unlimited only when deviceLimitSpecified is true. */
+            deviceLimit: Record<string, never> | null;
+            activeDeviceCount: number;
+            /** @description Null for unlimited or unspecified capacity. */
+            availableDeviceSlots: Record<string, never> | null;
+            devices: components["schemas"]["ClientDeviceDto"][];
+            replacements: components["schemas"]["DeviceReplacementDto"][];
+        };
+        DeviceAuditEventDto: {
+            id: string;
+            eventType: string;
+            /** @enum {string} */
+            outcome: "APPLIED" | "REJECTED" | "UNCHANGED";
+            operationId: Record<string, never> | null;
+            deviceId: Record<string, never> | null;
+            replacementRequestId: Record<string, never> | null;
+            source: Record<string, never> | null;
+            documentHash: Record<string, never> | null;
+            reason: Record<string, never> | null;
+            detail: Record<string, never> | null;
+            /** Format: date-time */
+            occurredAt: string;
+        };
+        ClientDeviceHistoryDto: {
+            device: components["schemas"]["ClientDeviceDto"];
+            events: components["schemas"]["DeviceAuditEventDto"][];
+        };
+        CreateDeviceEnrollmentChallengeDto: {
+            /**
+             * @description The client device Ed25519 public key, exported as base64url SubjectPublicKeyInfo DER. Never submit a private key.
+             * @example MCowBQYDK2VwAyEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+             */
+            publicKey: string;
+        };
+        DeviceEnrollmentChallengeDto: {
+            challengeId: string;
+            operationId: string;
+            deviceId: string;
+            /** @description SHA-256 fingerprint of the submitted public key. */
+            keyFingerprint: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description Exact fixed-order UTF-8 JSON bytes to sign with the device private key. This contains public data only. */
+            canonicalPayload: string;
+        };
+        ProveDeviceEnrollmentDto: {
+            /** @description Detached Ed25519 signature over the exact canonicalPayload returned by the enrollment-challenge endpoint. */
+            signature: string;
+        };
+        CreateDeviceReplacementChallengeDto: {
+            /**
+             * @description A new Ed25519 public key created on the replacement device. Its private key remains on that device.
+             * @example MCowBQYDK2VwAyEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+             */
+            publicKey: string;
+        };
+        DeviceReplacementChallengeDto: {
+            requestId: string;
+            challengeId: string;
+            operationId: string;
+            oldDeviceId: string;
+            newDeviceId: string;
+            keyFingerprint: string;
+            /** Format: date-time */
+            challengeExpiresAt: string;
+            /** Format: date-time */
+            requestExpiresAt: string;
+            /** @description Exact fixed-order VDRQ1 challenge bytes to sign with the new device private key. */
+            canonicalPayload: string;
+        };
+        ProveDeviceReplacementDto: {
+            /** @description Detached Ed25519 signature over the exact canonicalPayload returned by the replacement-challenge endpoint. */
+            signature: string;
+        };
+        DeviceReplacementRequestExportDto: {
+            requestId: string;
+            requestHash: string;
+            /** @description VDRQ1 text artifact; contains no private key. */
+            text: string;
+            /** @description Primary JSON file envelope containing the same signed VDRQ1 artifact as text. */
+            file: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        ImportDeviceReplacementResponseDto: {
+            /** @description A signed VDRP1 replacement-response text artifact or the vardena-device-replacement-response JSON file envelope. Both transports use the same strict signature verification. */
+            document: string;
+        };
+        DeviceReplacementCompletionDto: {
+            oldDevice: components["schemas"]["ClientDeviceDto"];
+            newDevice: components["schemas"]["ClientDeviceDto"];
+            replacement: components["schemas"]["DeviceReplacementDto"];
+        };
+        DeviceReplacementResultDto: {
+            replacement: components["schemas"]["DeviceReplacementDto"];
         };
         LoginRequestDto: {
             /**
@@ -8768,6 +9121,475 @@ export interface operations {
             };
             /** @description The document is malformed, tampered with, issued for another installation, not active, already ended, backdated, or names capabilities this build does not know. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ClientDevicesController_inventory_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientDeviceInventoryDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ClientDevicesController_deviceHistory_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientDeviceHistoryDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ClientDevicesController_createEnrollmentChallenge_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDeviceEnrollmentChallengeDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceEnrollmentChallengeDto"];
+                };
+            };
+            /** @description Request validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The signed device limit is full or the key is already registered. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No active signed device entitlement is available. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ClientDevicesController_activateEnrollment_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                challengeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProveDeviceEnrollmentDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientDeviceDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The challenge or device state conflicts with current licensing state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The device signature or signed entitlement is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ClientDevicesController_deactivate_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientDeviceDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The device is not active or has a pending replacement. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ClientDevicesController_createReplacementChallenge_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDeviceReplacementChallengeDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceReplacementChallengeDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The old device or replacement state conflicts with current licensing state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An active signed device entitlement is unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ClientDevicesController_proveReplacement_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProveDeviceReplacementDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceReplacementRequestExportDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The challenge expired or the replacement request is no longer pending. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The new-device signature is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ClientDevicesController_replacementRequestExport_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceReplacementRequestExportDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The replacement request is not pending or has expired. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ClientDevicesController_importReplacementResponse_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportDeviceReplacementResponseDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceReplacementCompletionDto"];
+                };
+            };
+            /** @description Request validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is cancelled, expired, stale, or already completed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The response signature, trusted key, correlation or validity window is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ClientDevicesController_cancelReplacement_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceReplacementResultDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The replacement is already terminal or expired. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

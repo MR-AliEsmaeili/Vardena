@@ -8,6 +8,7 @@ import { CUSTOMER_CODE_PATTERN } from './customer.js';
 import {
   KNOWN_MODULE_CODES,
   LicenseCodeError,
+  parsePublicKey,
   type LicensePayload,
 } from './license-code.js';
 import type {
@@ -87,6 +88,9 @@ export interface LicenseVersionPayload {
   validUntil: Date | null;
   organizationLimit: LicenseLimit;
   userLimit: LicenseLimit;
+  /** Signed device quota; an absent field is preserved as UNSPECIFIED. */
+  deviceLimit: LicenseLimit;
+  deviceLimitSpecified: boolean;
   moduleEntitlements: readonly string[];
   featureEntitlements: readonly string[];
   /**
@@ -191,6 +195,35 @@ export function toTrustedKeys(
   }));
 }
 
+/** Parse the shared trusted authority list for license and device responses. */
+export function parseTrustedLicenseKeys(
+  entries: readonly string[],
+): TrustedLicenseKey[] {
+  const seen = new Set<string>();
+  const parsed = entries.map((entry, index) => {
+    const { id, material } = splitTrustedKeyEntry(entry);
+    let key: KeyObject;
+    try {
+      key = parsePublicKey(material);
+    } catch {
+      throw new Error(
+        `LICENSE_SIGNING_PUBLIC_KEYS entry ${index + 1} is not a valid Ed25519 public key (PEM or base64 DER).`,
+      );
+    }
+    return id === null ? { key } : { id, key };
+  });
+  const trusted = toTrustedKeys(parsed);
+  for (const key of trusted) {
+    if (seen.has(key.id)) {
+      throw new Error(
+        `LICENSE_SIGNING_PUBLIC_KEYS contains the duplicate key id "${key.id}".`,
+      );
+    }
+    seen.add(key.id);
+  }
+  return trusted;
+}
+
 // ---------------------------------------------------------------------------
 // Serialization (issuing side)
 // ---------------------------------------------------------------------------
@@ -209,6 +242,8 @@ interface WirePayloadV2 {
   validUntil: string | null;
   organizationLimit: number | null;
   userLimit: number | null;
+  /** Omitted only when verifying a pre-device-entitlement VLIC2 payload. */
+  deviceLimit?: number | null;
   modules: string[];
   features: string[];
   supersedesOperationId: string | null;
@@ -237,6 +272,9 @@ export function canonicalizeLicenseVersion(
     validUntil: payload.validUntil?.toISOString() ?? null,
     organizationLimit: payload.organizationLimit,
     userLimit: payload.userLimit,
+    ...(payload.deviceLimitSpecified
+      ? { deviceLimit: payload.deviceLimit }
+      : {}),
     modules: [...payload.moduleEntitlements].sort(),
     features: [...payload.featureEntitlements].sort(),
     supersedesOperationId: payload.supersedesOperationId,
@@ -482,6 +520,10 @@ function readLicenseVersionPayload(raw: unknown): LicenseVersionPayload {
   }
   const customerId = readId(wire.customerId, 'customerId');
   const customerCode = readCustomerCode(wire.customerCode, customerId);
+  const deviceLimitSpecified = Object.prototype.hasOwnProperty.call(
+    raw,
+    'deviceLimit',
+  );
   return {
     version: LICENSE_DOCUMENT_VERSION,
     kind: LICENSE_DOCUMENT_KIND,
@@ -499,6 +541,10 @@ function readLicenseVersionPayload(raw: unknown): LicenseVersionPayload {
         : readDate(wire.validUntil, 'validUntil'),
     organizationLimit: readLimit(wire.organizationLimit, 'organizationLimit'),
     userLimit: readLimit(wire.userLimit, 'userLimit'),
+    deviceLimit: deviceLimitSpecified
+      ? readDeviceLimit(wire.deviceLimit)
+      : null,
+    deviceLimitSpecified,
     moduleEntitlements: readCodes(wire.modules, 'modules'),
     featureEntitlements: readCodes(wire.features, 'features'),
     supersedesOperationId:
@@ -588,6 +634,17 @@ function readLimit(value: unknown, field: string): LicenseLimit {
   return value as number;
 }
 
+function readDeviceLimit(value: unknown): LicenseLimit {
+  if (value === null) return null;
+  if (!Number.isInteger(value) || (value as number) < 0) {
+    throw new LicenseDocumentError(
+      'limits',
+      'The license deviceLimit must be a non-negative integer or null (unlimited).',
+    );
+  }
+  return value as number;
+}
+
 function readCodes(value: unknown, field: string): string[] {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) {
@@ -639,6 +696,18 @@ export function assertLicenseVersionPayload(
     throw new LicenseDocumentError(
       'payload',
       'A license version cannot supersede itself.',
+    );
+  }
+  if (
+    typeof payload.deviceLimitSpecified !== 'boolean' ||
+    (!payload.deviceLimitSpecified && payload.deviceLimit !== null) ||
+    (payload.deviceLimitSpecified &&
+      payload.deviceLimit !== null &&
+      (!Number.isInteger(payload.deviceLimit) || payload.deviceLimit < 0))
+  ) {
+    throw new LicenseDocumentError(
+      'limits',
+      'The license deviceLimit must be an explicitly signed non-negative integer or null (unlimited).',
     );
   }
   for (const [field, limit] of [

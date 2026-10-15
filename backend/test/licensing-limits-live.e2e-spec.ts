@@ -29,6 +29,8 @@ describe.skipIf(DATABASE_URL === undefined)(
       validUntil: null,
       organizationLimit: null,
       userLimit: null,
+      deviceLimit: null,
+      deviceLimitSpecified: false,
       provider: 'live-test',
       entitlements: [
         'organization',

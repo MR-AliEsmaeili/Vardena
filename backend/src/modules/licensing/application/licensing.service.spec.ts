@@ -20,6 +20,8 @@ function license(
     validUntil: null,
     organizationLimit: null,
     userLimit: null,
+    deviceLimit: null,
+    deviceLimitSpecified: false,
     entitlements: [
       { kind: 'MODULE', code: 'organization' },
       { kind: 'MODULE', code: 'accounting' },

@@ -44,6 +44,10 @@ export class LocalDevelopmentLicenseProvider implements LicenseProvider {
       validUntil: configured.validUntil,
       organizationLimit: configured.organizationLimit,
       userLimit: configured.userLimit,
+      // A local development license is not a signed LicenseVersion and cannot
+      // grant device capacity.
+      deviceLimit: null,
+      deviceLimitSpecified: false,
       entitlements: [
         ...configured.moduleEntitlements.map((code) => ({
           kind: 'MODULE' as const,

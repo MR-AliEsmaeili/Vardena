@@ -74,6 +74,17 @@ vi.mock('@/api/accounting.api', () => ({
 
 vi.mock('@/api/licensing.api', () => ({
   getLicenseState: vi.fn(),
+  importLicenseDocument: vi.fn(),
+  getClientDeviceInventory: vi.fn(),
+  getClientDeviceHistory: vi.fn(),
+  createDeviceEnrollmentChallenge: vi.fn(),
+  activateDeviceEnrollment: vi.fn(),
+  deactivateClientDevice: vi.fn(),
+  createDeviceReplacementChallenge: vi.fn(),
+  proveDeviceReplacement: vi.fn(),
+  exportDeviceReplacementRequest: vi.fn(),
+  importDeviceReplacementResponse: vi.fn(),
+  cancelDeviceReplacement: vi.fn(),
 }));
 
 const identityApi = await import('@/api/identity.api');
@@ -88,6 +99,16 @@ beforeEach(() => {
   vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
     testActiveLicenseState,
   );
+  vi.mocked(licensingApi.getClientDeviceInventory).mockResolvedValue({
+    installationId: testActiveLicenseState.installationId!,
+    licenseActive: true,
+    deviceLimitSpecified: true,
+    deviceLimit: 2,
+    activeDeviceCount: 0,
+    availableDeviceSlots: 2,
+    devices: [],
+    replacements: [],
+  });
   vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
     testOrganization,
   ]);
@@ -285,6 +306,46 @@ describe('protected routing', () => {
       expect(accountingApi.listFiscalYears).toHaveBeenCalled();
     });
     expect(await screen.findByText(t.app.notFoundTitle)).toBeInTheDocument();
+  });
+
+  it('routes the registered client-device surface under its exact view permission', async () => {
+    vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: ['Licensing.Device.View'],
+    });
+
+    renderWithProviders(<AppRoutes />, {
+      initialEntries: ['/app/licensing/devices'],
+    });
+
+    expect(
+      await screen.findByRole('heading', { name: t.deviceLicensing.title }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: t.nav.clientDevices }),
+    ).toBeInTheDocument();
+    expect(licensingApi.getClientDeviceInventory).toHaveBeenCalled();
+  });
+
+  it('does not expose the client-device route or inventory without Licensing.Device.View', async () => {
+    vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: ['Organization.Organization.View'],
+    });
+
+    renderWithProviders(<AppRoutes />, {
+      initialEntries: ['/app/licensing/devices'],
+    });
+
+    expect(
+      await screen.findByText(t.permissions.forbiddenTitle),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: t.nav.clientDevices }),
+    ).not.toBeInTheDocument();
+    expect(licensingApi.getClientDeviceInventory).not.toHaveBeenCalled();
   });
 
   it('hides navigation entries the session has no permission for', async () => {

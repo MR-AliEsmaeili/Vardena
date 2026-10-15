@@ -2,11 +2,11 @@
 
 | Field | Value |
 | --- | --- |
-| Status | ACTIVE design record for the first implementation slice (L-03) |
-| Authority | [ADR-0046](../adr/0046-signed-license-documents-and-version-lifecycle.md) (decision) · [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) (product source) |
-| Date | 2026-10-11 |
-| Scope | Server license import: signed document format, retained versions, effective-version resolution, replay protection, audit, migration, API and frontend boundary |
-| Out of scope (unchanged, gated) | Owner-side licensing system, CRM/billing, client-device licensing, server replacement, full revocation/reactivation, Grace/Read-Only enforcement, installation identity key, clock-rollback enforcement, test/training entitlements |
+| Status | Active design record for signed-license versions and import; OQ-83 client-device implementation addendum in progress |
+| Authority | [ADR-0046](../adr/0046-signed-license-documents-and-version-lifecycle.md) (decision) · [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) (product source) · [PDR-15](../decisions/product/PDR-15-client-device-licensing-and-replacement.md) (OQ-83 policy) |
+| Date | 2026-10-11; OQ-83 addendum updated 2026-10-15 |
+| Scope | Server license import: signed document format, retained versions, effective-version resolution, replay protection, audit, migration, API and frontend boundary; OQ-83 signed device quota and its import conflict rules |
+| Out of scope (unchanged, gated) | Owner-side licensing system and client-device issuer, CRM/billing, server replacement, full revocation/reactivation, Grace/Read-Only enforcement, installation identity key, clock-rollback enforcement, test/training entitlements |
 
 This record is the design detail behind ADR-0046. Where PDR-11 leaves a product
 question open, this document says so explicitly and fails closed instead of
@@ -34,9 +34,9 @@ PDR-11 §14 conceptual entities → implemented tables (CF-17):
 | LicenseVersion | `licensing.license_versions` | Retained, never overwritten. Carries validity window, limits, status, entitlements, signing key id, document hash, operation id, source and import facts. Supersession is two facts, not one: `superseded_at` (when it was recorded) and `governs_until` (from when the version stops governing) — §3.1. |
 | Customer / Contract | `licensing.customers` | Customer only (`id`, unique `customer_code`, and `display_name`; [PDR-14](../decisions/product/PDR-14-licensing-customer-code.md) / L-06). Contracts, pricing and billing are out of scope (PDR-11 §4.1/§17.1) and stay Owner-side. |
 | ServerInstallation | `licensing.installations` | Unchanged from L-02 (ADR-0045 Decision 1). |
-| ReplacementRecord | — | Not implemented; replacement workflow is a later slice (PDR-11 §5.5, U-9). |
-| ClientDevice | — | Not implemented; client-device licensing is a later slice (PDR-11 §7). |
-| AuditEvent | `licensing.license_audit_events` | Typed columns, append-only. Retention periods are open (PDR-11 U-7 → OQ-77). |
+| ReplacementRecord | `licensing.client_device_replacement_requests` | Durable, installation-scoped offline request/response lifecycle, signed request hash, correlation and terminal state; the Owner-side issuer remains out of scope. |
+| ClientDevice | `licensing.client_devices`; `licensing.device_enrollment_challenges` | Retained device identity/state and one-use signed enrollment challenges. Only public key material and fingerprints are retained; the external client owns key generation and private-key storage. |
+| AuditEvent | `licensing.license_audit_events` | Typed import and device-lifecycle events, append-only. Retention periods are open (PDR-11 U-7 → OQ-77). |
 
 Status vocabulary is **unchanged** from ADR-0030/ADR-0045 —
 `ACTIVE | EXPIRED | SUSPENDED` on a version, `UNLICENSED` as the absence of any
@@ -205,29 +205,36 @@ import ──► retained (not yet effective | effective | expired)
   reached) are the Musts behind it. On EVERY path that retires a version — an
   explicit signed supersession (`supersedesOperationId`), the implicit hand-over
   of OQ-80 Option B, and the legacy `VLIC1` replacement — the conflict authority
-  compares the shrunk grant with the **counted current usage** (organizations
-  and active users, read inside the import transaction under the same advisory
-  locks the allocation guards hold; an unavailable count is a conflict that
-  fails closed) and with the **retained grant** (a removed entitlement always
-  conflicts). A shrink whose current usage stays within the new finite limits
-  is not a conflict and applies like any other version; a conflicting one is
-  refused with `reduction-requires-resolution` (409, nothing written, no stamp,
-  no version, the operation id not retained) and a structured explain payload
-  (`reduction.predecessorVersionId` plus one entry per conflict: the kind, the
-  new limit, the counted usage, or the removed entitlement). *Naming the
-  version to retire is not a resolution*: a signed `supersedesOperationId`
-  proves **which** version the document replaces and is verified like every
-  other signature fact, but it cannot know how many users or organizations
-  exist, so it may not switch §8.6 off. Increases and identical grants are
-  unaffected. The ONLY way to apply a conflicting reduction is
-  the dedicated `POST /api/v1/license/reduction-resolution` operation (PDR-13
-  §5): its own permission (`Licensing.License.ResolveReduction` together with
-  `Licensing.License.Activate`), a required operator reason, ONE transaction
-  that applies the import and writes the typed
-  `license.import.reduction-resolved` audit event with the conflicts the
-  transaction recomputed under the locks; a resolution whose document does not
-  conflict is refused (`resolution-not-applicable`), and retrying a document or
-  naming a version is never a resolution.
+  compares the shrunk grant with the **counted current usage** (organizations,
+  active users and active registered devices, read inside the import transaction
+  under the same advisory locks the allocation guards hold; an unavailable count
+  is a conflict that fails closed) and with the **retained grant** (a removed
+  entitlement always conflicts). A shrink whose current usage stays within the
+  new finite limits is not a conflict and applies like any other version; a
+  conflicting one is refused with `reduction-requires-resolution` (409, nothing
+  written, no stamp, no version, the operation id not retained) and a structured
+  explain payload (`reduction.predecessorVersionId` plus one entry per conflict:
+  the kind, the new limit, the counted usage, or the removed entitlement).
+  *Naming the version to retire is not a resolution*: a signed
+  `supersedesOperationId` proves **which** version the document replaces and is
+  verified like every other signature fact, but it cannot know how many users,
+  organizations or active devices exist, so it may not switch §8.6 off.
+  Increases and identical grants are unaffected. Under PDR-15 §2.15, device-
+  capacity and device-entitlement-removal conflicts may be resolved either by
+  explicitly deactivating selected devices and retrying the signed artifact, or
+  through the same existing authorized reduction-resolution flow. That flow
+  authorizes the signed-version change; it never selects, deactivates or deletes
+  device records. If active usage remains at or above the resulting finite
+  device limit, ordinary enrollment remains blocked until usage is below the
+  limit; missing signed device entitlement continues to block enrollment. The
+  dedicated `POST /api/v1/license/reduction-resolution` operation (PDR-13 §5)
+  requires its own permissions (`Licensing.License.ResolveReduction` together
+  with `Licensing.License.Activate`) and an operator reason, then applies the
+  import and writes the typed `license.import.reduction-resolved` audit event
+  in ONE transaction with conflicts recomputed under the allocation locks. A
+  resolution whose document does not conflict is refused
+  (`resolution-not-applicable`), and retrying a document or naming a version is
+  never a resolution.
 - **A contiguous renewal is measured against the deterministic continuation
   baseline (L-05, PDR-11 §8.6 — implemented 2026-10-13).** §8.6's trigger is
   unconditional — it does not require the candidate to retire a version — and
@@ -241,13 +248,16 @@ import ──► retained (not yet effective | effective | expired)
   Baseline selection is total and identity-independent: prefer the adjacent
   version whose `licenseId` equals the candidate's; otherwise the version of
   the customer the installation is bound to; break any remaining tie by latest
-  `importedAt`, then `versionId`. A renewal that lowers capacity below the
-  counted usage or removes a granted entitlement is refused
+  `importedAt`, then `versionId`. A renewal that lowers organization/user
+  capacity below counted usage or removes a granted entitlement is refused
   (`reduction-requires-resolution`, 409, nothing written, the baseline named in
   `reduction.predecessorVersionId`) exactly like a hand-over, and lifts only
-  through the same dedicated resolution operation. The resolution subject is
-  the BASELINE: the receipt and the typed audit event name it, and it is
-  **never stamped** — `superseded_at`, `governs_until` and
+  through the same dedicated resolution operation, including for device-capacity
+  or device-entitlement-removal conflicts under PDR-15 §2.15. That resolution
+  never deactivates devices; if the applied limit is below active usage, new
+  enrollment remains blocked until the active count is brought below the limit.
+  The resolution subject is the BASELINE: the receipt and the typed audit event
+  name it, and it is **never stamped** — `superseded_at`, `governs_until` and
   `superseded_by_version_id` stay null, because a resolution authorizes a
   reduction, it does not retire the version it is measured against. Where
   nothing retained ends at the candidate's start there is no baseline and no
@@ -265,8 +275,9 @@ import ──► retained (not yet effective | effective | expired)
   [PDR-12](../decisions/product/PDR-12-license-term-supersession.md),
   decision **OD-LIC-01**): an explicit, valid, signed supersession **may**
   convert a perpetual grant into a time-limited one, and that is the only change
-  it authorizes — `organizationLimit`, `userLimit` and the granted entitlements
-  may not be reduced, on that path or any other (the arms above). Closing an
+  it authorizes — `organizationLimit`, `userLimit`, the signed `deviceLimit` and
+  the granted entitlements may not be reduced on that path or any other without
+  satisfying the applicable capacity/entitlement conflict flow above. Closing an
   open end is therefore refused as a reduction only where the document does
   **not** name the version it retires: the implicit hand-over of OQ-80 Option B
   and the legacy `VLIC1` replacement. A signed document that states, for a
@@ -495,15 +506,17 @@ Stages 8 and 9 share one implementation between the read-side pass and the
 in-transaction pass, so the two cannot drift apart: the pre-check is an early,
 informative rejection and the transaction's verdict is the one that decides.
 
-Capacity validation in this slice is **shape** validation (positive-or-null
-limits, known entitlements). PDR-11 §8.6 conflict detection against existing
-users/organizations/devices is a later slice (L-04): it needs the owning
-modules' public count contracts, and no destructive or automatic correction is
-implemented anywhere. Until that slice exists the import path refuses a version
-that would reduce the capacity or entitlements of the version it retires, on
-every path (an explicit signed supersession included — see §3.3), so no
-reduction is applied silently while the resolution flow is missing. Documented
-as a gap in the implementation report.
+Capacity validation includes both **shape** checks (positive-or-null limits,
+known entitlements) and the PDR-11 §8.6 usage-aware conflict check. The import
+transaction counts organizations and active users through their owning modules'
+public contracts and active devices through Licensing's repository, under the
+same allocation locks held by those writes. A reduction below counted usage is
+explained and fails closed unless the administrator uses the existing dedicated,
+authorized and audited resolution flow; PDR-15 §2.15 permits that flow for
+device conflicts as well as explicit device deactivation. Resolution applies
+the signed version but never automatically deactivates or deletes a device, and
+ordinary enrollment remains blocked while active usage is at or above a finite
+limit. Unavailable counts and prohibited term changes remain unresolvable.
 
 ## 5. Operations, replay and duplicates
 
@@ -888,8 +901,16 @@ customer stays the explicit, authorized, audited
 | Grace / Read-Only enforcement | OQ-45 shape decided, duration and override authority open |
 | Installation identity key | PDR-11 U-2 + U-9/PQ-3 (see §7) |
 | Server replacement workflow and receipts | PDR-11 §5.5, U-9; product choice open |
-| Client-device licensing | PDR-11 §7; separate slice, quota effects open (PQ-6 → OQ-83) |
+| Client-device licensing | OQ-83 policy decided by PDR-15 / OD-LIC-04; implementation in progress. See [`client-device-lifecycle.md`](./client-device-lifecycle.md). |
 | Owner-side issuance system and role matrix | PDR-11 §4, U-5 → OQ-75; CRM/billing and OQ-61 out of scope |
 | Clock-rollback enforcement | PDR-11 §12.6 thresholds open (U-6 → OQ-76) |
 | §8.6 capacity-conflict detection and resolution UI | needs the owning modules' public count contracts; separate slice (L-04). Until it exists, a version that reduces the retired version's capacity or entitlements is refused on every path — the interim fail-closed behaviour, not the flow. The **term** dimension of this section is decided: [PDR-12](../decisions/product/PDR-12-license-term-supersession.md) allows an explicit signed supersession to convert a perpetual grant into a time-limited one under the non-reduction invariants |
 | Audit read API and retention | retention open (U-7 → OQ-77) |
+
+## 14. Client-device licensing (OQ-83)
+
+The Product Owner policy is recorded in [PDR-15 / OD-LIC-04](../decisions/product/PDR-15-client-device-licensing-and-replacement.md); the dedicated customer-side protocol, state machine, API, authorization, persistence and test design is [`client-device-lifecycle.md`](./client-device-lifecycle.md). OQ-83 remains OPEN for implementation review and exact-head CI. This section does not promote or change ADR-0046's accepted decisions.
+
+The signed `LicenseVersion` owns device capacity. VLIC1 and already-issued VLIC2 payloads without a `deviceLimit` stay verifiable using their historical canonical form. Their device limit is **UNSPECIFIED** (neither zero nor unlimited), so they do not authorize new device registration until an explicit signed limit is imported. A signed `null` is unlimited; finite values are non-negative integers. The migration backfills pre-field rows as unspecified and never rewrites signed artifacts or their hashes.
+
+For the current status, CI, limitations and test evidence, see the task entry appended to `STATE.md`.

@@ -20,6 +20,9 @@ import { LicenseImportController } from './api/license-import.controller.js';
 import { LicenseCustomerTransferController } from './api/license-customer-transfer.controller.js';
 import { LicenseGapRecoveryController } from './api/license-gap-recovery.controller.js';
 import { LicenseReductionResolutionController } from './api/license-reduction-resolution.controller.js';
+import { ClientDevicesController } from './api/client-devices.controller.js';
+import { ClientDeviceLifecycleService } from './application/client-device-lifecycle.service.js';
+import { ClientDevicesRepository } from './data/client-devices.repository.js';
 import { IdentityModule } from '../identity/identity.module.js';
 import { RbacModule } from '../rbac/rbac.module.js';
 
@@ -56,10 +59,12 @@ import { RbacModule } from '../rbac/rbac.module.js';
     LicenseCustomerTransferController,
     LicenseGapRecoveryController,
     LicenseReductionResolutionController,
+    ClientDevicesController,
   ],
   providers: [
     InstallationsRepository,
     LicensesRepository,
+    ClientDevicesRepository,
     InstallationIdentityService,
     LocalDevelopmentLicenseProvider,
     PersistentLicenseProvider,
@@ -84,6 +89,7 @@ import { RbacModule } from '../rbac/rbac.module.js';
     LicensingService,
     LicenseImportService,
     LicenseActivationService,
+    ClientDeviceLifecycleService,
     LicensingPermissionRegistration,
   ],
   exports: [LicensingService, InstallationIdentityService],

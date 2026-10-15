@@ -81,18 +81,17 @@ export type LicenseVersionSource = 'file' | 'text' | 'legacy-code';
 
 /**
  * Current usage of the licensed installation, as L-04's conflict check needs
- * it (PDR-11 §8.6): how many organizations exist and how many users are
- * active. The numbers are produced by the modules that OWN those records
- * (organization, users) through their published application contracts — never
- * by reading their tables — and a `null` count means "unknown", which fails
+ * it (PDR-11 §8.6): how many organizations exist, how many users are active,
+ * and how many retained client devices are active. Organization and user
+ * counts are produced by the modules that OWN those records through their
+ * published application contracts — never by reading their tables; Licensing
+ * counts its own active devices. A `null` count means "unknown", which fails
  * closed: a capacity reduction whose usage cannot be counted is a conflict.
- *
- * Device usage has no entry because no device model exists yet (OQ-83 open);
- * the shape grows when one does.
  */
 export interface LicenseUsageSnapshot {
   organizationCount: number | null;
   activeUserCount: number | null;
+  registeredDeviceCount: number | null;
 }
 
 /**
@@ -109,12 +108,17 @@ export interface LicenseUsageSnapshot {
 export type ReductionConflict =
   | { kind: 'organization-capacity'; limit: number; currentUsage: number }
   | { kind: 'user-capacity'; limit: number; currentUsage: number }
+  | { kind: 'device-capacity'; limit: number; currentUsage: number }
+  | { kind: 'device-entitlement-removed'; currentUsage: number }
   | {
       kind: 'entitlement-removed';
       entitlement: { kind: EntitlementKind; code: string };
     }
   | { kind: 'open-end-closed' }
-  | { kind: 'usage-unavailable'; scope: 'organizations' | 'active-users' };
+  | {
+      kind: 'usage-unavailable';
+      scope: 'organizations' | 'active-users' | 'devices';
+    };
 
 /** True when an explicit operator resolution may authorize this conflict. */
 export function isResolvableReductionConflict(
@@ -148,6 +152,8 @@ export interface RetainedLicenseVersion {
   validUntil: Date | null;
   organizationLimit: LicenseLimit;
   userLimit: LicenseLimit;
+  deviceLimit: LicenseLimit;
+  deviceLimitSpecified: boolean;
   entitlements: readonly LicenseEntitlement[];
   /**
    * When the supersession was RECORDED (the successor's import instant), or
@@ -516,11 +522,19 @@ export function isPostGapRecoveryCandidate(
 export function reducesCapacityOrEntitlements(
   predecessor: Pick<
     RetainedLicenseVersion,
-    'organizationLimit' | 'userLimit' | 'entitlements'
+    | 'organizationLimit'
+    | 'userLimit'
+    | 'deviceLimit'
+    | 'deviceLimitSpecified'
+    | 'entitlements'
   >,
   candidate: Pick<
     RetainedLicenseVersion,
-    'organizationLimit' | 'userLimit' | 'entitlements'
+    | 'organizationLimit'
+    | 'userLimit'
+    | 'deviceLimit'
+    | 'deviceLimitSpecified'
+    | 'entitlements'
   >,
 ): boolean {
   if (
@@ -529,6 +543,13 @@ export function reducesCapacityOrEntitlements(
     return true;
   }
   if (limitReduced(predecessor.userLimit, candidate.userLimit)) {
+    return true;
+  }
+  if (
+    predecessor.deviceLimitSpecified &&
+    (!candidate.deviceLimitSpecified ||
+      limitReduced(predecessor.deviceLimit, candidate.deviceLimit))
+  ) {
     return true;
   }
   const granted = new Set(
@@ -570,11 +591,21 @@ export function closesOpenEnd(
 export function reducesRetainedGrant(
   predecessor: Pick<
     RetainedLicenseVersion,
-    'validUntil' | 'organizationLimit' | 'userLimit' | 'entitlements'
+    | 'validUntil'
+    | 'organizationLimit'
+    | 'userLimit'
+    | 'deviceLimit'
+    | 'deviceLimitSpecified'
+    | 'entitlements'
   >,
   candidate: Pick<
     RetainedLicenseVersion,
-    'validUntil' | 'organizationLimit' | 'userLimit' | 'entitlements'
+    | 'validUntil'
+    | 'organizationLimit'
+    | 'userLimit'
+    | 'deviceLimit'
+    | 'deviceLimitSpecified'
+    | 'entitlements'
   >,
 ): boolean {
   return (
@@ -616,11 +647,19 @@ function limitReduced(previous: number | null, next: number | null): boolean {
 export function reductionConflicts(
   predecessor: Pick<
     RetainedLicenseVersion,
-    'organizationLimit' | 'userLimit' | 'entitlements'
+    | 'organizationLimit'
+    | 'userLimit'
+    | 'deviceLimit'
+    | 'deviceLimitSpecified'
+    | 'entitlements'
   >,
   candidate: Pick<
     RetainedLicenseVersion,
-    'organizationLimit' | 'userLimit' | 'entitlements'
+    | 'organizationLimit'
+    | 'userLimit'
+    | 'deviceLimit'
+    | 'deviceLimitSpecified'
+    | 'entitlements'
   >,
   usage: LicenseUsageSnapshot | null,
 ): ReductionConflict[] {
@@ -651,6 +690,33 @@ export function reductionConflicts(
       conflicts.push({
         kind: 'user-capacity',
         limit: candidate.userLimit,
+        currentUsage: current,
+      });
+    }
+  }
+  if (predecessor.deviceLimitSpecified && !candidate.deviceLimitSpecified) {
+    const current = usage?.registeredDeviceCount;
+    if (typeof current !== 'number') {
+      conflicts.push({ kind: 'usage-unavailable', scope: 'devices' });
+    } else if (current > 0) {
+      conflicts.push({
+        kind: 'device-entitlement-removed',
+        currentUsage: current,
+      });
+    }
+  } else if (
+    predecessor.deviceLimitSpecified &&
+    candidate.deviceLimitSpecified &&
+    limitReduced(predecessor.deviceLimit, candidate.deviceLimit) &&
+    candidate.deviceLimit !== null
+  ) {
+    const current = usage?.registeredDeviceCount;
+    if (typeof current !== 'number') {
+      conflicts.push({ kind: 'usage-unavailable', scope: 'devices' });
+    } else if (current > candidate.deviceLimit) {
+      conflicts.push({
+        kind: 'device-capacity',
+        limit: candidate.deviceLimit,
         currentUsage: current,
       });
     }
@@ -859,6 +925,8 @@ export interface ImportCandidate {
   customerCode: string;
   organizationLimit: LicenseLimit;
   userLimit: LicenseLimit;
+  deviceLimit: LicenseLimit;
+  deviceLimitSpecified: boolean;
   entitlements: readonly LicenseEntitlement[];
 }
 
@@ -1693,6 +1761,8 @@ export function toInstallationLicense(
     validUntil: version.validUntil,
     organizationLimit: version.organizationLimit,
     userLimit: version.userLimit,
+    deviceLimit: version.deviceLimit,
+    deviceLimitSpecified: version.deviceLimitSpecified,
     entitlements: version.entitlements,
     provider,
   };
@@ -1719,6 +1789,8 @@ export interface LicenseVersionSummary {
   supersededByVersionId: string | null;
   importedAt: string;
   source: LicenseVersionSource;
+  deviceLimit: LicenseLimit;
+  deviceLimitSpecified: boolean;
 }
 
 export function toLicenseVersionSummary(
@@ -1737,6 +1809,8 @@ export function toLicenseVersionSummary(
     supersededByVersionId: version.supersededByVersionId,
     importedAt: version.importedAt.toISOString(),
     source: version.source,
+    deviceLimit: version.deviceLimit,
+    deviceLimitSpecified: version.deviceLimitSpecified,
   };
 }
 

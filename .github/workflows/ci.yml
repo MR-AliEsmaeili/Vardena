@@ -254,9 +254,10 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p test-results
-          timeout 540 npm run test:e2e -- --exclude test/licensing-persistence-live.e2e-spec.ts 2>&1 | tee test-results/e2e.log
+          timeout 540 npm run test:e2e -- --exclude test/licensing-persistence-live.e2e-spec.ts --exclude test/client-device-persistence-live.e2e-spec.ts 2>&1 | tee test-results/e2e.log
 
       - name: Licensing persistence live PostgreSQL suite (serial)
+        id: licensing-persistence-live
         if: always() && (steps.e2e-tests.outcome == 'success' || steps.e2e-tests.outcome == 'failure')
         working-directory: backend
         timeout-minutes: 10
@@ -267,6 +268,19 @@ jobs:
           set -o pipefail
           mkdir -p test-results
           timeout 540 npm run test:e2e -- --no-file-parallelism test/licensing-persistence-live.e2e-spec.ts 2>&1 | tee -a test-results/e2e.log
+
+      - name: OQ-83 client-device live PostgreSQL suite (serial)
+        id: client-device-persistence-live
+        if: always() && (steps.licensing-persistence-live.outcome == 'success' || steps.licensing-persistence-live.outcome == 'failure')
+        working-directory: backend
+        timeout-minutes: 10
+        # The fixture owns a separate, random installation and proves the
+        # installation/device allocation lock, retained history, durable
+        # cancellation and atomic one-for-one replacement against PostgreSQL.
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          timeout 540 npm run test:e2e -- --no-file-parallelism test/client-device-persistence-live.e2e-spec.ts 2>&1 | tee -a test-results/e2e.log
 
       # DIAGNOSTIC ONLY — changes no test, no assertion and no product code.
       # GitHub auto-detects at most ten annotations per job, so when several

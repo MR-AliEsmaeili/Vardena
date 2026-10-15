@@ -19,10 +19,11 @@
  */
 export const PERMISSIONS = {
   /**
-   * Installation licensing (`backend/src/modules/licensing/domain/
-   * licensing-permissions.ts`). The single code of the module: it authorizes
-   * `POST /api/v1/license/activate`. Reading the license state needs no
-   * permission at all (authenticated bootstrap self-read, ADR-0030).
+   * Installation licensing and retained client devices
+   * (`backend/src/modules/licensing/domain/licensing-permissions.ts`). Exact
+   * codes authorize license activation and each device lifecycle operation;
+   * `GET /api/v1/license/current` remains an authenticated self-read with no
+   * permission (ADR-0030).
    *
    * Like every entry here it is a UX check only (AR-21): the backend
    * re-authorizes activation, and holding an administrative role is NOT a
@@ -31,6 +32,12 @@ export const PERMISSIONS = {
    */
   licensing: {
     licenseActivate: 'Licensing.License.Activate',
+    deviceView: 'Licensing.Device.View',
+    deviceActivate: 'Licensing.Device.Activate',
+    deviceDeactivate: 'Licensing.Device.Deactivate',
+    deviceReplace: 'Licensing.Device.Replace',
+    deviceCancelReplacement: 'Licensing.Device.CancelReplacement',
+    deviceCompleteReplacement: 'Licensing.Device.CompleteReplacement',
   },
   organization: {
     view: 'Organization.Organization.View',

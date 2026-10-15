@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import {
+  PrismaService,
+  type DatabaseTransaction,
+} from '../../../kernel/prisma/prisma.service.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
 import {
@@ -31,7 +34,7 @@ import {
   type ReductionResolutionIntent,
   type RetainedLicenseVersion,
 } from '../domain/license-version.js';
-import { licenseAllocationLockKey } from '../application/license-usage.js';
+import { licenseAllocationLockKey } from '../domain/license-allocation-lock.js';
 
 /**
  * Data access for `licensing.licenses`, `licensing.license_versions`,
@@ -96,6 +99,8 @@ export interface ImportLicenseVersionCommand {
   validUntil: Date | null;
   organizationLimit: LicenseLimit;
   userLimit: LicenseLimit;
+  deviceLimit: LicenseLimit;
+  deviceLimitSpecified: boolean;
   entitlements: readonly LicenseEntitlement[];
   /**
    * How the artifact declares its relation to the version it replaces: nothing
@@ -158,6 +163,10 @@ export interface LicenseAuditEventCommand {
   operationId: string | null;
   licenseId: string | null;
   versionId: string | null;
+  /** Device subject for device lifecycle events; null for license-only events. */
+  deviceId?: string | null;
+  /** Replacement request subject for replacement lifecycle events. */
+  replacementRequestId?: string | null;
   actorId: string | null;
   source: string;
   documentHash: string | null;
@@ -299,6 +308,8 @@ interface VersionRow {
   validUntil: Date | null;
   organizationLimit: number | null;
   userLimit: number | null;
+  deviceLimit: number | null;
+  deviceLimitSpecified: boolean;
   supersededAt: Date | null;
   governsUntil: Date | null;
   supersededByVersionId: string | null;
@@ -370,6 +381,8 @@ interface VersionDelegate {
       validUntil: Date | null;
       organizationLimit: number | null;
       userLimit: number | null;
+      deviceLimit: number | null;
+      deviceLimitSpecified: boolean;
       importedAt: Date;
       importedBy: string | null;
       supersedesVersionId: string | null;
@@ -478,6 +491,8 @@ interface AuditDelegate {
       operationId: string | null;
       licenseId: string | null;
       versionId: string | null;
+      deviceId: string | null;
+      replacementRequestId: string | null;
       actorId: string | null;
       source: string;
       documentHash: string | null;
@@ -506,6 +521,8 @@ interface AuditDelegate {
       operationId: string | null;
       licenseId: string | null;
       versionId: string | null;
+      deviceId: string | null;
+      replacementRequestId: string | null;
       actorId: string | null;
       source: string;
       documentHash: string | null;
@@ -574,6 +591,29 @@ export class LicensesRepository {
     installationId: string,
   ): Promise<RetainedLicenseVersion[]> {
     return readVersions(await this.client(), installationId);
+  }
+
+  /**
+   * Serialize a device mutation with license imports, then resolve the current
+   * signed version from the same post-lock database snapshot. The opaque
+   * transaction capability is only consumed by this Licensing data layer.
+   */
+  async lockForDeviceAllocation(
+    transaction: DatabaseTransaction,
+    installationId: string,
+    at: Date,
+  ): Promise<{
+    installation: { id: string; customerId: string | null };
+    effectiveVersion: RetainedLicenseVersion | null;
+  }> {
+    const tx = await this.prisma.getClient<Client>(transaction);
+    const installation = await lockInstallationRow(tx, installationId);
+    await lockDeviceAllocation(tx, installationId);
+    const versions = await readVersions(tx, installationId);
+    return {
+      installation,
+      effectiveVersion: resolveEffectiveVersion(versions, at).version,
+    };
   }
 
   /**
@@ -787,6 +827,8 @@ export class LicensesRepository {
         customerCode: command.customerCode,
         organizationLimit: command.organizationLimit,
         userLimit: command.userLimit,
+        deviceLimit: command.deviceLimit,
+        deviceLimitSpecified: command.deviceLimitSpecified,
         entitlements: command.entitlements,
       };
       const evaluation = evaluateImportConflicts({
@@ -1035,6 +1077,8 @@ export class LicensesRepository {
           validUntil: command.validUntil,
           organizationLimit: command.organizationLimit,
           userLimit: command.userLimit,
+          deviceLimit: command.deviceLimit,
+          deviceLimitSpecified: command.deviceLimitSpecified,
           importedAt: command.now,
           importedBy: command.actorId,
           supersedesVersionId: supersedes?.versionId ?? null,
@@ -1102,6 +1146,8 @@ export class LicensesRepository {
             operationId: event.operationId,
             licenseId: event.licenseId,
             versionId: event.versionId,
+            deviceId: event.deviceId ?? null,
+            replacementRequestId: event.replacementRequestId ?? null,
             actorId: event.actorId,
             source: event.source,
             documentHash: event.documentHash,
@@ -1159,6 +1205,8 @@ export class LicensesRepository {
         operationId: command.operationId,
         licenseId: command.licenseId,
         versionId: command.versionId,
+        deviceId: command.deviceId ?? null,
+        replacementRequestId: command.replacementRequestId ?? null,
         actorId: command.actorId,
         source: command.source,
         documentHash: command.documentHash,
@@ -1195,6 +1243,8 @@ export class LicensesRepository {
       operationId: row.operationId,
       licenseId: row.licenseId,
       versionId: row.versionId,
+      deviceId: row.deviceId,
+      replacementRequestId: row.replacementRequestId,
       actorId: row.actorId,
       source: row.source,
       documentHash: row.documentHash,
@@ -1471,12 +1521,20 @@ export function resolutionAuditEvent(
  * builder is the documented exemption (AR-11); nothing here is interpolated
  * beyond the parameter.
  */
+export async function lockDeviceAllocation(
+  tx: LicensesTxClient,
+  installationId: string,
+): Promise<void> {
+  await tx.$queryRaw<unknown>`SELECT pg_advisory_xact_lock(hashtextextended(${licenseAllocationLockKey(installationId, 'devices')}, 0))::text AS "locked"`;
+}
+
 export async function lockLicenseUsageAllocation(
   tx: LicensesTxClient,
   installationId: string,
 ): Promise<void> {
   await tx.$queryRaw<unknown>`SELECT pg_advisory_xact_lock(hashtextextended(${licenseAllocationLockKey(installationId, 'active-users')}, 0))::text AS "locked"`;
   await tx.$queryRaw<unknown>`SELECT pg_advisory_xact_lock(hashtextextended(${licenseAllocationLockKey(installationId, 'organizations')}, 0))::text AS "locked"`;
+  await lockDeviceAllocation(tx, installationId);
 }
 
 function toRetainedVersion(row: VersionRow): RetainedLicenseVersion {
@@ -1496,6 +1554,8 @@ function toRetainedVersion(row: VersionRow): RetainedLicenseVersion {
     validUntil: row.validUntil,
     organizationLimit: row.organizationLimit,
     userLimit: row.userLimit,
+    deviceLimit: row.deviceLimit,
+    deviceLimitSpecified: row.deviceLimitSpecified,
     entitlements: row.entitlements.map(({ kind, code }) => ({
       kind,
       code,

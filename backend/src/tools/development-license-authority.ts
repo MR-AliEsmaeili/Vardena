@@ -86,6 +86,8 @@ export interface IssueLicenseOptions {
   validUntil?: Date | null;
   organizationLimit?: number | null;
   userLimit?: number | null;
+  /** Signed device capacity for new VLIC2 documents; VLIC1 cannot express it. */
+  deviceLimit?: number | null;
   moduleEntitlements?: readonly string[];
   featureEntitlements?: readonly string[];
 }
@@ -172,6 +174,8 @@ export function buildLicensePayload(
     validUntil: options.validUntil ?? null,
     organizationLimit: options.organizationLimit ?? null,
     userLimit: options.userLimit ?? null,
+    deviceLimit: null,
+    deviceLimitSpecified: false,
     moduleEntitlements: options.moduleEntitlements ?? [
       'accounting',
       'documents',
@@ -225,6 +229,10 @@ export function buildLicenseVersionPayload(
     validUntil: legacy.validUntil,
     organizationLimit: legacy.organizationLimit,
     userLimit: legacy.userLimit,
+    // Omission is UNSPECIFIED, never an inferred unlimited commercial grant.
+    // `--devices unlimited` explicitly supplies null and is signed as unlimited.
+    deviceLimit: options.deviceLimit ?? null,
+    deviceLimitSpecified: options.deviceLimit !== undefined,
     moduleEntitlements: legacy.moduleEntitlements,
     featureEntitlements: legacy.featureEntitlements,
     supersedesOperationId: options.supersedesOperationId ?? null,
@@ -262,6 +270,12 @@ export function issueLicenseCode(
   options: IssueLicenseOptions,
   privateKey: KeyObject | string,
 ): { code: string; payload: LicensePayload } {
+  if (options.deviceLimit !== undefined) {
+    throw new LicenseCodeError(
+      'limits',
+      'VLIC1 cannot carry a deviceLimit; issue a signed VLIC2 document instead.',
+    );
+  }
   const payload = buildLicensePayload(options);
   const key =
     typeof privateKey === 'string' ? parsePrivateKey(privateKey) : privateKey;

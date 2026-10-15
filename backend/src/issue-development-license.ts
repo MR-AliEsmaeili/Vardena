@@ -18,7 +18,7 @@ import {
  *   LICENSE_SIGNING_PRIVATE_KEY=<base64> npm run license:issue -- \
  *     --installation 01J... --customer 01J... --customer-code CUST-... \
  *     [--customer-name "Acme"] [--valid-until 2027-01-01] \
- *     [--organizations 3] [--users 25] [--modules organization,users,rbac] \
+ *     [--organizations 3] [--users 25] [--devices 20] [--modules organization,users,rbac] \
  *     [--status ACTIVE] [--valid-from 2027-01-01] [--operation-id 01J...] \
  *     [--supersedes 01J...] [--key-id 2026-a] [--artifact] [--out license.json]
  *     → prints the signed license FILE (the `vardena-license` envelope around
@@ -102,6 +102,7 @@ async function issueDevelopmentLicense(): Promise<void> {
     ...optional('validUntil', dateArg(args.get('valid-until'))),
     ...optional('organizationLimit', intArg(args.get('organizations'))),
     ...optional('userLimit', intArg(args.get('users'))),
+    ...optional('deviceLimit', deviceLimitArg(args.get('devices'))),
     ...optional('moduleEntitlements', listArg(args.get('modules'))),
     ...optional('featureEntitlements', listArg(args.get('features'))),
   };
@@ -176,6 +177,8 @@ function summaryLines(
     validUntil: Date | null;
     organizationLimit: number | null;
     userLimit: number | null;
+    deviceLimit: number | null;
+    deviceLimitSpecified: boolean;
     moduleEntitlements: readonly string[];
   },
   transport: string,
@@ -187,7 +190,7 @@ function summaryLines(
     `Customer     : ${payload.customerId} [${payload.customerCode}] (${payload.customerName})`,
     `Status       : ${payload.status}`,
     `Valid        : ${payload.validFrom.toISOString()} → ${payload.validUntil?.toISOString() ?? 'perpetual'}`,
-    `Limits       : organizations=${payload.organizationLimit ?? 'unlimited'} users=${payload.userLimit ?? 'unlimited'}`,
+    `Limits       : organizations=${payload.organizationLimit ?? 'unlimited'} users=${payload.userLimit ?? 'unlimited'} devices=${payload.deviceLimitSpecified ? (payload.deviceLimit ?? 'unlimited') : 'unspecified'}`,
     `Modules      : ${payload.moduleEntitlements.join(', ')}`,
   ];
 }
@@ -230,6 +233,18 @@ function intArg(raw: string | undefined): number | undefined {
   const value = Number(raw);
   if (!Number.isInteger(value) || value <= 0) {
     throw new Error(`"${raw}" is not a positive integer.`);
+  }
+  return value;
+}
+
+function deviceLimitArg(raw: string | undefined): number | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw.trim().toLowerCase() === 'unlimited') return null;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(
+      `"${raw}" is not a non-negative device limit or unlimited.`,
+    );
   }
   return value;
 }

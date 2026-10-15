@@ -1,8 +1,21 @@
 import { apiGet, apiPost } from './client';
 import type {
+  ClientDevice,
+  ClientDeviceHistory,
+  ClientDeviceInventory,
+  CreateDeviceEnrollmentChallengeRequest,
+  CreateDeviceReplacementChallengeRequest,
+  DeviceEnrollmentChallenge,
+  DeviceReplacementChallenge,
+  DeviceReplacementCompletion,
+  DeviceReplacementRequestExport,
+  DeviceReplacementResult,
+  ImportDeviceReplacementResponseRequest,
   ImportLicenseDocumentRequest,
   LicenseImportResult,
   LicenseState,
+  ProveDeviceEnrollmentRequest,
+  ProveDeviceReplacementRequest,
 } from './contracts';
 
 /**
@@ -46,5 +59,111 @@ export function importLicenseDocument(
   return apiPost<LicenseImportResult, ImportLicenseDocumentRequest>(
     '/license/import',
     request,
+  );
+}
+
+/** Retained installation-wide client-device inventory and signed quota. */
+export function getClientDeviceInventory(
+  signal?: AbortSignal,
+): Promise<ClientDeviceInventory> {
+  return apiGet<ClientDeviceInventory>(
+    '/license/devices',
+    signal ? { signal } : {},
+  );
+}
+
+/** One device's retained lifecycle audit history. */
+export function getClientDeviceHistory(
+  deviceId: string,
+  signal?: AbortSignal,
+): Promise<ClientDeviceHistory> {
+  return apiGet<ClientDeviceHistory>(
+    `/license/devices/${encodeURIComponent(deviceId)}/history`,
+    signal ? { signal } : {},
+  );
+}
+
+/** Start Ed25519 proof-of-possession enrollment without sending a private key. */
+export function createDeviceEnrollmentChallenge(
+  request: CreateDeviceEnrollmentChallengeRequest,
+): Promise<DeviceEnrollmentChallenge> {
+  return apiPost<
+    DeviceEnrollmentChallenge,
+    CreateDeviceEnrollmentChallengeRequest
+  >('/license/devices/enrollment-challenges', request);
+}
+
+/** Verify the device's detached signature and activate its retained row. */
+export function activateDeviceEnrollment(
+  challengeId: string,
+  request: ProveDeviceEnrollmentRequest,
+): Promise<ClientDevice> {
+  return apiPost<ClientDevice, ProveDeviceEnrollmentRequest>(
+    `/license/devices/enrollment-challenges/${encodeURIComponent(challengeId)}/activate`,
+    request,
+  );
+}
+
+/** Explicitly deactivate an active device; its history remains retained. */
+export function deactivateClientDevice(
+  deviceId: string,
+): Promise<ClientDevice> {
+  return apiPost<ClientDevice>(
+    `/license/devices/${encodeURIComponent(deviceId)}/deactivate`,
+  );
+}
+
+/** Start the offline signed replacement exchange for an active device. */
+export function createDeviceReplacementChallenge(
+  oldDeviceId: string,
+  request: CreateDeviceReplacementChallengeRequest,
+): Promise<DeviceReplacementChallenge> {
+  return apiPost<
+    DeviceReplacementChallenge,
+    CreateDeviceReplacementChallengeRequest
+  >(
+    `/license/devices/${encodeURIComponent(oldDeviceId)}/replacement-challenges`,
+    request,
+  );
+}
+
+/** Submit the new device's detached proof and obtain the signed VDRQ1 export. */
+export function proveDeviceReplacement(
+  requestId: string,
+  request: ProveDeviceReplacementRequest,
+): Promise<DeviceReplacementRequestExport> {
+  return apiPost<DeviceReplacementRequestExport, ProveDeviceReplacementRequest>(
+    `/license/devices/replacements/${encodeURIComponent(requestId)}/prove`,
+    request,
+  );
+}
+
+/** Re-export the retained request while its signed lifecycle remains pending. */
+export function exportDeviceReplacementRequest(
+  requestId: string,
+  signal?: AbortSignal,
+): Promise<DeviceReplacementRequestExport> {
+  return apiGet<DeviceReplacementRequestExport>(
+    `/license/devices/replacements/${encodeURIComponent(requestId)}/export`,
+    signal ? { signal } : {},
+  );
+}
+
+/** Verify and atomically import an authority-signed VDRP1 response. */
+export function importDeviceReplacementResponse(
+  request: ImportDeviceReplacementResponseRequest,
+): Promise<DeviceReplacementCompletion> {
+  return apiPost<
+    DeviceReplacementCompletion,
+    ImportDeviceReplacementResponseRequest
+  >('/license/devices/replacements/import', request);
+}
+
+/** Terminally cancel a challenge or pending replacement request. */
+export function cancelDeviceReplacement(
+  requestId: string,
+): Promise<DeviceReplacementResult> {
+  return apiPost<DeviceReplacementResult>(
+    `/license/devices/replacements/${encodeURIComponent(requestId)}/cancel`,
   );
 }

@@ -138,6 +138,66 @@ describe('signed license document', () => {
     );
   });
 
+  it('preserves pre-device VLIC2 canonical bytes as UNSPECIFIED, not unlimited', () => {
+    // This is the historical VLIC2 wire shape: omitting deviceLimit must not
+    // rewrite the signed payload or infer an unlimited entitlement.
+    const historical = wire();
+    const document = signWire(historical);
+    const payloadText = Buffer.from(
+      document.split('.')[1]!,
+      'base64url',
+    ).toString('utf8');
+    const verified = parseLicenseDocument(
+      document,
+      trusted(AUTHORITY.publicKey),
+    );
+
+    expect(JSON.parse(payloadText)).not.toHaveProperty('deviceLimit');
+    expect(verified.payload.deviceLimit).toBeNull();
+    expect(verified.payload.deviceLimitSpecified).toBe(false);
+  });
+
+  it('signs only explicit finite, zero or unlimited device quotas', () => {
+    const unspecified = issue({ installationId: INSTALLATION });
+    const finite = issue({ installationId: INSTALLATION, deviceLimit: 12 });
+    const zero = issue({ installationId: INSTALLATION, deviceLimit: 0 });
+    const unlimited = issue({
+      installationId: INSTALLATION,
+      deviceLimit: null,
+    });
+
+    expect(unspecified.payload).toMatchObject({
+      deviceLimit: null,
+      deviceLimitSpecified: false,
+    });
+    expect(finite.payload).toMatchObject({
+      deviceLimit: 12,
+      deviceLimitSpecified: true,
+    });
+    expect(zero.payload).toMatchObject({
+      deviceLimit: 0,
+      deviceLimitSpecified: true,
+    });
+    expect(unlimited.payload).toMatchObject({
+      deviceLimit: null,
+      deviceLimitSpecified: true,
+    });
+    expect(
+      JSON.parse(
+        Buffer.from(unspecified.document.split('.')[1]!, 'base64url').toString(
+          'utf8',
+        ),
+      ),
+    ).not.toHaveProperty('deviceLimit');
+    expect(
+      JSON.parse(
+        Buffer.from(unlimited.document.split('.')[1]!, 'base64url').toString(
+          'utf8',
+        ),
+      ),
+    ).toHaveProperty('deviceLimit', null);
+  });
+
   it('produces the same payload from the file envelope and the bare artifact', () => {
     const { file, document } = issue(
       { installationId: INSTALLATION },
@@ -367,6 +427,8 @@ describe('signed license document', () => {
       [{ validUntil: '2027-01-01T00:00:00.000Z' }, 'validity'],
       [{ organizationLimit: 0 }, 'limits'],
       [{ userLimit: -5 }, 'limits'],
+      [{ deviceLimit: -1 }, 'limits'],
+      [{ deviceLimit: 1.5 }, 'limits'],
       [{ modules: ['accounting', 'accounting'] }, 'entitlements'],
       [{ modules: ['telepathy'] }, 'entitlements'],
       [{ features: ['Bad Code'] }, 'entitlements'],

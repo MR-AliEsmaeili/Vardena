@@ -2238,3 +2238,109 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
 - **Status:** implementation submitted for review, **not merged and not
   Owner-accepted**; the existing manual merge protocol applies and CI remains
   advisory under the accepted GitHub Free limitation.
+
+## 43. OQ-83 client-device licensing and replacement (2026-10-15)
+
+- **Verified base / branch:** `origin/main` was freshly fetched and remains
+  `dd1203ca6c1651785811928f2a69d5d32a15739d`. Work is only on
+  `arena/df6a0248-vardena`. The implementation is being submitted for review;
+  exact-head CI evidence will be recorded in the pull-request description, not
+  transferred between SHAs. This is not Product Owner acceptance or permission
+  to merge.
+- **Decision/status:** final Product Owner policy is [PDR-15 / OD-LIC-04](docs/decisions/product/PDR-15-client-device-licensing-and-replacement.md).
+  PDR-11 §§7.2, 7.7, 7.10–7.13 and §15.2/PQ-6, the OQ-83 registry row and the
+  licensing design were reconciled to it. **OQ-83 stays OPEN** for implementation
+  review and exact-head CI; OQ-84 stays OPEN for general receipts. OQ-78, OQ-82
+  and OQ-85 remain separate and out of scope. ADR-0046 remains accepted as-is;
+  its OQ-83 note is an implementation addendum, not an ADR promotion.
+- **Quota and reduction behavior:** the effective signed LicenseVersion is the
+  sole device entitlement source. A missing legacy `deviceLimit` is
+  **UNSPECIFIED**, signed `null` is unlimited, and a finite non-negative integer
+  (including zero) is explicit; VLIC1 is unchanged. Local-development licensing
+  cannot invent a device quota. Active retained devices consume quota. Reductions
+  are checked against organizations, active users and devices under the shared
+  installation/allocation locks. Per PDR-15 §2.15, an over-quota device conflict
+  may be resolved by explicit device deactivation and retry **or** the existing
+  authorized, reasoned, audited reduction-resolution flow. The latter changes no
+  device row; neither path auto-deactivates, and ordinary enrollment stays
+  blocked while usage is at or above the finite limit. Uncountable usage fails
+  closed.
+- **Lifecycle and transport:** Ed25519 proof-of-possession enrollment uses a
+  canonical one-use challenge. The external device client owns key generation
+  and private-key custody; the Vardena administrator UI handles only public
+  keys, challenges and signatures. Server-side records retain only public keys
+  and fingerprints. Explicit deactivation retains device/history. Replacement
+  is a one-for-one atomic exchange using signed VDRQ1 request and VDRP1 response
+  evidence, the existing trusted licensing keys and strict installation/customer/
+  license/version/request correlation; canceled, expired, stale and replayed
+  operations cannot complete. Pending operations bound to an old effective
+  LicenseVersion are expired and audited on the next lifecycle operation; the
+  replacement export itself revalidates under the device/import lock, so a
+  concurrent license change cannot return a stale artifact. The old device
+  remains active on every failed completion.
+- **API/UI/migration:** ten permission-guarded REST operations are registered
+  with OpenAPI response contracts and generated TypeScript client declarations.
+  The Persian RTL admin page exposes server-authoritative quota, retained
+  inventory/history, explicit deactivation, enrollment proofs and offline
+  replacement file/text copy/download/import/cancel flows. Additive migration
+  `20261022000000_licensing_client_device_lifecycle` adds nullable device limit
+  plus an explicit-presence flag (backfilled as UNSPECIFIED without rewriting
+  signed hashes), three lifecycle tables/enums, audit subject columns/indexes,
+  state and uniqueness constraints. No private-key column or hard-delete path
+  is introduced.
+- **Local verification:** backend and frontend typechecks passed; backend build
+  passed. Backend lint exited 0 with one unrelated existing warning at
+  `backend/src/modules/accounting/application/coding-structure-accounts.spec.ts:896`;
+  frontend lint passed with zero warnings/errors. Focused backend tests passed
+  (**179 tests across 7 files**, including reduction-policy/service, lifecycle,
+  authorization, domain and OpenAPI contracts); focused frontend tests passed
+  (**26 tests across 4 files**). Docs links passed (**292 Markdown files, 836
+  relative links, 0 broken**); CI-script unit tests passed (**70**). Prettier
+  check passed for changed TS/TSX and the new/compatible design docs. Six older
+  Markdown files touched by the decision reconciliation already fail Prettier
+  on the baseline; they were not wholesale reformatted to avoid unrelated
+  reflow. `git diff --check` passed.
+- **OpenAPI / deferred verification:** OpenAPI dump completed with a dummy local
+  `DATABASE_URL` and emitted all ten device routes; it warned that RBAC permission
+  synchronization could not run because Prisma Client is not generated. The
+  OpenAPI contract unit test passed and the generated client was regenerated
+  from that dump with `openapi-typescript@7.13.0`. Local Prisma validate/generate
+  remains blocked by the schema-engine download from `binaries.prisma.sh` and
+  was not retried. Heavy/full suites, E2E, live PostgreSQL, migration rehearsals
+  and Docker were not run locally.
+- **Exact-head CI diagnosis and follow-up:** initial run
+  [38671941305](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38671941305)
+  on `8b9de9550b0be612e00945dad7695e3ab2cead5b` failed at Prisma validate and
+  Prisma generate. The supplied Prisma output identified P1012 for the
+  one-to-one `ClientDevice.enrollmentChallenge` and `replacementRequest`
+  relations: the defining-side composite unique fields existed, but in reverse
+  order from the relation scalar fields. Added matching ordered unique
+  attributes and corresponding constraints to the additive lifecycle migration.
+  This is a schema-integrity correction, not a policy change. Follow-up run
+  [38695826741](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38695826741)
+  on `9fb3b9721f9b38646b1508c531b8f7b5934eed0b` confirmed Prisma validate,
+  Prisma generate, generated-client drift, docs, frontend and classify passed;
+  backend and `ci-gate` failed at E2E/live tests. The available annotations
+  showed eight license-import E2E cases reaching the real device repository
+  despite their Prisma stub, and the OQ-83 race test was recreating challenges
+  already created by the test. Added an explicit zero-device repository double
+  to the in-memory license import/recovery/activation E2E fixtures and changed
+  the PostgreSQL race to activate its already-issued challenges. Run
+  [38697060051](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38697060051)
+  on `5cc3a88be143894a3eff74fb85340b18dd11aebd` confirmed the OQ-83 live suite,
+  license-import fixtures, Prisma, migration rehearsals and generated client
+  passed; the general E2E step then found one stale exact-key assertion in
+  `license-state-route.e2e-spec.ts` that omitted the new device fields. Commit
+  `20fa85b8b70eea69280ea2bd447f17364ded1ab8` updated its response and OpenAPI
+  expectations. Exact-head run
+  [38697748025](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38697748025)
+  passed on that SHA: `classify`, `ci-gate`, backend (including E2E and both
+  licensing live PostgreSQL suites), docs, frontend and generated API client.
+  The PR body holds the full verification record. OQ-83 remains open; this is
+  not a product acceptance or merge.
+- **Review/acceptance guardrails:** license-import rejection audit remains
+  best-effort as previously designed. OQ-83 implementation is submitted for
+  review, not accepted or merged. No main push, merge, auto-merge or repository
+  protection change was made. Follow the manual exact-head process in
+  `docs/operations/ci-minutes-optimization.md`; keep the PR body as the record
+  of final `classify`, `ci-gate` and applicable job links/results.

@@ -65,6 +65,9 @@ export interface LicensePayload {
   validUntil: Date | null;
   organizationLimit: LicenseLimit;
   userLimit: LicenseLimit;
+  /** Legacy VLIC1 has no signed device entitlement; kept as UNSPECIFIED. */
+  deviceLimit: LicenseLimit;
+  deviceLimitSpecified: boolean;
   moduleEntitlements: readonly string[];
   featureEntitlements: readonly string[];
 }
@@ -305,6 +308,8 @@ function readPayload(raw: unknown): LicensePayload {
     validUntil,
     organizationLimit: readLimit(wire.organizationLimit, 'organizationLimit'),
     userLimit: readLimit(wire.userLimit, 'userLimit'),
+    deviceLimit: null,
+    deviceLimitSpecified: false,
     moduleEntitlements: readCodes(wire.modules, 'modules'),
     featureEntitlements: readCodes(wire.features, 'features'),
   };
@@ -397,6 +402,12 @@ export function assertPayload(payload: LicensePayload): void {
   readCustomerCode(payload.customerCode, customerId);
   readName(payload.customerName);
   readId(payload.installationId, 'installationId');
+  if (payload.deviceLimitSpecified || payload.deviceLimit !== null) {
+    throw new LicenseCodeError(
+      'limits',
+      'VLIC1 cannot carry a deviceLimit; use a signed VLIC2 document.',
+    );
+  }
   if (
     payload.validUntil !== null &&
     payload.validUntil.getTime() <= payload.validFrom.getTime()
@@ -478,6 +489,8 @@ export function toInstallationLicense(
     validUntil: payload.validUntil,
     organizationLimit: payload.organizationLimit,
     userLimit: payload.userLimit,
+    deviceLimit: payload.deviceLimit,
+    deviceLimitSpecified: payload.deviceLimitSpecified,
     entitlements: payloadEntitlements(payload),
     provider,
   };

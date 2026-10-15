@@ -142,12 +142,17 @@ function loggerStub(): JsonLogger {
 
 /** §8.6 usage stub: counted organizations/users, controllable per test. */
 function usageStub(
-  counts: { organizations?: number; activeUsers?: number } = {},
+  counts: {
+    organizations?: number;
+    activeUsers?: number;
+    registeredDevices?: number;
+  } = {},
 ): LicenseUsagePort {
   return {
     snapshot: async () => ({
       organizationCount: counts.organizations ?? 0,
       activeUserCount: counts.activeUsers ?? 0,
+      registeredDeviceCount: counts.registeredDevices ?? 0,
     }),
   };
 }
@@ -180,7 +185,11 @@ function buildHarness(
     allowed?: boolean;
     keys?: string[];
     /** §8.6 usage counts the pre-check and the transaction see (L-04). */
-    usage?: { organizations?: number; activeUsers?: number };
+    usage?: {
+      organizations?: number;
+      activeUsers?: number;
+      registeredDevices?: number;
+    };
   } = {},
 ): Harness {
   const stores =
@@ -2871,6 +2880,66 @@ describe('explicit reduction resolution (PDR-11 §8.6, L-04)', () => {
     ).toBe(false);
   });
 
+  it('resolves an over-quota device reduction through the existing audited flow', async () => {
+    harness = buildHarness({
+      usage: { organizations: 5, activeUsers: 12, registeredDevices: 3 },
+    });
+    const predecessor = signedDocument({
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      validUntil: new Date('2028-01-01T00:00:00.000Z'),
+      organizationLimit: 5,
+      userLimit: 20,
+      deviceLimit: null,
+      moduleEntitlements: ['accounting', 'documents'],
+    });
+    await harness.service.importDocument(predecessor.file);
+    const candidate = signedDocument({
+      validFrom: HANDOVER,
+      validUntil: new Date('2029-01-01T00:00:00.000Z'),
+      organizationLimit: 5,
+      userLimit: 20,
+      deviceLimit: 2,
+      moduleEntitlements: ['accounting', 'documents'],
+      supersedesOperationId: predecessor.payload.operationId,
+    });
+
+    const refusal = await rejectionOf(
+      harness.service.importDocument(candidate.file),
+    );
+    const deviceConflict = {
+      kind: 'device-capacity',
+      limit: 2,
+      currentUsage: 3,
+    };
+    expect(refusal.status).toBe(409);
+    expect(refusal.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: { conflicts: [deviceConflict] },
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+
+    const result = await harness.service.resolveReduction(
+      candidate.file,
+      RESOLUTION_REASON,
+    );
+    expect(result).toMatchObject({
+      outcome: 'APPLIED',
+      resolvedConflicts: [deviceConflict],
+    });
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(
+      (await harness.licensing.currentState(HANDOVER)).license,
+    ).toMatchObject({
+      deviceLimit: 2,
+      deviceLimitSpecified: true,
+    });
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.reduction-resolved',
+      ),
+    ).toBe(true);
+  });
+
   it('the in-transaction usage read decides, not the read-side pre-check', async () => {
     // Usage grows between the informative pre-check (2 organizations: no
     // conflict) and the import transaction (9: conflict). The decision must
@@ -2881,6 +2950,7 @@ describe('explicit reduction resolution (PDR-11 §8.6, L-04)', () => {
       snapshot: async () => ({
         organizationCount: organizations,
         activeUserCount: 5,
+        registeredDeviceCount: 0,
       }),
     };
     const service = new LicenseImportService(

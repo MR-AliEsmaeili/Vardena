@@ -24,6 +24,8 @@ function licensing(
       validUntil: null,
       organizationLimit: null,
       userLimit: null,
+      deviceLimit: null,
+      deviceLimitSpecified: false,
       provider: 'test',
       entitlements: modules.map((code) => ({ kind: 'MODULE' as const, code })),
     }),

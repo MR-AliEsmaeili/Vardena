@@ -8,10 +8,13 @@ import {
   findScheduledVersion,
   findVersionByOperationId,
   hasRecordedSupersession,
+  isResolvableReductionConflict,
   isEligibleAt,
   isSupersededAt,
   overlappingVersions,
   resolveEffectiveVersion,
+  reducesCapacityOrEntitlements,
+  reductionConflicts,
   sortVersionsNewestFirst,
   supersessionCeaseInstant,
   supersessionRewritesPastGovernance,
@@ -63,6 +66,8 @@ function version(
     validUntil: null,
     organizationLimit: null,
     userLimit: null,
+    deviceLimit: null,
+    deviceLimitSpecified: false,
     entitlements: [
       { kind: 'MODULE', code: 'accounting' } as LicenseEntitlement,
     ],
@@ -604,6 +609,64 @@ describe('import conflict evaluation', () => {
     ];
   }
 
+  it('checks signed device quota reductions against retained active usage and fails closed', () => {
+    const unlimited = version({
+      deviceLimit: null,
+      deviceLimitSpecified: true,
+    });
+    const finite = version({
+      deviceLimit: 2,
+      deviceLimitSpecified: true,
+    });
+    const removed = version({
+      deviceLimit: null,
+      deviceLimitSpecified: false,
+    });
+
+    expect(reducesCapacityOrEntitlements(unlimited, finite)).toBe(true);
+    expect(
+      reductionConflicts(unlimited, finite, {
+        organizationCount: 0,
+        activeUserCount: 0,
+        registeredDeviceCount: 3,
+      }),
+    ).toEqual([{ kind: 'device-capacity', limit: 2, currentUsage: 3 }]);
+    expect(
+      isResolvableReductionConflict({
+        kind: 'device-capacity',
+        limit: 2,
+        currentUsage: 3,
+      }),
+    ).toBe(true);
+    expect(
+      isResolvableReductionConflict({
+        kind: 'device-entitlement-removed',
+        currentUsage: 1,
+      }),
+    ).toBe(true);
+    expect(
+      reductionConflicts(unlimited, finite, {
+        organizationCount: 0,
+        activeUserCount: 0,
+        registeredDeviceCount: null,
+      }),
+    ).toEqual([{ kind: 'usage-unavailable', scope: 'devices' }]);
+    expect(
+      reductionConflicts(unlimited, finite, {
+        organizationCount: 0,
+        activeUserCount: 0,
+        registeredDeviceCount: 2,
+      }),
+    ).toEqual([]);
+    expect(
+      reductionConflicts(unlimited, removed, {
+        organizationCount: 0,
+        activeUserCount: 0,
+        registeredDeviceCount: 1,
+      }),
+    ).toEqual([{ kind: 'device-entitlement-removed', currentUsage: 1 }]);
+  });
+
   it.each([
     ['organizationLimit', { organizationLimit: 4 }],
     ['userLimit', { userLimit: 19 }],
@@ -625,7 +688,11 @@ describe('import conflict evaluation', () => {
       // §8.6 is a conflict with CURRENT USAGE: give the evaluation usage well
       // above the shrunk limits so the refusal is the capacity/entitlement
       // conflict itself, not the fail-closed absence of a count.
-      const usage = { organizationCount: 9, activeUserCount: 99 };
+      const usage = {
+        organizationCount: 9,
+        activeUserCount: 99,
+        registeredDeviceCount: 0,
+      };
 
       for (const [path, overrides] of precedencePaths(predecessor)) {
         const result = evaluate(candidate, {
@@ -707,7 +774,11 @@ describe('import conflict evaluation', () => {
       },
       {
         versions: [predecessor],
-        usage: { organizationCount: 1, activeUserCount: 1 },
+        usage: {
+          organizationCount: 1,
+          activeUserCount: 1,
+          registeredDeviceCount: 0,
+        },
         supersession: {
           kind: 'explicit',
           operationId: predecessor.operationId,
@@ -750,7 +821,11 @@ describe('import conflict evaluation', () => {
       },
       {
         versions: [predecessor],
-        usage: { organizationCount: 3, activeUserCount: 25 },
+        usage: {
+          organizationCount: 3,
+          activeUserCount: 25,
+          registeredDeviceCount: 0,
+        },
         supersession: {
           kind: 'explicit',
           operationId: predecessor.operationId,
@@ -787,7 +862,11 @@ describe('import conflict evaluation', () => {
       // — the Must is a check against the resulting state, not a freeze).
       const within = evaluate(shrunk, {
         versions: [predecessor],
-        usage: { organizationCount: 4, activeUserCount: 20 },
+        usage: {
+          organizationCount: 4,
+          activeUserCount: 20,
+          registeredDeviceCount: 0,
+        },
         ...overrides,
       });
       expect(within.conflict, `within: ${path}`).toBeNull();
@@ -799,7 +878,11 @@ describe('import conflict evaluation', () => {
       // explained with the limit and the counted usage.
       const beyond = evaluate(shrunk, {
         versions: [predecessor],
-        usage: { organizationCount: 5, activeUserCount: 20 },
+        usage: {
+          organizationCount: 5,
+          activeUserCount: 20,
+          registeredDeviceCount: 0,
+        },
         ...overrides,
       });
       expect(beyond.conflict, `beyond: ${path}`).toMatchObject({
@@ -821,7 +904,11 @@ describe('import conflict evaluation', () => {
         { ...shrunk, userLimit: 19 },
         {
           versions: [predecessor],
-          usage: { organizationCount: 4, activeUserCount: null },
+          usage: {
+            organizationCount: 4,
+            activeUserCount: null,
+            registeredDeviceCount: 0,
+          },
           ...overrides,
         },
       );
@@ -961,7 +1048,11 @@ describe('import conflict evaluation', () => {
       { ...closing, organizationLimit: 4, userLimit: 20 },
       {
         versions: [perpetual],
-        usage: { organizationCount: 5, activeUserCount: 20 },
+        usage: {
+          organizationCount: 5,
+          activeUserCount: 20,
+          registeredDeviceCount: 0,
+        },
         supersession: { kind: 'explicit', operationId: perpetual.operationId },
       },
     );
@@ -1895,7 +1986,11 @@ describe('continuation baseline of a renewal that retires nothing (L-05)', () =>
       versions: [],
       at: NOW,
       installationCustomerId: CUSTOMER,
-      usage: { organizationCount: 9, activeUserCount: 24 },
+      usage: {
+        organizationCount: 9,
+        activeUserCount: 24,
+        registeredDeviceCount: 0,
+      },
       ...overrides,
     });
   }
@@ -2126,7 +2221,11 @@ describe('continuation baseline of a renewal that retires nothing (L-05)', () =>
       versions: [baseline],
       at: NOW,
       installationCustomerId: CUSTOMER,
-      usage: { organizationCount: 9, activeUserCount: 24 },
+      usage: {
+        organizationCount: 9,
+        activeUserCount: 24,
+        registeredDeviceCount: 0,
+      },
     });
 
     expect(result.conflict).toMatchObject({
