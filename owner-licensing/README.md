@@ -142,6 +142,12 @@ row, or extra transition is rejected. No cancellation state exists.
   holds that lock, verifies current password, writes hash/first-login flag and
   revokes all other sessions atomically, including durable audit. It cannot
   upgrade another holder of an initial credential (ADR-0047 concept).
+- A 401 from `auth/change-password` is ambiguous by contract: the route answers it
+  both for an ended session and for a rejected current password. The UI never
+  reports it as an expired session without first reading `auth/me`; a confirmed end
+  still clears the session and every cached value. Mistyping the current password
+  during the mandatory first-login change therefore keeps the operator on the form
+  with a credential error instead of a false session-expiry notice.
 - Admin role/lifecycle/reset operations serialize, retain the last active admin,
   and revoke target sessions atomically. Logout invalidates the token server-side.
 - Mutations require JSON and `x-owner-request: 1`; browser Origin, if supplied,
