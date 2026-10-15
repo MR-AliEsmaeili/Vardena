@@ -67,12 +67,18 @@ runtime `NODE_ENV` check; and the canonical byte contract is implicit in Node's
 
 ## Consequences
 
-- Remediation of the shipped issuer and the missing secret hygiene becomes a
-  prerequisite that does **not** depend on OQ-85 and should not wait for it.
-- Publishing vectors requires ratifying the measured escaping behaviour as
-  normative text. That preserves every already-issued artifact; choosing a
-  different rule would instead be a format change needing a versioned `VLIC3`
-  and a U-8 decision.
+- Remediation of the shipped issuer and the missing secret hygiene (**Phase 0.5A**)
+  is a prerequisite that depends on neither OQ-85 nor D-2 and should not wait for
+  either: it changes no canonicalization wording, no signed format and no vector.
+- Publishing vectors requires the canonical escaping behaviour to be ratified as
+  normative text first (**Phase 0.5B**, decision **D-2(b)**) and requires choosing
+  the conformance mechanism (**D-2(a)**). Both are Product Owner approvals this
+  ADR does **not** make and does **not** anticipate; the wording in the vector
+  design document is a *proposal*, and until it is ratified the behaviour is an
+  undocumented artefact of Node's `JSON.stringify`. Ratifying it as written
+  preserves every already-issued artifact; choosing a different rule is a format
+  change needing a versioned `VLIC3` and a U-8 decision. Phase 0.5A and Phase 0.5B
+  must not be bundled into one change.
 - Until OQ-78 exists there is **no revocation instrument**, so a wrongly issued
   perpetual license cannot be withdrawn — the strongest argument for dual control
   on high-impact operations, which §4.3 permits but does not mandate.

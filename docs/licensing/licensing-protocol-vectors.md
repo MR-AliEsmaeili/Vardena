@@ -1,8 +1,10 @@
 # Licensing protocol conformance vectors — contract and gap analysis
 
 **Status:** DESIGN PROPOSAL — Phase 0. No vector file is published by this
-document yet; publishing one is a gated implementation step (see §6). Nothing
-here changes a signed format.
+document yet, and publishing one is gated on explicit Product Owner decisions
+**D-2(a)** (package versus vectors) and **D-2(b)** (ratification of the
+canonical escaping wording) — see §6. **Nothing here ratifies the current JSON
+escaping behaviour, decides D-2, or changes a signed format.**
 **Baseline:** `main` @ `961a696fbff16893dc69f93d6409af5430790a6c`.
 **Companion:** [Owner-side architecture](./owner-side-system-architecture.md) ·
 [Phase 0 readiness report](../tasks/licensing-owner-side-phase-0-readiness.md).
@@ -98,26 +100,48 @@ table above collapses to nothing.
 Persian text. This is the highest-value gap to close, and closing it does **not**
 require changing any signed format.
 
-### 2.4 Resolution that preserves compatibility
+### 2.4 Proposed resolution — PENDING D-2, NOT ratified by this document
 
 The signed format must not be changed for implementation convenience (task red
-line; PDR-11 §15 U-8). The compatible resolution is to **write down** the
-existing behaviour as a normative rule rather than to alter it:
+line; PDR-11 §15 U-8). The compatible resolution would be to **write down** the
+existing behaviour as a normative rule rather than to alter it. The text below is
+a **proposal for Product Owner ratification under decision D-2(b)** (see the
+[decision table](../tasks/licensing-owner-side-phase-0-readiness.md)). It is
+**not** a contract, it is not in force, and nothing in this repository may treat
+it as the specification until the Product Owner explicitly approves it and it is
+committed into
+[`version-model-and-file-exchange.md`](./version-model-and-file-exchange.md) §2.1
+as **Phase 0.5B**:
 
-> **Canonical JSON string escaping (normative).** A signed canonical payload is
-> the UTF-8 encoding of a JSON text in which: object keys appear in the exact
-> declared order; `"` and `\` are escaped as `\"` and `\\`; `U+0008`, `U+0009`,
-> `U+000A`, `U+000C`, `U+000D` are escaped as `\b`, `\t`, `\n`, `\f`, `\r`;
-> every other code point in `U+0000`–`U+001F` is escaped as `\u00xx` with
-> **lowercase** hex; and **every other code point is emitted raw as UTF-8**,
-> including all non-ASCII, `U+007F`, `U+2028`, `U+2029`, `<`, `>`, `&` and `/`.
-> No whitespace is inserted between tokens. Numbers are integers or `null`.
-> Instants are `Date.prototype.toISOString()` form,
+> **Canonical JSON string escaping (PROPOSED normative text — awaiting D-2(b)).**
+> A signed canonical payload is the UTF-8 encoding of a JSON text in which:
+> object keys appear in the exact declared order; `"` and `\` are escaped as
+> `\"` and `\\`; `U+0008`, `U+0009`, `U+000A`, `U+000C`, `U+000D` are escaped as
+> `\b`, `\t`, `\n`, `\f`, `\r`; every other code point in `U+0000`–`U+001F` is
+> escaped as `\u00xx` with **lowercase** hex; and **every other code point is
+> emitted raw as UTF-8**, including all non-ASCII, `U+007F`, `U+2028`, `U+2029`,
+> `<`, `>`, `&` and `/`. No whitespace is inserted between tokens. Numbers are
+> integers or `null`. Instants are `Date.prototype.toISOString()` form,
 > `YYYY-MM-DDTHH:mm:ss.sssZ`, always UTC with exactly three fraction digits.
 
-This is a **documentation** change: it ratifies what the code already does, so
-every already-issued artifact still verifies and no customer behaviour changes.
-It is the precondition for any second implementation.
+**Current status of the escaping behaviour:** it is an *undocumented
+implementation artefact of Node's `JSON.stringify`*. It is measured and
+reproducible (§2.2), and the code depends on it, but it is **not** a ratified
+contract and this document does **not** ratify it. Recording it here prevents a
+second implementation from guessing; it does not make it normative.
+
+If ratified as written, the change is documentation-only: it would describe what
+the code already does, so every already-issued artifact would still verify and no
+customer behaviour would change. It is the precondition for any second
+implementation. If the Product Owner instead prefers a *different* escaping rule
+(for example RFC 8785 JCS with `\uXXXX` for non-ASCII), that is a **format
+change** requiring a versioned `VLIC3` and a U-8 backward-compatibility decision
+— it must not be made silently inside vector work, and it must not be inferred
+from this proposal.
+
+Note also that this proposal is **separate from Phase 0.5A** (the customer-package
+remediation of GAP-1/GAP-2). Phase 0.5A needs no part of D-2 and touches no
+contract text; the two must not be bundled into one change.
 
 ## 3. The rest of the byte contract (already exact, needs publishing)
 
@@ -391,32 +415,45 @@ a fixture is the exact failure the task prohibits; the secret-scan gate
 ([architecture §3.3](./owner-side-system-architecture.md)) must whitelist these
 fixtures by path and fail on anything else.
 
-## 6. Prerequisites and ordering
+## 6. Prerequisites, ordering and gates
 
-Publishing the vector set is **not** a documentation-only act, because step 5
-adds a conformance test to the customer suite. The order matters:
+Publishing the vector set is **not** a documentation-only act, because §5 step 5
+adds a conformance test to the customer suite. It is also **not** unauthorized
+work: two of its prerequisites are Product Owner decisions. The order and the
+gate on each step are:
 
-1. Ratify §2.4 as normative text in
-   [`version-model-and-file-exchange.md`](./version-model-and-file-exchange.md)
-   §2.1 and correct the `deviceLimit` omission (GAP-6). Documentation only; no
-   behaviour change; every existing artifact still verifies.
-2. Write the deterministic generator inside the existing backend test tree,
-   reusing the real canonicalizers and the real error-reason strings.
-3. Commit the generated vectors and the conformance test.
-4. Add the CI regeneration gate.
+| Step | Work | Gate |
+| --- | --- | --- |
+| 1 | Ratify the §2.4 **proposal** as normative text in [`version-model-and-file-exchange.md`](./version-model-and-file-exchange.md) §2.1 and correct that section's `deviceLimit` omission (GAP-6). Documentation only; no behaviour change; every existing artifact still verifies. This is **Phase 0.5B**. | **Explicit Product Owner approval of D-2(b)** |
+| 2 | Write the deterministic generator inside the existing backend test tree, reusing the real canonicalizers and the real error-reason strings. | D-2(a) = Option B, and step 1 complete |
+| 3 | Commit the generated vectors and the conformance test. This is **Phase 1**. | as step 2 |
+| 4 | Add the CI regeneration gate. | as step 2 |
+
+Step 1 must precede steps 2–4: a vector that encodes **unratified** escaping
+behaviour would silently make the D-2(b) decision by asserting bytes nobody
+approved. That is precisely the failure mode this ordering prevents.
 
 Steps 2–4 touch `backend/`, so they run the full backend CI job, not the
 docs-only job. They are additive: no canonicalizer, no signed format, no
-migration and no customer behaviour changes. If step 1's ratification reveals
-that the Product Owner would prefer a *different* escaping rule (for example
-RFC 8785 JCS with `\uXXXX` for non-ASCII), that is a **format change** requiring
-a versioned `VLIC3` and a U-8 backward-compatibility decision — it must not be
-made silently inside this work.
+migration and no customer behaviour changes.
+
+If the Product Owner prefers a *different* escaping rule (for example RFC 8785
+JCS with `\uXXXX` for non-ASCII), that is a **format change** requiring a
+versioned `VLIC3` and a U-8 backward-compatibility decision — it must not be made
+silently inside this work, and steps 2–4 then cannot proceed until it is decided.
+
+**Independently of all of the above**, the customer-package remediation of GAP-1
+and GAP-2 (**Phase 0.5A**) requires no part of D-2, touches no contract text and
+no vector, and may proceed on normal implementation authorization alone. It must
+not be bundled into step 1.
 
 ## 7. What this document does not decide
 
 Whether the shared protocol becomes a publishable package or stays as vectors
-only (item D-2); whether a signed **refusal** artifact is introduced for denied
+only (item **D-2(a)**); whether the measured canonical escaping behaviour is
+ratified as normative contract text (item **D-2(b)** — §2.4 is a *proposal*, and
+until it is approved the behaviour remains an undocumented artefact of Node's
+`JSON.stringify`); whether a signed **refusal** artifact is introduced for denied
 replacements (item D-8 — the implemented `VDRP1` carries `decision: 'APPROVE'`
 only, and adding a refusal value changes a signed contract); whether `VDEA1`
 enrollment vectors are consumed by the device client in this repository or an
@@ -424,3 +461,7 @@ external one (OQ-83 Phase 1, platform undecided); and anything about revocation,
 reactivation, server-installation replacement or general activation receipts,
 whose formats do not exist and whose product questions (OQ-78, OQ-82, OQ-84)
 are OPEN.
+
+It also does not touch the customer-package remediation of GAP-1/GAP-2
+(**Phase 0.5A**), which needs no part of D-2 and is deliberately kept out of this
+document's gates.

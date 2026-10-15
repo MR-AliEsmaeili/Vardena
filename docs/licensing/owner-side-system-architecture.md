@@ -189,7 +189,10 @@ machine-checkable. This is a recommendation, not a decision (item D-2).
 `.gitignore` currently lists only `.env` and `__pycache__/`. There is **no**
 ignore rule for key material, so a stray `*.pem` / `*.key` / `*.p8` file is
 committable today. Adding explicit ignore patterns plus a secret-scan gate is a
-prerequisite for any Owner work, and is cheap enough to do first (item D-1).
+prerequisite for any Owner work, and is cheap enough to do first. It is
+**Phase 0.5A** and needs **no product decision** — it is independent of OQ-85
+(item D-1) and of the protocol-contract ratification (item D-2), and must not be
+bundled with either.
 
 ### 3.4 Database boundary
 
@@ -422,12 +425,12 @@ Ordered by whether they block Owner implementation.
 
 | # | Gap | Blocks Owner work? | Note |
 | --- | --- | --- | --- |
-| GAP-1 | Dev license issuer ships inside the customer production image (§2.4) | **Yes** | Packaging defect; guard is runtime-only and `generateAuthorityKeyPair` is unguarded |
-| GAP-2 | No `.gitignore` rule or CI secret-scan for key material | **Yes** | Only `.env` and `__pycache__/` are ignored today |
-| GAP-3 | Canonical byte contract is not language-neutral (§C of the [vector doc](./licensing-protocol-vectors.md)) | **Yes** | JSON escaping rules are implicit in Node's `JSON.stringify` |
-| GAP-4 | No published conformance vectors for `VLIC2`/`VDRQ1`/`VDRP1` | **Yes** | Tests self-generate artifacts with the same canonicalizer they verify |
+| GAP-1 | Dev license issuer ships inside the customer production image (§2.4) | **Yes** | Packaging defect; guard is runtime-only and `generateAuthorityKeyPair` is unguarded. Fix = **Phase 0.5A**, needs no product decision and is independent of OQ-85 |
+| GAP-2 | No `.gitignore` rule or CI secret-scan for key material | **Yes** | Only `.env` and `__pycache__/` are ignored today. Fix = **Phase 0.5A**, same gating as GAP-1 |
+| GAP-3 | Canonical byte contract is not language-neutral ([vector doc §2](./licensing-protocol-vectors.md)) | **Yes** | JSON escaping rules are implicit in Node's `JSON.stringify`. Fixing this is **Phase 0.5B**, gated on the explicit Product Owner decision **D-2(b)**; nothing is ratified yet |
+| GAP-4 | No published conformance vectors for `VLIC2`/`VDRQ1`/`VDRP1` | **Yes** | Tests self-generate artifacts with the same canonicalizer they verify. Fix = **Phase 1**, gated on **D-2(a)** and on GAP-3 being ratified first |
 | GAP-5 | No signed refusal artifact; `VDRP1` supports `APPROVE` only | No — needs a decision | Item D-8; changes a signed contract, so not unilateral |
-| GAP-6 | `docs/licensing/version-model-and-file-exchange.md` §2.1 canonical example omits `deviceLimit` | No | Example shows the pre-OQ-83 shape; prose §11 covers the field. Documentation drift only |
+| GAP-6 | `docs/licensing/version-model-and-file-exchange.md` §2.1 canonical example omits `deviceLimit` | No | Example shows the pre-OQ-83 shape; prose §11 covers the field. Documentation drift only — but it edits the same normative §2.1 block, so its correction travels with **Phase 0.5B** (D-2(b)), not with Phase 0.5A |
 | GAP-7 | No Owner intake bound / operator summary / export naming convention for offline exchange | Yes, for Phase 2 | §3.8 |
 | GAP-8 | Revocation, reactivation and server-installation replacement instruments do not exist in any form | Yes, but gated | OQ-78 and OQ-82 are OPEN; **must not** be designed around here |
 | GAP-9 | Owner audit retention and sensitive-data treatment undefined | Yes, but gated | OQ-77 / PDR-11 U-7 OPEN |

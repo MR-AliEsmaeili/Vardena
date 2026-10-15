@@ -2,6 +2,16 @@
 
 **Status:** READY FOR REVIEW of the design. **Not** Product Owner acceptance,
 **not** implementation authorization, and **not** closure of any OQ.
+**Corrected 2026-10-15 (PR #156 review pass):** the phase gating was internally
+inconsistent — a single "Phase 0.5" bundled the customer-package defect fix with
+ratification of the normative canonical-escaping wording, while D-2 placed that
+wording under explicit Product Owner approval and the recommended next step did
+not list D-2 among the required decisions. Phase 0.5 is now split into
+**Phase 0.5A** (packaging and secret hygiene; no product decision required) and
+**Phase 0.5B** (normative contract ratification; gated on **D-2(b)**), D-2 is
+split into **D-2(a)** and **D-2(b)**, and Phase 1 is gated on D-2(a) plus 0.5B.
+**No product decision was made by this correction**, no escaping behaviour was
+ratified, no signed format changed, and no OQ moved.
 **Baseline SHA:** `961a696fbff16893dc69f93d6409af5430790a6c`
 **Baseline verification:** `origin/main` fetched on 2026-10-15 resolves to
 exactly the expected SHA — **no drift**, so no re-baselining was needed. No open
@@ -146,7 +156,15 @@ recommendation, and whether explicit Product Owner approval is required.
   U-3/U-8 leave format evolution OPEN; §16 item 2 defers the container/canonical
   form/trusted-key distribution design.
 - **OPEN:** whether a shared code artifact exists at all, and whether the
-  escaping rules of GAP-3 are ratified as written.
+  escaping rules of GAP-3 are ratified as written. D-2 contains **two distinct
+  approvals** that must not be collapsed into one, and neither is granted by this
+  document:
+  - **D-2(a) — mechanism:** Option A (publishable protocol package) versus
+    Option B (vectors only). This gates **Phase 1**, because publishing vectors
+    *is* choosing Option B.
+  - **D-2(b) — normative wording:** ratifying the measured escaping behaviour as
+    contract text in `version-model-and-file-exchange.md` §2.1. This gates
+    **Phase 0.5B**.
 - **Options:**
   - **A. Extract a publishable protocol package** (canonicalizers, payload types,
     identifier patterns, error vocabulary, trusted-key parsing; no NestJS, no
@@ -162,10 +180,18 @@ recommendation, and whether explicit Product Owner approval is required.
   it — that preserves every already-issued artifact. If instead a different
   escaping rule is wanted (e.g. RFC 8785 JCS), that is a **format change**
   requiring a versioned `VLIC3` and a U-8 decision, and must not be done
-  silently inside vector work.
-- **Product Owner approval required?** **YES for the ratification wording** (it
-  becomes normative contract text) and **YES** if any format change is desired.
-  Publishing vectors themselves is implementation work.
+  silently inside vector work. **Until D-2(b) is answered, that escaping
+  behaviour is an undocumented implementation artefact of Node's
+  `JSON.stringify`, not a ratified contract**, and no document in this repository
+  may present it as one.
+- **Product Owner approval required?** **YES — for both D-2(a) and D-2(b).**
+  D-2(b) makes the wording normative contract text; D-2(a) selects the
+  conformance mechanism. The mechanical act of committing a vector set is
+  implementation work, but it presupposes both answers and is therefore gated.
+- **Not bundled with Phase 0.5A.** The customer-package remediation (GAP-1,
+  GAP-2) changes no canonicalization wording, no signed format and no vector, so
+  it needs **no** part of D-2 and must not be presented as authorized by it — nor
+  may a Phase 0.5A authorization be read as approving D-2(b). See §5.
 
 ### D-3 — Owner UI architecture and expert-system runtime
 
@@ -448,22 +474,45 @@ document.**
 
 **Phase 0 — this change (documentation only).** Design, gap analysis, decision
 table, risk matrix, Proposed ADR-0048. *Accept when:* Product Owner has read the
-decision table and answered D-1, D-5 and D-6 at minimum.
+decision table and answered **D-1, D-2, D-5 and D-6** at minimum — D-2 because
+the very next documentation step (Phase 0.5B) and the first implementation step
+(Phase 1) are both gated on it.
 
-**Phase 0.5 — customer-package remediation (small, independent, no Owner code).**
-Fix GAP-1 and GAP-2: key-material ignore patterns, a secret-scan CI step, and a
-CI gate asserting the built customer `dist/` and `production` image contain no
-issuer. Ratify the normative escaping text and correct the §2.1 `deviceLimit`
-omission (GAP-3 documentation part, GAP-6). *Accept when:* the gate fails on a
-deliberately reintroduced issuer and passes on `main`; every existing artifact
-still verifies; no behaviour change. **This phase does not depend on OQ-85 and
-should not wait for it** — it fixes a defect that exists today.
+**Phase 0.5A — customer-package remediation (small, independent, no Owner code,
+no protocol contract).** Fix **GAP-1 and GAP-2 only**: key-material ignore
+patterns, a secret-scan CI step, and a CI gate asserting the built customer
+`dist/` and `production` image contain no issuer. *Accept when:* the gate fails
+on a deliberately reintroduced issuer and passes on `main`; every existing
+artifact still verifies; no behaviour change. *Gated on:* **normal implementation
+authorization only.** **Not gated on OQ-85 and not gated on any part of D-2** —
+it changes no canonicalization wording, no signed format, no vector and no Owner
+location, so it can and should proceed without waiting for any of them. It fixes
+a defect that exists on `main` today.
+
+**Phase 0.5B — normative protocol-contract ratification (documentation,
+gated).** Ratify the escaping rule *proposed* in
+[vectors §2.4](../licensing/licensing-protocol-vectors.md) as normative text in
+`version-model-and-file-exchange.md` §2.1, and correct that same section's
+`deviceLimit` omission (GAP-3 documentation part, GAP-6). *Accept when:* the
+ratified text matches measured behaviour exactly, every already-issued artifact
+still verifies, and no canonicalizer, signed format or customer behaviour
+changes. *Gated on:* **explicit Product Owner approval of D-2(b).** This phase
+edits the normative canonical contract, which D-2 places under Product Owner
+approval. It is **not** authorized by a Phase 0.5A authorization, and the two
+must not be bundled into one change: 0.5A is a defect fix in the customer
+package, 0.5B is a contract decision. If the Product Owner prefers a different
+escaping rule, that is a **format change** requiring a versioned `VLIC3` and a
+U-8 backward-compatibility decision — not a 0.5B edit.
 
 **Phase 1 — protocol vectors.** Deterministic generator inside the backend test
 tree reusing the real canonicalizers and real reason strings; committed vector
-set; customer conformance test; CI regeneration gate. *Accept when:* both the
-existing customer suite and the new conformance test pass on the exact head, and
-regeneration is byte-identical. Touches `backend/`, so it runs full backend CI.
+set; customer conformance test; CI regeneration gate. *Gated on:* **D-2(a)**
+(publishing vectors *is* selecting Option B) and on **Phase 0.5B** having
+ratified the byte contract the vectors assert — a vector that encodes
+unratified escaping behaviour would silently make the decision. *Accept when:*
+both the existing customer suite and the new conformance test pass on the exact
+head, and regeneration is byte-identical. Touches `backend/`, so it runs full
+backend CI.
 
 **Phase 2 — controlled Owner issuer (CLI).** Strict `VDRQ1` verification, Owner
 record resolution, policy checks, durable dedupe, protected signing, exact
@@ -503,7 +552,7 @@ production private key are absent from the customer package.
   The development license issuer **is** compiled into `dist/` and **is** copied
   into the `production` image (GAP-1, §2.5). No *Owner-side system* code exists
   to leak, but the issuing capability does ship. The claim cannot be made until
-  Phase 0.5 adds the positive gate. It is reported here as **NOT VERIFIED**
+  Phase 0.5A adds the positive gate. It is reported here as **NOT VERIFIED**
   rather than asserted.
 - **This change introduces no Owner code and no key material**, so it does not
   worsen either position.
@@ -535,10 +584,22 @@ GAP-2 are live defects in the customer package; GAP-3 and GAP-4 mean no second
 implementation can be built conformantly today; D-5/U-1 and D-6/U-5 are
 explicitly blocking per PDR-11 §15.1.
 
-**NEXT EXECUTION STEP (recommended):** Product Owner answers **D-1** (OQ-85
-repository location and release boundary), **D-5** (production key custody plus
-the U-1 compromise policy) and **D-6** (the U-5 role matrix floor), and
-authorizes **Phase 0.5** — the customer-package remediation and normative
-escaping text — which is independent of OQ-85 and fixes a defect that exists on
-`main` today. Phase 1 (vectors) can then proceed without further product
-decisions. Phase 2 must not start until D-1, D-3, D-4, D-5 and D-6 are recorded.
+**NEXT EXECUTION STEP (recommended):** two independent tracks, deliberately not
+bundled.
+
+- **Track 1 — needs no product decision.** Authorize **Phase 0.5A**
+  (customer-package remediation: key-material ignore patterns, secret-scan gate,
+  positive gate on the built `dist/` and `production` image). It is independent
+  of OQ-85 and of D-2, and it fixes a defect that exists on `main` today. This is
+  the single highest-value next action and is **not** blocked on anything in
+  Track 2.
+- **Track 2 — needs explicit Product Owner decisions.** Answer **D-1** (OQ-85
+  repository location and release boundary), **D-2** (a: package versus vectors;
+  b: ratification of the canonical escaping wording), **D-5** (production key
+  custody plus the U-1 compromise policy) and **D-6** (the U-5 role matrix
+  floor). **Phase 0.5B** may proceed only after D-2(b); **Phase 1** only after
+  D-2(a) and 0.5B; **Phase 2** only after D-1, D-3, D-4, D-5 and D-6 are
+  recorded.
+
+Authorizing Track 1 must not be recorded as approving Track 2, and answering
+Track 2 must not be recorded as authorizing Owner implementation.

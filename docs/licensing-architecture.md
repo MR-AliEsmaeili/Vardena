@@ -425,4 +425,7 @@ issuer in `backend/src/tools/development-license-authority.ts` and
 `backend/src/issue-development-license.ts` is compiled into `dist/` and copied
 into the `production` Docker image, guarded only by a runtime `NODE_ENV` check —
 so the claim "no issuing code ships to a customer" is **not currently true** and
-is remediation item Phase 0.5.
+is remediation item **Phase 0.5A** — which needs no product decision, is
+independent of OQ-85, and is deliberately kept separate from the normative
+protocol-contract ratification (**Phase 0.5B**) that remains gated on the
+Product Owner's decision **D-2(b)**.
