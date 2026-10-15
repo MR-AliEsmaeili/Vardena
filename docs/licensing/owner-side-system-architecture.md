@@ -1,5 +1,20 @@
 # Owner-side licensing system — architecture and release boundary (Phase 0 design)
 
+## Current product-policy reconciliation — 2026-10-15
+
+[PDR-11 §§4.4, 9–10, 12, 15 and 20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
+and [PDR-17](../decisions/product/PDR-17-owner-web-application-phase-1.md)
+supersede the product-policy deferrals below: permanent separate audit archive
+with authorized/minimized sensitive access (OQ-77); emergency restriction versus
+expiry and independent restricted customer-administrator recovery (OQ-78);
+non-automatic-invalidation of existing licenses solely on key compromise (U-1);
+no signed receipt for ordinary activation (OQ-84). Broader technical design and
+implementation remain follow-ups, not newly approved production custody/issuance.
+Manual Owner approval for each new customer-server installation/replacement,
+operator-observed evidence labels, four roles and separation boundaries remain.
+Owner dates must follow [the global Jalali-first date/time contract](../datetime.md)
+§0; raw-ISO views are an evidenced implementation gap (PDR-11 §20.5).
+
 ## Current Phase 1 addendum — 2026-10-15 (supersedes historical proposals below)
 
 Authority: [PDR-17](../decisions/product/PDR-17-owner-web-application-phase-1.md),
@@ -22,8 +37,8 @@ with durable audit. Permissions are checked using the authenticated current
 user/session, never a client actor or hidden button. The Product Owner correction to PR #160 confirms Issuance Specialist customer/
 audit reads and Support customer identity/status reads with a server-side field
 allowlist; see the current PDR-17 matrix. Observer remains read-only and Admin
-retains administrative operations. No audit purge exists; OQ-77 option-C wording
-is still unavailable. Cryptographic lifecycle operations remain unavailable.
+retains administrative operations. No audit purge exists; the explicit permanent-archive policy now supersedes
+the former retention deferral without reconstructing historical option C. Cryptographic lifecycle operations remain unavailable.
 
 Manual activation is an explicit authorized operator confirmation of issued →
 activated, retaining actor, server time, reason and available evidence reference,
@@ -40,8 +55,10 @@ labeled operator-observed and not cryptographically verified. No signed protocol
 schema change is involved. Server replacement is separate from OQ-83
 client-device replacement. An abandoned non-terminal replacement cannot be
 withdrawn: PDR-17 defines no cancellation transition and OQ-82 remains OPEN.
-U-1 remains deferred; no production signer/key. No signed contract changes.
-OQ-77/78/82/83/84/85 are not closed by this implementation.
+U-1 technical incident-response/custody design remains deferred under the
+approved product policy; no production signer/key. No signed contract changes.
+OQ-77/78/82/83/85 remain open for their outstanding scope; OQ-84 is now
+product-decided by the separate documentation reconciliation, not this implementation.
 
 ## Historical Phase 0 design (snapshot, not current implementation status)
 

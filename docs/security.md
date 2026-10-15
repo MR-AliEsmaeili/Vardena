@@ -8,6 +8,18 @@ are architectural configuration values (tunable per deployment via config); they
 are _not_ business rules. Where a value is a business/policy decision, it is
 registered as an OQ instead of being assumed.
 
+> **Licensing product-policy cross-reference (2026-10-15):**
+> [PDR-11 §§9–10, 12 and 20](decisions/product/PDR-11-vardena-licensing-product-requirements.md)
+> approves distinct expiry, emergency and integrity reasons, independent approved
+> administrator authentication for restricted recovery, automatic rollback-only
+> clearance after trusted-time revalidation, permanent separate audit archive and
+> key-compromise non-automatic-invalidation policy. The foundation/session model
+> below describes existing runtime, not implemented emergency enforcement.
+> Required session/recovery/incident/archive mechanisms need security design;
+> no commercial access bypass, cryptographic immutability or safe compromised-key
+> handling is claimed. Read-Only preserves normal authorized login/read access;
+> ordinary renewal/clock repair must not clear an independent emergency stop.
+
 ## 1. Threat Model & Boundaries
 
 - v1 deployment: single organization per installation (on-premise / local

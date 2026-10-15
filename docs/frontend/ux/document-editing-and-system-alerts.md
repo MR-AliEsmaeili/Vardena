@@ -62,22 +62,30 @@ designed against it.
   drag-and-drop report designer. The UI must not expose unapproved entities or
   columns (backend allowlist is authoritative — AR-21, PB-BASELINE §17.2).
 
-## 4. License Grace / Read-Only UX (OQ-45 — durations undecided)
+## 4. License Grace / Read-Only UX (OQ-45 — decided 2026-10-15)
 
-- On expiry the installation enters **Grace** (warning state): the UI shows a
-  persistent, honest, non-blocking warning to administrators; daily operation
-  continues. Grace duration is **not decided** — the UI must not display an
-  invented countdown policy.
-- After Grace, **Read-Only** per the final license policy: the UI disables and
-  clearly explains every mutation affordance — creating/editing operational
-  documents, Accounting Post, inventory-changing operations, prohibited
-  administration changes. Read visibility, reports and permitted exports
-  remain available per the final implementation.
-- Read-Only is a license state, not an authentication state: it never logs the
-  user out (licensing vs authentication separation,
-  `docs/licensing-architecture.md`).
-- None of this enforcement is implemented today (ADR-0030 keeps enforcement
-  off); this contract gates the future implementation's UX.
+- On expiry enter **Grace for 14 calendar days**, showing truthful reason/status
+  and warning while normal authorized operation continues. Use authoritative
+  license-time semantics, not browser clock/countdown policy. Grace extension
+  needs Owner authorization plus a valid Owner-issued signed artifact; no local bypass.
+- After Grace, all existing users may log in under normal auth and existing
+  permissions for document/report views, printing and Excel export. License
+  status, renewal and approved administrative/recovery backup remain accessible.
+  Read-Only grants no additional permission and never rewrites users/data/history.
+- Disable/explain business creation/modification, Accounting Post and inventory/
+  accounting mutation controls. **Backend/API and relevant asynchronous paths
+  must enforce the same restrictions**; frontend controls alone are not enforcement.
+- Read-Only never logs users out. Valid renewal plus revalidation restores only
+  previously authorized operation without data/permission reconstruction.
+- Emergency restriction is a different reason/path, not expiry Grace: normal
+  commercial access may be blocked, but an independently reachable authenticated
+  administrator license/recovery interface remains required. Ordinary renewal,
+  restart or clock correction never clears an unrelated emergency restriction.
+- Dates, deadlines, history/audit and filters across Owner and customer screens
+  follow [the global Jalali-first contract](../../datetime.md) §0.
+- These are required UX behaviors, **not implemented enforcement**. Follow
+  [PDR-11 §§9–10/20](../../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
+  for acceptance criteria, engineering gaps and security/protocol follow-ups.
 
 ## 5. Acceptance criteria for the future implementations (frontend)
 

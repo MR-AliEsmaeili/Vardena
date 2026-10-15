@@ -140,12 +140,15 @@ without an accepted ADR that supersedes it is a defect, not a style choice.
   approval, retention, or policy behavior.
 - **AR-32 — BusinessDate and Instant are distinct, permanent concepts.** A
   `BusinessDate` is a calendar day persisted as canonical Gregorian PostgreSQL
-  `date`; user-facing input/display follows the organization's configured
-  calendar (Jalali by default). An `Instant` is a UTC PostgreSQL `timestamptz`;
+  `date`; user-facing input/display is fixed Persian/Jalali-first under
+  ADR-0044 and `docs/datetime.md` §0 across Vardena, including Owner Licensing
+  (with the established historical Gregorian fallback). An `Instant` is a UTC
+  PostgreSQL `timestamptz`;
   wire Instants must be valid ISO UTC `Z` values, never naive local date-times
   or offset-bearing strings parsed in the browser. Render each valid Instant by
-  resolving the organization's valid IANA zone first, then its configured
-  calendar. Detail/audit Instant displays include seconds, the resolved zone
+  resolving the organization's valid IANA zone first, then the fixed
+  Jalali-first calendar presentation; follow the Asia/Tehran default where
+  applicable. Detail/audit Instant displays include seconds, the resolved zone
   and that instant's offset; keep the raw UTC ISO value available for evidence.
   Reuse the shared kernel/frontend date-time abstractions; never treat a
   business day as a JavaScript `Date`, UTC-midnight transport, browser-zone day,
@@ -166,7 +169,8 @@ without an accepted ADR that supersedes it is a defect, not a style choice.
   customization module (preference category `ui.table`).
 - Day.js is used only through `frontend/src/lib/datetime/` for date-time handling;
   BusinessDate and Instant rendering follows AR-32 and ADR-0042. Calendar/zone
-  behavior is organization-configured, and Persian numeral preference remains
+  behavior follows `docs/datetime.md` §0 (organization IANA zone, fixed Jalali-first
+  calendar across ERP and Owner surfaces), and Persian numeral preference remains
   open under OQ-02.
 - UI text must come from a central i18n dictionary, not inline literals
   (language decision OQ-02).

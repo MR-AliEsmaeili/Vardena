@@ -5,6 +5,16 @@ Date: 2026-10-10
 Builds on: ADR-0042, OQ-73
 Supersedes: ADR-0043; calendar-selection/transition portions of ADR-0042
 
+> **Project-wide product clarification (2026-10-15):** the existing
+> Jalali-first rule applies to all Vardena user-visible dates for Iranian users,
+> including the independent Owner Licensing application, licensing/recovery,
+> audit/history, reports and filters — not ERP UI alone. The normative scope,
+> existing digit convention (OQ-02 still open), Asia/Tehran/default versus
+> organization IANA-zone handling, and historical fallback are in
+> [docs/datetime.md §0](../datetime.md). This changes no BusinessDate/Instant
+> persistence, wire contract, signed bytes or separation boundary, and is not
+> a claim that every module is already compliant.
+
 ## Context
 
 The MVP has one product-owned display policy: Jalali-first. A selector and

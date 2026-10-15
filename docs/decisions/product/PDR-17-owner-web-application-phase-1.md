@@ -62,12 +62,34 @@ reason to deny the now-approved read access. No unrelated OQ is closed.
 
 ## Audit and OQ-77
 
-The instruction selects option C, but no authoritative wording for option C is
-present in current `main` (OQ-77 and PDR-11 §12.8/§15 U-7 still say OPEN; Phase 0
-D-10 lists no retention options). Record that selection without fabricating its
-meaning. Implement durable, attributable, minimal audit storage and viewing only;
-no purge, deletion UI, invented duration or claim of tamper-proof storage.
-OQ-77 stays OPEN pending exact wording and acceptance evidence.
+**Explicit Product Owner decision (2026-10-15):** retain audit history
+permanently in a separate archive; restrict sensitive access to authorized roles
+and avoid unnecessary exposure. No purge/deletion workflow may contradict this
+policy. This supersedes the previous retention deferral: the historical option C
+wording is still not reconstructed, and no choice is attributed to that label.
+[PDR-11 §12.8/§20](PDR-11-vardena-licensing-product-requirements.md) is the
+licensing retention source; OQ-77 remains OPEN only for schema, archive/storage,
+minimization/access design and implementation evidence. Current durable audit
+storage/viewing is not proof of a separate permanent archive or tamper-proof/
+cryptographically immutable history. Manual observations remain manually
+attributable facts, not cryptographically verified operations.
+
+## Licensing restrictions, recovery and dates — product cross-reference
+
+PDR-11 §§9–10, 12 and 20 now record 14-calendar-day Grace → Read-Only, immediate
+validated emergency restriction with explicit reason, independent authenticated
+customer-administrator recovery, signed applicable restoration, rollback-only
+automatic clearance after trustworthy-time validation, and exact-successful-repeat
+result replay. These are required behaviors, **not implemented Owner/customer
+lifecycle operations**. They do not grant additional Owner roles/permissions or
+make manual observation an authorization artifact. OQ-78/76/81 track technical
+follow-ups.
+
+All Owner user-visible dates, including customer/license screens, expiry/Grace,
+activation/replacement history, audit views, reports and filters, must follow the
+project-wide Persian/Jalali-first [date/time contract](../../datetime.md) §0.
+Current raw-ISO Owner views are implementation gaps listed in PDR-11 §20.5,
+not an exception or a claim of compliance.
 
 ## Manual lifecycle policies (not a new signed protocol)
 
@@ -76,9 +98,13 @@ Issuance Specialist explicitly records issued → activated, actor, server times
 reason and available evidence reference. This is operator confirmation, **not** a
 cryptographically verified customer receipt. The additive Owner migration
 `002-manual-operations.sql` and its API/UI now store that fact. They do not issue
-a license or produce a receipt.
+a license or produce a receipt. **Ordinary activation requires no signed
+receipt** (OQ-84/PQ-9, product question now Decided); this attributable manual
+history is sufficient for the approved scope. It is not signed customer evidence.
 
-Server replacement: an authorized deployment specialist manually deactivates and
+Every new customer-server installation/replacement requires **manual Owner
+approval** attributable to an authorized Owner user; never automatic unrestricted
+transfer. Server replacement: an authorized deployment specialist manually deactivates and
 revokes the old server's license lock. Administrator or Issuance Specialist decides
 whether replacement is authorized for the same customer. The authorized specialist
 obtains/installs the replacement. Administrator or Issuance Specialist records the
@@ -86,9 +112,12 @@ observed state, retaining actor/time/reason/prior/new status. Emergency old-serv
 loss is allowed with an attributable authorized decision; no old-server response
 is required. Client-device replacement (OQ-83) is separate.
 
-U-1 is deferred: no production key generation, custody implementation or signer.
+U-1/OQ-74 product policy is now approved: existing issued licenses are not
+automatically invalidated solely by signing-key compromise (PDR-11 §4.4/§20.4).
+Compatible incident response/custody/trust design remains deferred: no production
+key generation, custody implementation or signer.
 No VLIC1/VLIC2/VDEA1/VDRQ1/VDRP1/canonicalization/enforcement changes. OQ-78,
-OQ-82, OQ-83 and OQ-84 remain OPEN; these manual policies do not claim to implement
+OQ-82 and OQ-83 remain OPEN; OQ-84 is Decided for ordinary activation; these manual policies do not claim to implement
 revocation, recovery, device clients or signed receipts. OQ-85's location/UI/store
 directions are now approved but its operational acceptance is not inferred.
 

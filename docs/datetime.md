@@ -13,6 +13,50 @@ date-time abstractions; do not reinterpret a business day as a JavaScript
 `Date`, UTC-midnight transport, browser-zone value, or timestamp. Calendar
 selection and calendar-transition workflows are not part of the MVP.
 
+## 0. Project-wide Persian/Jalali-first presentation policy
+
+**Product Owner confirmation, 2026-10-15:** this is a Vardena-wide rule for
+Iranian users, **not only the ERP frontend**. The Owner Licensing application,
+customer installation, license/expiry/Grace screens, activation/replacement
+history, audit views, reports and date filters must all present Persian/Jalali
+dates first, consistently using this centralized foundation (ADR-0042/0044,
+AR-32). A separate runtime is not an exemption and must not introduce ad hoc
+per-screen conversion logic or import Owner/customer application graphs across
+the separation boundary.
+
+- User-facing days use Jalali `YYYY/MM/DD` (for example `1405/07/16`). Existing
+  shared presentation uses Latin digits; Persian/Arabic-Indic digits are accepted
+  on input and normalized by `frontend/src/lib/datetime/numerals.ts`. Calendar
+  and numerals are separate: **OQ-02 remains open** for a Persian-numeral render
+  preference/broader localization. Do not invent a per-module digit policy or
+  claim that Latin digits make a Jalali day Gregorian.
+- Instants render in the valid organization IANA zone, then Jalali local day/time:
+  `YYYY/MM/DD HH:mm`, with seconds and explicit IANA zone/instant-specific offset
+  for detail/audit (§6/§9). Follow the existing `Asia/Tehran` default. Owner views
+  without a customer organization use the applicable `Asia/Tehran` presentation
+  policy, never the browser timezone or a fixed numeric offset.
+- Gregorian/ISO-8601/UTC values remain valid internally, on API/protocol boundaries
+  and in technical logs; they must not be the primary ordinary user-facing date.
+  Raw canonical values may be secondary reconciliation evidence. Preserve the
+  existing explicit canonical-Gregorian fallback for valid historical facts
+  outside the Jalali renderer's range (ADR-0044); do not reject/rewrite them.
+- `BusinessDate` remains PostgreSQL `date`, canonical Gregorian `YYYY-MM-DD`;
+  `Instant` remains PostgreSQL `timestamptz`, ISO UTC on the wire. Classify each
+  field and use the owning feature contract; signed license validity is not
+  reclassified as BusinessDate merely because a UI displays a Persian date.
+  Display policy does not change expiry instants, storage, filters' domain
+  semantics, signature bytes or canonicalization/conformance vectors.
+- Use shared kernel and frontend date-time primitives, inputs and formatters
+  (§8–§9). Engineering must provide a compatible centralized presentation
+  integration for the independent Owner build without violating ADR-0048;
+  no new shared runtime package or conversion implementation is approved here.
+
+**Status:** rule recorded, not a verification of every module. Source inspection
+found Owner customer detail, manual-operation history and audit views displaying
+raw ISO fields (PDR-11 §20.5). Correct these in a separate implementation PR and
+verify calendar/zone/input/filter behavior; this documentation PR changes no UI,
+storage or signed-artifact format and claims no all-module compliance.
+
 ## 1. The model
 
 | Concept                | Meaning                                                           | Stored as                                   | On the wire                                                                                             |

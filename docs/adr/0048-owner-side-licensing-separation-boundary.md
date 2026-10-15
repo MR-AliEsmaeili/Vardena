@@ -20,6 +20,25 @@
   [`docs/licensing/licensing-protocol-vectors.md`](../licensing/licensing-protocol-vectors.md) ·
   [`docs/tasks/licensing-owner-side-phase-0-readiness.md`](../tasks/licensing-owner-side-phase-0-readiness.md)
 
+## Product-policy reconciliation — 2026-10-15 (no technical boundary change)
+
+[PDR-11 §§4.4, 9–10, 12, 15 and 20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
+and [PDR-17](../decisions/product/PDR-17-owner-web-application-phase-1.md) now
+record explicit product policies for permanent separate audit archive (OQ-77),
+restricted customer-administrator recovery (OQ-78), no signed ordinary activation
+receipt (OQ-84), and no automatic invalidation of existing licenses solely on
+key compromise (U-1/OQ-74). Earlier statements below that these product choices
+are undecided are historical. Technical security/incident response, archive and
+recovery design remain outstanding; **no production signer or new protocol is
+authorized**. Preserve four Owner roles and manual Owner approval for every
+new customer-server installation/replacement. Manual observations remain
+attributable, not cryptographically verified operations.
+
+The global [date/time policy](../datetime.md) §0 includes Owner Licensing and
+licensing/recovery/audit/history views. Applying it must preserve independent
+builds and reuse the centralized foundation, not add per-screen conversion or
+cross-boundary application imports. No storage or signed-byte contract changes.
+
 ## Phase 1 acceptance addendum — 2026-10-15
 
 The Product Owner's Phase 1 instruction accepts the separation boundary for this

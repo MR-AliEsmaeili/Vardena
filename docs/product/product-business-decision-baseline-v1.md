@@ -1,5 +1,14 @@
 # Vardena — Product & Business Decision Baseline v1
 
+> **Licensing reconciliation (2026-10-15, scoped documentation update):**
+> [PDR-11 §§9–10, 12, 15 and 20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
+> and the registry now supply current expiry/Grace/Read-Only, emergency/recovery,
+> clock, audit, replay and key-compromise product policy. This is not approval
+> of this entire baseline or implementation of enforcement. Original PD/risk
+> inventory rows below retain their historical assessment; use the dated PDR
+> for current licensing dispositions. The separate contract-termination question
+> remains OQ-45; no automatic stricter termination trigger is inferred.
+
 ## 1. Document Metadata
 
 | Field | Value |
@@ -236,9 +245,9 @@ work on the LAN with no internet dependency whatsoever. Daily operations
 (create/receive/issue/sell/post/report) never require internet. Optional
 internet-bound features degrade gracefully: outbound integrations queue in the
 outbox (ADR-0004) and dispatch when connectivity exists; Taxpayer submission
-waits; license validation mechanics are defined by OQ-45 (never blocking
-day-to-day operation during outages — that behavior is an explicit open
-decision, see §12).
+waits. Temporary outages alone do not cause commercial suspension, but do not
+silently extend signed validity or Grace; subscription expiry and validated
+emergency restrictions follow PDR-11 §§9–10. No always-online check is introduced.
 
 ### 10.2 Single-user local operation — **DECIDED for MVP**
 
@@ -290,13 +299,18 @@ enforcement later) are unresolved. The foundation level to build for MVP is
 proposed in **ADR-0030** (minimal, non-punitive, enforcement-off); the
 commercial-enforcement timing decision rides on that ADR.
 
-### 11.3 License expiry behavior — OPEN QUESTION (OQ-45)
+### 11.3 License expiry — product policy decided (OQ-45 narrowed)
 
-What happens when a license expires — especially during an internet outage —
-is **not decided**. Candidate behaviors (read-only grace, full lockout,
-warning-only) have materially different commercial and operational risk
-profiles. Registered within **OQ-45**. **The MVP must not implement hard expiry
-enforcement until this is decided** (see MVP proposal, category D).
+**Product Owner decision (2026-10-15):** Active → Grace (**14 calendar days**,
+existing license-time semantics) → defined reversible Read-Only. Owner
+authorization and a valid Owner-issued signed artifact are required for extension;
+no local bypass. Existing authorized viewing/reporting/printing/Excel, all-existing-user
+normal-auth login, backup/status/renewal are preserved; backend/API/async business
+mutation is blocked. PDR-11 §9 is normative; enforcement remains implementation
+follow-up, not approved or verified by documentation. Emergency restriction is a
+separate immediate authorized path with independent restricted administrator
+recovery (§10). OQ-45 remains open only for distinct contract-termination trigger/
+strictness beyond these defined cases; no extra stricter policy is invented.
 
 ---
 

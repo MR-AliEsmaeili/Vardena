@@ -1,5 +1,20 @@
 # ADR-0030: Installation licensing precedes the RBAC capability catalog
 
+> **Product reconciliation (2026-10-15, documentation only):**
+> [PDR-11 §§9–10, 12, 15 and 20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
+> now governs Grace/Read-Only, distinct emergency reasons and independent
+> authenticated recovery, clock rollback, permanent separate audit archive,
+> successful-request replay, key-compromise policy and conceptual removal of
+> `SUSPENDED`. Older open-question wording below describes the original slice.
+> The runtime/enum/API and signed bytes remain unchanged in this PR. In
+> particular, current v2 duplicate rejection is an implementation gap against
+> the approved prior-result replay rule, and the legacy `SUSPENDED` consumers
+> require the staged compatibility/data plan in PDR-11 §20.3. Already-imported
+> versions staying effective is not protection from forged new inputs after key
+> compromise (§20.4). Follow-up enforcement/session/recovery architecture still
+> requires engineering design/ADR review, not approval inferred from this note.
+
+
 - **Status:** Accepted for L-01; extended by **ADR-0045** (L-02: persistent installation identity, signed license codes, activation endpoint, `persistent` provider by default) and **ADR-0046** (L-03: signed license documents, retained license versions, replay-safe import, deterministic effective-version resolution). The licensing ADR formerly shared number 0036 with the legal-reporting record; it was renumbered to ADR-0045 on 2026-10-11 (PDR-11 §19 CF-14) and this reference was repointed (CF-20).
 - **Reconciliation note (2026-10-11):** The Owner-approved licensing product requirements are recorded in [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md). Some of them conflicted with this ADR (see PDR-11 §19). The conflicts that needed a design are settled by [ADR-0046](../adr/0046-signed-license-documents-and-version-lifecycle.md) for the server-license import path; the rest are recorded in PDR-11 §19.4 and `docs/tasks/pdr-11-conflict-reconciliation.md`. This ADR's decision text is unchanged; the enforcement chain it defines is unchanged.
 - **Renumbering note (2026-10-11, CF-14):** the licensing record referenced here as "ADR-0036" is now [ADR-0045](./0045-installation-identity-and-license-activation.md); the number 0036 belongs to the legal-reporting ADR in the index. Decision text unchanged.

@@ -1,13 +1,59 @@
-# OQ-45: License expiry behavior — internet outage, grace, and post-termination mode
+# OQ-45: License expiry — 14-calendar-day Grace then Read-Only
 
 - **Type:** OQ (product/business + operational policy)
-- **Status:** **Open — partially resolved.** Owner decision recorded 2026-10-05: **Grace → Read-Only** is the expiry shape (see §Owner decision). Grace duration, outage behavior detail, post-termination strictness and override authority remain OPEN.
-- **Owner:** Ali Esmaeili
-- **Created:** 2026-09-22 · **Partially decided:** 2026-10-05 (governance re-baseline)
-- **Priority:** High · Blocks only the *enforcement* layer, not the license *foundation* (ADR-0030)
-- **Related docs:** PB-BASELINE §11.3, §12, §10.1; ADR-0030 (proposed foundation); PD-09, PD-12; MVP proposal category D; roadmap Stage 0/1, Stage 8; `docs/licensing-architecture.md`; frontend contract `docs/frontend/ux/document-editing-and-system-alerts.md` §4
+- **Status:** **Open — narrowed (2026-10-15). Expiry/Grace/Read-Only/extension policy decided; distinct contract-termination trigger/strictness remains open.** Documentation only; enforcement/verification remain separate follow-ups.
+- **Owner / authority:** Product Owner Ali Esmaeili, explicit licensing decision instruction (2026-10-15).
+- **Created:** 2026-09-22 · Shape decided: 2026-10-05 · Current decision: 2026-10-15.
+- **Canonical requirements:** [PDR-11 §§9–10 and §20](PDR-11-vardena-licensing-product-requirements.md), [registry](../../open-questions.md), [date/time foundation](../../datetime.md) §0.
 
-> **Cross-reference (2026-10-11, status unchanged).** [PDR-11](./PDR-11-vardena-licensing-product-requirements.md) §9 records the Owner-approved baseline for subscription expiry: the server enters a restricted mode that keeps System Administrator login, license/status viewing, viewing, backup, export, and valid renewal import, while normal new commercial operations stop. PDR-11 does **not** decide the Grace stage, the relation between restricted mode and Read-Only, or the module-by-module list. Those remain OPEN here (PDR-11 §15, PQ-1 and PQ-2; §19, CF-9). This record stays **Open**.
+## Current Product Owner decision
+
+**Active → Grace (14 calendar days) → Read-Only**, under existing authoritative
+license-time semantics. Display the actual reason/status at expiry. Any extension
+beyond the approved period requires Owner authorization and a valid Owner-issued
+signed artifact through approved validation. No local-setting/database/restart/
+clock bypass or silent extension. Temporary infrastructure/internet failure alone
+is not commercial suspension and does not silently extend validity or Grace.
+
+Read-Only permits **all existing users** to log in under normal account/auth rules,
+with their existing permissions for document/report views, printing and Excel
+export. Database backup remains available through approved administrative/recovery
+paths; license status and renewal remain available. No new permissions are granted.
+Block business-document creation, business-data modification and inventory/accounting
+effects at backend/API and relevant async paths, not merely frontend controls.
+Preserve users, permissions, data and history. After valid renewal and license-state
+revalidation, restore the previously authorized operational state without manual
+reconstruction; unrelated emergency/integrity restrictions remain in force.
+
+Expiry is not emergency termination/revocation: a validated Owner stop or explicitly
+defined security policy applies the immediate appropriate restriction without
+14-day expiry Grace. PDR-11 §10 requires actual reason, independent authenticated
+administrator recovery, approved backup access, and valid applicable Owner-signed
+restoration; ordinary renewal, restart or clock repair never bypasses it. Remaining
+security/session/protocol details stay tracked under OQ-78, not fabricated here.
+The original distinct contract-termination trigger/strictness question remains
+**OPEN**: these instructions do not decide whether termination alone mandates a
+stricter policy. Do not infer such a trigger or equate termination with a validated
+Owner emergency stop. This residual product question is why the OQ-45 registry
+row is not closed, despite the expiry decisions being complete.
+
+## Implementation requirements and status
+
+PDR-11 §20.5 lists source-backed gaps and §20.6 supplies future acceptance criteria.
+Engineering must specify deadline calculation, API/worker enforcement and renewal
+restoration against the existing time/security boundaries. This record implements
+none of them and claims no passing feature tests or module-wide compliance.
+The global Jalali-first display policy changes neither signed expiry Instants nor
+storage semantics. OQ-45's duration, outage distinction, override authority and
+Read-Only product questions are answered; mechanisms require a separate PR.
+The separate termination-trigger/strictness question still requires Product Owner input.
+
+## Historical record — superseded options and unresolved wording
+
+The following is the original dated record, preserved as history only. Its
+OPEN/duration recommendations and speculative options are **not current policy**;
+the explicit decision above and PDR-11 supersede them, without inferring a
+historical meaning for any option label.
 
 ## Owner decision (2026-10-05) — Grace then Read-Only
 
