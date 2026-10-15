@@ -193,6 +193,16 @@ This is the single most likely interop mistake: hashing the decoded payload
 instead of the armored artifact yields a plausible-looking 64-hex value that the
 customer server rejects. It must be an explicit vector.
 
+**Committed evidence.** The rule is pinned by an independent oracle in
+`licensing-protocol-vectors.spec.ts`: the expected digest is a literal in the
+test, the actual digest is computed from the committed `OK-03` armored bytes
+with `node:crypto` alone, and three negative controls pin the digests that must
+*not* be the `requestHash` — the decoded canonical payload, the JSON file
+envelope, and the same payload with its field order reversed. `OK-03` and
+`OK-04` also record `requestHash` and `approvesRequestHash`, so the pair can be
+correlated from the committed files without regenerating anything. See §5.1 for
+why a generated vector cannot carry this assertion on its own.
+
 ### 3.4 File envelopes
 
 | Artifact | `format` | `fileVersion` | Payload key | Extra keys |
@@ -405,6 +415,109 @@ Generation rule — this is what makes the vectors trustworthy:
 5. The customer test suite gains a conformance test that loads the vector
    directory and asserts each one. The Owner implementation later loads the same
    directory. Same files, both sides, one contract.
+
+### 5.1 Generated vectors vs independent golden fixtures
+
+Rule 1 above — "generated from the current canonical customer implementation" —
+is what makes the corpus *faithful*, and it is also why the corpus alone cannot
+be *authoritative*. A file the implementation generated cannot refute that
+implementation: if the canonicalizer and the generator both move, regeneration
+stays byte-identical, CI stays green, and the contract has silently changed. The
+corpus therefore has two distinct roles, and a consumer must know which one it
+is reading.
+
+| | **Generated vector** | **Independent golden fixture** |
+| --- | --- | --- |
+| Purpose | drift detection — did the implementation move? | contract proof — does it match the *documented* rule? |
+| Produced by | `npm run license:vectors` from production canonicalizers | pinned by hand in the test tree as a literal |
+| Committed under | `docs/licensing/vectors/**` | `backend/src/modules/licensing/domain/*.spec.ts` |
+| Verified in CI by | regenerate + `git diff --exit-code` | a literal that no production code path computes |
+| Fails when | the implementation changes output | the implementation *or the generator* changes output |
+| Cannot catch | implementation and generator moving together | nothing on its own — it needs the corpus as input |
+
+Both are required and they are not interchangeable:
+
+- `docs/licensing/vectors/**` — the **generated corpus**. Regenerated in CI; a
+  diff means the contract moved and the change must be explained.
+- `canonical-byte-independent.spec.ts` — **pinned canonical byte literals** for
+  `VLIC2`/`VLIC1`/`VDEA1`/`VDRQ1`/`VDRP1`. These strings are typed into the
+  test, are not derived from a canonicalizer at test time, and are the D-2(b)
+  executable evidence for the ratified byte contract.
+- `licensing-protocol-vectors.spec.ts` — the **corpus conformance test**. Where
+  it asserts a digest it must pin the expected value as a literal and compute
+  the actual value from the committed fixture bytes with `node:crypto` alone.
+  Reconstructing an artifact inside the test from generator-supplied bytes and
+  then hashing it with the same primitive the generator used is a tautology: it
+  asserts only that SHA-256 is deterministic, and it passes even when the
+  committed fixture is wrong.
+
+**Who signed a fixture is part of the fixture.** Every `valid/OK-*.json` carries
+an explicit `signer`, because an artifact whose signer is ambiguous cannot be
+verified by a second implementation:
+
+| Fixture | `signer` | Signer identity field | Verifying key |
+| --- | --- | --- | --- |
+| `OK-01` (`VLIC2`) | `authority-a` | `keyId` — `sha256-<first 16 hex of SPKI DER>` | issuing authority |
+| `OK-02` (`VLIC1`) | `authority-a` | `keyId` — same convention | issuing authority |
+| `OK-03` (`VDRQ1`) | `device-01` | `devicePublicKeyFingerprint` — **full 64-hex** SHA-256 of SPKI DER, no prefix | the **new device** |
+| `OK-04` (`VDRP1`) | `authority-a` | `keyId` + in-payload `keyId` | issuing authority |
+
+A `VDRQ1` is the **new device's** detached Ed25519 proof of possession over the
+exact canonical request bytes (§4.3; the customer API contract says "sign with
+the new device private key"). It is never an authority signature, and it carries
+no authority `keyId` — the payload advertises the device's own SPKI public key
+and its full 64-hex fingerprint, so an authority-signed `VDRQ1` fixture is one
+that no conforming verifier can accept. `OK-03` additionally records the
+`requestHash` it must produce, and `OK-04` records `approvesRequestHash`, so the
+request/response pair can be correlated from the committed files alone. The two
+fingerprint conventions are different values over the same bytes; §3.2 is the
+authority on which one a given field uses.
+
+### 5.2 Committed corpus vs required set
+
+§4 is the **required set** — the normative target, using `ENC-*`, `CAN-*`,
+`OK-*`, `BAD-SIG-*`, `BAD-STR-*`, `TIME-*`, `REPLAY-*`, `BIND-*` and `ROT-*`
+identifiers. `docs/licensing/vectors/` is the **committed corpus** — a partial
+implementation of that set with its own shorter identifiers. **The identifier
+spaces are independent and must not be read as the same vector**: required
+`OK-03` is a `VLIC2` perpetual artifact, while committed `OK-03.json` is the
+`VDRQ1` request. Read a committed file's `protocolVersion` and `name`, never its
+number.
+
+Committed coverage as of Phase 1 (what exists, not what is still owed). The
+mapping was read off the committed files, not off this document's intent:
+
+| Committed | Asserts | Covers required |
+| --- | --- | --- |
+| `CAN-01` | `VLIC2`, Persian `customerName` raw UTF-8; `modules` input `["inventory","accounting"]` → output `["accounting","inventory"]`; `deviceLimit: 12` | CAN-02, CAN-07, CAN-11 |
+| `CAN-02` | `customerName` `a\u0001b\u001f\u007f<>&/\u2028\u2029` — `<>&/`, `U+007F`, `U+2028`, `U+2029` raw; `U+0001`/`U+001F` as lowercase `\u00xx` | CAN-03, CAN-04, CAN-06 (partly) |
+| `CAN-03` | `deviceLimitSpecified: false` → `deviceLimit` key absent | CAN-08 |
+| `CAN-04` | `deviceLimitSpecified: true`, `deviceLimit: null` → key present, `null` | CAN-09 |
+| `CAN-05` | `VLIC1` legacy payload bytes | no §4.2 row — extra legacy coverage |
+| `CAN-06` | `VDEA1` canonical bytes | CAN-12 |
+| `CAN-07` | `VDRQ1` canonical bytes | CAN-12 |
+| `CAN-08` | `VDRP1` canonical bytes, incl. `requestHash` over the armored artifact | CAN-12, ENC-10 |
+| `OK-01`, `OK-02` | `VLIC2` and `VLIC1` verify under authority A | OK-01, OK-02, OK-05 |
+| `OK-03` | `VDRQ1` with a **device** detached signature; records its `requestHash` | OK-09 |
+| `OK-04` | `VDRP1` authority signature; records `approvesRequestHash` | OK-10 |
+| `BAD-01…BAD-04` | tampered payload, untrusted authority B, missing segment, `VLIC9` prefix | BAD-SIG-01/02, BAD-STR-* (partly) |
+| `BAD-05` | tampered `requestHash` → `response-signature` | §4.4 tamper case |
+| `ROT-01`, `ROT-02` | accepted while A+B trusted; rejected once A retired | §4.7 |
+
+**Not committed — outstanding Phase 1 scope**, recorded so that "the corpus
+passes" is never mistaken for "the required set is complete":
+
+| Required | Gap |
+| --- | --- |
+| CAN-01 | an all-ASCII `VLIC2` baseline — every committed `VLIC2` vector carries a Persian or control-character name |
+| CAN-05 | `"` and `\` inside a string value → `\"` and `\\`; no committed vector contains either |
+| CAN-06 | the short escapes `\b`, `\t`, `\n`, `\f`, `\r` and `\u0000`; committed `CAN-02` exercises only the `\u00xx` form |
+| CAN-10 | `deviceLimitSpecified: true`, `deviceLimit: 0` — finite zero grants nothing |
+| CAN-13 | round-trip re-serialization as a corpus vector (the `VDRQ1` round-trip is asserted in the test tree by the reordered-fields control) |
+| ENC-01…ENC-09 | encoding primitives — asserted by the domain unit tests, not published as vectors |
+| OK-03, OK-04, OK-06, OK-07, OK-08 | `VLIC2` perpetual, pre-OQ-83 shape, explicit `keyId` hint, explicit supersession, `VDEA1` artifact |
+| BAD-SIG-03/04 | `unknown-key` distinguished from `signature` |
+| BAD-STR-*, TIME-*, REPLAY-*, BIND-* | structure/validity, time, replay and binding refusals |
 
 **Key hygiene is non-negotiable.** Every private key in `keys/` is a published
 test fixture, generated for the vector set, used nowhere else, and documented as
