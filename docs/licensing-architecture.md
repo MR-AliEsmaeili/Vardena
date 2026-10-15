@@ -407,3 +407,25 @@ system and its role matrix (OQ-75, OQ-85), clock-rollback detection (OQ-76),
 audit retention enforcement (OQ-77), and the PDR-11 §8.6 capacity-conflict
 detection/resolution UI (a separate slice that needs the owning modules' public
 count contracts).
+
+**Owner-side Phase 0 design (2026-10-15).** The Owner-side licensing system and
+its release boundary against this customer product are *designed but not
+implemented* in
+[`docs/licensing/owner-side-system-architecture.md`](./licensing/owner-side-system-architecture.md),
+with the protocol conformance-vector contract and its canonical-byte gap analysis
+in [`docs/licensing/licensing-protocol-vectors.md`](./licensing/licensing-protocol-vectors.md)
+and the open-decision table (D-1…D-10), risk matrix and phased plan in
+[`docs/tasks/licensing-owner-side-phase-0-readiness.md`](./tasks/licensing-owner-side-phase-0-readiness.md).
+[ADR-0048](./adr/0048-owner-side-licensing-separation-boundary.md) records the
+separation boundary as **Proposed — awaiting explicit Product Owner approval**.
+That work decides nothing: **OQ-85 stays OPEN**, and OQ-75/OQ-77/OQ-78/OQ-82,
+OQ-84, PDR-11 U-1 and U-5 are unchanged. It also records a customer-package
+defect that exists independently of those questions — the development license
+issuer in `backend/src/tools/development-license-authority.ts` and
+`backend/src/issue-development-license.ts` is compiled into `dist/` and copied
+into the `production` Docker image, guarded only by a runtime `NODE_ENV` check —
+so the claim "no issuing code ships to a customer" is **not currently true** and
+is remediation item **Phase 0.5A** — which needs no product decision, is
+independent of OQ-85, and is deliberately kept separate from the normative
+protocol-contract ratification (**Phase 0.5B**) that remains gated on the
+Product Owner's decision **D-2(b)**.
