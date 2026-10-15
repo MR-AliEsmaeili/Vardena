@@ -262,6 +262,30 @@ export function licenseActivation(currentStatus: string) {
     observationCategory: "ACTIVATION_OBSERVED" as const,
   };
 }
+/**
+ * Unfinished cross-use only. Same-column reuse is a unique index.
+ * A completed A→B followed by B→C is not a conflict. PDR-17 does not decide
+ * whether a replaced reference may later be used as a replacement target.
+ */
+export function unfinishedReplacementCrossUse(
+  existing: {
+    observedStatus: string;
+    oldInstallationReference: string;
+    replacementInstallationReference: string;
+  },
+  requested: {
+    oldInstallationReference: string;
+    replacementInstallationReference: string;
+  },
+) {
+  return (
+    existing.observedStatus !== "REPLACEMENT_RECORDED" &&
+    (existing.oldInstallationReference ===
+      requested.replacementInstallationReference ||
+      existing.replacementInstallationReference ===
+        requested.oldInstallationReference)
+  );
+}
 export function replacementCreate(emergency: boolean) {
   if (emergency)
     return {

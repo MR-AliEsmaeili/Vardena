@@ -123,6 +123,7 @@ export function OperationsPage() {
               </p>
               <p className="text-sm">
                 {o.kinds[item.kind]} — {labelOf(item.observedStatus)}
+                {item.emergencyOldServerLost ? ` — ${o.emergency}` : ''}
               </p>
               <p className="text-xs text-slate-500">{o.operatorObserved}</p>
             </li>

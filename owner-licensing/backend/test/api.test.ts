@@ -846,6 +846,88 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       ),
     ).rejects.toThrow();
   });
+  it("allows a completed replacement chain and rejects unfinished overlap in SQL", async () => {
+    const created = await customer(adminCookie, `Chain-${ulid()}`);
+    const authorize = async (
+      oldInstallation: string,
+      nextInstallation: string,
+    ) =>
+      write(
+        "post",
+        "/operational-records/server-replacements",
+        adminCookie,
+      ).send({
+        customerId: created.body.id,
+        oldInstallationReference: oldInstallation,
+        replacementInstallationReference: nextInstallation,
+        emergencyOldServerLost: false,
+        reason: "Authorized same-customer replacement",
+      });
+    const first = await authorize("A-chain", "B-chain");
+    expect(first.status).toBe(201);
+    const overlap = await authorize("B-chain", "C-chain");
+    expect(overlap.status).toBe(409);
+    expect(overlap.body.code).toBe("DuplicateOperation");
+    await expect(
+      db.pool.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          old_installation_reference, replacement_installation_reference,
+          emergency_old_server_lost, created_by, updated_by)
+        VALUES ($1,$2,'SERVER_REPLACEMENT','REPLACEMENT_AUTHORIZED','REPLACEMENT_AUTHORIZED',$3,$4,false,$5,$5)`,
+        [ulid(), created.body.id, "B-chain", "C-chain", adminId],
+      ),
+    ).rejects.toThrow();
+    const observed = await write(
+      "post",
+      `/operational-records/${first.body.id}/old-server-observations`,
+      adminCookie,
+    ).send({
+      reason: "Old server deactivation observed",
+      oldServerObservedState: "DEACTIVATION_OBSERVED",
+    });
+    expect(observed.status).toBe(200);
+    const recorded = await write(
+      "post",
+      `/operational-records/${first.body.id}/replacement-observations`,
+      adminCookie,
+    ).send({
+      reason: "Replacement installation observed",
+      replacementObservedState: "INSTALLATION_OBSERVED",
+    });
+    expect(recorded.status).toBe(200);
+    const chained = await authorize("B-chain", "C-chain");
+    expect(chained.status).toBe(201);
+    expect(chained.body.observedStatus).toBe("REPLACEMENT_AUTHORIZED");
+    const other = ulid();
+    await db.pool.query(
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'READ_ONLY_OBSERVER',false)",
+      [other, other, await hashPassword("Disposable_chain_45")],
+    );
+    await expect(
+      db.pool.query(
+        "UPDATE owner.operational_records SET updated_by=$2 WHERE id=$1",
+        [chained.body.id, other],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      db.pool.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          installation_reference, emergency_old_server_lost, created_by, updated_by)
+        VALUES ($1,$2,'LICENSE','ACTIVATED','ACTIVATION_OBSERVED',$3,false,$4,$4)`,
+        [ulid(), created.body.id, `SKIP-${ulid()}`, adminId],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      db.pool.query(
+        `INSERT INTO owner.operational_transitions(
+          id, record_id, actor_id, prior_status, new_status, reason)
+        VALUES ($1,$2,$3,'UNRECORDED','REPLACEMENT_AUTHORIZED','forged history')`,
+        [ulid(), chained.body.id, adminId],
+      ),
+    ).rejects.toThrow();
+  });
   it("rolls back an operation when durable audit insertion fails", async () => {
     const created = await customer(adminCookie, `Audit-op-${ulid()}`);
     await db.pool.query(

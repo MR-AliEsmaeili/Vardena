@@ -55,9 +55,16 @@ already contains rows. Runtime needs SELECT/INSERT/UPDATE on
 transition UPDATE/DELETE. No SQL role name is invented.
 
 Uniqueness is per customer installation for a license observation, and per old
-and new installation for a replacement. Contradictory status updates are
-rejected by a database trigger as well as the application. History is
-append-only. A failed audit write rolls back the mutation.
+and new installation for a replacement. An unfinished replacement also blocks
+reuse of either installation on the other side; the database trigger and the
+service use the same rule, and the customer row is locked so two conflicting
+inserts cannot both succeed. A completed A→B may be followed by B→C. PDR-17
+does not decide whether a replaced reference may later be used as a replacement
+target, so that ban is not invented. Direct inserts cannot skip the initial
+issuance, authorization, or emergency state. `updated_by` cannot change unless
+the observed status changes. The latest transition must match the current
+state and updater, and another transition for that state is rejected. History
+remains append-only. A failed audit write rolls back the mutation.
 
 ## API
 

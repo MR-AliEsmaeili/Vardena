@@ -119,7 +119,11 @@ installation. Replacement observations are unique per customer and old
 installation, and per customer and new installation. Identity, installation
 references, emergency flag and recorded observations are immutable. Status may
 move only issued → activated, or authorized → old-server observation →
-replacement recorded. Transitions are append-only. No cancellation state exists.
+replacement recorded. A direct insert cannot skip that start, an unfinished
+replacement cannot reuse either installation on the other side, and
+`updated_by` cannot change without a status change. A completed replacement
+may later be the old installation of another observation. Transitions are
+append-only and must match the current state. No cancellation state exists.
 
 ## Security
 

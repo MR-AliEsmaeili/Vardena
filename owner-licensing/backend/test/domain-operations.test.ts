@@ -13,6 +13,7 @@ import {
   reasonText,
   replacementCreate,
   replacementObservation,
+  unfinishedReplacementCrossUse,
   roles,
 } from "../src/domain.js";
 
@@ -201,5 +202,36 @@ describe("manual observation transitions", () => {
         expect(code(() => operationResponse(row, role))).toBe(
           "PermissionDenied",
         );
+  });
+  it("rejects only unfinished cross-use and still allows a completed chain", () => {
+    const unfinished = {
+      observedStatus: "REPLACEMENT_AUTHORIZED",
+      oldInstallationReference: "A",
+      replacementInstallationReference: "B",
+    };
+    expect(
+      unfinishedReplacementCrossUse(unfinished, {
+        oldInstallationReference: "B",
+        replacementInstallationReference: "C",
+      }),
+    ).toBe(true);
+    expect(
+      unfinishedReplacementCrossUse(
+        { ...unfinished, observedStatus: "OLD_SERVER_STATE_RECORDED" },
+        {
+          oldInstallationReference: "C",
+          replacementInstallationReference: "A",
+        },
+      ),
+    ).toBe(true);
+    expect(
+      unfinishedReplacementCrossUse(
+        { ...unfinished, observedStatus: "REPLACEMENT_RECORDED" },
+        {
+          oldInstallationReference: "B",
+          replacementInstallationReference: "C",
+        },
+      ),
+    ).toBe(false);
   });
 });

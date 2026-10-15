@@ -165,6 +165,10 @@ BEGIN
     OR NEW.emergency_old_server_lost IS DISTINCT FROM OLD.emergency_old_server_lost
     OR NEW.replaces_record_id IS DISTINCT FROM OLD.replaces_record_id
     OR (
+      NEW.updated_by IS DISTINCT FROM OLD.updated_by
+      AND NEW.observed_status IS NOT DISTINCT FROM OLD.observed_status
+    )
+    OR (
       OLD.old_server_observed_state IS NOT NULL
       AND NEW.old_server_observed_state IS DISTINCT FROM OLD.old_server_observed_state
     )
@@ -252,6 +256,126 @@ END $$;
 CREATE TRIGGER retain_transitions
   BEFORE UPDATE OR DELETE ON owner.operational_transitions
   FOR EACH ROW EXECUTE FUNCTION owner.reject_transition_change();
+
+-- Inserts may start only where the application starts. A direct insert cannot
+-- skip issuance or authorization, including a terminal replacement row.
+CREATE FUNCTION owner.restrict_operation_insert() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.kind = 'LICENSE' AND NEW.observed_status <> 'ISSUED' THEN
+    RAISE EXCEPTION 'A license observation must start as an external issuance'
+      USING ERRCODE = '23514';
+  END IF;
+  IF NEW.kind = 'SERVER_REPLACEMENT' AND NOT (
+    (
+      NEW.observed_status = 'REPLACEMENT_AUTHORIZED'
+      AND NEW.emergency_old_server_lost = false
+    )
+    OR (
+      NEW.observed_status = 'OLD_SERVER_STATE_RECORDED'
+      AND NEW.emergency_old_server_lost = true
+      AND NEW.old_server_observed_state = 'UNAVAILABLE_EMERGENCY_LOSS'
+    )
+  ) THEN
+    RAISE EXCEPTION 'A replacement observation must start at its authorized or emergency state'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER restrict_operation_insert
+  BEFORE INSERT ON owner.operational_records
+  FOR EACH ROW EXECUTE FUNCTION owner.restrict_operation_insert();
+
+-- Same-column reuse is already unique. This matches the service rule for an
+-- unfinished record whose old or new installation is reused on the other side.
+-- A completed A→B followed by B→C is not a conflict. PDR-17 does not decide
+-- whether a replaced reference may later be a replacement target, so this
+-- trigger does not invent that ban.
+CREATE FUNCTION owner.reject_unfinished_replacement_overlap() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.kind <> 'SERVER_REPLACEMENT' THEN
+    RETURN NEW;
+  END IF;
+  PERFORM 1 FROM owner.customers WHERE id = NEW.customer_id FOR UPDATE;
+  IF EXISTS (
+    SELECT 1 FROM owner.operational_records other
+    WHERE other.id <> NEW.id
+      AND other.customer_id = NEW.customer_id
+      AND other.kind = 'SERVER_REPLACEMENT'
+      AND other.observed_status <> 'REPLACEMENT_RECORDED'
+      AND (
+        other.old_installation_reference = NEW.replacement_installation_reference
+        OR other.replacement_installation_reference = NEW.old_installation_reference
+      )
+  ) THEN
+    RAISE EXCEPTION 'An unfinished replacement already uses this installation'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER reject_unfinished_replacement_overlap
+  BEFORE INSERT OR UPDATE ON owner.operational_records
+  FOR EACH ROW EXECUTE FUNCTION owner.reject_unfinished_replacement_overlap();
+
+-- After commit, the latest transition must describe the current state and the
+-- updater. Further transitions for that state are rejected.
+CREATE FUNCTION owner.operation_history_matches() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  latest_status varchar(64);
+  latest_actor varchar(26);
+BEGIN
+  SELECT new_status, actor_id
+    INTO latest_status, latest_actor
+    FROM owner.operational_transitions
+    WHERE record_id = NEW.id
+    ORDER BY occurred_at DESC, id DESC
+    LIMIT 1;
+  IF latest_status IS DISTINCT FROM NEW.observed_status
+    OR latest_actor IS DISTINCT FROM NEW.updated_by
+  THEN
+    RAISE EXCEPTION 'Operational history does not match the recorded state'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NULL;
+END $$;
+CREATE CONSTRAINT TRIGGER operation_history_matches
+  AFTER INSERT OR UPDATE ON owner.operational_records
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION owner.operation_history_matches();
+
+CREATE FUNCTION owner.reject_extra_current_transition() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  current_status varchar(64);
+  current_actor varchar(26);
+BEGIN
+  SELECT observed_status, updated_by
+    INTO current_status, current_actor
+    FROM owner.operational_records
+    WHERE id = NEW.record_id
+    FOR UPDATE;
+  IF current_status IS NULL THEN
+    RAISE EXCEPTION 'Operational record not found'
+      USING ERRCODE = '23503';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM owner.operational_transitions
+    WHERE record_id = NEW.record_id AND new_status = current_status
+  ) THEN
+    RAISE EXCEPTION 'Operational history for the current state is already recorded'
+      USING ERRCODE = '23514';
+  END IF;
+  IF NEW.new_status = current_status AND NEW.actor_id IS DISTINCT FROM current_actor THEN
+    RAISE EXCEPTION 'Transition actor must match the recorded updater'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER reject_extra_current_transition
+  BEFORE INSERT ON owner.operational_transitions
+  FOR EACH ROW EXECUTE FUNCTION owner.reject_extra_current_transition();
 
 -- Runtime grants are deployment-specific and are NOT applied here. The runtime
 -- role needs SELECT/INSERT/UPDATE on owner.operational_records and

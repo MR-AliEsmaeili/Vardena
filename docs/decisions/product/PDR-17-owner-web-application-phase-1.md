@@ -104,4 +104,7 @@ and the unavailable observation in one transaction; it does not wait for the old
 server. History is append-only. No cancellation, renewal, revocation, recovery or
 client-device state is defined, so none is implemented. An abandoned non-terminal
 replacement keeps its installation slot until a later decision defines withdrawal.
+A completed replacement of installation B may later be the old installation of
+another observation. Whether a replaced reference may be reused as a new
+replacement target is not decided here; OQ-82 remains OPEN for that choice.
 Evidence: [manual observation record](../../tasks/licensing-owner-side-manual-operations.md).
