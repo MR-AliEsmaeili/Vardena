@@ -26,6 +26,9 @@ pointer/index were aligned to it without changing working files or branches.
   test exposed a jsdom `import.meta.url` scheme issue; file inspection now uses
   the frontend package working directory. No suite hung or was expanded.
   No local full suites, API/integration/PostgreSQL/migration/Docker/build checks.
+- First corrective CI found an exact-optional-property middleware signature
+  mismatch at both Vite hook registrations. The guard now accepts Node
+  IncomingMessage/ServerResponse directly; no policy/test/gate is relaxed.
 - CI: existing applicable jobs retain all gates and execute the full Owner API,
   UI and host tests plus customer artifact/signing exclusion. Exact corrective
   head/results are recorded in the PR verification comment/final delivery report.

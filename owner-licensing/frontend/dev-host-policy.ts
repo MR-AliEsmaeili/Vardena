@@ -1,4 +1,5 @@
 import { isIP } from 'node:net';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 
 /** Server-only configuration: none of these variables are VITE_* client data. */
@@ -57,8 +58,8 @@ export function isApprovedHost(
 /** Also covers Vite's implicit IP allowances and HTTPS host-check bypass. */
 export function strictHostGuard(allowedHosts: readonly string[]): Plugin {
   const guard = (
-    req: { headers: { host?: string } },
-    res: { statusCode: number; end: (body: string) => void },
+    req: IncomingMessage,
+    res: ServerResponse,
     next: () => void,
   ) => {
     if (isApprovedHost(req.headers.host, allowedHosts)) {
