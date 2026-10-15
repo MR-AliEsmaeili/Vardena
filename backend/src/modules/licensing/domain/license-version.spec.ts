@@ -1551,6 +1551,324 @@ describe('retained versions never govern the same instant', () => {
 });
 
 /**
+ * Overlap-authority correction (2026-10-14): a signed supersession sanctions
+ * exactly the ONE version it names. Before the correction a candidate that
+ * declared a supersession and ALSO overlapped a different version that still
+ * governed was accepted, which left two retained versions governing the same
+ * instant — the disjoint-window invariant of ADR-0046 Decision 4 and design
+ * §3.3 (OQ-86 Option C covers the retired history) — and made every as-of read
+ * of that instant report `ambiguous` (design §3.2 rule 7, the defensive
+ * failure mode the decisions were meant to make unreachable).
+ *
+ * Nothing about an ordinary explicit supersession, the implicit hand-over of
+ * OQ-80 Option B, the legacy `VLIC1` rules or the gap/reduction rules changes:
+ * the refusal is the rule-4 arm that already existed for retired history,
+ * extended to the one still-governing overlap a named retirement does not
+ * cover.
+ */
+describe('an explicit supersession sanctions exactly the version it names', () => {
+  const GOVERNING = window(
+    '2026-01-01T00:00:00.000Z',
+    '2027-01-01T00:00:00.000Z',
+  );
+  const SCHEDULED = window(
+    '2027-01-01T00:00:00.000Z',
+    '2028-01-01T00:00:00.000Z',
+  );
+
+  /**
+   * V1 governs now; V2 is a future-dated renewal already retained at its own
+   * window. The candidate starts inside V2's window and ends after it.
+   */
+  function scenario(): {
+    governing: RetainedLicenseVersion;
+    scheduled: RetainedLicenseVersion;
+    candidate: RetainedLicenseVersion;
+  } {
+    return {
+      governing: version(GOVERNING),
+      scheduled: version({
+        ...SCHEDULED,
+        importedAt: new Date('2026-02-01T00:00:00.000Z'),
+      }),
+      candidate: version(
+        window('2027-06-01T00:00:00.000Z', '2028-06-01T00:00:00.000Z'),
+      ),
+    };
+  }
+
+  function evaluate(
+    scenarioParts: ReturnType<typeof scenario>,
+    supersedesOperationId: string,
+  ): ReturnType<typeof evaluateImportConflicts> {
+    const { candidate } = scenarioParts;
+    return evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: {
+        kind: 'explicit',
+        operationId: supersedesOperationId,
+      },
+      versions: [scenarioParts.governing, scenarioParts.scheduled],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+    });
+  }
+
+  it('refuses a candidate that overlaps one retained version while naming another', () => {
+    const parts = scenario();
+
+    const refused = evaluate(parts, parts.governing.operationId);
+
+    expect(refused.conflict).toEqual({
+      reason: 'overlapping-range',
+      overlapping: 1,
+    });
+    expect(refused.supersedes).toBeNull();
+  });
+
+  it('still applies the same candidate when it names the version it overlaps', () => {
+    const parts = scenario();
+
+    const applied = evaluate(parts, parts.scheduled.operationId);
+
+    expect(applied.conflict).toBeNull();
+    expect(applied.supersedes).toBe(parts.scheduled);
+  });
+
+  it('still applies a supersession of a non-overlapping version when nothing else overlaps', () => {
+    // The documented "correction of a scheduled version": naming a version the
+    // candidate does not overlap stays allowed while it overlaps NOTHING else.
+    const scheduled = version(SCHEDULED);
+    const candidate = version(
+      window('2026-06-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+    );
+
+    const applied = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'explicit', operationId: scheduled.operationId },
+      versions: [scheduled],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+    });
+
+    expect(applied.conflict).toBeNull();
+    expect(applied.supersedes).toBe(scheduled);
+  });
+
+  it('keeps the accepted hand-over pairwise disjoint, and shows the refused one was not', () => {
+    const parts = scenario();
+    // Naming the governing version — the one the candidate does NOT overlap —
+    // is refused, so the state below is never produced by an import.
+    expect(evaluate(parts, parts.governing.operationId).conflict).toEqual({
+      reason: 'overlapping-range',
+      overlapping: 1,
+    });
+
+    const applied = evaluate(parts, parts.scheduled.operationId);
+    expect(applied.conflict).toBeNull();
+
+    // Applied exactly as the import transaction would: the named version is
+    // stamped at the successor's own start.
+    const stamped = {
+      ...parts.scheduled,
+      supersededAt: NOW,
+      governsUntil: parts.candidate.validFrom,
+      supersededByVersionId: parts.candidate.versionId,
+    };
+    for (const instant of [
+      '2026-06-01T00:00:00.000Z',
+      '2027-03-01T00:00:00.000Z',
+      '2027-09-01T00:00:00.000Z',
+    ]) {
+      const resolution = resolveEffectiveVersion(
+        [parts.governing, stamped, parts.candidate],
+        new Date(instant),
+      );
+      expect(resolution.kind).toBe('effective');
+    }
+
+    // The state the pre-correction acceptance produced instead: the candidate
+    // applied while the version it overlapped was never retired — two versions
+    // covering one instant, which is what the refusal above prevents.
+    const ambiguous = resolveEffectiveVersion(
+      [parts.governing, parts.scheduled, parts.candidate],
+      new Date('2027-09-01T00:00:00.000Z'),
+    );
+    if (ambiguous.kind !== 'ambiguous') {
+      throw new Error(`expected an ambiguous state, got ${ambiguous.kind}`);
+    }
+    expect(ambiguous.covering).toHaveLength(2);
+  });
+
+  it('refuses it when the candidate also overlaps the version it names', () => {
+    // OQ-80 §8.1: "A candidate that would overlap more than one still-governing
+    // version is refused rather than guessed." Naming one of the two does not
+    // sanction the overlap with the other: the import would leave the unnamed
+    // version governing the same instants as the candidate.
+    const first = version(
+      window('2026-01-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'),
+    );
+    const second = version({
+      ...window('2027-01-01T00:00:00.000Z', '2029-01-01T00:00:00.000Z'),
+      importedAt: new Date('2026-02-01T00:00:00.000Z'),
+    });
+    const candidate = version(
+      window('2027-06-01T00:00:00.000Z', '2028-06-01T00:00:00.000Z'),
+    );
+
+    const refused = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'explicit', operationId: first.operationId },
+      versions: [first, second],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+    });
+
+    expect(refused.conflict).toEqual({
+      reason: 'overlapping-range',
+      overlapping: 1,
+    });
+    expect(refused.supersedes).toBeNull();
+  });
+
+  it('never accepts an import that leaves two versions governing one instant', () => {
+    // Bounded reachability check of the disjoint-window invariant (ADR-0046
+    // Decision 4). From an empty installation, every candidate window this
+    // suite can express is tried with every supersession intent, the states the
+    // import transaction would really commit are kept (the guarded stamp
+    // refuses a version that already carries a supersession), and every
+    // resulting state must have at most ONE eligible covering version at every
+    // probe instant. Before the correction the explicit arm accepted a document
+    // that named one version while overlapping another, so this enumeration
+    // found two covering versions; it is the regression guard for that class,
+    // not just for the single reproducer above.
+    const WINDOWS = [
+      ['2026-01-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z'],
+      ['2026-04-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z'],
+      ['2026-07-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'],
+      ['2026-06-01T00:00:00.000Z', null],
+    ] as const;
+    const INSTANTS = [
+      '2026-01-01T00:00:00.000Z',
+      '2026-03-01T00:00:00.000Z',
+      '2026-04-01T00:00:00.000Z',
+      '2026-06-01T00:00:00.000Z',
+      '2026-07-01T00:00:00.000Z',
+      '2026-09-01T00:00:00.000Z',
+      '2026-10-01T00:00:00.000Z',
+      '2027-01-01T00:00:00.000Z',
+    ].map((instant) => new Date(instant));
+
+    function intents(
+      versions: readonly RetainedLicenseVersion[],
+    ): Array<Parameters<typeof evaluateImportConflicts>[0]['supersession']> {
+      return [
+        { kind: 'none' },
+        { kind: 'implicit' },
+        ...versions.map((version) => ({
+          kind: 'explicit' as const,
+          operationId: version.operationId,
+        })),
+      ];
+    }
+
+    /**
+     * The transaction's write, mirrored: the successor row is inserted and the
+     * one version the evaluation selected (if any) is stamped at the
+     * successor's own `validFrom`. A stamp the guarded `updateMany` would
+     * refuse (the row already carries a supersession) is not a committed state.
+     */
+    function commit(
+      versions: readonly RetainedLicenseVersion[],
+      candidate: RetainedLicenseVersion,
+      evaluation: ReturnType<typeof evaluateImportConflicts>,
+    ): RetainedLicenseVersion[] | null {
+      const supersedes =
+        evaluation.conflict === null ? evaluation.supersedes : null;
+      if (supersedes !== null && hasRecordedSupersession(supersedes))
+        return null;
+      const stamped = versions.map((version) =>
+        version.versionId === supersedes?.versionId
+          ? {
+              ...version,
+              supersededAt: NOW,
+              governsUntil: supersessionCeaseInstant(candidate),
+              supersededByVersionId: candidate.versionId,
+            }
+          : version,
+      );
+      return [...stamped, candidate];
+    }
+
+    let frontier: RetainedLicenseVersion[][] = [[]];
+    for (let depth = 0; depth < 3; depth += 1) {
+      const next: RetainedLicenseVersion[][] = [];
+      for (const versions of frontier) {
+        for (const [from, until] of WINDOWS) {
+          for (const supersession of intents(versions)) {
+            const candidate = version(window(from, until));
+            const evaluation = evaluateImportConflicts({
+              candidate,
+              operationId: candidate.operationId,
+              documentHash: candidate.documentHash,
+              supersession,
+              versions,
+              at: NOW,
+              installationCustomerId: CUSTOMER,
+              installationCustomerCode: CUSTOMER_CODE,
+            });
+            if (evaluation.conflict !== null) continue;
+            const committed = commit(versions, candidate, evaluation);
+            if (committed === null) continue;
+
+            for (const instant of INSTANTS) {
+              const resolution = resolveEffectiveVersion(committed, instant);
+              expect(
+                resolution.kind,
+                `${instant.toISOString()} with ${committed.length} retained versions`,
+              ).not.toBe('ambiguous');
+            }
+            next.push(committed);
+          }
+        }
+      }
+      frontier = next;
+    }
+    expect(frontier.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the legacy VLIC1 path safe: it takes over the version it overlaps', () => {
+    // A text code cannot name a version, so there is no way to express the
+    // refused instruction: the implicit path takes over the one still-governing
+    // version it overlaps (OQ-80 Option B) and never retires a different one.
+    const parts = scenario();
+
+    const applied = evaluateImportConflicts({
+      candidate: parts.candidate,
+      operationId: parts.candidate.operationId,
+      documentHash: parts.candidate.documentHash,
+      supersession: { kind: 'implicit' },
+      versions: [parts.governing, parts.scheduled],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+    });
+
+    expect(applied.conflict).toBeNull();
+    expect(applied.supersedes).toBe(parts.scheduled);
+  });
+});
+
+/**
  * L-05 (PDR-11 §8.6 on the renewal path): a contiguous renewal retires
  * nothing, so rule 6b never had a predecessor to compare it against. The
  * guard now measures such a candidate against the deterministic continuation

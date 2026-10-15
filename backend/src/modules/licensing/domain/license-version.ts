@@ -1066,7 +1066,12 @@ export function continuationBaselineFor(
  *    interval a version already governed is refused (`overlapping-range`), so
  *    effective windows stay pairwise disjoint including retired history and no
  *    as-of read can become `ambiguous`. Gap-filling backwards stays allowed
- *    where it overlaps nothing and does not leave a gap (rule 7);
+ *    where it overlaps nothing and does not leave a gap (rule 7). A named
+ *    supersession sanctions exactly the ONE version it names: a candidate that
+ *    declares a supersession and ALSO overlaps a different version that still
+ *    governs is the same refusal, because retiring that other version is not
+ *    what this document instructs and the import would leave two versions
+ *    governing one instant (corrective slice, 2026-10-14);
  * 5. a signed document that starts later than exactly one still-governing
  *    version it overlaps takes that version over at its own `validFrom`
  *    (OQ-80 **Option B**, 2026-10-12): the later start governs, the predecessor
@@ -1341,6 +1346,19 @@ export function evaluateImportConflicts(
 
   const overlap = others[0] ?? null;
   let supersedes = target;
+  if (target !== null && overlap !== null) {
+    // Rule 4, explicit-retirement arm (corrective slice, 2026-10-14): a signed
+    // supersession sanctions exactly ONE overlap — the version it names. When
+    // the candidate also overlaps a retained version that still governs at
+    // `at`, retiring a *different* version cannot make the candidate legal:
+    // after the import two versions would govern the same instant, so the
+    // disjoint-window invariant (ADR-0046 Decision 4, design §3.3; OQ-86
+    // Option C covers the retired history) would be broken and every as-of
+    // read of that instant would report `ambiguous`. Refuse rather than
+    // guess which version should have governed; nothing is written and the
+    // operation id stays unused.
+    return conflictOnly({ reason: 'overlapping-range', overlapping: 1 });
+  }
   if (target === null && overlap !== null) {
     // Rule 5 (OQ-80 Option B): the later start governs at the overlap.
     if (overlap.validFrom.getTime() >= candidate.validFrom.getTime()) {

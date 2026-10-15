@@ -280,12 +280,19 @@ import ──► retained (not yet effective | effective | expired)
 - A supersession is declared for exactly one version, and the hand-over is the
   candidate's own `validFrom`: overlap is allowed only in so far as it is
   replaced, so the predecessor's effective window ends exactly where the
-  successor's begins. A supersession declared for a non-overlapping version is
-  allowed and simply retires that version at the successor's start (a
-  correction of an expired or scheduled version); it never creates ambiguity. A
-  legacy code cannot express *which* version it replaces, so it may replace at
-  most one still-governing version that has no recorded supersession; anything
-  else is refused rather than guessed.
+  successor's begins. **Exactly the one named version may be overlapped**: a
+  document that names a version and *also* overlaps a different retained
+  version is refused (`overlapping-range`, 409, nothing written, the operation
+  id unused), because retiring a version the document does not name would be an
+  instruction it never gave — and applying it would leave two retained versions
+  governing the same instant, the ambiguity this rule exists to prevent
+  (corrective slice, 2026-10-14). A supersession declared for a non-overlapping
+  version is allowed and simply retires that version at the successor's start
+  (a correction of an expired or scheduled version); it never creates ambiguity
+  precisely because nothing else may overlap. A legacy code cannot express
+  *which* version it replaces, so it may replace at most one still-governing
+  version that has no recorded supersession; anything else is refused rather
+  than guessed.
 - **A supersession may not hand over in the past.** The hand-over is the
   candidate's own `validFrom`, so retiring a version at an instant that is
   already past removes coverage that version really had, and the as-of answer
@@ -448,18 +455,26 @@ error. Covered by the live PostgreSQL cases in `licensing-persistence-live.e2e-s
 ("refuses a license identifier another installation committed while this import was
 in flight" and "lets exactly one of two installations keep a license identifier…").
 
-**Known behaviour under OQ-86 (not changed by this correction).** A
-non-superseding document whose window lies entirely in the past may overlap the
-*effective window* of a version that a later import retired (for example, a
-backdated correction that falls inside the period in which a retired version
-governed). The shared evaluation counts only versions that still govern at the
-import instant, so such a document is currently accepted and an as-of read for
-that period reports two covering versions (`ambiguous`). ADR-0046 Decision 4
-states that effective windows are pairwise disjoint after every import; that
-wording and the implemented rule disagree for this case, and the existing unit
-test "never counts a superseded version as an overlap" pins the implemented rule.
-Which one the Owner wants is the OQ-86 decision, so it is recorded there and not
-changed here.
+**Superseded by OQ-86 Option C (Owner decision 2026-10-12, implemented in the
+change that records the decision).** This paragraph
+recorded the pre-decision behaviour: overlap used to be evaluated only against
+versions that still governed at the import instant, so a retired version was
+excluded and a backdated non-superseding document could land inside the window
+it had already governed. The Owner decided **Option C** (2026-10-12,
+`docs/tasks/licensing-oq-80-oq-86-decision-brief.md` §8.2) and the shared
+evaluation now counts the *effective window* of **every** retained version,
+retired versions included, refusing such a document with `overlapping-range`
+(409, nothing written) before anything is applied; the old unit test that pinned
+the excluded-retired-version behaviour is gone, and the invariant recorded by
+ADR-0046 Decision 4 is what the code enforces. The only remaining source of a
+past-instant overlap is the **legacy backfill** (§11): an L-02 row's
+replaced-by pointer was never persisted, so a migrated row hands over at its
+recorded instant while its successor's window may start earlier. Those
+historical instants are the sole remaining case for the defensive §3.2 rule 7
+path; nothing written by the current import pipeline can create it (a document
+that would overlap a different retained version while naming one — the
+explicit-retirement arm — is refused by the same rule, corrective slice
+2026-10-14).
 
 ## 4. Import pipeline (strict order, nothing written until every stage passes)
 
@@ -473,7 +488,7 @@ changed here.
 | 6 | Installation binding: `installationId` is this installation's identity | `installation-mismatch` |
 | 7 | Document semantics: interval, limits, entitlements, status `ACTIVE`, document not already expired at `now` | `validity`, `limits`, `entitlements`, `not-active`, `expired-document` |
 | 8 | Replay: `operationId` (and artifact hash) already applied on this installation | `duplicate-operation` (409, no state change) |
-| 9 | Version conflicts: overlap without explicit supersession, unknown/already-retired supersession target, supersession that would hand over before the import instant, a reduction of the retired version's capacity or entitlements (explicit supersession included), closing an open end where the version is not named, a license identifier already bound to another customer (§3.5) | `overlapping-range`, `unknown-supersession`, `license-binding-conflict`, `reduction-requires-resolution`, `renewal-gap` (409, no state change); `backdated-supersession` (422, no state change; OQ-86) |
+| 9 | Version conflicts: overlap without explicit supersession, an overlap the named supersession does not retire, unknown/already-retired supersession target, supersession that would hand over before the import instant, a reduction of the retired version's capacity or entitlements (explicit supersession included), closing an open end where the version is not named, a license identifier already bound to another customer (§3.5) | `overlapping-range`, `unknown-supersession`, `license-binding-conflict`, `reduction-requires-resolution`, `renewal-gap` (409, no state change); `backdated-supersession` (422, no state change; OQ-86) |
 | 10 | Persist: ONE transaction that **first locks the installation row and re-runs stages 8–9 under the lock** (§3.4), refuses a license identifier that belongs to another installation or customer (§3.5), then customer upsert, license upsert, version + entitlements insert, supersession stamps, audit event | `duplicate-operation`, `overlapping-range`, `unknown-supersession`, `license-binding-conflict` (409, no state change); `backdated-supersession` (422, no state change) |
 
 Stages 8 and 9 share one implementation between the read-side pass and the
