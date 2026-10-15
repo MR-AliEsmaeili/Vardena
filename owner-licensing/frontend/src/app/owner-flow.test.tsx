@@ -148,7 +148,14 @@ describe('Owner browser vertical slice (mocked API boundary, CI)', () => {
     });
     mount('/app');
     expect(await screen.findByText(o.supportScope)).toBeInTheDocument();
-    expect(screen.getAllByText(o.unavailable)).toHaveLength(6);
+    expect(screen.getAllByText(o.unavailable)).toHaveLength(4);
+    expect(screen.getAllByText(o.manualDenied)).toHaveLength(2);
+    expect(
+      screen.queryByRole('link', { name: o.operations }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: o.openManual }),
+    ).not.toBeInTheDocument();
     expect(
       await screen.findByRole('link', { name: o.customers }),
     ).toHaveAttribute('href', '/app/customers');

@@ -18,14 +18,19 @@ describe("Owner deny-by-default policy and input boundary", () => {
       "customers.write",
       "users.manage",
       "audit.view",
-    ]);
-    expect(permissions("READ_ONLY_OBSERVER")).toEqual([
-      "customers.view",
-      "audit.view",
+      "operations.view",
+      "operations.record",
     ]);
     expect(permissions("LICENSE_ISSUANCE")).toEqual([
       "customers.view",
       "audit.view",
+      "operations.view",
+      "operations.record",
+    ]);
+    expect(permissions("READ_ONLY_OBSERVER")).toEqual([
+      "customers.view",
+      "audit.view",
+      "operations.view",
     ]);
     expect(permissions("SUPPORT_SPECIALIST")).toEqual(["customers.view"]);
     expect(permissions("anything")).toEqual([]);

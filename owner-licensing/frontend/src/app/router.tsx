@@ -5,6 +5,12 @@ import { CustomersPage } from '@/features/customers/customers-page';
 import { CustomerPage } from '@/features/customers/customer-page';
 import { UsersPage } from '@/features/users/users-page';
 import { AuditPage } from '@/features/audit/audit-page';
+import { OperationPage } from '@/features/operations/operation-page';
+import {
+  ActivationFormPage,
+  ReplacementFormPage,
+} from '@/features/operations/operation-forms';
+import { OperationsPage } from '@/features/operations/operations-page';
 import { AppShell, OwnerHome, LifecyclePage } from './layouts/app-shell';
 import { NotFoundPage } from './routes/not-found-page';
 import { RequireAuth } from './routes/require-auth';
@@ -28,6 +34,16 @@ export function AppRoutes() {
           />
           <Route path="users" element={<UsersPage />} />
           <Route path="audit" element={<AuditPage />} />
+          <Route path="operations" element={<OperationsPage />} />
+          <Route
+            path="operations/activation/new"
+            element={<ActivationFormPage />}
+          />
+          <Route
+            path="operations/replacement/new"
+            element={<ReplacementFormPage />}
+          />
+          <Route path="operations/:id" element={<OperationPage />} />
           <Route path="lifecycle" element={<LifecyclePage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

@@ -3,8 +3,9 @@
 - **Status:** **Accepted for the Phase 1 separation boundary by the Product
   Owner instruction (2026-10-15); see addendum.** Historical Phase 0 proposal: This ADR does **not** decide **OQ-85** (Owner-side system ownership
   and location), **U-1** (signing-key compromise policy), **U-5** (Owner role
-  permissions), OQ-77, OQ-78, OQ-82 or OQ-84, and it authorizes **no**
-  implementation. It records the separation boundary that holds whichever
+  permissions), OQ-77, OQ-78, OQ-82 or OQ-84. The historical proposal authorized
+  no implementation; the addenda below accept the separation boundary and a
+  later observation-only Owner record. It records the separation boundary that holds whichever
   location the Product Owner chooses, so that AR-29 is satisfied before any
   deployment-topology or security-architecture change is built.
 - **Date:** 2026-10-15
@@ -33,7 +34,15 @@ and the Product Owner-corrected permission matrix: specialist customer/audit
 reads and Support identity/status-only customer reads enforced by field allowlists.
 No role grants routine key access, no dual control is added, and U-1 stays deferred.
 OQ-77's exact option C wording is unavailable: durable audit viewing without purge.
-No OQ is closed and no operational signer or lifecycle protocol is authorized.
+No OQ is closed and no operational signer or signed lifecycle protocol is authorized.
+
+## Observation-only addendum — 2026-10-15
+
+A later Owner-only slice records manually observed activation and same-customer
+server-replacement facts in the Owner database. That is an attributable
+observation, not acceptance of a signed protocol, a customer callback, or a
+production signer. Confirmation kind remains `OPERATOR_OBSERVED`. OQ-77, OQ-78,
+OQ-82, OQ-83, OQ-84, OQ-85 and U-1 stay open.
 The implementation uses the established `pg`/Argon2/TypeScript ecosystem with a
 small Express modular API instead of copying the customer's Nest auth module
 graph; SQL migrations avoid coupling Owner's store to customer Prisma codegen.

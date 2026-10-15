@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useSession } from '@/features/auth/use-session';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
@@ -12,6 +12,7 @@ export function AppShell() {
     ['/app/customers', o.customers, 'customers.view'],
     ['/app/users', o.users, 'users.manage'],
     ['/app/audit', o.audit, 'audit.view'],
+    ['/app/operations', o.operations, 'operations.view'],
     ['/app/lifecycle', o.lifecycle, null],
   ] as const;
   return (
@@ -89,18 +90,37 @@ export function OwnerHome() {
   );
 }
 export function LifecyclePage() {
+  const permissions = usePermissions();
   return (
     <section className="space-y-4">
       <h2 className="font-bold">{o.lifecycle}</h2>
       <p>{o.manual}</p>
       <ul className="grid gap-3 sm:grid-cols-2">
-        {o.slices.map((label) => (
+        {o.slices.map((item) => (
           <li
             className="rounded-lg border border-dashed bg-white p-4"
-            key={label}
+            key={item.label}
           >
-            <h3 className="font-semibold">{label}</h3>
-            <p className="mt-2 text-sm text-slate-500">{o.unavailable}</p>
+            <h3 className="font-semibold">{item.label}</h3>
+            {item.href && permissions.has('operations.record') ? (
+              <Link
+                className="mt-2 inline-block text-sm underline"
+                to={item.href}
+              >
+                {o.openManual}
+              </Link>
+            ) : item.href && permissions.has('operations.view') ? (
+              <Link
+                className="mt-2 inline-block text-sm underline"
+                to="/app/operations"
+              >
+                {o.manualInspect}
+              </Link>
+            ) : item.href ? (
+              <p className="mt-2 text-sm text-slate-500">{o.manualDenied}</p>
+            ) : (
+              <p className="mt-2 text-sm text-slate-500">{o.unavailable}</p>
+            )}
           </li>
         ))}
       </ul>

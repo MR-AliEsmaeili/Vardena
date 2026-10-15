@@ -8,13 +8,33 @@ export const roles = [
 ] as const;
 export type Role = (typeof roles)[number];
 export type Permission =
-  "customers.view" | "customers.write" | "users.manage" | "audit.view";
-// PDR-17 / PR #160 Owner correction: exact grants; no wildcards or prefix expansion.
+  | "customers.view"
+  | "customers.write"
+  | "users.manage"
+  | "audit.view"
+  | "operations.view"
+  | "operations.record";
+// PDR-17 plus the Phase 1.1 instruction: exact grants, no wildcards or prefix expansion.
+// Support is not granted operational records. Observer may inspect, not mutate.
 export function permissions(role: string): Permission[] {
   if (role === "SYSTEM_ADMIN")
-    return ["customers.view", "customers.write", "users.manage", "audit.view"];
-  if (role === "READ_ONLY_OBSERVER" || role === "LICENSE_ISSUANCE")
-    return ["customers.view", "audit.view"];
+    return [
+      "customers.view",
+      "customers.write",
+      "users.manage",
+      "audit.view",
+      "operations.view",
+      "operations.record",
+    ];
+  if (role === "LICENSE_ISSUANCE")
+    return [
+      "customers.view",
+      "audit.view",
+      "operations.view",
+      "operations.record",
+    ];
+  if (role === "READ_ONLY_OBSERVER")
+    return ["customers.view", "audit.view", "operations.view"];
   if (role === "SUPPORT_SPECIALIST") return ["customers.view"];
   return [];
 }
@@ -135,4 +155,265 @@ export function customerResponse(c: Record<string, unknown>, actorRole: Role) {
     createdBy: c.created_by,
     updatedBy: c.updated_by,
   };
+}
+
+// Manual observation vocabulary. These are operator facts, not license protocol
+// states and not cryptographic confirmation. PDR-17 defines issued → activated
+// and the manual replacement sequence only. No renewal, reversal, device
+// replacement, signed receipt, or cancellation state is defined here.
+export const licenseStatuses = ["ISSUED", "ACTIVATED"] as const;
+export const replacementStatuses = [
+  "REPLACEMENT_AUTHORIZED",
+  "OLD_SERVER_STATE_RECORDED",
+  "REPLACEMENT_RECORDED",
+] as const;
+export const observedStatuses = [
+  ...licenseStatuses,
+  ...replacementStatuses,
+] as const;
+export const operationKinds = ["LICENSE", "SERVER_REPLACEMENT"] as const;
+const artifactMarkers =
+  /(?:-----BEGIN |PRIVATE KEY|VLIC1|VLIC2|VDEA1|VDRQ1|VDRP1)/i;
+function hasControlCharacter(value: string) {
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    if (code <= 31 || code === 127) return true;
+  }
+  return false;
+}
+
+export function boundedNote(
+  value: unknown,
+  field: string,
+  min: number,
+  max: number,
+): string {
+  const s = text(value, field, min, max);
+  if (hasControlCharacter(s) || artifactMarkers.test(s))
+    invalid(
+      `${field} must not contain control characters, key material, or signed artifacts.`,
+    );
+  return s;
+}
+export function installationReference(value: unknown, field: string): string {
+  const s = boundedNote(value, field, 1, 200);
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,199}$/.test(s))
+    invalid(`Invalid ${field}.`);
+  return s;
+}
+export function evidenceReference(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  return boundedNote(value, "evidenceReference", 1, 200);
+}
+export function reasonText(value: unknown): string {
+  return boundedNote(value, "reason", 1, 500);
+}
+export function flag(value: unknown, field: string): boolean {
+  if (typeof value !== "boolean") invalid(`${field} must be boolean.`);
+  return value;
+}
+export function optionalId(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  return id(value);
+}
+export function queryText(value: unknown, field: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) invalid(`Invalid ${field}.`);
+  return value === "" ? undefined : text(value, field, 0, 100);
+}
+
+export const duplicateConstraints = [
+  "operational_license_installation_unique",
+  "operational_replacement_old_once",
+  "operational_replacement_new_once",
+] as const;
+export function duplicateConstraintCode(
+  constraint: string | undefined,
+): "DuplicateOperation" | "Conflict" {
+  return duplicateConstraints.includes(
+    constraint as (typeof duplicateConstraints)[number],
+  )
+    ? "DuplicateOperation"
+    : "Conflict";
+}
+
+const invalidTransition = () =>
+  fail(
+    409,
+    "InvalidTransition",
+    "The recorded state does not permit this observation.",
+  );
+
+/** External issuance observation. Never means this application issued an artifact. */
+export function licenseObservationCreate() {
+  return {
+    kind: "LICENSE" as const,
+    priorStatus: "UNRECORDED" as const,
+    observedStatus: "ISSUED" as const,
+    observationCategory: "EXTERNAL_ISSUANCE_OBSERVED" as const,
+  };
+}
+/** PDR-17 issued → activated. Operator confirmation, not a receipt. */
+export function licenseActivation(currentStatus: string) {
+  if (currentStatus !== "ISSUED") invalidTransition();
+  return {
+    priorStatus: "ISSUED" as const,
+    observedStatus: "ACTIVATED" as const,
+    observationCategory: "ACTIVATION_OBSERVED" as const,
+  };
+}
+/**
+ * Unfinished cross-use only. Same-column reuse is a unique index.
+ * A completed A→B followed by B→C is not a conflict. PDR-17 does not decide
+ * whether a replaced reference may later be used as a replacement target.
+ */
+export function unfinishedReplacementCrossUse(
+  existing: {
+    observedStatus: string;
+    oldInstallationReference: string;
+    replacementInstallationReference: string;
+  },
+  requested: {
+    oldInstallationReference: string;
+    replacementInstallationReference: string;
+  },
+) {
+  return (
+    existing.observedStatus !== "REPLACEMENT_RECORDED" &&
+    (existing.oldInstallationReference ===
+      requested.replacementInstallationReference ||
+      existing.replacementInstallationReference ===
+        requested.oldInstallationReference)
+  );
+}
+export function replacementCreate(emergency: boolean) {
+  if (emergency)
+    return {
+      insertStatus: "OLD_SERVER_STATE_RECORDED" as const,
+      insertCategory: "OLD_SERVER_STATE_OBSERVED" as const,
+      oldServerObservedState: "UNAVAILABLE_EMERGENCY_LOSS" as const,
+      transitions: [
+        {
+          prior: "UNRECORDED" as const,
+          next: "REPLACEMENT_AUTHORIZED" as const,
+        },
+        {
+          prior: "REPLACEMENT_AUTHORIZED" as const,
+          next: "OLD_SERVER_STATE_RECORDED" as const,
+        },
+      ],
+    };
+  return {
+    insertStatus: "REPLACEMENT_AUTHORIZED" as const,
+    insertCategory: "REPLACEMENT_AUTHORIZED" as const,
+    oldServerObservedState: null,
+    transitions: [
+      { prior: "UNRECORDED" as const, next: "REPLACEMENT_AUTHORIZED" as const },
+    ],
+  };
+}
+export function oldServerObservation(
+  current: { observedStatus: string; emergency: boolean },
+  observedState: unknown,
+) {
+  if (current.emergency)
+    fail(
+      409,
+      "InvalidTransition",
+      "An unavailable old server has no observed deactivation response.",
+    );
+  if (current.observedStatus !== "REPLACEMENT_AUTHORIZED") invalidTransition();
+  if (observedState !== "DEACTIVATION_OBSERVED")
+    invalid("Invalid old-server observed state.");
+  return {
+    priorStatus: "REPLACEMENT_AUTHORIZED" as const,
+    observedStatus: "OLD_SERVER_STATE_RECORDED" as const,
+    observationCategory: "OLD_SERVER_STATE_OBSERVED" as const,
+    oldServerObservedState: "DEACTIVATION_OBSERVED" as const,
+  };
+}
+export function replacementObservation(
+  currentStatus: string,
+  observedState: unknown,
+) {
+  if (currentStatus !== "OLD_SERVER_STATE_RECORDED") invalidTransition();
+  if (observedState !== "INSTALLATION_OBSERVED")
+    invalid("Invalid replacement observed state.");
+  return {
+    priorStatus: "OLD_SERVER_STATE_RECORDED" as const,
+    observedStatus: "REPLACEMENT_RECORDED" as const,
+    observationCategory: "REPLACEMENT_INSTALLATION_OBSERVED" as const,
+    replacementObservedState: "INSTALLATION_OBSERVED" as const,
+  };
+}
+export function operationKindFilter(value: unknown): string | undefined {
+  const raw = queryText(value, "kind");
+  if (raw === undefined) return undefined;
+  if (!operationKinds.includes(raw as (typeof operationKinds)[number]))
+    invalid("Invalid kind.");
+  return raw;
+}
+export function operationStatusFilter(value: unknown): string | undefined {
+  const raw = queryText(value, "status");
+  if (raw === undefined) return undefined;
+  if (!observedStatuses.includes(raw as (typeof observedStatuses)[number]))
+    invalid("Invalid status.");
+  return raw;
+}
+
+function instant(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string" && !Number.isNaN(Date.parse(value)))
+    return new Date(value).toISOString();
+  fail(500, "InternalError", "The operation failed. Please retry.");
+}
+
+/** Explicit allowlist. Contract references, secrets and extra columns cannot leak. */
+export function operationResponse(
+  row: Record<string, unknown>,
+  actorRole: Role,
+  transitions?: Record<string, unknown>[],
+) {
+  if (!permissions(actorRole).includes("operations.view"))
+    fail(403, "PermissionDenied", "Operational records are not permitted.");
+  const body: Record<string, unknown> = {
+    id: row.id,
+    customerId: row.customer_id,
+    customerCode: row.customer_code,
+    displayName: row.display_name,
+    kind: row.kind,
+    observationCategory: row.observation_category,
+    observedStatus: row.observed_status,
+    installationReference: row.installation_reference,
+    oldInstallationReference: row.old_installation_reference,
+    replacementInstallationReference: row.replacement_installation_reference,
+    oldServerObservedState: row.old_server_observed_state,
+    replacementObservedState: row.replacement_observed_state,
+    emergencyOldServerLost: row.emergency_old_server_lost,
+    replacesRecordId: row.replaces_record_id,
+    evidenceBasis: "OPERATOR_OBSERVED",
+    cryptographicVerification: "NOT_IMPLEMENTED",
+    signedArtifactProduced: false,
+    customerServerContacted: false,
+    createdAt: instant(row.created_at),
+    updatedAt: instant(row.updated_at),
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+  };
+  if (transitions)
+    body.transitions = transitions.map((item) => {
+      if (item.confirmation_kind !== "OPERATOR_OBSERVED")
+        fail(500, "InternalError", "The operation failed. Please retry.");
+      return {
+        id: item.id,
+        actorId: item.actor_id,
+        occurredAt: instant(item.occurred_at),
+        priorStatus: item.prior_status,
+        newStatus: item.new_status,
+        reason: item.reason,
+        evidenceReference: item.evidence_reference,
+        confirmationKind: "OPERATOR_OBSERVED",
+      };
+    });
+  return body;
 }

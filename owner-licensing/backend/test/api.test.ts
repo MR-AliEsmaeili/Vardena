@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import { ulid } from "ulid";
 import type { Express } from "express";
+import type { PoolClient } from "pg";
 import { Database } from "../src/db.js";
 import { migrate } from "../src/migrate.js";
 import { bootstrap } from "../src/bootstrap.js";
@@ -41,6 +42,44 @@ async function customer(cookie = adminCookie, code = `C-${ulid()}`) {
     customerCode: code,
     displayName: "مشتری آزمایشی",
   });
+}
+
+async function transitionChain(recordId: string) {
+  const found = await db.pool.query<{
+    prior_status: string;
+    new_status: string;
+  }>(
+    `SELECT prior_status, new_status
+     FROM owner.operational_transitions
+     WHERE record_id = $1
+     ORDER BY occurred_at, id`,
+    [recordId],
+  );
+  return found.rows.map((row) => `${row.prior_status}->${row.new_status}`);
+}
+async function observedStatus(recordId: string) {
+  const found = await db.pool.query<{ observed_status: string }>(
+    "SELECT observed_status FROM owner.operational_records WHERE id = $1",
+    [recordId],
+  );
+  return found.rows[0]?.observed_status ?? null;
+}
+async function insertTransition(
+  tx: PoolClient,
+  recordId: string,
+  actorId: string,
+  prior: string,
+  next: string,
+  reason: string,
+  occurredAt?: string,
+) {
+  await tx.query(
+    `INSERT INTO owner.operational_transitions(
+      id, record_id, actor_id, occurred_at, prior_status, new_status, reason,
+      confirmation_kind)
+    VALUES ($1,$2,$3,COALESCE($4::timestamptz, clock_timestamp()),$5,$6,$7,'OPERATOR_OBSERVED')`,
+    [ulid(), recordId, actorId, occurredAt ?? null, prior, next, reason],
+  );
 }
 
 async function expectUnavailableOperations(cookie: string) {
@@ -121,6 +160,19 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     expect(first.r.headers["set-cookie"]![0]).toContain("HttpOnly");
     expect(first.r.headers["set-cookie"]![0]).toContain("SameSite=Lax");
     expect((await customer(adminCookie)).status).toBe(403);
+    expect(
+      (
+        await write(
+          "post",
+          "/operational-records/license-observations",
+          adminCookie,
+        ).send({
+          customerId: ulid(),
+          installationReference: "INST-1",
+          reason: "must not run before password change",
+        })
+      ).status,
+    ).toBe(403);
     expect(
       (
         await request(app)
@@ -331,7 +383,14 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       expect(effective.body.permissions).toEqual(
         role === "SUPPORT_SPECIALIST"
           ? ["customers.view"]
-          : ["customers.view", "audit.view"],
+          : role === "READ_ONLY_OBSERVER"
+            ? ["customers.view", "audit.view", "operations.view"]
+            : [
+                "customers.view",
+                "audit.view",
+                "operations.view",
+                "operations.record",
+              ],
       );
       const list = await request(app)
         .get("/api/v1/customers")
@@ -489,7 +548,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       (
         await db.pool.query("SELECT name FROM public.owner_migrations")
       ).rows.map((r) => r.name),
-    ).toEqual(["001-foundation.sql"]);
+    ).toEqual(["001-foundation.sql", "002-manual-operations.sql"]);
     await db.pool.query("TRUNCATE owner.login_limits");
     for (let n = 0; n < 10; n++)
       expect(
@@ -508,5 +567,948 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
         })
       ).status,
     ).toBe(429);
+  });
+  it("records manual activation observations without issuing or verifying a license", async () => {
+    expect((await request(app).get("/api/v1/operational-records")).status).toBe(
+      401,
+    );
+    const created = await customer(adminCookie, `Obs-${ulid()}`);
+    const installation = `INST-${ulid()}`;
+    const observed = await write(
+      "post",
+      "/operational-records/license-observations",
+      adminCookie,
+    ).send({
+      customerId: created.body.id,
+      customerCode: created.body.customerCode,
+      installationReference: installation,
+      reason: "External issuance observed outside this application",
+      evidenceReference: "CASE-14",
+    });
+    expect(observed.status).toBe(400);
+    const issued = await write(
+      "post",
+      "/operational-records/license-observations",
+      adminCookie,
+    ).send({
+      customerId: created.body.id,
+      installationReference: installation,
+      reason: "External issuance observed outside this application",
+      evidenceReference: "CASE-14",
+    });
+    expect(issued.status).toBe(201);
+    expect(issued.body.customerCode).toBe(created.body.customerCode);
+    expect(issued.body.observedStatus).toBe("ISSUED");
+    expect(issued.body.evidenceBasis).toBe("OPERATOR_OBSERVED");
+    expect(issued.body.cryptographicVerification).toBe("NOT_IMPLEMENTED");
+    expect(issued.body.signedArtifactProduced).toBe(false);
+    expect(issued.body.customerServerContacted).toBe(false);
+    expect(issued.body.transitions).toHaveLength(1);
+    expect(issued.body.transitions[0].confirmationKind).toBe(
+      "OPERATOR_OBSERVED",
+    );
+    expect(issued.body.createdBy).toBe(adminId);
+    expect(JSON.stringify(issued.body)).not.toContain("contractReference");
+    expect(
+      (
+        await write(
+          "post",
+          "/operational-records/license-observations",
+          adminCookie,
+        ).send({
+          customerId: created.body.id,
+          installationReference: installation,
+          reason: "duplicate observation",
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await write(
+          "post",
+          "/operational-records/license-observations",
+          adminCookie,
+        ).send({
+          customerId: created.body.id,
+          installationReference: `KEY-${ulid()}`,
+          reason: ["contains", "-----BEGIN", "PRIVATE KEY-----"].join(" "),
+        })
+      ).status,
+    ).toBe(400);
+    const activated = await write(
+      "post",
+      `/operational-records/${issued.body.id}/activation-observations`,
+      adminCookie,
+    ).send({
+      reason: "Operator observed activation on site",
+      evidenceReference: "VISIT-2",
+    });
+    expect(activated.status).toBe(200);
+    expect(activated.body.observedStatus).toBe("ACTIVATED");
+    expect(activated.body.observationCategory).toBe("ACTIVATION_OBSERVED");
+    expect(activated.body.transitions).toHaveLength(2);
+    expect(activated.body.transitions[0].newStatus).toBe("ISSUED");
+    const again = await write(
+      "post",
+      `/operational-records/${issued.body.id}/activation-observations`,
+      adminCookie,
+    ).send({ reason: "duplicate confirmation" });
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe("InvalidTransition");
+    const history = await request(app)
+      .get("/api/v1/audit-events")
+      .query({ targetId: issued.body.id })
+      .set("Cookie", adminCookie);
+    expect(
+      history.body.items.map((item: { eventType: string }) => item.eventType),
+    ).toEqual(
+      expect.arrayContaining([
+        "LICENSE_ACTIVATION_OBSERVED",
+        "LICENSE_ISSUANCE_OBSERVED",
+      ]),
+    );
+    expect(JSON.stringify(history.body)).not.toContain("PRIVATE KEY");
+    expect(JSON.stringify(history.body)).not.toContain("password_hash");
+  });
+  it("enforces the manual server-replacement sequence, same customer, and concurrency", async () => {
+    const first = await customer(adminCookie, `Rep-A-${ulid()}`);
+    const second = await customer(adminCookie, `Rep-B-${ulid()}`);
+    const oldInstallation = `OLD-${ulid()}`;
+    const nextInstallation = `NEW-${ulid()}`;
+    const license = await write(
+      "post",
+      "/operational-records/license-observations",
+      adminCookie,
+    ).send({
+      customerId: first.body.id,
+      installationReference: oldInstallation,
+      reason: "Observed before replacement",
+    });
+    expect(license.status).toBe(201);
+    const cross = await write(
+      "post",
+      "/operational-records/server-replacements",
+      adminCookie,
+    ).send({
+      customerId: second.body.id,
+      oldInstallationReference: oldInstallation,
+      replacementInstallationReference: nextInstallation,
+      emergencyOldServerLost: false,
+      replacesRecordId: license.body.id,
+      reason: "Must not transfer across customers",
+    });
+    expect(cross.status).toBe(404);
+    expect(cross.body.code).toBe("EntityNotFound");
+    expect(
+      (
+        await db.pool.query(
+          "SELECT id FROM owner.operational_records WHERE customer_id=$1 AND kind='SERVER_REPLACEMENT'",
+          [second.body.id],
+        )
+      ).rowCount,
+    ).toBe(0);
+    const skipped = await write(
+      "post",
+      "/operational-records/server-replacements",
+      adminCookie,
+    ).send({
+      customerId: first.body.id,
+      oldInstallationReference: oldInstallation,
+      replacementInstallationReference: nextInstallation,
+      emergencyOldServerLost: false,
+      reason: "Authorized replacement for the same customer",
+    });
+    expect(skipped.status).toBe(201);
+    expect(skipped.body.customerId).toBe(first.body.id);
+    expect(skipped.body.replacesRecordId).toBe(license.body.id);
+    expect(skipped.body.observedStatus).toBe("REPLACEMENT_AUTHORIZED");
+    expect(skipped.body.emergencyOldServerLost).toBe(false);
+    const tooSoon = await write(
+      "post",
+      `/operational-records/${skipped.body.id}/replacement-observations`,
+      adminCookie,
+    ).send({
+      reason: "Cannot skip the old-server observation",
+      replacementObservedState: "INSTALLATION_OBSERVED",
+    });
+    expect(tooSoon.status).toBe(409);
+    expect(tooSoon.body.code).toBe("InvalidTransition");
+    const oldState = await write(
+      "post",
+      `/operational-records/${skipped.body.id}/old-server-observations`,
+      adminCookie,
+    ).send({
+      reason:
+        "Operator observed manual deactivation; this is not cryptographic proof",
+      oldServerObservedState: "DEACTIVATION_OBSERVED",
+      evidenceReference: "WORK-9",
+    });
+    expect(oldState.status).toBe(200);
+    expect(oldState.body.oldServerObservedState).toBe("DEACTIVATION_OBSERVED");
+    expect(oldState.body.evidenceBasis).toBe("OPERATOR_OBSERVED");
+    const done = await write(
+      "post",
+      `/operational-records/${skipped.body.id}/replacement-observations`,
+      adminCookie,
+    ).send({
+      reason: "Replacement installation observed",
+      replacementObservedState: "INSTALLATION_OBSERVED",
+    });
+    expect(done.status).toBe(200);
+    expect(done.body.observedStatus).toBe("REPLACEMENT_RECORDED");
+    expect(
+      done.body.transitions.map(
+        (item: { newStatus: string }) => item.newStatus,
+      ),
+    ).toEqual([
+      "REPLACEMENT_AUTHORIZED",
+      "OLD_SERVER_STATE_RECORDED",
+      "REPLACEMENT_RECORDED",
+    ]);
+    expect(
+      (
+        await write(
+          "post",
+          `/operational-records/${skipped.body.id}/replacement-observations`,
+          adminCookie,
+        ).send({
+          reason: "terminal repeat",
+          replacementObservedState: "INSTALLATION_OBSERVED",
+        })
+      ).body.code,
+    ).toBe("InvalidTransition");
+    const lostOld = `LOST-${ulid()}`;
+    const lostNew = `LOST-NEW-${ulid()}`;
+    const emergency = await write(
+      "post",
+      "/operational-records/server-replacements",
+      adminCookie,
+    ).send({
+      customerId: first.body.id,
+      oldInstallationReference: lostOld,
+      replacementInstallationReference: lostNew,
+      emergencyOldServerLost: true,
+      reason: "Old server destroyed; no response is available",
+    });
+    expect(emergency.status).toBe(201);
+    expect(emergency.body.emergencyOldServerLost).toBe(true);
+    expect(emergency.body.oldServerObservedState).toBe(
+      "UNAVAILABLE_EMERGENCY_LOSS",
+    );
+    expect(emergency.body.transitions).toHaveLength(2);
+    expect(
+      (
+        await write(
+          "post",
+          `/operational-records/${emergency.body.id}/old-server-observations`,
+          adminCookie,
+        ).send({
+          reason: "cannot claim a response from a lost server",
+          oldServerObservedState: "DEACTIVATION_OBSERVED",
+        })
+      ).body.code,
+    ).toBe("InvalidTransition");
+    const emergencyDone = await write(
+      "post",
+      `/operational-records/${emergency.body.id}/replacement-observations`,
+      adminCookie,
+    ).send({
+      reason: "Replacement installed without an old-server response",
+      replacementObservedState: "INSTALLATION_OBSERVED",
+    });
+    expect(emergencyDone.status).toBe(200);
+    const raceOld = `RACE-${ulid()}`;
+    const raceNew = `RACE-NEW-${ulid()}`;
+    const raced = await Promise.all([
+      write(
+        "post",
+        "/operational-records/server-replacements",
+        adminCookie,
+      ).send({
+        customerId: second.body.id,
+        oldInstallationReference: raceOld,
+        replacementInstallationReference: raceNew,
+        emergencyOldServerLost: false,
+        reason: "concurrent decision",
+      }),
+      write(
+        "post",
+        "/operational-records/server-replacements",
+        adminCookie,
+      ).send({
+        customerId: second.body.id,
+        oldInstallationReference: raceOld,
+        replacementInstallationReference: raceNew,
+        emergencyOldServerLost: false,
+        reason: "concurrent decision",
+      }),
+    ]);
+    expect(raced.map((item) => item.status).sort()).toEqual([201, 409]);
+    expect(raced.find((item) => item.status === 409)!.body.code).toBe(
+      "DuplicateOperation",
+    );
+    expect(
+      (
+        await db.pool.query(
+          "SELECT id FROM owner.operational_records WHERE old_installation_reference=$1",
+          [raceOld],
+        )
+      ).rowCount,
+    ).toBe(1);
+    await expect(
+      db.pool.query(
+        "UPDATE owner.operational_transitions SET reason='rewritten' WHERE record_id=$1",
+        [done.body.id],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      db.pool.query(
+        "DELETE FROM owner.operational_transitions WHERE record_id=$1",
+        [done.body.id],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      db.pool.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          old_installation_reference, replacement_installation_reference,
+          emergency_old_server_lost, replaces_record_id, created_by, updated_by)
+        VALUES ($1,$2,'SERVER_REPLACEMENT','REPLACEMENT_AUTHORIZED','REPLACEMENT_AUTHORIZED',$3,$4,false,$5,$6,$6)`,
+        [
+          ulid(),
+          second.body.id,
+          `X-${ulid()}`,
+          `Y-${ulid()}`,
+          license.body.id,
+          adminId,
+        ],
+      ),
+    ).rejects.toThrow();
+  });
+  it("allows a completed replacement chain and rejects unfinished overlap in SQL", async () => {
+    const created = await customer(adminCookie, `Chain-${ulid()}`);
+    const authorize = async (
+      oldInstallation: string,
+      nextInstallation: string,
+    ) =>
+      write(
+        "post",
+        "/operational-records/server-replacements",
+        adminCookie,
+      ).send({
+        customerId: created.body.id,
+        oldInstallationReference: oldInstallation,
+        replacementInstallationReference: nextInstallation,
+        emergencyOldServerLost: false,
+        reason: "Authorized same-customer replacement",
+      });
+    const first = await authorize("A-chain", "B-chain");
+    expect(first.status).toBe(201);
+    const overlap = await authorize("B-chain", "C-chain");
+    expect(overlap.status).toBe(409);
+    expect(overlap.body.code).toBe("DuplicateOperation");
+    await expect(
+      db.pool.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          old_installation_reference, replacement_installation_reference,
+          emergency_old_server_lost, created_by, updated_by)
+        VALUES ($1,$2,'SERVER_REPLACEMENT','REPLACEMENT_AUTHORIZED','REPLACEMENT_AUTHORIZED',$3,$4,false,$5,$5)`,
+        [ulid(), created.body.id, "B-chain", "C-chain", adminId],
+      ),
+    ).rejects.toThrow();
+    const observed = await write(
+      "post",
+      `/operational-records/${first.body.id}/old-server-observations`,
+      adminCookie,
+    ).send({
+      reason: "Old server deactivation observed",
+      oldServerObservedState: "DEACTIVATION_OBSERVED",
+    });
+    expect(observed.status).toBe(200);
+    const recorded = await write(
+      "post",
+      `/operational-records/${first.body.id}/replacement-observations`,
+      adminCookie,
+    ).send({
+      reason: "Replacement installation observed",
+      replacementObservedState: "INSTALLATION_OBSERVED",
+    });
+    expect(recorded.status).toBe(200);
+    const chained = await authorize("B-chain", "C-chain");
+    expect(chained.status).toBe(201);
+    expect(chained.body.observedStatus).toBe("REPLACEMENT_AUTHORIZED");
+    const other = ulid();
+    await db.pool.query(
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'READ_ONLY_OBSERVER',false)",
+      [other, other, await hashPassword("Disposable_chain_45")],
+    );
+    await expect(
+      db.pool.query(
+        "UPDATE owner.operational_records SET updated_by=$2 WHERE id=$1",
+        [chained.body.id, other],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      db.pool.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          installation_reference, emergency_old_server_lost, created_by, updated_by)
+        VALUES ($1,$2,'LICENSE','ACTIVATED','ACTIVATION_OBSERVED',$3,false,$4,$4)`,
+        [ulid(), created.body.id, `SKIP-${ulid()}`, adminId],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      db.pool.query(
+        `INSERT INTO owner.operational_transitions(
+          id, record_id, actor_id, prior_status, new_status, reason,
+          confirmation_kind)
+        VALUES ($1,$2,$3,'UNRECORDED','REPLACEMENT_AUTHORIZED','forged history','OPERATOR_OBSERVED')`,
+        [ulid(), chained.body.id, adminId],
+      ),
+    ).rejects.toThrow();
+  });
+  it("rejects discontinuous direct-SQL history and accepts legal chains", async () => {
+    const created = await customer(adminCookie, `Hist-${ulid()}`);
+    const customerId = created.body.id as string;
+    const historian = ulid();
+    await db.pool.query(
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'READ_ONLY_OBSERVER',false)",
+      [historian, historian, await hashPassword("Disposable_hist_45")],
+    );
+    const insertLicense = (tx: PoolClient, id: string, reference: string) =>
+      tx.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          installation_reference, emergency_old_server_lost, created_by, updated_by)
+        VALUES ($1,$2,'LICENSE','ISSUED','EXTERNAL_ISSUANCE_OBSERVED',$3,false,$4,$4)`,
+        [id, customerId, reference, adminId],
+      );
+    const activate = (tx: PoolClient, id: string) =>
+      tx.query(
+        `UPDATE owner.operational_records
+        SET observed_status='ACTIVATED', observation_category='ACTIVATION_OBSERVED',
+          updated_by=$2, updated_at=clock_timestamp()
+        WHERE id=$1`,
+        [id, adminId],
+      );
+    const insertReplacement = (
+      tx: PoolClient,
+      id: string,
+      oldInstallation: string,
+      nextInstallation: string,
+      emergency: boolean,
+    ) =>
+      tx.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          old_installation_reference, replacement_installation_reference,
+          old_server_observed_state, emergency_old_server_lost, created_by, updated_by)
+        VALUES ($1,$2,'SERVER_REPLACEMENT',$3,$4,$5,$6,$7,$8,$9,$9)`,
+        [
+          id,
+          customerId,
+          emergency ? "OLD_SERVER_STATE_RECORDED" : "REPLACEMENT_AUTHORIZED",
+          emergency ? "OLD_SERVER_STATE_OBSERVED" : "REPLACEMENT_AUTHORIZED",
+          oldInstallation,
+          nextInstallation,
+          emergency ? "UNAVAILABLE_EMERGENCY_LOSS" : null,
+          emergency,
+          adminId,
+        ],
+      );
+    const recordOldServer = (tx: PoolClient, id: string) =>
+      tx.query(
+        `UPDATE owner.operational_records
+        SET observed_status='OLD_SERVER_STATE_RECORDED',
+          observation_category='OLD_SERVER_STATE_OBSERVED',
+          old_server_observed_state='DEACTIVATION_OBSERVED',
+          updated_by=$2, updated_at=clock_timestamp()
+        WHERE id=$1`,
+        [id, adminId],
+      );
+    const recordReplacement = (tx: PoolClient, id: string) =>
+      tx.query(
+        `UPDATE owner.operational_records
+        SET observed_status='REPLACEMENT_RECORDED',
+          observation_category='REPLACEMENT_INSTALLATION_OBSERVED',
+          replacement_observed_state='INSTALLATION_OBSERVED',
+          updated_by=$2, updated_at=clock_timestamp()
+        WHERE id=$1`,
+        [id, adminId],
+      );
+
+    const licenseId = ulid();
+    await db.transaction(async (tx) => {
+      await insertLicense(tx, licenseId, `H${ulid()}`);
+      await insertTransition(
+        tx,
+        licenseId,
+        adminId,
+        "UNRECORDED",
+        "ISSUED",
+        "external issuance observed",
+      );
+    });
+    expect(await observedStatus(licenseId)).toBe("ISSUED");
+    expect(await transitionChain(licenseId)).toEqual(["UNRECORDED->ISSUED"]);
+
+    const badStart = ulid();
+    await expect(
+      db.transaction(async (tx) => {
+        await insertLicense(tx, badStart, `B${ulid()}`);
+        await insertTransition(
+          tx,
+          badStart,
+          adminId,
+          "ISSUED",
+          "ACTIVATED",
+          "does not start at UNRECORDED",
+        );
+      }),
+    ).rejects.toThrow(/must start from UNRECORDED/);
+    expect(await observedStatus(badStart)).toBeNull();
+
+    const forgedFinal = ulid();
+    await expect(
+      db.transaction(async (tx) => {
+        await insertLicense(tx, forgedFinal, `F${ulid()}`);
+        await activate(tx, forgedFinal);
+        await insertTransition(
+          tx,
+          forgedFinal,
+          adminId,
+          "UNRECORDED",
+          "ACTIVATED",
+          "forged final status",
+        );
+      }),
+    ).rejects.toThrow(/not the next permitted state/);
+    expect(await observedStatus(forgedFinal)).toBeNull();
+
+    await expect(
+      db.transaction(async (tx) => {
+        await activate(tx, licenseId);
+        await insertTransition(
+          tx,
+          licenseId,
+          adminId,
+          "UNRECORDED",
+          "ACTIVATED",
+          "forged prior on a valid final status",
+        );
+      }),
+    ).rejects.toThrow(/prior status is not continuous/);
+    expect(await observedStatus(licenseId)).toBe("ISSUED");
+    expect(await transitionChain(licenseId)).toEqual(["UNRECORDED->ISSUED"]);
+
+    await expect(
+      db.transaction(async (tx) => {
+        await activate(tx, licenseId);
+        await insertTransition(
+          tx,
+          licenseId,
+          adminId,
+          "ISSUED",
+          "ACTIVATED",
+          "out of order activation",
+          "2000-01-01T00:00:00Z",
+        );
+      }),
+    ).rejects.toThrow(/appended in order/);
+    expect(await observedStatus(licenseId)).toBe("ISSUED");
+    expect(await transitionChain(licenseId)).toEqual(["UNRECORDED->ISSUED"]);
+
+    const inconsistent = ulid();
+    await expect(
+      db.transaction(async (tx) => {
+        await insertLicense(tx, inconsistent, `C${ulid()}`);
+        await insertTransition(
+          tx,
+          inconsistent,
+          adminId,
+          "UNRECORDED",
+          "REPLACEMENT_AUTHORIZED",
+          "record inconsistent",
+        );
+      }),
+    ).rejects.toThrow(/not the next permitted state/);
+    expect(await observedStatus(inconsistent)).toBeNull();
+
+    await db.transaction(async (tx) => {
+      await activate(tx, licenseId);
+      await insertTransition(
+        tx,
+        licenseId,
+        adminId,
+        "ISSUED",
+        "ACTIVATED",
+        "activation observed",
+      );
+    });
+    expect(await observedStatus(licenseId)).toBe("ACTIVATED");
+    expect(await transitionChain(licenseId)).toEqual([
+      "UNRECORDED->ISSUED",
+      "ISSUED->ACTIVATED",
+    ]);
+    await expect(
+      db.pool.query(
+        `INSERT INTO owner.operational_transitions(
+          id, record_id, actor_id, prior_status, new_status, reason,
+          confirmation_kind)
+        VALUES ($1,$2,$3,'ACTIVATED','REPLACEMENT_RECORDED','extra transition','OPERATOR_OBSERVED')`,
+        [ulid(), licenseId, adminId],
+      ),
+    ).rejects.toThrow(/already recorded/);
+    await expect(
+      db.pool.query(
+        "UPDATE owner.operational_transitions SET reason='rewritten' WHERE record_id=$1",
+        [licenseId],
+      ),
+    ).rejects.toThrow(/append-only/);
+    await expect(
+      db.pool.query(
+        "DELETE FROM owner.operational_transitions WHERE record_id=$1",
+        [licenseId],
+      ),
+    ).rejects.toThrow(/append-only/);
+    expect(await transitionChain(licenseId)).toEqual([
+      "UNRECORDED->ISSUED",
+      "ISSUED->ACTIVATED",
+    ]);
+
+    const replacementId = ulid();
+    await db.transaction(async (tx) => {
+      await insertReplacement(
+        tx,
+        replacementId,
+        `O${ulid()}`,
+        `N${ulid()}`,
+        false,
+      );
+      await insertTransition(
+        tx,
+        replacementId,
+        adminId,
+        "UNRECORDED",
+        "REPLACEMENT_AUTHORIZED",
+        "replacement authorized",
+      );
+    });
+    await db.transaction(async (tx) => {
+      await recordOldServer(tx, replacementId);
+      await insertTransition(
+        tx,
+        replacementId,
+        adminId,
+        "REPLACEMENT_AUTHORIZED",
+        "OLD_SERVER_STATE_RECORDED",
+        "old server observed",
+      );
+    });
+    await db.transaction(async (tx) => {
+      await recordReplacement(tx, replacementId);
+      await insertTransition(
+        tx,
+        replacementId,
+        adminId,
+        "OLD_SERVER_STATE_RECORDED",
+        "REPLACEMENT_RECORDED",
+        "replacement observed",
+      );
+    });
+    expect(await observedStatus(replacementId)).toBe("REPLACEMENT_RECORDED");
+    expect(await transitionChain(replacementId)).toEqual([
+      "UNRECORDED->REPLACEMENT_AUTHORIZED",
+      "REPLACEMENT_AUTHORIZED->OLD_SERVER_STATE_RECORDED",
+      "OLD_SERVER_STATE_RECORDED->REPLACEMENT_RECORDED",
+    ]);
+
+    const gapId = ulid();
+    await db.transaction(async (tx) => {
+      await insertReplacement(tx, gapId, `G${ulid()}`, `H${ulid()}`, false);
+      await insertTransition(
+        tx,
+        gapId,
+        adminId,
+        "UNRECORDED",
+        "REPLACEMENT_AUTHORIZED",
+        "authorized before a gap",
+      );
+    });
+    await expect(
+      db.transaction(async (tx) => {
+        await recordOldServer(tx, gapId);
+        await insertTransition(
+          tx,
+          gapId,
+          adminId,
+          "ISSUED",
+          "OLD_SERVER_STATE_RECORDED",
+          "discontinuous history",
+        );
+      }),
+    ).rejects.toThrow(/not continuous/);
+    expect(await observedStatus(gapId)).toBe("REPLACEMENT_AUTHORIZED");
+    expect(await transitionChain(gapId)).toEqual([
+      "UNRECORDED->REPLACEMENT_AUTHORIZED",
+    ]);
+
+    const emergencyId = ulid();
+    await db.transaction(async (tx) => {
+      await insertReplacement(
+        tx,
+        emergencyId,
+        `E${ulid()}`,
+        `R${ulid()}`,
+        true,
+      );
+      await insertTransition(
+        tx,
+        emergencyId,
+        historian,
+        "UNRECORDED",
+        "REPLACEMENT_AUTHORIZED",
+        "authorized decision",
+      );
+      await insertTransition(
+        tx,
+        emergencyId,
+        adminId,
+        "REPLACEMENT_AUTHORIZED",
+        "OLD_SERVER_STATE_RECORDED",
+        "old server lost",
+      );
+    });
+    expect(await observedStatus(emergencyId)).toBe("OLD_SERVER_STATE_RECORDED");
+    expect(await transitionChain(emergencyId)).toEqual([
+      "UNRECORDED->REPLACEMENT_AUTHORIZED",
+      "REPLACEMENT_AUTHORIZED->OLD_SERVER_STATE_RECORDED",
+    ]);
+    const actors = await db.pool.query<{ actor_id: string }>(
+      `SELECT actor_id FROM owner.operational_transitions
+      WHERE record_id=$1 ORDER BY occurred_at, id`,
+      [emergencyId],
+    );
+    expect(actors.rows.map((row) => row.actor_id)).toEqual([
+      historian,
+      adminId,
+    ]);
+
+    const incomplete = ulid();
+    await expect(
+      db.transaction(async (tx) => {
+        await insertReplacement(
+          tx,
+          incomplete,
+          `I${ulid()}`,
+          `J${ulid()}`,
+          true,
+        );
+        await insertTransition(
+          tx,
+          incomplete,
+          adminId,
+          "UNRECORDED",
+          "REPLACEMENT_AUTHORIZED",
+          "prefix only",
+        );
+      }),
+    ).rejects.toThrow(/does not match the recorded state/);
+    expect(await observedStatus(incomplete)).toBeNull();
+
+    const jumped = ulid();
+    await expect(
+      db.transaction(async (tx) => {
+        await insertReplacement(tx, jumped, `K${ulid()}`, `L${ulid()}`, true);
+        await insertTransition(
+          tx,
+          jumped,
+          adminId,
+          "UNRECORDED",
+          "OLD_SERVER_STATE_RECORDED",
+          "skipped authorization",
+        );
+      }),
+    ).rejects.toThrow(/not the next permitted state/);
+    expect(await observedStatus(jumped)).toBeNull();
+
+    const forgedEmergency = ulid();
+    await expect(
+      db.transaction(async (tx) => {
+        await insertReplacement(
+          tx,
+          forgedEmergency,
+          `M${ulid()}`,
+          `P${ulid()}`,
+          true,
+        );
+        await insertTransition(
+          tx,
+          forgedEmergency,
+          adminId,
+          "UNRECORDED",
+          "REPLACEMENT_AUTHORIZED",
+          "authorized decision",
+        );
+        await insertTransition(
+          tx,
+          forgedEmergency,
+          adminId,
+          "UNRECORDED",
+          "OLD_SERVER_STATE_RECORDED",
+          "forged emergency prior",
+        );
+      }),
+    ).rejects.toThrow(/not continuous/);
+    expect(await observedStatus(forgedEmergency)).toBeNull();
+
+    const mismatched = ulid();
+    await expect(
+      db.transaction(async (tx) => {
+        await insertReplacement(
+          tx,
+          mismatched,
+          `Q${ulid()}`,
+          `S${ulid()}`,
+          true,
+        );
+        await insertTransition(
+          tx,
+          mismatched,
+          adminId,
+          "UNRECORDED",
+          "REPLACEMENT_AUTHORIZED",
+          "authorized decision",
+        );
+        await insertTransition(
+          tx,
+          mismatched,
+          historian,
+          "REPLACEMENT_AUTHORIZED",
+          "OLD_SERVER_STATE_RECORDED",
+          "wrong completing actor",
+        );
+      }),
+    ).rejects.toThrow(/actor must match/);
+    expect(await observedStatus(mismatched)).toBeNull();
+  });
+  it("rolls back an operation when durable audit insertion fails", async () => {
+    const created = await customer(adminCookie, `Audit-op-${ulid()}`);
+    await db.pool.query(
+      `CREATE FUNCTION owner.test_fail_operation_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'audit fault'; END $$;
+      CREATE TRIGGER test_operation_audit BEFORE INSERT ON owner.audit_events FOR EACH ROW EXECUTE FUNCTION owner.test_fail_operation_audit()`,
+    );
+    try {
+      expect(
+        (
+          await write(
+            "post",
+            "/operational-records/license-observations",
+            adminCookie,
+          ).send({
+            customerId: created.body.id,
+            installationReference: `AUD-${ulid()}`,
+            reason: "must roll back with the audit write",
+          })
+        ).status,
+      ).toBe(500);
+      expect(
+        (
+          await db.pool.query(
+            "SELECT id FROM owner.operational_records WHERE customer_id=$1 AND kind='LICENSE'",
+            [created.body.id],
+          )
+        ).rowCount,
+      ).toBe(0);
+    } finally {
+      await db.pool.query(
+        "DROP TRIGGER test_operation_audit ON owner.audit_events; DROP FUNCTION owner.test_fail_operation_audit()",
+      );
+    }
+  });
+  it("authorizes manual operations for all four roles on the direct API", async () => {
+    const created = await customer(adminCookie, `Role-op-${ulid()}`);
+    const installation = `ROLE-${ulid()}`;
+    const issued = await write(
+      "post",
+      "/operational-records/license-observations",
+      adminCookie,
+    ).send({
+      customerId: created.body.id,
+      installationReference: installation,
+      reason: "role matrix observation",
+    });
+    expect(issued.status).toBe(201);
+    for (const role of [
+      "SYSTEM_ADMIN",
+      "LICENSE_ISSUANCE",
+      "READ_ONLY_OBSERVER",
+      "SUPPORT_SPECIALIST",
+    ] as const) {
+      const uid = ulid();
+      const pw = "Disposable_role_45";
+      await db.pool.query(
+        "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,$4,false)",
+        [uid, uid, await hashPassword(pw), role],
+      );
+      const { cookie } = await login(uid, pw);
+      const list = await request(app)
+        .get("/api/v1/operational-records")
+        .query({ customerId: created.body.id })
+        .set("Cookie", cookie);
+      const detail = await request(app)
+        .get(`/api/v1/operational-records/${issued.body.id}`)
+        .set("Cookie", cookie);
+      const mutation = await write(
+        "post",
+        "/operational-records/license-observations",
+        cookie,
+      ).send({
+        customerId: created.body.id,
+        installationReference: `MUT-${ulid()}`,
+        reason: "direct mutation attempt",
+      });
+      if (role === "SUPPORT_SPECIALIST") {
+        expect(list.status).toBe(403);
+        expect(detail.status).toBe(403);
+        expect(mutation.status).toBe(403);
+        expect(JSON.stringify(list.body)).not.toContain(installation);
+        expect(JSON.stringify(detail.body)).not.toContain("CASE");
+      } else if (role === "READ_ONLY_OBSERVER") {
+        expect(list.status).toBe(200);
+        expect(detail.status).toBe(200);
+        expect(detail.body.customerCode).toBe(created.body.customerCode);
+        expect(detail.body).not.toHaveProperty("contractReference");
+        expect(mutation.status).toBe(403);
+        expect(mutation.body.code).toBe("PermissionDenied");
+      } else {
+        expect(list.status).toBe(200);
+        expect(detail.status).toBe(200);
+        expect(mutation.status).toBe(201);
+        expect(mutation.body.signedArtifactProduced).toBe(false);
+      }
+      if (role !== "SYSTEM_ADMIN" && role !== "LICENSE_ISSUANCE") {
+        const denied = await db.pool.query(
+          "SELECT outcome, reason FROM owner.audit_events WHERE actor_id=$1 AND event_type='OPERATION_MUTATION_DENIED'",
+          [uid],
+        );
+        expect(denied.rowCount).toBe(1);
+        expect(denied.rows[0].outcome).toBe("DENIED");
+        expect(JSON.stringify(denied.rows[0])).not.toContain("direct mutation");
+      }
+      await expectUnavailableOperations(cookie);
+    }
+    const effective = await request(app)
+      .get("/api/v1/permissions/effective")
+      .set("Cookie", adminCookie);
+    expect(effective.body.permissions).toEqual([
+      "customers.view",
+      "customers.write",
+      "users.manage",
+      "audit.view",
+      "operations.view",
+      "operations.record",
+    ]);
   });
 });

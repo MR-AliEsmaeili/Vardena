@@ -4,9 +4,11 @@ Independent Owner web application; **not customer Vardena**. Product authority:
 [PDR-17](../docs/decisions/product/PDR-17-owner-web-application-phase-1.md).
 Persian RTL login, mandatory password change, customer list/search/detail/create/
 edit, user administration/role assignment, and durable attributable audit viewing.
-The lifecycle navigation clearly labels issuance/activation/deactivation/device
-replacement/server replacement/revocation/recovery as unavailable. There is **no
-signer, signing key, signed receipt, or fake successful license operation**.
+The lifecycle navigation keeps cryptographic issuance, signed receipts, device
+replacement, revocation and recovery unavailable. Administrator and Issuance
+Specialist can record operator-observed activation facts and same-customer
+server-replacement observations. There is **no signer, signing key, signed
+receipt, or claim of cryptographic confirmation**.
 
 ## Boundaries and dependencies
 
@@ -85,9 +87,11 @@ Never place these credentials in the UI's `VITE_*` variables or customer `.env`.
 Use separate migration and application credentials. The migration role owns schema
 `owner` and `public.owner_migrations`. Grant runtime only schema USAGE, SELECT /
 INSERT / UPDATE on `owner.users`, `owner.sessions`, `owner.login_limits`,
-`owner.customers`; SELECT / INSERT on `owner.audit_events`; USAGE / SELECT on
-its identity sequence. Do **not** grant runtime DDL, audit UPDATE / DELETE /
-TRUNCATE, or writes to reserved operational tables or the migration ledger.
+`owner.customers` and `owner.operational_records`; SELECT / INSERT on
+`owner.audit_events` and `owner.operational_transitions`; USAGE / SELECT on
+their identity sequences. Do **not** grant runtime DDL, audit or transition
+UPDATE / DELETE / TRUNCATE, operational-record DELETE, or writes to the
+migration ledger. No SQL role name is invented here.
 Verify role grants, ingress policy, backups, restore drills and capacity in your
 Owner deployment before production use. `/api/v1/health` probes database access.
 No key custody or U-1 compromise response is implemented. No production signer is
@@ -109,9 +113,20 @@ Customer ID and code cannot be updated, including direct SQL updates (trigger).
 Display-name/status/reference changes retain before/after fields and actor in the
 same transaction; a failed audit write rolls back the mutation. No arbitrary
 metadata JSON, customer secrets, contact/CRM/billing data or raw signed artifacts.
-Reserved operational tables can represent same-customer manual server replacement,
-old-server loss, actor/time/reason/status/evidence reference and operator-observed
-confirmation. They have **no application write endpoints yet**.
+`002-manual-operations.sql` extends the empty reserved tables. It refuses to run
+if rows already exist. License observations are unique per customer and
+installation. Replacement observations are unique per customer and old
+installation, and per customer and new installation. Identity, installation
+references, emergency flag and recorded observations are immutable. Status may
+move only issued → activated, or authorized → old-server observation →
+replacement recorded. A direct insert cannot skip that start, an unfinished
+replacement cannot reuse either installation on the other side, and
+`updated_by` cannot change without a status change. A completed replacement
+may later be the old installation of another observation. Transitions are
+append-only. Direct SQL must keep a continuous history that starts at
+`UNRECORDED` and matches the legal path to the current state, including both
+emergency steps in one transaction. A forged prior, skipped step, reordered
+row, or extra transition is rejected. No cancellation state exists.
 
 ## Security
 
@@ -136,12 +151,12 @@ confirmation. They have **no application write endpoints yet**.
   intentionally shares the bucket. Plan ingress rate limits/worker capacity for
   your operators; expired bucket housekeeping is infrastructure data, **not an
   audit retention rule**. No raw IP/username retained in failed-login audit.
-- Role policy: PDR-17 / Product Owner correction to PR #160. Issuance Specialist
-  and Observer have customer/audit reads only. Support customer reads serialize
-  only id/code/display name/status, never contract/audit/user data. Administrator
-  retains customer/user administration and audit reads. Unknown or unimplemented
-  operations deny; no wildcard expansion and no dual control. Audit is durable/
-  append-only to application operations,
+- Role policy: PDR-17 / Product Owner correction to PR #160, plus the
+  observation grants in that record. Administrator and Issuance Specialist may
+  inspect and record manual observations. Observer may inspect them. Support
+  customer reads serialize only id/code/display name/status and receive neither
+  operational grant. Unknown operations deny; no wildcard expansion and no dual
+  control. Audit is durable and append-only to application operations,
   **not tamper-proof against database owners**. No general audit deletion API.
 - OQ-77 option C's wording is absent from current sources: no retention duration,
   purge schedule or inferred deletion behavior. OQ-77 remains OPEN.
@@ -158,7 +173,19 @@ unknown fields reject. Lists: page size 50, `page`, literal `search` up to 100 c
 `users` GET/POST; `users/:id` PATCH role/isActive/reason;
 `users/:id/reset-password` POST password/reason. New/reset accounts must change
 password. `audit-events` GET, optional `targetId`, 50-row pages.
-All unimplemented lifecycle routes return 404, never synthetic evidence.
+`operational-records` GET with `page`, literal `search`, optional `kind`,
+`status` and `customerId`. Detail includes append-only history.
+POST `operational-records/license-observations` records an externally observed
+issuance. POST `operational-records/:id/activation-observations` records
+issued → activated. POST `operational-records/server-replacements` records
+authorization, or emergency old-server loss when `emergencyOldServerLost` is
+true. POST `operational-records/:id/old-server-observations` and
+`replacement-observations` continue that sequence. Mutation routes require
+`operations.record`; a missing grant audits `OPERATION_MUTATION_DENIED` and
+returns 403. Stable codes include `InvalidTransition`, `DuplicateOperation`,
+`PermissionDenied` and `EntityNotFound`. Responses say `OPERATOR_OBSERVED` and
+`cryptographicVerification=NOT_IMPLEMENTED`. Signed protocol routes stay 404.
+No DELETE endpoint exists.
 Errors have `code`, bounded safe `message`, `correlationId`; no raw DB errors.
 
 ## Verification environments
@@ -184,4 +211,7 @@ explicit approved remote hosts, rejection of arbitrary hosts/IPs/lookalikes,
 invalid broad configuration and both server hook registrations. No Vite server
 or production build is needed for these focused tests. CI also exercises API
 reads/projections/forbidden mutations for each role, backend effective permissions
-and observable UI read-only/support rendering. No lifecycle API is introduced.
+and observable UI read-only/support rendering. The later manual-observation
+slice is documented in
+[its task record](../docs/tasks/licensing-owner-side-manual-operations.md).
+Signed lifecycle routes remain absent.
