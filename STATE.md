@@ -2407,5 +2407,11 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   enum-schema assertion: node-postgres returned the schema-qualified custom
   enum array as PostgreSQL array text. The introspection now aggregates labels
   as JSON so the driver yields the asserted JavaScript arrays; no expected enum
-  value, migration, fixture, or product behavior changed. A later exact-head
-  run is the only valid verification.
+  value, migration, fixture, or product behavior changed. Run
+  [38703159543](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38703159543)
+  on `b77a50327880907ae58fddde9cd35e31754256bf` passed those phases and
+  exposed that the expected catalog constraint name did not account for
+  PostgreSQL's 63-byte identifier limit. The expectation now uses the actual
+  catalog-truncated name while retaining the full migration-declared name in
+  the lookup; no constraint, migration, fixture, or product behavior changed.
+  A later exact-head run is the only valid verification.

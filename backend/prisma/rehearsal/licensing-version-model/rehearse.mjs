@@ -918,7 +918,8 @@ async function assertClientDeviceMigration(client, before) {
   assert.deepEqual(
     constraints.rows.map((row) => row.conname),
     [
-      'client_device_replacement_requests_old_device_same_installation_fkey',
+      // PostgreSQL truncates identifiers to NAMEDATALEN - 1 (63 bytes).
+      'client_device_replacement_requests_old_device_same_installation',
       'client_device_replacement_requests_state_check',
       'client_devices_enrollment_challenge_same_installation_fkey',
       'client_devices_origin_check',
