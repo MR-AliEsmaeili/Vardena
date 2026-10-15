@@ -2307,8 +2307,19 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   from that dump with `openapi-typescript@7.13.0`. Local Prisma validate/generate
   remains blocked by the schema-engine download from `binaries.prisma.sh` and
   was not retried. Heavy/full suites, E2E, live PostgreSQL, migration rehearsals
-  and Docker were not run locally; the dedicated serial client-device PostgreSQL
-  suite and applicable checks are CI-only on the exact PR head.
+  and Docker were not run locally.
+- **Exact-head CI diagnosis/fix pending verification:** initial run
+  [38671941305](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38671941305)
+  on `8b9de9550b0be612e00945dad7695e3ab2cead5b` failed at Prisma validate and
+  Prisma generate. The supplied Prisma output identified P1012 for the
+  one-to-one `ClientDevice.enrollmentChallenge` and `replacementRequest`
+  relations: the defining-side composite unique fields existed, but in reverse
+  order from the relation scalar fields. Added matching ordered unique
+  attributes and corresponding constraints to the additive lifecycle migration.
+  This is a schema-integrity correction, not a policy change. Prisma
+  validate/generate, generated-client drift and the dedicated serial live
+  PostgreSQL suite remain pending CI on the new exact head; the initial live
+  suite was skipped after validation failed.
 - **Review/acceptance guardrails:** license-import rejection audit remains
   best-effort as previously designed. OQ-83 implementation is submitted for
   review, not accepted or merged. No main push, merge, auto-merge or repository

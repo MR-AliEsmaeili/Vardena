@@ -61,6 +61,8 @@ CREATE TABLE "licensing"."client_devices" (
   CONSTRAINT "uq_client_devices_installation_replaced_by" UNIQUE ("installation_id", "replaced_by_device_id"),
   CONSTRAINT "uq_client_devices_installation_enrollment_challenge" UNIQUE ("installation_id", "enrollment_challenge_id"),
   CONSTRAINT "uq_client_devices_installation_replacement_request" UNIQUE ("installation_id", "replacement_request_id"),
+  CONSTRAINT "uq_client_devices_enrollment_challenge_installation" UNIQUE ("enrollment_challenge_id", "installation_id"),
+  CONSTRAINT "uq_client_devices_replacement_request_installation" UNIQUE ("replacement_request_id", "installation_id"),
   CONSTRAINT "client_devices_installation_id_fkey"
     FOREIGN KEY ("installation_id") REFERENCES "licensing"."installations"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "client_devices_replaced_by_same_installation_fkey"

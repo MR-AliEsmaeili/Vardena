@@ -293,6 +293,9 @@ model ClientDevice {
   @@unique([installationId, replacedByDeviceId], map: "uq_client_devices_installation_replaced_by")
   @@unique([installationId, enrollmentChallengeId], map: "uq_client_devices_installation_enrollment_challenge")
   @@unique([installationId, replacementRequestId], map: "uq_client_devices_installation_replacement_request")
+  // Prisma requires a unique constraint on the exact ordered relation scalar fields.
+  @@unique([enrollmentChallengeId, installationId], map: "uq_client_devices_enrollment_challenge_installation")
+  @@unique([replacementRequestId, installationId], map: "uq_client_devices_replacement_request_installation")
   @@index([installationId, status, activatedAt], map: "idx_client_devices_installation_status_activated_at")
   @@map("client_devices")
   @@schema("licensing")
