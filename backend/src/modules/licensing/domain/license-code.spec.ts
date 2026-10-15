@@ -56,6 +56,8 @@ describe('license code', () => {
     const parsed = parseLicenseCode(code, publicKeys);
 
     expect(parsed).toEqual(payload);
+    expect(parsed.deviceLimit).toBeNull();
+    expect(parsed.deviceLimitSpecified).toBe(false);
     expect(parsed.customerCode).toBe(CUSTOMER_CODE);
     expect(toInstallationLicense(parsed, 'persistent')).toMatchObject({
       customerId: CUSTOMER,

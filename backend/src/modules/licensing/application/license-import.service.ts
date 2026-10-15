@@ -23,7 +23,6 @@ import {
   LICENSE_CODE_PREFIX,
   licenseCodeHash,
   parseLicenseCode,
-  parsePublicKey,
   toInstallationLicense as legacyToInstallationLicense,
   type LicenseCodeErrorReason,
   type LicensePayload,
@@ -33,8 +32,7 @@ import {
   licenseDocumentHash,
   licenseVersionEntitlements,
   parseLicenseDocument,
-  splitTrustedKeyEntry,
-  toTrustedKeys,
+  parseTrustedLicenseKeys,
   LicenseCodeError,
   LicenseDocumentError,
   type LicenseDocumentErrorReason,
@@ -299,30 +297,10 @@ export class LicenseImportService {
     @Inject(LICENSE_USAGE_PORT) private readonly usage: LicenseUsagePort,
     private readonly logger: JsonLogger,
   ) {
-    const seen = new Set<string>();
-    const parsed = config.licensing.signingPublicKeys.map((entry, index) => {
-      const { id, material } = splitTrustedKeyEntry(entry);
-      let key: KeyObject;
-      try {
-        key = parsePublicKey(material);
-      } catch {
-        throw new Error(
-          `LICENSE_SIGNING_PUBLIC_KEYS entry ${index + 1} is not a valid Ed25519 public key (PEM or base64 DER).`,
-        );
-      }
-      return id === null ? { key } : { id, key };
-    });
-    const trusted = toTrustedKeys(parsed);
-    for (const key of trusted) {
-      if (seen.has(key.id)) {
-        throw new Error(
-          `LICENSE_SIGNING_PUBLIC_KEYS contains the duplicate key id "${key.id}".`,
-        );
-      }
-      seen.add(key.id);
-    }
-    this.trustedKeys = trusted;
-    this.publicKeys = trusted.map((entry) => entry.key);
+    this.trustedKeys = parseTrustedLicenseKeys(
+      config.licensing.signingPublicKeys,
+    );
+    this.publicKeys = this.trustedKeys.map((entry) => entry.key);
   }
 
   /**
@@ -460,9 +438,10 @@ export class LicenseImportService {
     // the allocation advisory locks, so a concurrent creation can never slip
     // past the check. A counting failure here degrades to "unknown", which the
     // conflict evaluation fails closed on — never to "no conflict".
-    const precheckUsage: LicenseUsageSnapshot | null = await this.usage
-      .snapshot()
-      .catch(() => null);
+    const precheckUsage: LicenseUsageSnapshot | null =
+      installationId === null
+        ? null
+        : await this.usage.snapshot(installationId).catch(() => null);
 
     let transport: {
       document: string;
@@ -590,6 +569,8 @@ export class LicenseImportService {
       customerCode: payload.customerCode,
       organizationLimit: payload.organizationLimit,
       userLimit: payload.userLimit,
+      deviceLimit: payload.deviceLimit,
+      deviceLimitSpecified: payload.deviceLimitSpecified,
       entitlements: licenseVersionEntitlements(payload),
     };
     const precheck = evaluateImportConflicts({
@@ -640,7 +621,7 @@ export class LicenseImportService {
         customerTransfer: options.customerTransfer ?? null,
         gapRecovery: options.gapRecovery ?? null,
         reductionResolution: options.reductionResolution ?? null,
-        readUsage: () => this.usage.snapshot(),
+        readUsage: () => this.usage.snapshot(installationId!),
       },
       executionEventType(options),
     );
@@ -757,9 +738,10 @@ export class LicenseImportService {
     const reductionResolution = options.reductionResolution ?? null;
     // Read-side usage for the §8.6 pre-check on the legacy path (L-04);
     // informational only — the transaction re-reads under the locks.
-    const precheckUsage: LicenseUsageSnapshot | null = await this.usage
-      .snapshot()
-      .catch(() => null);
+    const precheckUsage: LicenseUsageSnapshot | null =
+      installationId === null
+        ? null
+        : await this.usage.snapshot(installationId).catch(() => null);
     let payload: LicensePayload;
     try {
       payload = parseLicenseCode(rawCode.trim(), this.publicKeys);
@@ -894,6 +876,8 @@ export class LicenseImportService {
         customerCode: payload.customerCode,
         organizationLimit: payload.organizationLimit,
         userLimit: payload.userLimit,
+        deviceLimit: payload.deviceLimit,
+        deviceLimitSpecified: payload.deviceLimitSpecified,
         entitlements: legacyEntitlements(payload),
       },
       operationId: legacyOperationId(documentHash),
@@ -931,7 +915,7 @@ export class LicenseImportService {
         customerTransfer: null,
         gapRecovery: null,
         reductionResolution: null,
-        readUsage: () => this.usage.snapshot(),
+        readUsage: () => this.usage.snapshot(installationId!),
         legacy: true,
       },
       'license.import.applied',
@@ -1044,6 +1028,8 @@ export class LicenseImportService {
         validUntil: context.payload.validUntil,
         organizationLimit: context.payload.organizationLimit,
         userLimit: context.payload.userLimit,
+        deviceLimit: context.payload.deviceLimit,
+        deviceLimitSpecified: context.payload.deviceLimitSpecified,
         entitlements,
         supersession: context.supersession,
         customerTransfer: context.customerTransfer,

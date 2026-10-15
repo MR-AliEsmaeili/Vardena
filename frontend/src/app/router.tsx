@@ -21,6 +21,7 @@ import { InventoryDocumentDetailPage } from '@/features/inventory/documents/inve
 import { InventoryDocumentFormPage } from '@/features/inventory/documents/inventory-document-form-page';
 import { InventoryDocumentsPage } from '@/features/inventory/documents/inventory-documents-page';
 import { InventoryHomePage } from '@/features/inventory/inventory-home-page';
+import { ClientDevicesPage } from '@/features/licensing/client-devices-page';
 import { KardexPage } from '@/features/inventory/kardex-page';
 import { MovementFormPage } from '@/features/inventory/movement-form-page';
 import { MovementsPage } from '@/features/inventory/movements-page';
@@ -488,6 +489,17 @@ export function AppRoutes() {
             >
               <Route path="valuation" element={<ValuationStatesPage />} />
             </Route>
+          </Route>
+
+          <Route
+            path="licensing/devices"
+            element={
+              <RequirePermission
+                permissions={[PERMISSIONS.licensing.deviceView]}
+              />
+            }
+          >
+            <Route index element={<ClientDevicesPage />} />
           </Route>
 
           <Route path="*" element={<NotFoundPage />} />

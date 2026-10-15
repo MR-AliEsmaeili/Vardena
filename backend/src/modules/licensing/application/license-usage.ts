@@ -2,22 +2,22 @@ import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core/index.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { UsersService } from '../../users/application/users.service.js';
+import { ClientDevicesRepository } from '../data/client-devices.repository.js';
+
+export { licenseAllocationLockKey } from '../domain/license-allocation-lock.js';
 
 /**
- * The §8.6 usage snapshot (PDR-11 §8.6, L-04): how many organizations and how
- * many active users the installation currently has, for the
- * capacity-conflict check on a version that shrinks its predecessor's grant.
+ * The §8.6 usage snapshot (PDR-11 §8.6, L-04): organization, active-user and
+ * registered-device counts for the capacity-conflict check on a signed
+ * version that reduces its predecessor's grant. Counts are obtained through
+ * the modules that own them; Licensing owns the device records itself.
  *
- * `activeUserCount` is nullable ON PURPOSE: `null` means "the count could not
- * be produced", and the conflict evaluation fails CLOSED on it — an
- * unavailable count is a conflict (`usage-unavailable`), never a silent
- * accept. There is no device dimension: OQ-83 is still open, so §8.6 checks
- * organizations and active users only (the allocation guards enforce the same
- * two limits).
+ * A nullable count means "unknown" and fails closed as `usage-unavailable`.
  */
 export interface LicenseUsageSnapshot {
-  organizationCount: number;
+  organizationCount: number | null;
   activeUserCount: number | null;
+  registeredDeviceCount: number | null;
 }
 
 /** Nest injection token for the port (LicensingModule provides the adapter). */
@@ -25,59 +25,38 @@ export const LICENSE_USAGE_PORT = Symbol('LICENSE_USAGE_PORT');
 
 /** The port `LicensesRepository` receives with the importing transaction. */
 export type LicenseUsagePort = {
-  snapshot: () => Promise<LicenseUsageSnapshot>;
+  snapshot: (installationId: string) => Promise<LicenseUsageSnapshot>;
 };
 
 /**
- * The advisory-lock keys for the licensed allocations, shared with the
- * allocation guards: an importing transaction takes the SAME transaction-
- * scoped locks organization creation and active-user activation hold, so a
- * concurrent creation is either committed and counted, or waiting and not —
- * it can never slip between the conflict check and the commit. Both sides
- * build the key from this one function (AR-11 names the raw-SQL exemption).
- */
-export function licenseAllocationLockKey(
-  installationId: string,
-  resource: 'organizations' | 'active-users',
-): string {
-  return `vardena:license:${installationId}:${resource}`;
-}
-
-/**
- * The production adapter for {@link LicenseUsagePort}: it counts through the
- * OTHER modules' published application contracts (AR-07 — application-service
- * contracts, never their tables): `OrganizationsService.countLicensedOrganizations`
- * (the same count the organization-creation guard enforces) and
- * `UsersService.countLicensedActiveUsers` (the same count the active-user
- * guard enforces). Both carry no permission of their own: the calling import
- * has already performed its own authorization.
+ * The production adapter counts organizations and users through their owning
+ * modules' published application contracts (AR-07), and active devices through
+ * Licensing's own repository. The owning write paths and license import take
+ * the same installation-scoped advisory locks before count + mutation.
  *
- * The services are resolved LAZILY through `ModuleRef` with `strict: false`
- * instead of being constructor-injected: OrganizationModule and UsersModule
- * already import LicensingModule (the allocation guards), so constructor
- * injection would need `forwardRef` module imports whose class bindings are
- * not reliably initialized under every module loader (a module-graph cycle
- * for a read-only count). A lazy lookup keeps the Licensing → Organization/
- * Users edge at the application-contract level and one-directional at the
- * module level: no module imports back into Licensing because of this port.
+ * Organization and Users are looked up lazily through ModuleRef because those
+ * modules already import Licensing for their allocation guards. Device data is
+ * owned by this module and has no cross-module table read.
  */
 @Injectable()
 export class CrossModuleLicenseUsage implements LicenseUsagePort {
   constructor(private readonly modules: ModuleRef) {}
 
-  async snapshot(): Promise<LicenseUsageSnapshot> {
-    // `strict: false` looks the whole container up: the services live in
-    // OrganizationModule/UsersModule, not in LicensingModule. The lookup is
-    // lazy AND repeated — it is a map read, and a snapshot is taken at most
-    // twice per import (pre-check + in-transaction).
-    const [organizationCount, activeUserCount] = await Promise.all([
-      this.modules
-        .get<OrganizationsService>(OrganizationsService, { strict: false })
-        .countLicensedOrganizations(),
-      this.modules
-        .get<UsersService>(UsersService, { strict: false })
-        .countLicensedActiveUsers(),
-    ]);
-    return { organizationCount, activeUserCount };
+  async snapshot(installationId: string): Promise<LicenseUsageSnapshot> {
+    const [organizationCount, activeUserCount, registeredDeviceCount] =
+      await Promise.all([
+        this.modules
+          .get<OrganizationsService>(OrganizationsService, { strict: false })
+          .countLicensedOrganizations(),
+        this.modules
+          .get<UsersService>(UsersService, { strict: false })
+          .countLicensedActiveUsers(),
+        this.modules
+          .get<ClientDevicesRepository>(ClientDevicesRepository, {
+            strict: false,
+          })
+          .countActiveDevices(installationId),
+      ]);
+    return { organizationCount, activeUserCount, registeredDeviceCount };
   }
 }

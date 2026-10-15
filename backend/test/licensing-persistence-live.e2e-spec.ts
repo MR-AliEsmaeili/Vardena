@@ -615,6 +615,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           validUntil: new Date('2030-01-01T00:00:00.000Z'),
           organizationLimit: null,
           userLimit: null,
+          deviceLimit: null,
+          deviceLimitSpecified: false,
           entitlements: [],
           supersession: { kind: 'none' },
           customerTransfer: null,
@@ -695,6 +697,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           validUntil: new Date('2030-01-01T00:00:00.000Z'),
           organizationLimit: null,
           userLimit: null,
+          deviceLimit: null,
+          deviceLimitSpecified: false,
           entitlements: [
             { kind: 'MODULE', code: 'accounting' },
             { kind: 'MODULE', code: 'accounting' },
@@ -1350,6 +1354,8 @@ describe.skipIf(DATABASE_URL === undefined)(
         validUntil: payload.validUntil,
         organizationLimit: payload.organizationLimit,
         userLimit: payload.userLimit,
+        deviceLimit: payload.deviceLimit,
+        deviceLimitSpecified: payload.deviceLimitSpecified,
         entitlements: [],
         supersession: { kind: 'none' },
         // Tests that exercise the explicit transfer set this explicitly; every

@@ -31,6 +31,10 @@ export interface InstallationLicense {
   validUntil: Date | null;
   organizationLimit: LicenseLimit;
   userLimit: LicenseLimit;
+  /** Signed device quota; null is unlimited when explicitly specified. */
+  deviceLimit: LicenseLimit;
+  /** False when a legacy signed artifact did not contain the device quota. */
+  deviceLimitSpecified: boolean;
   entitlements: readonly LicenseEntitlement[];
   provider: string;
 }
@@ -55,6 +59,10 @@ export interface EvaluatedLicense {
   validUntil: Date | null;
   organizationLimit: LicenseLimit;
   userLimit: LicenseLimit;
+  /** Signed device quota; null is unlimited only when specified. */
+  deviceLimit: LicenseLimit;
+  /** False when the governing legacy signed artifact omitted this field. */
+  deviceLimitSpecified: boolean;
   entitlements: readonly LicenseEntitlement[];
   provider: string;
   active: boolean;
@@ -98,6 +106,8 @@ export function unlicensedEvaluation(context: {
     validUntil: null,
     organizationLimit: null,
     userLimit: null,
+    deviceLimit: null,
+    deviceLimitSpecified: false,
     entitlements: [],
     provider: context.provider,
     active: false,

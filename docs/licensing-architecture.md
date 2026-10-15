@@ -1,6 +1,6 @@
-# Licensing architecture (L-01, L-02, L-03)
+# Licensing architecture (L-01, L-02, L-03; OQ-83 device lifecycle)
 
-> **Status note (2026-10-11, updated).** This document describes the
+> **Status note (2026-10-15, updated).** This document describes the
 > **implemented** licensing foundation: L-01 (enforcement chain), L-02
 > (installation identity and local activation from a signed code) and **L-03**
 > (signed license **files**, retained license versions, deterministic
@@ -11,9 +11,11 @@
 > which remains the product source of truth; its §19 conflicts were reconciled in
 > §19.4 (`docs/tasks/pdr-11-conflict-reconciliation.md`). Everything PDR-11
 > requires beyond this slice — Owner-side administration, full revocation,
-> Grace/Read-Only enforcement, server replacement, the installation identity key
-> and client-device licensing — is **not implemented** and is gated by the open
-> items registered as OQ-74…OQ-85.
+> Grace/Read-Only enforcement, server replacement and the installation identity
+> key are **not implemented** and remain gated by their open items. The
+> customer-side client-device lifecycle is the current OQ-83 implementation
+> slice: its policy is final in PDR-15 / OD-LIC-04, while implementation review
+> and exact-head CI remain outstanding.
 
 ## Model
 
@@ -23,6 +25,7 @@
 - **Installation:** deployed Vardena instance. The current deployment is one installation and may contain multiple Organizations. Since L-02 it has a persistent backend-owned identity (below).
 - **License:** installation-scoped commercial right, bound to exactly one customer and one installation (`licensing.licenses`). Since L-03 it holds no dates, limits or entitlements of its own — those belong to its versions. It is the future home of license-level revocation state (PDR-11 §10, OQ-78).
 - **LicenseVersion:** one retained, signed version of a license (`licensing.license_versions`): validity window, status, limits, entitlements, signing key id, document hash, operation id, source, import facts and supersession state. Retained, never overwritten.
+- **ClientDevice (OQ-83):** installation-scoped cryptographic identity (`licensing.client_devices`) with retained lifecycle and public-key fingerprint; enrollment challenges and replacement requests are retained in their own Licensing tables. The device limit belongs to the signed LicenseVersion, not to a frontend setting or duplicate entitlement store.
 - **Entitlement:** typed `MODULE` or `FEATURE` capability, owned by a version. Feature codes do not imply the feature is implemented.
 - **Permission:** code-defined RBAC operation. Only permissions whose module prefix is entitled are assignable/effective.
 - **Membership/Role/Access:** unchanged authorization layers. Licensing does not grant access.
@@ -36,6 +39,10 @@
 Limits and perpetual validity use SQL/configuration null. Positive integers are finite limits. A version's `validFrom` is inclusive; `validUntil` is exclusive.
 
 Finite limit allocation is concurrency-safe. Organization creation and active-user creation/re-enablement execute their count and mutation in one PostgreSQL transaction while holding a transaction-scoped advisory lock derived from the licensed `installationId` and resource (`organizations` or `active-users`). Contenders for the same installation/resource serialize; after the winner commits, the next contender re-counts and is rejected at the limit. Authorization, validation, and password hashing remain outside this narrow transaction.
+
+### Client-device quota and lifecycle (OQ-83 / PDR-15)
+
+The current OQ-83 slice adds retained device identities, Ed25519 proof-of-possession enrollment, explicit deactivation, typed history and one-for-one offline replacement inside the Licensing module. Only the effective signed LicenseVersion is authoritative: an omitted legacy `deviceLimit` is **UNSPECIFIED** and blocks new enrollment; signed `null` is unlimited; finite limits count active devices. Registration, deactivation, replacement and license-import reduction checks serialize on the same installation row and device-allocation lock. Replacement holds the old device active until a trusted correlated response completes in one transaction; no private key is stored or exposed and device rows are never deleted. See [the protocol and verification matrix](licensing/client-device-lifecycle.md). OQ-83 remains OPEN pending implementation review and exact-head CI; this is not Product Owner acceptance.
 
 ## Installation identity (L-02, ADR-0045)
 
@@ -154,7 +161,7 @@ upsert, license upsert, version + entitlements insert, supersession stamp
 insert. A second application of the same operation is **rejected** (409,
 `duplicate-operation`) and changes nothing; the unique index
 `(installation_id, operation_id)` is the database backstop, and the row lock is
-what makes the check authoritative for concurrent, *distinct* documents whose
+what makes the check authoritative for concurrent, _distinct_ documents whose
 windows conflict — the loser of such a race gets the documented 409 and writes
 nothing. A document whose `licenseId` is bound to another customer, or belongs to
 another installation, is refused with 409 (`license-binding-conflict`, nothing
@@ -223,10 +230,10 @@ that a future renewal landed. It never activates anything and never calls out.
 `LICENSE_PROVIDER` chooses the implementation behind `LicensingService` and is
 never inferred from `NODE_ENV`:
 
-| value | behaviour |
-| --- | --- |
-| `persistent` (default) | evaluates the license this installation activated and stored |
-| `local-development` | the L-01 configuration-backed synthetic license, for tests and local work |
+| value                  | behaviour                                                                 |
+| ---------------------- | ------------------------------------------------------------------------- |
+| `persistent` (default) | evaluates the license this installation activated and stored              |
+| `local-development`    | the L-01 configuration-backed synthetic license, for tests and local work |
 
 `NODE_ENV=development` carries no licensing meaning whatsoever; the
 `LICENSE_*` payload variables apply only to `local-development`.
@@ -283,7 +290,7 @@ System-administrator bootstrap still creates ordinary User/Role/Membership recor
 
 `GET /api/v1/license/current` is authenticated but intentionally needs no RBAC permission: it is a post-login bootstrap/self-state read. It returns evaluated non-secret state (including version identity, the scheduled version and the retained-version summary) and never returns a key, token, signature, hash or the submitted document.
 
-`POST /api/v1/license/import` requires `Licensing.License.Activate` and is described under *Import, replay protection and audit* above. `POST /api/v1/license/activate` is the L-02 alias over the same pipeline.
+`POST /api/v1/license/import` requires `Licensing.License.Activate` and is described under _Import, replay protection and audit_ above. `POST /api/v1/license/activate` is the L-02 alias over the same pipeline.
 
 ## Persistence and provider status
 
@@ -376,22 +383,26 @@ details remain OPEN (OQ-45) and no enforcement is implemented** — ADR-0030's
 enforcement-off posture is unchanged. License entering Grace/Read-Only must be
 surfaceable through the future administrative alert model (OQ-54 / OD-54-11).
 Frontend contract: `docs/frontend/ux/document-editing-and-system-alerts.md` §4.
-L-03 changes none of this: it selects *which version* governs, not what happens
+L-03 changes none of this: it selects _which version_ governs, not what happens
 after a version ends.
 
 ## Deferred / not implemented
 
 CRM, billing, payments, remote validation, remote revocation, hardware
-fingerprinting, marketplace/subscriptions, and an activation UI are not
-implemented. Expiry **enforcement** (Grace/Read-Only above) is also not
-implemented. Future `CrmLicenseProvider`-like infrastructure can replace the
-provider token without changing consumers.
+fingerprinting, marketplace/subscriptions, and a server-license activation UI
+are not implemented. The customer-side device administration UI is part of the
+current OQ-83 slice and remains pending review/exact-head CI. Expiry
+**enforcement** (Grace/Read-Only above) is also not implemented. Future
+`CrmLicenseProvider`-like infrastructure can replace the provider token without
+changing consumers.
 
-Confirmed by the 2026-10-11 reconciliation as still absent: full
+The 2026-10-11 reconciliation's remaining deferred work is preserved except
+for the current OQ-83 device lifecycle slice, which is implemented on this
+working branch but still pending review and exact-head CI: full
 revocation/reactivation and login-blocking state (OQ-78), server replacement and
 its receipts (OQ-82), the installation identity key (blocked by PDR-11 U-2 and
-OQ-78/OQ-82), client-device licensing (OQ-83), signed activation receipts
-(OQ-84), the Owner-side licensing system and its role matrix (OQ-75, OQ-85),
-clock-rollback detection (OQ-76), audit retention enforcement (OQ-77), and the
-PDR-11 §8.6 capacity-conflict detection/resolution UI (a later slice that needs
-the owning modules' public count contracts).
+OQ-78/OQ-82), signed activation receipts (OQ-84), the Owner-side licensing
+system and its role matrix (OQ-75, OQ-85), clock-rollback detection (OQ-76),
+audit retention enforcement (OQ-77), and the PDR-11 §8.6 capacity-conflict
+detection/resolution UI (a separate slice that needs the owning modules' public
+count contracts).

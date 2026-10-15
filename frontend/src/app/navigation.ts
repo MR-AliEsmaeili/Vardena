@@ -7,6 +7,7 @@ import {
   FolderKanban,
   Handshake,
   LayoutDashboard,
+  Smartphone,
   List,
   ListTree,
   Network,
@@ -198,6 +199,18 @@ export const navigationSections: readonly NavigationSection[] = [
         label: t.nav.inventoryValuation,
         icon: Scale,
         permissions: [PERMISSIONS.inventory.valuationView],
+      },
+    ],
+  },
+  {
+    id: 'licensing',
+    label: t.deviceLicensing.title,
+    items: [
+      {
+        to: '/app/licensing/devices',
+        label: t.nav.clientDevices,
+        icon: Smartphone,
+        permissions: [PERMISSIONS.licensing.deviceView],
       },
     ],
   },

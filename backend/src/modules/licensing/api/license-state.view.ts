@@ -30,6 +30,8 @@ export interface LicenseStateView {
   validUntil: string | null;
   organizationLimit: number | null;
   userLimit: number | null;
+  deviceLimit: number | null;
+  deviceLimitSpecified: boolean;
   entitlements: Array<{ kind: string; code: string }>;
   provider: string;
   /** The version that governs now, resolved deterministically (L-03). */
@@ -57,6 +59,8 @@ export function toLicenseStateView(
     validUntil: license.validUntil?.toISOString() ?? null,
     organizationLimit: license.organizationLimit,
     userLimit: license.userLimit,
+    deviceLimit: license.deviceLimit,
+    deviceLimitSpecified: license.deviceLimitSpecified,
     entitlements: license.entitlements.map(({ kind, code }) => ({
       kind,
       code,

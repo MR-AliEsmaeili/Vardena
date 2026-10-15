@@ -40,6 +40,12 @@ export const LICENSING_PERMISSIONS = {
   INSTALLATION_TRANSFER_CUSTOMER: 'Licensing.Installation.TransferCustomer',
   INSTALLATION_RECOVER_AFTER_GAP: 'Licensing.Installation.RecoverAfterGap',
   LICENSE_RESOLVE_REDUCTION: 'Licensing.License.ResolveReduction',
+  DEVICE_VIEW: 'Licensing.Device.View',
+  DEVICE_ACTIVATE: 'Licensing.Device.Activate',
+  DEVICE_DEACTIVATE: 'Licensing.Device.Deactivate',
+  DEVICE_REPLACE: 'Licensing.Device.Replace',
+  DEVICE_CANCEL_REPLACEMENT: 'Licensing.Device.CancelReplacement',
+  DEVICE_COMPLETE_REPLACEMENT: 'Licensing.Device.CompleteReplacement',
 } as const;
 
 export const LICENSING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] =
@@ -63,5 +69,35 @@ export const LICENSING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] =
       code: LICENSING_PERMISSIONS.LICENSE_RESOLVE_REDUCTION,
       description:
         'Apply a license version whose capacity or entitlement reduction conflicts with current usage, through an explicit, audited resolution.',
+    },
+    {
+      code: LICENSING_PERMISSIONS.DEVICE_VIEW,
+      description:
+        'View registered device inventory and retained device history.',
+    },
+    {
+      code: LICENSING_PERMISSIONS.DEVICE_ACTIVATE,
+      description:
+        'Enroll a client device by verifying its Ed25519 proof of possession.',
+    },
+    {
+      code: LICENSING_PERMISSIONS.DEVICE_DEACTIVATE,
+      description:
+        'Explicitly deactivate an active client device without deleting its history.',
+    },
+    {
+      code: LICENSING_PERMISSIONS.DEVICE_REPLACE,
+      description:
+        'Create and export a signed client-device replacement request.',
+    },
+    {
+      code: LICENSING_PERMISSIONS.DEVICE_CANCEL_REPLACEMENT,
+      description:
+        'Permanently cancel a pending client-device replacement request.',
+    },
+    {
+      code: LICENSING_PERMISSIONS.DEVICE_COMPLETE_REPLACEMENT,
+      description:
+        'Verify and import a trusted signed response to complete a device replacement.',
     },
   ];
