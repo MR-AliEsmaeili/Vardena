@@ -18,6 +18,8 @@ export const API_ERROR_CODES = [
   'PermissionDenied',
   'EntityNotFound',
   'Conflict',
+  'InvalidTransition',
+  'DuplicateOperation',
   'BusinessRuleViolation',
   'RateLimitExceeded',
   'ServiceUnavailable',
@@ -96,6 +98,10 @@ function messageForCode(code: ApiFailureCode, fallback?: string): string {
       return fallback ?? t.errors.businessRule;
     case 'Conflict':
       return fallback ?? t.errors.conflict;
+    case 'InvalidTransition':
+      return t.errors.invalidTransition;
+    case 'DuplicateOperation':
+      return t.errors.duplicateOperation;
     case 'RateLimitExceeded':
       return t.errors.rateLimited;
     case 'ServiceUnavailable':
@@ -176,6 +182,8 @@ export function isTerminalApiError(error: unknown): boolean {
     apiError.code === 'ValidationFailed' ||
     apiError.code === 'BadRequest' ||
     apiError.code === 'BusinessRuleViolation' ||
-    apiError.code === 'Conflict'
+    apiError.code === 'Conflict' ||
+    apiError.code === 'InvalidTransition' ||
+    apiError.code === 'DuplicateOperation'
   );
 }

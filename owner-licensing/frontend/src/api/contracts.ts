@@ -50,6 +50,42 @@ export interface CustomerInput {
   status: 'ACTIVE' | 'INACTIVE';
   contractReference: string;
 }
+export interface OperationTransition {
+  id: string;
+  actorId: string;
+  occurredAt: string;
+  priorStatus: string;
+  newStatus: string;
+  reason: string;
+  evidenceReference: string | null;
+  confirmationKind: 'OPERATOR_OBSERVED';
+}
+/** Manual observation only. Never a signed artifact or cryptographic receipt. */
+export interface OperationalRecord {
+  id: string;
+  customerId: string;
+  customerCode: string;
+  displayName: string;
+  kind: 'LICENSE' | 'SERVER_REPLACEMENT';
+  observationCategory: string;
+  observedStatus: string;
+  installationReference: string | null;
+  oldInstallationReference: string | null;
+  replacementInstallationReference: string | null;
+  oldServerObservedState: string | null;
+  replacementObservedState: string | null;
+  emergencyOldServerLost: boolean;
+  replacesRecordId: string | null;
+  evidenceBasis: 'OPERATOR_OBSERVED';
+  cryptographicVerification: 'NOT_IMPLEMENTED';
+  signedArtifactProduced: false;
+  customerServerContacted: false;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  updatedBy: string;
+  transitions?: OperationTransition[];
+}
 export interface AuditEvent {
   id: string;
   actorId: string | null;

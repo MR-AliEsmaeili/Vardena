@@ -13,6 +13,7 @@ import {
   customerCode,
   customerResponse,
   digest,
+  duplicateConstraintCode,
   fail,
   id,
   invalid,
@@ -28,6 +29,16 @@ import {
   type Permission,
   type User,
 } from "./domain.js";
+import {
+  denyOperationMutation,
+  getOperation,
+  listOperations,
+  recordActivationObservation,
+  recordLicenseObservation,
+  recordOldServerObservation,
+  recordReplacementObservation,
+  recordServerReplacement,
+} from "./operations.js";
 import {
   authenticate,
   cookieToken,
@@ -551,6 +562,128 @@ export async function createApp(db: Database, cfg: Config) {
       res.locals.body = customerResponse(updated, a.user.role);
     },
   );
+  const pathTarget = (value: unknown) =>
+    typeof value === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(value)
+      ? value
+      : null;
+  const recorded = async (
+    tx: PoolClient,
+    actor: Principal,
+    res: Response,
+    targetId: string | null,
+  ) => {
+    if (permissions(actor.user.role).includes("operations.record")) return true;
+    await denyOperationMutation(tx, actor.user.id, targetId);
+    res.locals.status = 403;
+    res.locals.body = {
+      code: "PermissionDenied",
+      message: "You do not have permission.",
+      correlationId: randomUUID(),
+    };
+    return false;
+  };
+  route(
+    "get",
+    "/operational-records",
+    "operations.view",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await listOperations(
+        tx,
+        a.user.role,
+        req.query as Record<string, unknown>,
+      );
+    },
+  );
+  route(
+    "get",
+    "/operational-records/:id",
+    "operations.view",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await getOperation(tx, a.user.role, req.params.id);
+    },
+  );
+  route(
+    "post",
+    "/operational-records/license-observations",
+    undefined,
+    true,
+    async (tx, a, req, res) => {
+      if (!(await recorded(tx, a, res, null))) return;
+      res.locals.status = 201;
+      res.locals.body = await recordLicenseObservation(
+        tx,
+        a.user.id,
+        a.user.role,
+        req.body,
+      );
+    },
+  );
+  route(
+    "post",
+    "/operational-records/:id/activation-observations",
+    undefined,
+    true,
+    async (tx, a, req, res) => {
+      if (!(await recorded(tx, a, res, pathTarget(req.params.id)))) return;
+      res.locals.body = await recordActivationObservation(
+        tx,
+        a.user.id,
+        a.user.role,
+        req.params.id,
+        req.body,
+      );
+    },
+  );
+  route(
+    "post",
+    "/operational-records/server-replacements",
+    undefined,
+    true,
+    async (tx, a, req, res) => {
+      if (!(await recorded(tx, a, res, null))) return;
+      res.locals.status = 201;
+      res.locals.body = await recordServerReplacement(
+        tx,
+        a.user.id,
+        a.user.role,
+        req.body,
+      );
+    },
+  );
+  route(
+    "post",
+    "/operational-records/:id/old-server-observations",
+    undefined,
+    true,
+    async (tx, a, req, res) => {
+      if (!(await recorded(tx, a, res, pathTarget(req.params.id)))) return;
+      res.locals.body = await recordOldServerObservation(
+        tx,
+        a.user.id,
+        a.user.role,
+        req.params.id,
+        req.body,
+      );
+    },
+  );
+  route(
+    "post",
+    "/operational-records/:id/replacement-observations",
+    undefined,
+    true,
+    async (tx, a, req, res) => {
+      if (!(await recorded(tx, a, res, pathTarget(req.params.id)))) return;
+      res.locals.body = await recordReplacementObservation(
+        tx,
+        a.user.id,
+        a.user.role,
+        req.params.id,
+        req.body,
+      );
+    },
+  );
   route(
     "get",
     "/audit-events",
@@ -581,11 +714,23 @@ export async function createApp(db: Database, cfg: Config) {
           .json({ code: error.code, message: error.message, correlationId });
         return;
       }
-      const e = error as { code?: string; type?: string };
+      const e = error as { code?: string; type?: string; constraint?: string };
       if (e.code === "23505") {
+        const code = duplicateConstraintCode(e.constraint);
         res.status(409).json({
-          code: "Conflict",
-          message: "The unique code or username already exists.",
+          code,
+          message:
+            code === "DuplicateOperation"
+              ? "An operation already exists for this installation."
+              : "The unique code or username already exists.",
+          correlationId,
+        });
+        return;
+      }
+      if (e.code === "23503") {
+        res.status(404).json({
+          code: "EntityNotFound",
+          message: "Related record not found.",
           correlationId,
         });
         return;

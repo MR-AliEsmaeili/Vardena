@@ -5,6 +5,7 @@ import type {
   Customer,
   CustomerRead,
   CustomerInput,
+  OperationalRecord,
   Paginated,
   Role,
 } from './contracts';
@@ -41,6 +42,76 @@ export const resetPassword = (
 ) =>
   apiPost<AuthenticatedUser>(
     `/users/${encodeURIComponent(id)}/reset-password`,
+    body,
+  );
+export const operationalRecords = (
+  search: string,
+  page: number,
+  filters: { kind?: string; status?: string; customerId?: string },
+  signal?: AbortSignal,
+) =>
+  apiGet<Paginated<OperationalRecord>>('/operational-records', {
+    params: {
+      search: search || undefined,
+      page,
+      kind: filters.kind || undefined,
+      status: filters.status || undefined,
+      customerId: filters.customerId || undefined,
+    },
+    ...(signal ? { signal } : {}),
+  });
+export const operationalRecord = (id: string, signal?: AbortSignal) =>
+  apiGet<OperationalRecord>(
+    `/operational-records/${encodeURIComponent(id)}`,
+    signal ? { signal } : {},
+  );
+export const recordLicenseObservation = (body: {
+  customerId: string;
+  installationReference: string;
+  reason: string;
+  evidenceReference?: string;
+}) =>
+  apiPost<OperationalRecord>('/operational-records/license-observations', body);
+export const recordActivationObservation = (
+  id: string,
+  body: { reason: string; evidenceReference?: string },
+) =>
+  apiPost<OperationalRecord>(
+    `/operational-records/${encodeURIComponent(id)}/activation-observations`,
+    body,
+  );
+export const recordServerReplacement = (body: {
+  customerId: string;
+  oldInstallationReference: string;
+  replacementInstallationReference: string;
+  reason: string;
+  evidenceReference?: string;
+  emergencyOldServerLost: boolean;
+  replacesRecordId?: string;
+}) =>
+  apiPost<OperationalRecord>('/operational-records/server-replacements', body);
+export const recordOldServerObservation = (
+  id: string,
+  body: {
+    reason: string;
+    evidenceReference?: string;
+    oldServerObservedState: 'DEACTIVATION_OBSERVED';
+  },
+) =>
+  apiPost<OperationalRecord>(
+    `/operational-records/${encodeURIComponent(id)}/old-server-observations`,
+    body,
+  );
+export const recordReplacementObservation = (
+  id: string,
+  body: {
+    reason: string;
+    evidenceReference?: string;
+    replacementObservedState: 'INSTALLATION_OBSERVED';
+  },
+) =>
+  apiPost<OperationalRecord>(
+    `/operational-records/${encodeURIComponent(id)}/replacement-observations`,
     body,
   );
 export const auditEvents = (page: number, targetId?: string) =>

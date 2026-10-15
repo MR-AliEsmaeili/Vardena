@@ -3,6 +3,11 @@
 Date: 2026-10-15. Status: implementation submitted for exact-head CI and review;
 not Product Owner acceptance, operational rollout, or permission to merge.
 
+The statements below that lifecycle write APIs are unavailable describe the
+initial Phase 1 slice. The later observation-only slice is recorded in
+[manual operations](./licensing-owner-side-manual-operations.md). It does not
+rewrite this historical record and does not close its open questions.
+
 ## PR #160 Product Owner correction
 
 Starting PR head fetched and verified:

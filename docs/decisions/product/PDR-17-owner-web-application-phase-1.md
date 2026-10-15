@@ -33,12 +33,15 @@ operations or imposing a second approver.
 | Audit view | yes | yes | yes | no |
 | Audit edit/delete/purge | no endpoint | no endpoint | no endpoint | no endpoint |
 | Settings mutations | no endpoint | no endpoint | no endpoint | no endpoint |
-| License issuance/activation/deactivation/replacement/revocation/recovery | unavailable | unavailable | unavailable | unavailable |
+| Inspect operator-observed activation and same-customer server-replacement records | yes | yes | yes | no |
+| Record those operator observations | yes | yes | no | no |
+| Cryptographic issuance, signed receipt, deactivation proof, client-device replacement, revocation/recovery | not implemented | not implemented | not implemented | not implemented |
 
-Exact backend grants:
-- Administrator: `customers.view`, `customers.write`, `users.manage`, `audit.view`.
-- Issuance Specialist and Observer: `customers.view`, `audit.view`.
-- Support: `customers.view`, with **server-enforced field filtering**.
+Exact backend grants after the manual-observation slice:
+- Administrator: `customers.view`, `customers.write`, `users.manage`, `audit.view`, `operations.view`, `operations.record`.
+- Issuance Specialist: `customers.view`, `audit.view`, `operations.view`, `operations.record`.
+- Observer: `customers.view`, `audit.view`, `operations.view`.
+- Support: `customers.view`, with **server-enforced field filtering**. No operational-record grant.
 
 Both customer list items and detail use the same explicit response allowlist.
 Support receives **only** `id`, `customerCode`, `displayName`, `status`. No
@@ -50,10 +53,10 @@ handle the reduced DTO and use backend effective permissions; hiding controls is
 not authorization. Direct API requests enforce the same permissions/projection.
 
 Unknown roles and operations deny. There is no wildcard/prefix expansion.
-Pending initial-password change permits only own identity/change/logout. Issuance
-Specialist licensing mutations remain deferred **because those workflows do not
-exist**, not because customer/audit reads lack an approved policy. Support has no
-licensing mutation authority; adding such authority needs a separate decision.
+Pending initial-password change permits only own identity/change/logout. The
+manual-observation slice below is the only licensing mutation currently defined.
+Support has no licensing mutation authority; adding such authority needs a separate
+decision.
 OQ-75 remains OPEN for broader future operation/acceptance tracking, not as a
 reason to deny the now-approved read access. No unrelated OQ is closed.
 
@@ -71,8 +74,9 @@ OQ-77 stays OPEN pending exact wording and acceptance evidence.
 Activation: the authorized team installs and checks a license; an Administrator or
 Issuance Specialist explicitly records issued → activated, actor, server timestamp,
 reason and available evidence reference. This is operator confirmation, **not** a
-cryptographically verified customer receipt. Lifecycle APIs remain unavailable in
-this slice; a reserved relational operational-record model can represent these facts.
+cryptographically verified customer receipt. The additive Owner migration
+`002-manual-operations.sql` and its API/UI now store that fact. They do not issue
+a license or produce a receipt.
 
 Server replacement: an authorized deployment specialist manually deactivates and
 revokes the old server's license lock. Administrator or Issuance Specialist decides
@@ -87,3 +91,17 @@ No VLIC1/VLIC2/VDEA1/VDRQ1/VDRP1/canonicalization/enforcement changes. OQ-78,
 OQ-82, OQ-83 and OQ-84 remain OPEN; these manual policies do not claim to implement
 revocation, recovery, device clients or signed receipts. OQ-85's location/UI/store
 directions are now approved but its operational acceptance is not inferred.
+
+## Manual observation slice — 2026-10-15
+
+The reserved relational model now has an application write path. It records only
+`OPERATOR_OBSERVED` facts. Every response states `cryptographicVerification =
+NOT_IMPLEMENTED`, `signedArtifactProduced = false` and `customerServerContacted =
+false`. License observations move only `ISSUED` → `ACTIVATED`. Same-customer
+server replacement moves `REPLACEMENT_AUTHORIZED` → `OLD_SERVER_STATE_RECORDED` →
+`REPLACEMENT_RECORDED`. Emergency old-server loss inserts the authorized decision
+and the unavailable observation in one transaction; it does not wait for the old
+server. History is append-only. No cancellation, renewal, revocation, recovery or
+client-device state is defined, so none is implemented. An abandoned non-terminal
+replacement keeps its installation slot until a later decision defines withdrawal.
+Evidence: [manual observation record](../../tasks/licensing-owner-side-manual-operations.md).

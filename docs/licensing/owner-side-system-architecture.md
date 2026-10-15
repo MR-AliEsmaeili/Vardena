@@ -23,7 +23,7 @@ user/session, never a client actor or hidden button. The Product Owner correctio
 audit reads and Support customer identity/status reads with a server-side field
 allowlist; see the current PDR-17 matrix. Observer remains read-only and Admin
 retains administrative operations. No audit purge exists; OQ-77 option-C wording
-is still unavailable. Unimplemented lifecycle operations remain unavailable.
+is still unavailable. Cryptographic lifecycle operations remain unavailable.
 
 Manual activation is an explicit authorized operator confirmation of issued →
 activated, retaining actor, server time, reason and available evidence reference,
@@ -32,9 +32,13 @@ manually deactivates/revokes the old lock; Administrator or Issuance Specialist
 authorizes replacement for the same customer; specialist installs; authorized
 Owner user records observed prior/new status with actor/time/reason. Emergency
 old-server loss is allowed with an attributable authorized decision. No callback,
-synchronization or old-server response is required. Reserved operational tables
-can represent these observations, but their lifecycle APIs are unavailable in
-Phase 1. Server replacement is separate from OQ-83 client-device replacement.
+synchronization or old-server response is required. Additive migration
+`002-manual-operations.sql` now persists these observations and exposes an
+Owner-only API/UI. Responses are labeled operator-observed and not
+cryptographically verified. No signed protocol, customer callback or customer
+schema change is involved. Server replacement is separate from OQ-83
+client-device replacement. An abandoned non-terminal replacement cannot be
+withdrawn: PDR-17 defines no cancellation transition and OQ-82 remains OPEN.
 U-1 remains deferred; no production signer/key. No signed contract changes.
 OQ-77/78/82/83/84/85 are not closed by this implementation.
 
