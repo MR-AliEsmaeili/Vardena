@@ -1,5 +1,44 @@
 # Owner-side licensing system — architecture and release boundary (Phase 0 design)
 
+## Current Phase 1 addendum — 2026-10-15 (supersedes historical proposals below)
+
+Authority: [PDR-17](../decisions/product/PDR-17-owner-web-application-phase-1.md),
+[implementation record](../tasks/licensing-owner-side-phase-1.md),
+[setup and deployment](../../owner-licensing/README.md).
+The Product Owner now selects a standalone Persian RTL web application at
+`owner-licensing/`, dedicated PostgreSQL and independent SQL migrations,
+credentials/build/deployment boundaries, durable actor-attributable audit and
+single-operator role authorization without mandatory dual control. The Owner
+store is the system of record, with no customer database connection or sync.
+The original CLI-first/private-repository recommendations below are superseded
+for this slice; they are retained as the **historical Phase 0 snapshot**, not
+current deployment choices. GAP-1/GAP-2 were remediated in #157 and vectors in
+#158/#159 before this task; no duplicate remediation is introduced.
+
+Runtime: one small modular Node/Express/pg API and independent React/Vite UI.
+Own numbered SQL/checksum-ledger migrations, not the customer Prisma chain.
+Password hashes/first-login restriction and session revocation commit atomically
+with durable audit. Permissions are checked using the authenticated current
+user/session, never a client actor or hidden button. Exact permitted subset and
+source gaps (absent matrix proposal and OQ-77 option-C wording) are in PDR-17;
+unresolved specialist/support business operations deny and no audit purge exists.
+
+Manual activation is an explicit authorized operator confirmation of issued →
+activated, retaining actor, server time, reason and available evidence reference,
+not a cryptographic customer receipt. Manual server replacement: specialist
+manually deactivates/revokes the old lock; Administrator or Issuance Specialist
+authorizes replacement for the same customer; specialist installs; authorized
+Owner user records observed prior/new status with actor/time/reason. Emergency
+old-server loss is allowed with an attributable authorized decision. No callback,
+synchronization or old-server response is required. Reserved operational tables
+can represent these observations, but their lifecycle APIs are unavailable in
+Phase 1. Server replacement is separate from OQ-83 client-device replacement.
+U-1 remains deferred; no production signer/key. No signed contract changes.
+OQ-77/78/82/83/84/85 are not closed by this implementation.
+
+## Historical Phase 0 design (snapshot, not current implementation status)
+
+
 **Status:** DESIGN PROPOSAL — Phase 0 only. Not implemented, not Product Owner
 accepted, and not a decision record. Every product choice below that is marked
 **OPEN** still requires explicit Product Owner approval; nothing here closes

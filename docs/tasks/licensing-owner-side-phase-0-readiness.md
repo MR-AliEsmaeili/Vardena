@@ -1,5 +1,15 @@
 # Owner-side licensing system — Phase 0 readiness report and open-decision table
 
+> **2026-10-15 Phase 1 update:** this file is the historical Phase 0 snapshot.
+> New Owner decisions and implementation are recorded in
+> [PDR-17](../decisions/product/PDR-17-owner-web-application-phase-1.md) and
+> [the Phase 1 task](licensing-owner-side-phase-1.md). PR #157 already fixed
+> GAP-1/GAP-2; #158/#159 delivered/corrected the PDR-16 vectors. The standalone
+> web/PostgreSQL decisions supersede this report's CLI-first recommendation.
+> The operation-level proposal and OQ-77 option C wording were not found;
+> unestablished permissions remain restricted and no retention period is invented.
+
+
 **Status:** READY FOR REVIEW of the design. **Not** Product Owner acceptance,
 **not** implementation authorization, and **not** closure of any OQ.
 **Corrected 2026-10-15 (PR #156 review pass):** the phase gating was internally

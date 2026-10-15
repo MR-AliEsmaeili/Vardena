@@ -119,8 +119,11 @@ def classify_path(path: str) -> set[str]:
 
     if path.startswith(BACKEND_PREFIX):
         families.add("backend")
-        if not path.endswith(DOCS_SUFFIXES):
-            families.add("generated")
+    if path.startswith("owner-licensing/"):
+        # Owner API/UI contracts and isolation checks travel together.
+        families.update(("backend", "frontend"))
+    if path.startswith(BACKEND_PREFIX) and not path.endswith(DOCS_SUFFIXES):
+        families.add("generated")
 
     if path.startswith(FRONTEND_PREFIX):
         families.add("frontend")

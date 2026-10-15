@@ -1,5 +1,13 @@
 # PDR-11: Vardena Licensing — Product Requirements Source of Truth
 
+> **Owner Phase 1 update (2026-10-15):**
+> [PDR-17](PDR-17-owner-web-application-phase-1.md) records the approved Owner
+> web/PostgreSQL boundary, no dual control, durable audit, manual activation and
+> server-replacement policy. It supersedes earlier undecided directions only to
+> that extent. The full operation-level proposal and OQ-77 option C wording are
+> absent from current sources; no unknown permission or retention rule is inferred.
+
+
 - **Type:** PDR (Product Decision Record) · decision IDs: **none assigned**. This record is traced by section (§); see §18. No OQ, C, or ADR identifier was created by this record.
 - **Status:** **Decided — approved product-requirements reference** (Owner-approved, 2026-10-11). Documentation only. **This is not an implementation specification and not authorization to start coding.** Implementation requires a separate, explicit Product Owner instruction after technical design.
 - **Status update (2026-10-11, later the same day):** the Product Owner gave the explicit follow-up instruction — resolve §19, reconcile affected records, produce the technical design, and begin implementation with a tested first vertical slice. That work is recorded in §19.4, `docs/tasks/pdr-11-conflict-reconciliation.md`, [ADR-0045](../../adr/0045-installation-identity-and-license-activation.md) and [ADR-0046](../../adr/0046-signed-license-documents-and-version-lifecycle.md). §15 stays authoritative for what is *not* decided: the items it lists are now registered as OQ-74…OQ-85 and **nothing in §15 was converted into an approved decision**.

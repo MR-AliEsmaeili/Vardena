@@ -1,5 +1,13 @@
 # OQ-83 populated-migration evidence and operational implementation plan
 
+> **Phase 1 Owner update (2026-10-15):**
+> [PDR-17](../decisions/product/PDR-17-owner-web-application-phase-1.md) now
+> selects the independent Owner web/PostgreSQL boundary. This does not implement
+> the VDRP1 issuer, device companion/custody or close OQ-83. Manual server
+> replacement is distinct from the client-device workflow below. Production
+> signing is still disabled pending U-1; no additional signed format is created.
+
+
 **Status:** READY FOR REVIEW — not Product Owner acceptance, not operational
 completion, and not closure of OQ-83.  
 **Baseline:** `main` at `a58fd19df0bcff76e594749d825ac8b37f95ba4f`

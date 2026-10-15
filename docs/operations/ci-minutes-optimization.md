@@ -159,3 +159,18 @@ weaken the classification fails before the other jobs execute.
   coverage.
 * **A future job added to the workflow must be added to `ci-gate`'s `needs`**; the CI-script
   tests assert the current wiring.
+
+## Owner Phase 1 extension (2026-10-15)
+
+Any `owner-licensing/**` change requires both `backend` and `frontend`: Owner API
+and UI contracts are tested together. Documentation also runs for Markdown.
+No customer generated-client job is added by an Owner path alone (no customer API
+contract changes); unknown/CI/script paths still run all jobs and the base-revision
+union guard is preserved. Backend now includes independent Owner fast checks and
+PostgreSQL HTTP tests on a fresh **separate** `owner_test` database, plus actual
+customer production-image inspection. Frontend includes Owner UI checks/build and
+customer asset isolation. Thus existing `ci-gate` fails if an applicable Owner
+step fails without adding a second skippable aggregate gate. Customer vectors,
+full backend/frontend/generated-client gates, secret scan and migration rehearsals
+are retained. Image export is temporary CI storage, never an uploaded artifact.
+No redundant workflow reruns are requested; diagnose failures then push fixes.

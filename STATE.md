@@ -1,5 +1,14 @@
 # Vardena Project State
 
+> **Owner Phase 1, 2026-10-15 (unmerged implementation for review):** starting
+> `main` = `c63fc2356f6d99ed18059594cda52e3db46d33cd`. Standalone Owner
+> application, separate PostgreSQL/SQL chain/auth/RBAC/customer/audit slice under
+> `owner-licensing/`; see [task/evidence](docs/tasks/licensing-owner-side-phase-1.md)
+> and [PDR-17](docs/decisions/product/PDR-17-owner-web-application-phase-1.md).
+> No signer, production key, protocol change or OQ closure. Missing full matrix
+> and OQ-77 option C wording stay explicit/restricted. Exact-head CI required;
+> no acceptance or merge is inferred. Historical state below is retained.
+
 ## 1. Source of Truth
 
 GitHub repository files on the merged default branch are the official project memory. Chat messages are contextual only. Agent reports are claims until verified against repository evidence; unverified information must not be presented as fact. In a conflict with chat, repository files take precedence. Conflicts between repository records must be recorded, not silently resolved.

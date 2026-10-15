@@ -1,0 +1,41 @@
+{
+  "name": "vardena-owner-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src test",
+    "format": "prettier --write src test *.json",
+    "format:check": "prettier --check src test *.json",
+    "test": "vitest run test/unit.test.ts",
+    "test:integration": "vitest run test/api.test.ts",
+    "migrate": "tsx src/migrate.ts",
+    "bootstrap": "tsx src/bootstrap.ts"
+  },
+  "dependencies": {
+    "argon2": "^0.45.1",
+    "dotenv": "^16.4.5",
+    "express": "^5.1.0",
+    "pg": "^8.13.1",
+    "ulid": "^3.0.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.11.0",
+    "@types/supertest": "^7.0.0",
+    "oxlint": "^1.58.0",
+    "prettier": "^3.4.2",
+    "supertest": "^7.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.2"
+  }
+}
