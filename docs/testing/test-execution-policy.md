@@ -67,9 +67,11 @@ that database; never reproduced locally.
 
 `npm run prisma:deploy` (real `migrate deploy` against the service
 container), the Task 11 configuration-foundation rehearsal
-(`test:migration-rehearsal`), and the Task 13 operational-freeze rehearsal
-(`test:operational-freeze-rehearsal`). Migration rehearsals exercise shadow
-databases and engine downloads; they are CI-only.
+(`test:migration-rehearsal`), Inventory BusinessDate rehearsal, the populated
+Licensing chain through OQ-83 (`test:licensing-migration-rehearsal`), and the
+Task 13 operational-freeze rehearsal (`test:operational-freeze-rehearsal`).
+Migration rehearsals exercise disposable databases and engine/runtime services;
+they are CI-only.
 
 ## 5. CI Concurrency Gates (CI-CONCURRENCY)
 

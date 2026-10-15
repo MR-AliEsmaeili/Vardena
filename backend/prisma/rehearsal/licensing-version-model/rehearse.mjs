@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Targeted rehearsal for the licensing version/import migration, its
- * supersession correction, and the later licensing audit-detail widening.
+ * Targeted populated-database rehearsal for the licensing migration chain:
+ * retained version/import state, its corrections, customer identity, and the
+ * OQ-83 client-device lifecycle migration.
  *
  * The migration turns the L-02 single-current-license model into retained
  * license versions without losing a single fact. This script proves that on a
@@ -32,6 +33,15 @@
  * existing 500-character event detail must remain byte-for-byte intact, and a
  * new detail longer than 500 characters must round-trip as PostgreSQL TEXT.
  *
+ * Finally, the rehearsal reaches the exact schema immediately before OQ-83,
+ * adds a representative pre-device-entitlement VLIC2 version plus retained
+ * customer/audit/history data, snapshots every existing licensing row, and
+ * applies the actual 20261022000000 migration. It proves that all old row data,
+ * the external artifact's retained SHA-256, and customer identity survive;
+ * every old version becomes UNSPECIFIED (NULL + presence=false); and the new
+ * columns, enums, tables, checks, foreign keys, and partial unique indexes have
+ * their expected PostgreSQL shape.
+ *
  * Connection: VARDENA_REHEARSAL_ADMIN_URL (same local maintenance-database URL
  * used by the other migration rehearsals). This script refuses non-local
  * hosts, never reuses or drops a pre-existing database, and removes only the
@@ -43,7 +53,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -83,6 +93,17 @@ const AUDIT_DETAIL_SQL = readMigration(
 const CUSTOMER_CODE_SQL = readMigration(
   '20261020000000_licensing_customer_code',
 );
+const TRANSFER_LICENSE_COMMENT_SQL = readMigration(
+  '20261021000000_license_audit_previous_license_id_transfer',
+);
+const CLIENT_DEVICE_LIFECYCLE_SQL = readMigration(
+  '20261022000000_licensing_client_device_lifecycle',
+);
+const PRE_DEVICE_VLIC2_ARTIFACT =
+  'VLIC2.eyJ2IjoyLCJraW5kIjoic2VydmVyLWxpY2Vuc2UtdmVyc2lvbiIsIm9wZXJhdGlvbklkIjoiMDFLN09QRVJBVElPTkxFR0FDWVYyMDAwIn0.ZGV0ZXJtaW5pc3RpYy1yZWhlYXJzYWwtc2lnbmF0dXJl';
+const PRE_DEVICE_VLIC2_HASH = createHash('sha256')
+  .update(PRE_DEVICE_VLIC2_ARTIFACT, 'utf8')
+  .digest('hex');
 const AUDIT_DETAIL_FIXTURE = {
   id: 'rehearsal-preserved-audit-detail',
   preserved: 'H'.repeat(500),
@@ -646,6 +667,332 @@ async function assertCustomerCodeMigration(client) {
   }
 }
 
+async function seedPreDeviceEntitlementFixture(client) {
+  await client.query(
+    `INSERT INTO "licensing"."customers"
+       ("id", "customer_code", "display_name", "created_at", "updated_at")
+     VALUES
+       ('01K7CUSTOMERLEGACYV200000', 'CUST-LEGACY-V2', 'Legacy VLIC2 Customer',
+        '2026-10-14T08:00:00Z', '2026-10-14T08:00:00Z');
+
+     INSERT INTO "licensing"."installations"
+       ("id", "customer_id", "name", "is_self", "created_at", "updated_at")
+     VALUES
+       ('01K7INSTALLLEGACYV2000000', '01K7CUSTOMERLEGACYV200000',
+        'Legacy VLIC2 Installation', false,
+        '2026-10-14T08:00:00Z', '2026-10-14T08:00:00Z');
+
+     INSERT INTO "licensing"."licenses"
+       ("id", "installation_id", "customer_id", "created_at", "updated_at")
+     VALUES
+       ('01K7LICENSELEGACYV2000000', '01K7INSTALLLEGACYV2000000',
+        '01K7CUSTOMERLEGACYV200000',
+        '2026-10-14T08:00:00Z', '2026-10-14T08:00:00Z')`,
+  );
+
+  await client.query(
+    `INSERT INTO "licensing"."license_versions"
+       ("id", "license_id", "installation_id", "operation_id", "status",
+        "provider", "document_version", "document_hash", "key_id", "source",
+        "valid_from", "valid_until", "organization_limit", "user_limit",
+        "imported_at", "imported_by", "supersedes_version_id",
+        "superseded_at", "governs_until", "superseded_by_version_id",
+        "created_at", "updated_at")
+     VALUES
+       ('01K7VERSIONLEGACYV2000000', '01K7LICENSELEGACYV2000000',
+        '01K7INSTALLLEGACYV2000000', '01K7OPERATIONLEGACYV20000', 'ACTIVE',
+        'persistent', 2, $1, 'legacy-authority-2026', 'file',
+        '2026-10-14T08:00:00Z', '2027-10-14T08:00:00Z', 4, 40,
+        '2026-10-14T08:05:00Z', '01K7ACTORAAAAAAAAAAAAAAAAA',
+        NULL, NULL, NULL, NULL,
+        '2026-10-14T08:05:00Z', '2026-10-14T08:05:00Z')`,
+    [PRE_DEVICE_VLIC2_HASH],
+  );
+
+  await client.query(
+    `INSERT INTO "licensing"."license_version_entitlements"
+       ("id", "version_id", "kind", "code", "created_at", "updated_at")
+     VALUES
+       ('01K7ENTITLEMENTLEGACYV200', '01K7VERSIONLEGACYV2000000', 'MODULE',
+        'organization', '2026-10-14T08:05:00Z', '2026-10-14T08:05:00Z')`,
+  );
+
+  await client.query(
+    `INSERT INTO "licensing"."license_audit_events"
+       ("id", "installation_id", "event_type", "outcome", "operation_id",
+        "license_id", "version_id", "actor_id", "source", "document_hash",
+        "reason", "detail", "occurred_at", "created_at", "updated_at")
+     VALUES
+       ('01K7AUDITLEGACYV20000000', '01K7INSTALLLEGACYV2000000',
+        'license.import.applied', 'APPLIED', '01K7OPERATIONLEGACYV20000',
+        '01K7LICENSELEGACYV2000000', '01K7VERSIONLEGACYV2000000',
+        '01K7ACTORAAAAAAAAAAAAAAAAA', 'file', $1, NULL,
+        'pre-device-entitlement VLIC2 import',
+        '2026-10-14T08:05:00Z', '2026-10-14T08:05:00Z',
+        '2026-10-14T08:05:00Z')`,
+    [PRE_DEVICE_VLIC2_HASH],
+  );
+}
+
+async function snapshotPreDeviceState(client) {
+  const tables = [
+    ['customers', []],
+    ['installations', []],
+    ['licenses', []],
+    ['license_versions', ['device_limit', 'device_limit_specified']],
+    ['license_version_entitlements', []],
+    ['license_audit_events', ['device_id', 'replacement_request_id']],
+  ];
+  const snapshot = {};
+  for (const [table, excluded] of tables) {
+    const subtraction = excluded.map((column) => ` - '${column}'`).join('');
+    const result = await client.query(
+      `SELECT COALESCE(jsonb_agg("row_data" ORDER BY "id"), '[]'::jsonb) AS "rows"
+         FROM (
+           SELECT "id", to_jsonb(row_source)${subtraction} AS "row_data"
+             FROM "licensing"."${table}" AS row_source
+         ) AS snapshot_rows`,
+    );
+    snapshot[table] = result.rows[0].rows;
+  }
+  return snapshot;
+}
+
+async function expectConstraintFailure(client, label, sql, values = []) {
+  let rejected = false;
+  try {
+    await client.query('BEGIN');
+    await client.query(sql, values);
+  } catch {
+    rejected = true;
+  } finally {
+    await client.query('ROLLBACK');
+  }
+  assert.ok(rejected, `${label} must be rejected by PostgreSQL`);
+}
+
+async function assertClientDeviceMigration(client, before) {
+  const after = await snapshotPreDeviceState(client);
+  assert.deepEqual(
+    after,
+    before,
+    'OQ-83 migration must preserve every pre-existing licensing field byte-for-byte',
+  );
+
+  const legacyHash = await client.query(
+    `SELECT "document_version", "document_hash", "key_id"
+       FROM "licensing"."license_versions"
+      WHERE "id" = '01K7VERSIONLEGACYV2000000'`,
+  );
+  assert.deepEqual(legacyHash.rows, [
+    {
+      document_version: 2,
+      document_hash: PRE_DEVICE_VLIC2_HASH,
+      key_id: 'legacy-authority-2026',
+    },
+  ]);
+  assert.equal(
+    createHash('sha256')
+      .update(PRE_DEVICE_VLIC2_ARTIFACT, 'utf8')
+      .digest('hex'),
+    legacyHash.rows[0].document_hash,
+    'the retained hash still identifies the exact external signed artifact bytes',
+  );
+
+  const quota = await client.query(
+    `SELECT "id", "device_limit", "device_limit_specified"
+       FROM "licensing"."license_versions" ORDER BY "id"`,
+  );
+  assert.ok(
+    quota.rowCount > 0,
+    'the rehearsal must upgrade populated versions',
+  );
+  for (const row of quota.rows) {
+    assert.equal(
+      row.device_limit,
+      null,
+      `${row.id} must have no inferred limit`,
+    );
+    assert.equal(
+      row.device_limit_specified,
+      false,
+      `${row.id} must remain UNSPECIFIED, not unlimited`,
+    );
+  }
+
+  const columns = await client.query(
+    `SELECT "column_name", "data_type", "is_nullable", "column_default"
+       FROM information_schema.columns
+      WHERE "table_schema" = 'licensing'
+        AND "table_name" = 'license_versions'
+        AND "column_name" IN ('device_limit', 'device_limit_specified')
+      ORDER BY "column_name"`,
+  );
+  assert.deepEqual(columns.rows, [
+    {
+      column_name: 'device_limit',
+      data_type: 'integer',
+      is_nullable: 'YES',
+      column_default: null,
+    },
+    {
+      column_name: 'device_limit_specified',
+      data_type: 'boolean',
+      is_nullable: 'NO',
+      column_default: 'false',
+    },
+  ]);
+
+  const tables = await client.query(
+    `SELECT "table_name"
+       FROM information_schema.tables
+      WHERE "table_schema" = 'licensing'
+        AND "table_name" IN (
+          'client_devices',
+          'device_enrollment_challenges',
+          'client_device_replacement_requests'
+        )
+      ORDER BY "table_name"`,
+  );
+  assert.deepEqual(
+    tables.rows.map((row) => row.table_name),
+    [
+      'client_device_replacement_requests',
+      'client_devices',
+      'device_enrollment_challenges',
+    ],
+  );
+  for (const table of tables.rows.map((row) => row.table_name)) {
+    const count = await client.query(
+      `SELECT COUNT(*)::int AS "count" FROM "licensing"."${table}"`,
+    );
+    assert.equal(count.rows[0].count, 0, `${table} must start empty`);
+  }
+
+  const enums = await client.query(
+    `SELECT t.typname AS "name", json_agg(e.enumlabel ORDER BY e.enumsortorder) AS "labels"
+       FROM pg_type AS t
+       JOIN pg_namespace AS n ON n.oid = t.typnamespace
+       JOIN pg_enum AS e ON e.enumtypid = t.oid
+      WHERE n.nspname = 'licensing'
+        AND t.typname IN (
+          'ClientDeviceStatus',
+          'DeviceEnrollmentState',
+          'DeviceReplacementState'
+        )
+      GROUP BY t.typname
+      ORDER BY t.typname`,
+  );
+  assert.deepEqual(enums.rows, [
+    {
+      name: 'ClientDeviceStatus',
+      labels: ['ACTIVE', 'DEACTIVATED', 'REPLACED'],
+    },
+    {
+      name: 'DeviceEnrollmentState',
+      labels: ['PENDING', 'CONSUMED', 'EXPIRED'],
+    },
+    {
+      name: 'DeviceReplacementState',
+      labels: ['CHALLENGE', 'PENDING', 'COMPLETED', 'CANCELLED', 'EXPIRED'],
+    },
+  ]);
+
+  const constraints = await client.query(
+    `SELECT conname
+       FROM pg_constraint
+      WHERE connamespace = 'licensing'::regnamespace
+        AND conname IN (
+          'license_versions_device_limit_nonnegative_check',
+          'license_versions_device_limit_presence_check',
+          'client_devices_state_timestamps_check',
+          'client_devices_origin_check',
+          'device_enrollment_challenges_state_timestamp_check',
+          'client_device_replacement_requests_state_check',
+          'client_device_replacement_requests_old_device_same_installation_fkey',
+          'client_devices_enrollment_challenge_same_installation_fkey',
+          'client_devices_replacement_request_same_installation_fkey'
+        )
+      ORDER BY conname`,
+  );
+  assert.deepEqual(
+    constraints.rows.map((row) => row.conname),
+    [
+      // PostgreSQL truncates identifiers to NAMEDATALEN - 1 (63 bytes).
+      'client_device_replacement_requests_old_device_same_installation',
+      'client_device_replacement_requests_state_check',
+      'client_devices_enrollment_challenge_same_installation_fkey',
+      'client_devices_origin_check',
+      'client_devices_replacement_request_same_installation_fkey',
+      'client_devices_state_timestamps_check',
+      'device_enrollment_challenges_state_timestamp_check',
+      'license_versions_device_limit_nonnegative_check',
+      'license_versions_device_limit_presence_check',
+    ],
+  );
+
+  const indexes = await client.query(
+    `SELECT indexname, indexdef
+       FROM pg_indexes
+      WHERE schemaname = 'licensing'
+        AND indexname IN (
+          'uq_device_enrollment_challenges_pending_fingerprint',
+          'uq_device_replacement_requests_one_pending_per_old_device',
+          'uq_device_replacement_requests_active_key_fingerprint',
+          'uq_client_devices_enrollment_challenge_installation',
+          'uq_client_devices_replacement_request_installation'
+        )
+      ORDER BY indexname`,
+  );
+  assert.equal(indexes.rowCount, 5, 'all OQ-83 unique indexes must exist');
+  assert.match(
+    indexes.rows.find(
+      (row) =>
+        row.indexname ===
+        'uq_device_replacement_requests_one_pending_per_old_device',
+    ).indexdef,
+    /WHERE \(state = ANY \(ARRAY\['CHALLENGE'::.*'PENDING'/,
+  );
+  assert.match(
+    indexes.rows.find(
+      (row) =>
+        row.indexname ===
+        'uq_device_replacement_requests_active_key_fingerprint',
+    ).indexdef,
+    /WHERE \(state = ANY \(ARRAY\['CHALLENGE'::.*'PENDING'/,
+  );
+
+  await expectConstraintFailure(
+    client,
+    'a finite limit without explicit signed presence',
+    `UPDATE "licensing"."license_versions"
+        SET "device_limit" = 1, "device_limit_specified" = false
+      WHERE "id" = '01K7VERSIONLEGACYV2000000'`,
+  );
+  await expectConstraintFailure(
+    client,
+    'a negative explicit device limit',
+    `UPDATE "licensing"."license_versions"
+        SET "device_limit" = -1, "device_limit_specified" = true
+      WHERE "id" = '01K7VERSIONLEGACYV2000000'`,
+  );
+
+  await client.query('BEGIN');
+  await client.query(
+    `UPDATE "licensing"."license_versions"
+        SET "device_limit" = NULL, "device_limit_specified" = true
+      WHERE "id" = '01K7VERSIONLEGACYV2000000'`,
+  );
+  await client.query('ROLLBACK');
+  await client.query('BEGIN');
+  await client.query(
+    `UPDATE "licensing"."license_versions"
+        SET "device_limit" = 0, "device_limit_specified" = true
+      WHERE "id" = '01K7VERSIONLEGACYV2000000'`,
+  );
+  await client.query('ROLLBACK');
+}
+
 async function rehearsal() {
   await createDatabase(REHEARSAL_DB);
   await withClient(REHEARSAL_DB, async (client) => {
@@ -689,6 +1036,22 @@ async function rehearsal() {
     await assertCustomerCodeMigration(client);
     log(
       '  applied 20261020000000_licensing_customer_code and verified customer_code constraints',
+    );
+
+    await client.query(TRANSFER_LICENSE_COMMENT_SQL);
+    log('  applied 20261021000000_license_audit_previous_license_id_transfer');
+
+    await seedPreDeviceEntitlementFixture(client);
+    const preDeviceState = await snapshotPreDeviceState(client);
+    log(
+      '  seeded and snapshotted the populated schema immediately before OQ-83',
+    );
+
+    await client.query(CLIENT_DEVICE_LIFECYCLE_SQL);
+    log('  applied 20261022000000_licensing_client_device_lifecycle');
+    await assertClientDeviceMigration(client, preDeviceState);
+    log(
+      '  OQ-83 data preservation, UNSPECIFIED semantics, and schema assertions passed',
     );
   });
 }
@@ -840,6 +1203,15 @@ try {
   await prematureRetirementRehearsal();
   await duplicateHashRehearsal();
   log('Migration rehearsal passed.');
+} catch (error) {
+  const detail =
+    error instanceof Error ? (error.stack ?? error.message) : String(error);
+  const annotation = detail
+    .replaceAll('%', '%25')
+    .replaceAll('\r', '%0D')
+    .replaceAll('\n', '%0A');
+  log(`::error title=Licensing migration rehearsal::${annotation}`);
+  throw error;
 } finally {
   if (KEEP) {
     log(`KEEP=1: retained ${REHEARSAL_DB}, ${REPAIR_DB} and ${DUPLICATE_DB}`);

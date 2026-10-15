@@ -13,9 +13,10 @@
 > requires beyond this slice — Owner-side administration, full revocation,
 > Grace/Read-Only enforcement, server replacement and the installation identity
 > key are **not implemented** and remain gated by their open items. The
-> customer-side client-device lifecycle is the current OQ-83 implementation
-> slice: its policy is final in PDR-15 / OD-LIC-04, while implementation review
-> and exact-head CI remain outstanding.
+> customer-server client-device lifecycle was merged in PR #154 and its merge
+> SHA passed CI; its policy is final in PDR-15 / OD-LIC-04. OQ-83 remains OPEN
+> for independent review and operational evidence from the external device
+> client and Owner-side issuer.
 
 ## Model
 
@@ -42,7 +43,7 @@ Finite limit allocation is concurrency-safe. Organization creation and active-us
 
 ### Client-device quota and lifecycle (OQ-83 / PDR-15)
 
-The current OQ-83 slice adds retained device identities, Ed25519 proof-of-possession enrollment, explicit deactivation, typed history and one-for-one offline replacement inside the Licensing module. Only the effective signed LicenseVersion is authoritative: an omitted legacy `deviceLimit` is **UNSPECIFIED** and blocks new enrollment; signed `null` is unlimited; finite limits count active devices. Registration, deactivation, replacement and license-import reduction checks serialize on the same installation row and device-allocation lock. Replacement holds the old device active until a trusted correlated response completes in one transaction; no private key is stored or exposed and device rows are never deleted. See [the protocol and verification matrix](licensing/client-device-lifecycle.md). OQ-83 remains OPEN pending implementation review and exact-head CI; this is not Product Owner acceptance.
+The current OQ-83 slice adds retained device identities, Ed25519 proof-of-possession enrollment, explicit deactivation, typed history and one-for-one offline replacement inside the Licensing module. Only the effective signed LicenseVersion is authoritative: an omitted legacy `deviceLimit` is **UNSPECIFIED** and blocks new enrollment; signed `null` is unlimited; finite limits count active devices. Registration, deactivation, replacement and license-import reduction checks serialize on the same installation row and device-allocation lock. Replacement holds the old device active until a trusted correlated response completes in one transaction; no private key is stored or exposed and device rows are never deleted. See [the protocol and verification matrix](licensing/client-device-lifecycle.md) and [the operational implementation plan](tasks/licensing-oq-83-operational-plan.md). OQ-83 remains OPEN pending independent review and real client/issuer operational evidence; this is not Product Owner acceptance.
 
 ## Installation identity (L-02, ADR-0045)
 

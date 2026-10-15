@@ -2344,3 +2344,82 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   protection change was made. Follow the manual exact-head process in
   `docs/operations/ci-minutes-optimization.md`; keep the PR body as the record
   of final `classify`, `ci-gate` and applicable job links/results.
+
+## 44. OQ-83 populated migration rehearsal and operational plan (2026-10-15)
+
+- **Baseline/status:** `origin/main` was freshly fetched at
+  `a58fd19df0bcff76e594749d825ac8b37f95ba4f` with no open pull requests. This
+  bounded follow-up is implementation evidence and planning, not Product Owner
+  acceptance; **OQ-83 remains OPEN**.
+- **Populated upgrade evidence:** the existing disposable-PostgreSQL Licensing
+  rehearsal now continues through the actual `20261021000000` migration, seeds
+  a deterministic pre-device-entitlement VLIC2 version plus customer,
+  installation, entitlement and audit history, snapshots all retained Licensing
+  rows, and applies the unmodified `20261022000000` migration. Assertions cover
+  byte-equivalent old columns, the external signed artifact's retained SHA-256,
+  customer ID/code, UNSPECIFIED (`NULL` + presence false) on every old version,
+  new column metadata, enum vocabularies, empty lifecycle tables, state/FK
+  constraints, partial unique indexes, and finite/unlimited constraint behavior.
+  The backend CI step is renamed to describe this populated chain and invokes
+  `test:licensing-migration-rehearsal`; PostgreSQL execution is CI-only. Exact
+  PR-head CI evidence is recorded below.
+- **Operational investigation:**
+  [the bounded plan](docs/tasks/licensing-oq-83-operational-plan.md) records that
+  the customer server already verifies client proofs and VDRP1 but neither a
+  real device key-custody client nor an Owner-side VDRP1 issuer exists. It
+  recommends, without authorizing implementation, an installed client using an
+  approved OS keystore and an Owner-controlled issuer outside customer
+  installations. Device platform/repository/custody and Owner issuer/system of
+  record/approval/signing-key controls require Product Owner decisions,
+  including OQ-85 where applicable. OQ-77/OQ-78/OQ-82/OQ-84/OQ-85 are not
+  collapsed into this task.
+- **Verification boundary:** local checks are limited to script syntax,
+  deterministic CI-helper tests, formatting/link checks and diff inspection.
+  Migration execution, PostgreSQL, E2E and concurrency remain CI-only under
+  `docs/testing/test-execution-policy.md`. No historical migration, production
+  schema, API, permission, generated client or frontend behavior is changed.
+- **Initial exact-head CI:** run
+  [38701521825](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38701521825)
+  on `eb840282f8e679178ce3a84265362b69b6d8471a` passed `classify`, docs,
+  frontend and generated-client, but the new populated Licensing rehearsal
+  failed before later backend steps, so backend and `ci-gate` failed. Inspection
+  found the new seed sent several SQL commands together with `$1` parameters;
+  node-postgres uses the extended protocol for parameterized queries and does
+  not permit multiple commands there. The seed was split into individual
+  parameterized statements. This is a rehearsal-harness correction only; the
+  migration and fixture invariants are unchanged. Follow-up run
+  [38701991173](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38701991173)
+  on `3bb36d358ea43712fe6ec2d078713827ded3367c` again failed in the same new
+  rehearsal step; the GitHub annotations exposed only exit code 1 and the raw
+  log host is unavailable from this sandbox. The rehearsal now emits its caught
+  stack as a bounded GitHub error annotation so the next CI run supplies the
+  actual PostgreSQL/assertion diagnostic without weakening or skipping the
+  test. Run
+  [38702436263](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38702436263)
+  on `390b38e38a3fbabfd2f2434a181dfa4bd38b626d` then exposed `cannot delete
+  from scalar` in `snapshotPreDeviceState`: PostgreSQL resolved the snapshot
+  alias `source` as the scalar `source` column on version/audit rows instead of
+  the composite table row. The alias was made unambiguous as `row_source`; no
+  fixture, migration, assertion, or product behavior changed. Run
+  [38702844251](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38702844251)
+  on `b40323a31e4d192a360e6f62363388ec47983d34` passed the migration and
+  preservation phases, then exposed a harness representation mismatch in the
+  enum-schema assertion: node-postgres returned the schema-qualified custom
+  enum array as PostgreSQL array text. The introspection now aggregates labels
+  as JSON so the driver yields the asserted JavaScript arrays; no expected enum
+  value, migration, fixture, or product behavior changed. Run
+  [38703159543](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38703159543)
+  on `b77a50327880907ae58fddde9cd35e31754256bf` passed those phases and
+  exposed that the expected catalog constraint name did not account for
+  PostgreSQL's 63-byte identifier limit. The expectation now uses the actual
+  catalog-truncated name while retaining the full migration-declared name in
+  the lookup; no constraint, migration, fixture, or product behavior changed.
+- **Passing exact-head CI:** run
+  [38703580888](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38703580888)
+  passed on `bccaa471583db2969c9e1c38d0edec142d1322d2`: `classify`, docs,
+  generated API client, frontend, backend and `ci-gate`. Backend passed the
+  populated Licensing migration chain through OQ-83, all other migration
+  rehearsals, E2E, Licensing persistence live PostgreSQL and OQ-83
+  client-device live PostgreSQL suites. This supplies migration and test
+  evidence for review; it does not approve the proposed operational components
+  or close OQ-83.

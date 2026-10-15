@@ -1,6 +1,6 @@
 # Client-device licensing and replacement protocol (OQ-83)
 
-**Status:** implementation design, 2026-10-15 · Product policy: [PDR-15 / OD-LIC-04](../decisions/product/PDR-15-client-device-licensing-and-replacement.md) · canonical product requirements: [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) §§7–8, 12, 15.2.
+**Status:** customer-server implementation merged and CI-verified; external client and Owner issuer remain operational dependencies, 2026-10-15 · Product policy: [PDR-15 / OD-LIC-04](../decisions/product/PDR-15-client-device-licensing-and-replacement.md) · canonical product requirements: [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) §§7–8, 12, 15.2.
 
 This is a vertical slice inside the existing Licensing module. It adds no Owner-side
 issuer, no application synchronization, no server-installation replacement and no
@@ -210,7 +210,13 @@ success feedback and permission-based hiding of writes.
 
 The dedicated live PostgreSQL test covers signed-quota concurrency, retained inventory
 and audit, cancellation/replay refusal, atomic one-for-one replacement, explicit
-deactivation, and cross-table key-use exclusion. It is registered in GitHub Actions and
-has **not been run locally**. These current tests do not replace Product Owner review or
-exact-head CI verification. Full database, migration-rehearsal, Docker, PostgreSQL and
-E2E suites are CI-only under `docs/testing/test-execution-policy.md`.
+deactivation, and cross-table key-use exclusion. The populated licensing migration
+rehearsal now carries representative retained VLIC1/VLIC2 history through the exact
+pre-OQ-83 schema and the unmodified `20261022000000` SQL, proving preservation of old
+fields and hashes, UNSPECIFIED backfill semantics, and the resulting constraints and
+indexes. Both are registered in GitHub Actions and are **not run locally**. See the
+bounded evidence and operational plan in
+[`docs/tasks/licensing-oq-83-operational-plan.md`](../tasks/licensing-oq-83-operational-plan.md).
+These tests do not replace Product Owner review or exact-head CI verification. Full
+database, migration-rehearsal, Docker, PostgreSQL and E2E suites are CI-only under
+`docs/testing/test-execution-policy.md`.
