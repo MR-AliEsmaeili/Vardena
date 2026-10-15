@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic verification of customer production artifacts, Docker parity, and key hygiene.
+"""Deterministic verification of customer production artifacts, Docker stage file parity, and key hygiene.
 
 Phase 0.5A regression gate:
 1. Production Build Output Gate:
@@ -9,7 +9,7 @@ Phase 0.5A regression gate:
      - Forbidden development-only symbols/exports: `generateAuthorityKeyPair`,
        `issueLicenseCode`, `issueLicenseFile`, `issueLicenseDocument`,
        `LICENSE_SIGNING_PRIVATE_KEY`
-   - Verifies required customer runtime entrypoints and modules ARE present:
+   - Verifies required customer runtime entrypoints and modules are present as compiled files:
      - `dist/main.js`
      - `dist/worker.js`
      - `dist/bootstrap-system-administrator.js`
@@ -21,25 +21,23 @@ Phase 0.5A regression gate:
    - Inspects `backend/package.json` production start scripts.
    - Asserts production commands (`start:prod`, `start:worker`) never invoke the dev issuer.
 
-3. Reproducible Production Container Deliverable Simulation (Docker Production Stage Parity):
-   - Exactly matches `backend/Dockerfile` production stage:
+3. Reproducible Production Stage File-Selection Simulation (Docker Production Stage Parity):
+   - Reproduces the file-selection boundary corresponding to `backend/Dockerfile` production stage:
      ```dockerfile
-     FROM base AS production
-     WORKDIR /app
-     ENV NODE_ENV=production
      COPY package.json package-lock.json ./
-     RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
      COPY --from=build /app/dist ./dist
      ```
-   - In a hermetic directory structure matching `/app`, copies `package.json`,
-     `package-lock.json`, and `dist/`.
-   - Asserts that within that production deliverable:
+   - In a hermetic directory structure, copies `package.json`, `package-lock.json`, and `dist/`.
+   - Asserts that within that simulated customer deliverable:
      - Development issuer files are absent and unimportable.
-     - Production entrypoints (`dist/main.js`, `dist/worker.js`) load cleanly.
+     - Required entrypoint files exist.
      - Real customer license verification works using authoritative test fixtures:
        - Valid `VLIC2` document envelope parses and verifies against trusted public key.
        - Valid `VLIC1` legacy code parses and verifies against trusted public key.
        - Tampered signature or untrusted public key is strictly refused.
+   - Note on Scope/Limitation: This check simulates the Dockerfile production stage's file selection
+     and verifies runtime licensing behavior. It does not invoke the Docker daemon to build a live
+     container image and does not run `npm ci --omit=dev` inside the sandbox.
 
 4. Repository Key Hygiene & Secret Scan:
    - Scans tracked git files and any staged files for forbidden private-key extensions
@@ -247,12 +245,16 @@ console.log('Customer license verification tests PASSED.');
 
 
 def verify_docker_production_stage_parity(backend_dir: Path) -> list[str]:
-    """Simulate and inspect the exact file layout of the Dockerfile `production` stage.
+    """Simulate and inspect the file selection of Dockerfile `production` stage.
 
     The Dockerfile specifies:
       COPY package.json package-lock.json ./
       RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
       COPY --from=build /app/dist ./dist
+
+    Note on scope: This tests the file-selection boundary (dist + package manifests)
+    and executes runtime licensing verification. It does not invoke the Docker daemon
+    or execute a separate npm ci inside the sandbox.
     """
     errors: list[str] = []
     dist_dir = backend_dir / "dist"
@@ -271,8 +273,6 @@ def verify_docker_production_stage_parity(backend_dir: Path) -> list[str]:
         shutil.copy(pkg_path, stage_dir / "package.json")
         shutil.copy(lock_path, stage_dir / "package-lock.json")
 
-        # Reuse backend/node_modules symlink or production-subset to evaluate runtime
-        # without running a redundant npm ci during gate
         backend_node_modules = backend_dir / "node_modules"
         if backend_node_modules.is_dir():
             os.symlink(backend_node_modules, stage_dir / "node_modules")
@@ -297,7 +297,6 @@ def verify_docker_production_stage_parity(backend_dir: Path) -> list[str]:
 
 def scan_key_hygiene(repo_root: Path) -> list[str]:
     errors: list[str] = []
-    # Check tracked and staged files
     cmd = ["git", "ls-files"]
     proc = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, check=False)
     if proc.returncode != 0:
@@ -305,7 +304,6 @@ def scan_key_hygiene(repo_root: Path) -> list[str]:
 
     files_to_check = set(line.strip() for line in proc.stdout.splitlines() if line.strip())
 
-    # Also check staged files
     staged_proc = subprocess.run(
         ["git", "diff", "--name-only", "--cached"],
         cwd=str(repo_root),
