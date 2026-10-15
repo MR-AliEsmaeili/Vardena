@@ -1202,6 +1202,15 @@ try {
   await prematureRetirementRehearsal();
   await duplicateHashRehearsal();
   log('Migration rehearsal passed.');
+} catch (error) {
+  const detail =
+    error instanceof Error ? (error.stack ?? error.message) : String(error);
+  const annotation = detail
+    .replaceAll('%', '%25')
+    .replaceAll('\r', '%0D')
+    .replaceAll('\n', '%0A');
+  log(`::error title=Licensing migration rehearsal::${annotation}`);
+  throw error;
 } finally {
   if (KEEP) {
     log(`KEEP=1: retained ${REHEARSAL_DB}, ${REPAIR_DB} and ${DUPLICATE_DB}`);

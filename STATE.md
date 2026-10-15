@@ -2387,5 +2387,11 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   node-postgres uses the extended protocol for parameterized queries and does
   not permit multiple commands there. The seed was split into individual
   parameterized statements. This is a rehearsal-harness correction only; the
-  migration and fixture invariants are unchanged. A later exact-head run is the
-  only valid verification.
+  migration and fixture invariants are unchanged. Follow-up run
+  [38701991173](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38701991173)
+  on `3bb36d358ea43712fe6ec2d078713827ded3367c` again failed in the same new
+  rehearsal step; the GitHub annotations exposed only exit code 1 and the raw
+  log host is unavailable from this sandbox. The rehearsal now emits its caught
+  stack as a bounded GitHub error annotation so the next CI run supplies the
+  actual PostgreSQL/assertion diagnostic without weakening or skipping the
+  test. A later exact-head run is the only valid verification.
