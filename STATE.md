@@ -2378,3 +2378,14 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   Migration execution, PostgreSQL, E2E and concurrency remain CI-only under
   `docs/testing/test-execution-policy.md`. No historical migration, production
   schema, API, permission, generated client or frontend behavior is changed.
+- **Initial exact-head CI:** run
+  [38701521825](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38701521825)
+  on `eb840282f8e679178ce3a84265362b69b6d8471a` passed `classify`, docs,
+  frontend and generated-client, but the new populated Licensing rehearsal
+  failed before later backend steps, so backend and `ci-gate` failed. Inspection
+  found the new seed sent several SQL commands together with `$1` parameters;
+  node-postgres uses the extended protocol for parameterized queries and does
+  not permit multiple commands there. The seed was split into individual
+  parameterized statements. This is a rehearsal-harness correction only; the
+  migration and fixture invariants are unchanged. A later exact-head run is the
+  only valid verification.

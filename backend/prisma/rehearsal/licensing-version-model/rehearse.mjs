@@ -687,9 +687,11 @@ async function seedPreDeviceEntitlementFixture(client) {
      VALUES
        ('01K7LICENSELEGACYV2000000', '01K7INSTALLLEGACYV2000000',
         '01K7CUSTOMERLEGACYV200000',
-        '2026-10-14T08:00:00Z', '2026-10-14T08:00:00Z');
+        '2026-10-14T08:00:00Z', '2026-10-14T08:00:00Z')`,
+  );
 
-     INSERT INTO "licensing"."license_versions"
+  await client.query(
+    `INSERT INTO "licensing"."license_versions"
        ("id", "license_id", "installation_id", "operation_id", "status",
         "provider", "document_version", "document_hash", "key_id", "source",
         "valid_from", "valid_until", "organization_limit", "user_limit",
@@ -703,15 +705,20 @@ async function seedPreDeviceEntitlementFixture(client) {
         '2026-10-14T08:00:00Z', '2027-10-14T08:00:00Z', 4, 40,
         '2026-10-14T08:05:00Z', '01K7ACTORAAAAAAAAAAAAAAAAA',
         NULL, NULL, NULL, NULL,
-        '2026-10-14T08:05:00Z', '2026-10-14T08:05:00Z');
+        '2026-10-14T08:05:00Z', '2026-10-14T08:05:00Z')`,
+    [PRE_DEVICE_VLIC2_HASH],
+  );
 
-     INSERT INTO "licensing"."license_version_entitlements"
+  await client.query(
+    `INSERT INTO "licensing"."license_version_entitlements"
        ("id", "version_id", "kind", "code", "created_at", "updated_at")
      VALUES
        ('01K7ENTITLEMENTLEGACYV200', '01K7VERSIONLEGACYV2000000', 'MODULE',
-        'organization', '2026-10-14T08:05:00Z', '2026-10-14T08:05:00Z');
+        'organization', '2026-10-14T08:05:00Z', '2026-10-14T08:05:00Z')`,
+  );
 
-     INSERT INTO "licensing"."license_audit_events"
+  await client.query(
+    `INSERT INTO "licensing"."license_audit_events"
        ("id", "installation_id", "event_type", "outcome", "operation_id",
         "license_id", "version_id", "actor_id", "source", "document_hash",
         "reason", "detail", "occurred_at", "created_at", "updated_at")
