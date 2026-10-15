@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as api from '@/api/owner.api';
 import type { OperationalRecord } from '@/api/contracts';
 import { usePermissions } from '@/features/permissions/use-permissions';
+import { auditTrailHref } from '@/features/audit/audit-filters';
 import { o } from '@/lib/owner-i18n';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
@@ -295,9 +296,18 @@ export function OperationPage() {
           await qc.invalidateQueries({ queryKey: ['owner', 'operations'] });
         }}
       />
-      <Button asChild variant="outline">
-        <Link to="/app/operations">{o.back}</Link>
-      </Button>
+      <div className="flex flex-wrap gap-3">
+        {permissions.has('audit.view') ? (
+          <Button asChild variant="outline">
+            <Link to={auditTrailHref('OperationalRecord', record.id)}>
+              {o.auditOperationLink}
+            </Link>
+          </Button>
+        ) : null}
+        <Button asChild variant="outline">
+          <Link to="/app/operations">{o.back}</Link>
+        </Button>
+      </div>
     </section>
   );
 }

@@ -3,7 +3,8 @@
 Independent Owner web application; **not customer Vardena**. Product authority:
 [PDR-17](../docs/decisions/product/PDR-17-owner-web-application-phase-1.md).
 Persian RTL login, mandatory password change, customer list/search/detail/create/
-edit, user administration/role assignment, and durable attributable audit viewing.
+edit, user administration/role assignment, durable attributable audit viewing with
+a filterable audit explorer (Phase 1.1), and operator-observed records.
 The lifecycle navigation keeps cryptographic issuance, signed receipts, device
 replacement, revocation and recovery unavailable. Administrator and Issuance
 Specialist can record operator-observed activation facts and same-customer
@@ -172,7 +173,12 @@ accepts name/status/reference plus required reason; identity/code/actor/time and
 unknown fields reject. Lists: page size 50, `page`, literal `search` up to 100 chars.
 `users` GET/POST; `users/:id` PATCH role/isActive/reason;
 `users/:id/reset-password` POST password/reason. New/reset accounts must change
-password. `audit-events` GET, optional `targetId`, 50-row pages.
+password. `audit-events` GET (`audit.view`; Support gets 403): exact-match
+`eventType`, `actorId`, `targetType`, `targetId`, `outcome`, and UTC
+`occurredFrom`/`occurredBefore` (half-open); AND semantics; 50-row pages with
+`hasNext`; unknown, repeated, malformed or wildcard input is 400. Full contract:
+[backend README](backend/README.md#audit-explorer-contract). Calendar and
+instant rules: [task record](../docs/tasks/licensing-owner-side-phase-1-1-audit-explorer.md).
 `operational-records` GET with `page`, literal `search`, optional `kind`,
 `status` and `customerId`. Detail includes append-only history.
 POST `operational-records/license-observations` records an externally observed

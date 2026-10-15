@@ -5,11 +5,15 @@ export function Pagination({
   page,
   count,
   setPage,
+  hasNext,
 }: {
   page: number;
   count: number;
   setPage: (p: number) => void;
+  /** Server-reported continuation. When absent, a full page implies a next page. */
+  hasNext?: boolean;
 }) {
+  const canGoNext = hasNext ?? count >= 50;
   return (
     <nav aria-label={o.page} className="flex items-center gap-3">
       <Button
@@ -24,7 +28,7 @@ export function Pagination({
       </span>
       <Button
         variant="outline"
-        disabled={count < 50}
+        disabled={!canGoNext}
         onClick={() => setPage(page + 1)}
       >
         {o.next}

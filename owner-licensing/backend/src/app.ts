@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { ulid } from "ulid";
 import type { PoolClient } from "pg";
 import type { Config } from "./config.js";
+import { listAuditEvents } from "./audit.js";
 import { Database, audit } from "./db.js";
 import {
   ApiError,
@@ -684,21 +685,18 @@ export async function createApp(db: Database, cfg: Config) {
       );
     },
   );
+  // Read-only explorer. Authorization is the route permission; the query never
+  // supplies or changes the authenticated actor.
   route(
     "get",
     "/audit-events",
     "audit.view",
     true,
     async (tx, _a, req, res) => {
-      const p = page(req.query.page);
-      const target =
-        req.query.targetId === undefined ? null : id(req.query.targetId);
-      const rows = await tx.query(
-        `SELECT id,actor_id AS "actorId",event_type AS "eventType",target_type AS "targetType",target_id AS "targetId",occurred_at AS "occurredAt",outcome,reason,before_state AS "beforeState",after_state AS "afterState"
-      FROM owner.audit_events WHERE ($1::text IS NULL OR target_id=$1) ORDER BY sequence DESC LIMIT 50 OFFSET $2`,
-        [target, (p - 1) * 50],
+      res.locals.body = await listAuditEvents(
+        tx,
+        req.query as Record<string, unknown>,
       );
-      res.locals.body = { items: rows.rows, page: p, pageSize: 50 };
     },
   );
   app.use("/api/v1", router);

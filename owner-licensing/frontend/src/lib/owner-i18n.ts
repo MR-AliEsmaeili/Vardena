@@ -158,4 +158,60 @@ export const o = {
   noAudit: 'رویدادی در این صفحه وجود ندارد.',
   auditNotice:
     'تاریخچه ماندگار است؛ حذف و پاک‌سازی در این مرحله وجود ندارد. سیاست دقیق نگه‌داری OQ-77 هنوز مستند نشده است.',
+  auditFilters: 'فیلترهای تاریخچه',
+  auditApply: 'اعمال فیلترها',
+  auditReset: 'پاک‌سازی فیلترها',
+  auditEventType: 'کد رویداد',
+  auditEventTypeHint:
+    'کد دقیق رویداد، مثلاً CUSTOMER_UPDATED. تطبیق دقیق است و جست‌وجوی جزئی انجام نمی‌شود.',
+  auditEventTypeInvalid:
+    'کد رویداد باید با حرف انگلیسی بزرگ شروع شود و فقط حروف بزرگ، عدد و _ داشته باشد (حداکثر ۱۲۰ نویسه).',
+  auditActorId: 'شناسه کاربر عامل',
+  auditTargetType: 'نوع رکورد هدف',
+  auditTargetId: 'شناسه رکورد هدف',
+  auditOutcome: 'نتیجه رویداد',
+  auditFrom: 'از تاریخ (UTC)',
+  auditTo: 'تا تاریخ (UTC)',
+  auditRangeHint:
+    'هر دو روز ابتدا و انتها در بازه قرار می‌گیرند. تاریخ‌ها بر اساس روز تقویمی UTC تفسیر می‌شوند.',
+  auditDateInvalid: 'تاریخ معتبر نیست.',
+  auditFilterInvalidChoice: 'مقدار انتخاب‌شده معتبر نیست.',
+  auditDateRange: 'تاریخ شروع نباید بعد از تاریخ پایان باشد.',
+  auditInvalidFilters:
+    'فیلترها معتبر نیستند؛ مقادیر را اصلاح کنید و دوباره اعمال کنید. تا آن زمان نتیجه‌ای بارگذاری نمی‌شود.',
+  auditOutcomeLabels: {
+    SUCCESS: 'موفق',
+    DENIED: 'رد شده (فاقد مجوز یا نامعتبر)',
+  },
+  auditTargetLabels: {
+    Customer: 'مشتری',
+    OperationalRecord: 'رکورد عملیات دستی',
+    User: 'کاربر',
+  },
+  auditEventLabels: {
+    AUTH_LOGIN: 'ورود کاربر',
+    AUTH_LOGIN_FAILED: 'تلاش ناموفق ورود',
+    AUTH_LOGOUT: 'خروج کاربر',
+    PASSWORD_CHANGED: 'تغییر گذرواژه توسط کاربر',
+    PASSWORD_RESET: 'بازنشانی گذرواژه توسط مدیر',
+    USER_CREATED: 'ایجاد کاربر',
+    USER_ACCESS_CHANGED: 'تغییر نقش یا وضعیت کاربر',
+    CUSTOMER_CREATED: 'ایجاد مشتری',
+    CUSTOMER_UPDATED: 'ویرایش مشتری',
+    OPERATION_MUTATION_DENIED: 'ثبت عملیات دستی رد شد (فاقد مجوز)',
+    LICENSE_ISSUANCE_OBSERVED:
+      'مشاهده صدور خارجی ثبت شد (مشاهده اپراتور، نه رسید رمزنگاری‌شده)',
+    LICENSE_ACTIVATION_OBSERVED:
+      'مشاهده تأیید فعال‌سازی ثبت شد (مشاهده اپراتور، نه رسید رمزنگاری‌شده)',
+    SERVER_REPLACEMENT_AUTHORIZED: 'تصمیم تعویض سرور ثبت شد',
+    SERVER_REPLACEMENT_OLD_STATE_RECORDED:
+      'مشاهده وضعیت سرور قدیم ثبت شد (مشاهده اپراتور، نه تأیید رمزنگاری)',
+    SERVER_REPLACEMENT_RECORDED:
+      'مشاهده نصب سرور جایگزین ثبت شد (مشاهده اپراتور، نه تأیید رمزنگاری)',
+  },
+  auditObservedNote:
+    'این رویداد مشاهده اپراتور است. رسید رمزنگاری‌شده، تأیید امضا یا تماس با سرور مشتری را نشان نمی‌دهد.',
+  auditOperationLink: 'رویدادهای ممیزی این رکورد',
+  auditCustomerLink: 'رویدادهای ممیزی این مشتری',
+  auditBeforeAfterHint: 'فقط فیلدهای مجاز نمایش داده می‌شوند.',
 };
