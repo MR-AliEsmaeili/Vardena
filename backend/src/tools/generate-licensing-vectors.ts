@@ -76,8 +76,6 @@ function loadKey(name: string): { priv: any; pub: any; json: any } {
 
 mkdirSync(join(ROOT, 'keys'), { recursive: true });
 
-// Ensure committed keys exist; if absent, generate once and persist (first bootstrap only).
-
 const a = loadKey('authority-a');
 const b = loadKey('authority-b');
 const dev = loadKey('device-01');
