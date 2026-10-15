@@ -6,6 +6,7 @@
   },
   "include": [
     "src/issue-development-license.ts",
-    "src/tools/development-license-authority.ts"
+    "src/tools/development-license-authority.ts",
+    "src/tools/generate-licensing-vectors.ts"
   ]
 }

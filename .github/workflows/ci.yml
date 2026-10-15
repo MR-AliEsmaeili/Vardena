@@ -165,6 +165,13 @@ jobs:
         working-directory: backend
         run: npm run build
 
+      - name: Regenerate licensing vectors (determinism check)
+        working-directory: backend
+        run: |
+          npm run license:vectors
+          cd ..
+          git diff --exit-code docs/licensing/vectors
+
       - name: Verify production artifacts and secret hygiene
         run: python3 scripts/check-production-artifacts.py
 

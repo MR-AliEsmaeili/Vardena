@@ -1,0 +1,7 @@
+{
+  "label": "TEST-ONLY device key (never used in production)",
+  "privateKeyPkcs8Base64": "MC4CAQAwBQYDK2VwBCIEIOgvf6ETYVv2Wu2SITyHCZhKGo1CQtz9V45lKXUSkWMH",
+  "publicKeySpkiBase64": "MCowBQYDK2VwAyEA4tH+Opmzg7yuyKzcQdHMe1kk2VNXVVyMFKw2a5QtUlY=",
+  "publicKeySpkiBase64Url": "MCowBQYDK2VwAyEA4tH-Opmzg7yuyKzcQdHMe1kk2VNXVVyMFKw2a5QtUlY",
+  "fingerprint": "90d31a35753045d5a8cf431f9046924cebfffe339f27ea6f9d2bdaec0ed2a310"
+}

@@ -1,0 +1,8 @@
+{
+  "label": "TEST-ONLY authority A (never signed a real license)",
+  "privateKeyPkcs8Base64": "MC4CAQAwBQYDK2VwBCIEIMgX1soXprzCPsUC6H0uyP4OKjUpLcztYEsZhlvmCwkk",
+  "publicKeySpkiBase64": "MCowBQYDK2VwAyEANonjVVNucTUdpS2AJGg9ocQPCAlR16OSQcQeQTwDdNg=",
+  "publicKeySpkiBase64Url": "MCowBQYDK2VwAyEANonjVVNucTUdpS2AJGg9ocQPCAlR16OSQcQeQTwDdNg",
+  "fingerprint": "e6fc4307e011fd04c8a7e6b3d65072b1ae231e55bbf444340eff0f814101630b",
+  "keyId": "sha256-e6fc4307e011fd04"
+}

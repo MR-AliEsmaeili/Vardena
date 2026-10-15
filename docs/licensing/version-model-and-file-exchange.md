@@ -68,12 +68,69 @@ Canonical payload (fixed key order, sorted arrays, ISO-8601 UTC instants):
   "validUntil": "2028-01-01T00:00:00.000Z",
   "organizationLimit": 3,
   "userLimit": 25,
+  "deviceLimit": 12,
   "modules": ["accounting", "organization", "users"],
   "features": [],
   "supersedesOperationId": null,
   "issuedAt": "2026-10-11T00:00:00.000Z"
 }
 ```
+
+**Normative canonical byte contract (ratified 2026-10-15 under D-2(b); verified against
+the implementation in `backend/src/modules/licensing/domain/license-document.ts`
+(`canonicalizeLicenseVersion`) and `license-code.ts` (`canonicalize`) and the device
+protocol in `client-device.ts`).** A signed canonical payload is the UTF-8 encoding of a
+JSON text in which:
+
+1. Object keys appear in the exact declared order shown above (and in the
+   corresponding `WirePayload`/`WirePayloadV2` object literals in source).
+2. `modules` and `features` are sorted ascending (lexicographic, by UTF-16 code unit)
+   before serialization.
+3. `validFrom`, `validUntil`, `issuedAt` and device-protocol instants are
+   `Date.prototype.toISOString()` form: `YYYY-MM-DDTHH:mm:ss.sssZ`, always UTC with
+   exactly three fraction digits. `validUntil`/`validUntil`-equivalents are `null` for
+   perpetual.
+4. `"` and `\` are escaped as `\"` and `\\`.
+5. `U+0008`, `U+0009`, `U+000A`, `U+000C`, `U+000D` are escaped as `\b`, `\t`,
+   `\n`, `\f`, `\r`.
+6. Every other code point in `U+0000`–`U+001F` is escaped as `\u00xx` with **lowercase**
+   hex digits.
+7. **Every other code point is emitted raw as UTF-8**, including all non-ASCII,
+   `U+007F`, `U+2028`, `U+2029`, `<`, `>`, `&` and `/`. No whitespace is inserted
+   between tokens.
+8. Numbers are integers or `null`. `organizationLimit`/`userLimit` are `number | null`;
+   `deviceLimit` is `number | null` when present.
+9. No top-level or payload whitespace beyond the JSON tokens.
+
+**`deviceLimit` presence semantics (VLIC2):**
+
+- Field **absent** in a legacy/pre-device artifact ⇒ `deviceLimit = null` and
+  `deviceLimitSpecified = false` (`UNSPECIFIED`). The signed payload does NOT contain
+  `deviceLimit`.
+- Field present with explicit `null` ⇒ unlimited, `deviceLimitSpecified = true`.
+- Field present with a finite non-negative integer ⇒ explicit quota,
+  `deviceLimitSpecified = true`.
+
+The same escaping/serialization rules apply to `VLIC1` (`license-code.ts`),
+`VDEA1`/`VDRQ1`/`VDRP1` (`client-device.ts`). VDEA1/VDRQ1/VDRP1 carry no free-text
+field, so their canonical bytes are ASCII-only, but the rules above still govern.
+
+**Armor:** `VLIC2.<base64url(canonical payload UTF-8)>.<base64url(Ed25519 signature)>`,
+unpadded base64url (`[A-Za-z0-9_-]`), strict round-trip re-encode check. Ed25519
+signature exactly 64 bytes; SPKI public key DER exactly 44 bytes. Separator `.` with
+exactly three segments.
+
+**Public key / fingerprint:** canonical DER SPKI, base64url, no PEM; canonicality
+enforced (re-exported bytes must equal input; `noncanonical-key` otherwise); key type
+must be `ed25519`. `publicKeyFingerprint` = full SHA-256 of the 44-byte DER,
+lowercase hex, 64 chars. Distinct from the trusted-key id `hashKeyMaterial` produces:
+`sha256-<first 16 hex of SPKI DER>` (no prefix on the device fingerprint).
+
+**Request hash (VDRP1):** SHA-256 hex digest of the **armored `VDRQ1` artifact string**
+as UTF-8 — not of the canonical payload and not of the file envelope.
+
+**File envelope:** `format`/`fileVersion`/optional `keyId`/`document`; unknown top-level
+keys rejected; size limit 65 536 bytes before parsing.
 
 Rules: the payload must round-trip to **exactly** the signed bytes (canonical
 form), `customerId` and `customerCode` must be valid codes and distinct from

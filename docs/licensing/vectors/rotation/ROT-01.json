@@ -1,0 +1,11 @@
+{
+  "id": "ROT-01",
+  "name": "artifact signed by A accepted while A and B trusted",
+  "trustKeys": [
+    "authority-a",
+    "authority-b"
+  ],
+  "artifact": "VLIC2.eyJ2IjoyLCJraW5kIjoiU0VSVkVSX0xJQ0VOU0VfVkVSU0lPTiIsIm9wZXJhdGlvbklkIjoiMDFURVNUSUQwMDAwMDAwMDAwMDAwMDAwMDEiLCJsaWNlbnNlSWQiOiIwMVRFU1RJRDAwMDAwMDAwMDAwMDAwMDAwMiIsImN1c3RvbWVySWQiOiIwMVRFU1RJRDAwMDAwMDAwMDAwMDAwMDAwMyIsImN1c3RvbWVyQ29kZSI6IkNVU1QtQUNNRS0wMSIsImN1c3RvbWVyTmFtZSI6Iti02LHaqdiqINiq2LPYqiIsImluc3RhbGxhdGlvbklkIjoiMDFURVNUSUQwMDAwMDAwMDAwMDAwMDAwMDQiLCJzdGF0dXMiOiJBQ1RJVkUiLCJ2YWxpZEZyb20iOiIyMDI3LTAxLTAxVDAwOjAwOjAwLjAwMFoiLCJ2YWxpZFVudGlsIjoiMjAyOC0wMS0wMVQwMDowMDowMC4wMDBaIiwib3JnYW5pemF0aW9uTGltaXQiOjMsInVzZXJMaW1pdCI6MjUsImRldmljZUxpbWl0IjoxMiwibW9kdWxlcyI6WyJhY2NvdW50aW5nIiwiaW52ZW50b3J5Il0sImZlYXR1cmVzIjpbXSwic3VwZXJzZWRlc09wZXJhdGlvbklkIjpudWxsLCJpc3N1ZWRBdCI6IjIwMjYtMTAtMTFUMDA6MDA6MDAuMDAwWiJ9.fKM9rU9ff0-YqlfbVw3drUiz5_QEqb6LcuWnnqwh_UaXhvo2AViA_BZJPjgIcL7pe5LfWsV7Mphd2xcfI--fBw",
+  "expectedKeyId": "sha256-e6fc4307e011fd04",
+  "expectedResult": "accepted"
+}

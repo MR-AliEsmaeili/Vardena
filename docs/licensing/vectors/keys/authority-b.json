@@ -1,0 +1,8 @@
+{
+  "label": "TEST-ONLY authority B (rotation)",
+  "privateKeyPkcs8Base64": "MC4CAQAwBQYDK2VwBCIEINSTKEFOmyKRgLTa4RfOs+dyKRV0GbQ5hXeZDk9HIJJE",
+  "publicKeySpkiBase64": "MCowBQYDK2VwAyEAADHr236JPv/Kd4Jv5PIbhsrpe3Yh4lBMT7f90waK8VI=",
+  "publicKeySpkiBase64Url": "MCowBQYDK2VwAyEAADHr236JPv_Kd4Jv5PIbhsrpe3Yh4lBMT7f90waK8VI",
+  "fingerprint": "73f8ad845ef91a693811a0f0118f6231f87f73c026a106b3f8f3ea8a66bd9c24",
+  "keyId": "sha256-73f8ad845ef91a69"
+}

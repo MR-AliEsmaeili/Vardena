@@ -1,7 +1,7 @@
 {
   "name": "vardena-backend",
   "version": "0.0.1",
-  "description": "Vardena ERP backend — NestJS modular monolith (API + worker). See README.md and ADR-0015.",
+  "description": "Vardena ERP backend \u2014 NestJS modular monolith (API + worker). See README.md and ADR-0015.",
   "author": "",
   "private": true,
   "license": "UNLICENSED",
@@ -39,7 +39,8 @@
     "license:issue": "npm run build:tools && node --enable-source-maps dist-tools/issue-development-license.js",
     "prisma:format": "prisma format",
     "prisma:validate": "prisma validate",
-    "openapi:dump": "node --enable-source-maps dist/tools/dump-openapi.js"
+    "openapi:dump": "node --enable-source-maps dist/tools/dump-openapi.js",
+    "license:vectors": "npm run build:tools && node --enable-source-maps dist-tools/tools/generate-licensing-vectors.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
