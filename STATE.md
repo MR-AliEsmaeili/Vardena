@@ -2344,3 +2344,37 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   protection change was made. Follow the manual exact-head process in
   `docs/operations/ci-minutes-optimization.md`; keep the PR body as the record
   of final `classify`, `ci-gate` and applicable job links/results.
+
+## 44. OQ-83 populated migration rehearsal and operational plan (2026-10-15)
+
+- **Baseline/status:** `origin/main` was freshly fetched at
+  `a58fd19df0bcff76e594749d825ac8b37f95ba4f` with no open pull requests. This
+  bounded follow-up is implementation evidence and planning, not Product Owner
+  acceptance; **OQ-83 remains OPEN**.
+- **Populated upgrade evidence:** the existing disposable-PostgreSQL Licensing
+  rehearsal now continues through the actual `20261021000000` migration, seeds
+  a deterministic pre-device-entitlement VLIC2 version plus customer,
+  installation, entitlement and audit history, snapshots all retained Licensing
+  rows, and applies the unmodified `20261022000000` migration. Assertions cover
+  byte-equivalent old columns, the external signed artifact's retained SHA-256,
+  customer ID/code, UNSPECIFIED (`NULL` + presence false) on every old version,
+  new column metadata, enum vocabularies, empty lifecycle tables, state/FK
+  constraints, partial unique indexes, and finite/unlimited constraint behavior.
+  The backend CI step is renamed to describe this populated chain and invokes
+  `test:licensing-migration-rehearsal`; PostgreSQL execution is CI-only. Exact
+  PR-head CI is pending and must not be inferred from prior runs.
+- **Operational investigation:**
+  [the bounded plan](docs/tasks/licensing-oq-83-operational-plan.md) records that
+  the customer server already verifies client proofs and VDRP1 but neither a
+  real device key-custody client nor an Owner-side VDRP1 issuer exists. It
+  recommends, without authorizing implementation, an installed client using an
+  approved OS keystore and an Owner-controlled issuer outside customer
+  installations. Device platform/repository/custody and Owner issuer/system of
+  record/approval/signing-key controls require Product Owner decisions,
+  including OQ-85 where applicable. OQ-77/OQ-78/OQ-82/OQ-84/OQ-85 are not
+  collapsed into this task.
+- **Verification boundary:** local checks are limited to script syntax,
+  deterministic CI-helper tests, formatting/link checks and diff inspection.
+  Migration execution, PostgreSQL, E2E and concurrency remain CI-only under
+  `docs/testing/test-execution-policy.md`. No historical migration, production
+  schema, API, permission, generated client or frontend behavior is changed.

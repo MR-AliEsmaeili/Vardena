@@ -830,7 +830,7 @@ class WorkflowContractTest(unittest.TestCase):
             "npm run bootstrap:system-admin",
             "test/inventory-business-date-writes-live.e2e-spec.ts",
             "npm run test:migration-rehearsal",
-            "npm run test:licensing-version-rehearsal",
+            "npm run test:licensing-migration-rehearsal",
             "test/licensing-persistence-live.e2e-spec.ts",
             "bash scripts/check-generated-api-client.sh",
         ):

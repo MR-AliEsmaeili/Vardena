@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Active design record for signed-license versions and import; OQ-83 client-device implementation addendum in progress |
+| Status | Active design record for signed-license versions and import; OQ-83 server-side slice merged and CI-verified, operational client/issuer evidence still open |
 | Authority | [ADR-0046](../adr/0046-signed-license-documents-and-version-lifecycle.md) (decision) · [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) (product source) · [PDR-15](../decisions/product/PDR-15-client-device-licensing-and-replacement.md) (OQ-83 policy) |
 | Date | 2026-10-11; OQ-83 addendum updated 2026-10-15 |
 | Scope | Server license import: signed document format, retained versions, effective-version resolution, replay protection, audit, migration, API and frontend boundary; OQ-83 signed device quota and its import conflict rules |
@@ -901,7 +901,7 @@ customer stays the explicit, authorized, audited
 | Grace / Read-Only enforcement | OQ-45 shape decided, duration and override authority open |
 | Installation identity key | PDR-11 U-2 + U-9/PQ-3 (see §7) |
 | Server replacement workflow and receipts | PDR-11 §5.5, U-9; product choice open |
-| Client-device licensing | OQ-83 policy decided by PDR-15 / OD-LIC-04; implementation in progress. See [`client-device-lifecycle.md`](./client-device-lifecycle.md). |
+| Client-device licensing | OQ-83 policy decided by PDR-15 / OD-LIC-04; customer-server slice merged and CI-verified, while the external device client and Owner-side VDRP1 issuer remain operational dependencies. See [`client-device-lifecycle.md`](./client-device-lifecycle.md) and the [operational plan](../tasks/licensing-oq-83-operational-plan.md). |
 | Owner-side issuance system and role matrix | PDR-11 §4, U-5 → OQ-75; CRM/billing and OQ-61 out of scope |
 | Clock-rollback enforcement | PDR-11 §12.6 thresholds open (U-6 → OQ-76) |
 | §8.6 capacity-conflict detection and resolution UI | needs the owning modules' public count contracts; separate slice (L-04). Until it exists, a version that reduces the retired version's capacity or entitlements is refused on every path — the interim fail-closed behaviour, not the flow. The **term** dimension of this section is decided: [PDR-12](../decisions/product/PDR-12-license-term-supersession.md) allows an explicit signed supersession to convert a perpetual grant into a time-limited one under the non-reduction invariants |
@@ -909,7 +909,7 @@ customer stays the explicit, authorized, audited
 
 ## 14. Client-device licensing (OQ-83)
 
-The Product Owner policy is recorded in [PDR-15 / OD-LIC-04](../decisions/product/PDR-15-client-device-licensing-and-replacement.md); the dedicated customer-side protocol, state machine, API, authorization, persistence and test design is [`client-device-lifecycle.md`](./client-device-lifecycle.md). OQ-83 remains OPEN for implementation review and exact-head CI. This section does not promote or change ADR-0046's accepted decisions.
+The Product Owner policy is recorded in [PDR-15 / OD-LIC-04](../decisions/product/PDR-15-client-device-licensing-and-replacement.md); the dedicated customer-side protocol, state machine, API, authorization, persistence and test design is [`client-device-lifecycle.md`](./client-device-lifecycle.md). The customer-server slice was merged by PR #154 and its merge SHA passed CI; OQ-83 remains OPEN because independent review and operational device-client/Owner-issuer evidence are still outstanding. This section does not promote or change ADR-0046's accepted decisions.
 
 The signed `LicenseVersion` owns device capacity. VLIC1 and already-issued VLIC2 payloads without a `deviceLimit` stay verifiable using their historical canonical form. Their device limit is **UNSPECIFIED** (neither zero nor unlimited), so they do not authorize new device registration until an explicit signed limit is imported. A signed `null` is unlimited; finite values are non-negative integers. The migration backfills pre-field rows as unspecified and never rewrites signed artifacts or their hashes.
 
