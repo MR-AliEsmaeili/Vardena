@@ -34,8 +34,9 @@ Owner user records observed prior/new status with actor/time/reason. Emergency
 old-server loss is allowed with an attributable authorized decision. No callback,
 synchronization or old-server response is required. Additive migration
 `002-manual-operations.sql` now persists these observations and exposes an
-Owner-only API/UI. Responses are labeled operator-observed and not
-cryptographically verified. No signed protocol, customer callback or customer
+Owner-only API/UI. Direct SQL must store the same continuous history the
+application writes, including both emergency steps before commit. Responses are
+labeled operator-observed and not cryptographically verified. No signed protocol, customer callback or customer
 schema change is involved. Server replacement is separate from OQ-83
 client-device replacement. An abandoned non-terminal replacement cannot be
 withdrawn: PDR-17 defines no cancellation transition and OQ-82 remains OPEN.

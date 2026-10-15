@@ -47,9 +47,10 @@ check. Support keeps identity/status customer reads only.
 
 ## Persistence
 
-`owner-licensing/backend/migrations/002-manual-operations.sql` is additive.
-`001-foundation.sql` is unchanged. The migration refuses to extend a table that
-already contains rows. Runtime needs SELECT/INSERT/UPDATE on
+`owner-licensing/backend/migrations/002-manual-operations.sql` is additive and
+unreleased, so the history correction edits that file in place. No `003` is
+added. `001-foundation.sql` is unchanged. The migration refuses to extend a
+table that already contains rows. Runtime needs SELECT/INSERT/UPDATE on
 `owner.operational_records` and SELECT/INSERT on
 `owner.operational_transitions`. It must not receive DELETE, TRUNCATE, or
 transition UPDATE/DELETE. No SQL role name is invented.
@@ -62,9 +63,14 @@ inserts cannot both succeed. A completed A→B may be followed by B→C. PDR-17
 does not decide whether a replaced reference may later be used as a replacement
 target, so that ban is not invented. Direct inserts cannot skip the initial
 issuance, authorization, or emergency state. `updated_by` cannot change unless
-the observed status changes. The latest transition must match the current
-state and updater, and another transition for that state is rejected. History
-remains append-only. A failed audit write rolls back the mutation.
+the observed status changes. History must start at `UNRECORDED`; each later
+`prior_status` must equal the previous `new_status`; and the stored sequence
+must be exactly the legal path to the current state. A direct write cannot
+forge a prior status, skip a step, reorder history, or append after that path
+is complete. The completing transition's actor must match `updated_by`. An
+emergency row may be inserted already at `OLD_SERVER_STATE_RECORDED`, but both
+ordered transitions must still be written in that transaction. History remains
+append-only. A failed audit write rolls back the mutation.
 
 ## API
 
@@ -87,10 +93,11 @@ Stable codes include `InvalidTransition`, `DuplicateOperation`,
 | --- | --- | --- |
 | Transition rules and duplicate-constraint mapping | `owner-licensing/backend` unit file passed | Existing backend job |
 | Role grants, first-login denial, license/replacement/concurrency/audit rollback and all four roles | Not run locally; live PostgreSQL is CI-only | `owner-licensing/backend/test/api.test.ts` in the existing backend job |
+| Direct SQL history continuity, emergency pair, forged prior, and rollback | Not run locally; live PostgreSQL is CI-only | `owner-licensing/backend/test/api.test.ts` in the existing backend job |
 | Persian form contract and confirmation checkbox | Focused frontend Vitest passed | Existing frontend job |
 | Observer hides mutation controls; Support cannot open records; submit uses selected customer id | Focused frontend flow file passed | Existing frontend job |
-| Owner backend lint, format, typecheck and 9 unit tests | Passed locally on 2026-10-15; no warnings | Existing backend job repeats them |
-| Owner frontend lint, format, typecheck, schema test, operations flow and existing owner flow | Passed locally: 15 focused tests | Existing frontend job also runs the full Owner UI suite and build |
+| Owner backend lint, format, typecheck and 10 unit tests | Passed locally on 2026-10-15; no warnings. PostgreSQL suite not run locally | Existing backend job repeats lint/typecheck/unit and runs `api.test.ts` |
+| Owner frontend lint, format, typecheck, schema test, operations flow and existing owner flow | Not re-run for this history correction | Existing frontend job |
 | Migration rehearsal, Docker and customer suites | Not run locally | Existing CI jobs only |
 
 No local result is transferred to a later commit. Exact-head CI is the review

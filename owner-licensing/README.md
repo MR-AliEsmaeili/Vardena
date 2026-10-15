@@ -123,7 +123,10 @@ replacement recorded. A direct insert cannot skip that start, an unfinished
 replacement cannot reuse either installation on the other side, and
 `updated_by` cannot change without a status change. A completed replacement
 may later be the old installation of another observation. Transitions are
-append-only and must match the current state. No cancellation state exists.
+append-only. Direct SQL must keep a continuous history that starts at
+`UNRECORDED` and matches the legal path to the current state, including both
+emergency steps in one transaction. A forged prior, skipped step, reordered
+row, or extra transition is rejected. No cancellation state exists.
 
 ## Security
 

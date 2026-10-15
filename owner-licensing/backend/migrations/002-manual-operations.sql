@@ -318,26 +318,71 @@ CREATE TRIGGER reject_unfinished_replacement_overlap
   BEFORE INSERT OR UPDATE ON owner.operational_records
   FOR EACH ROW EXECUTE FUNCTION owner.reject_unfinished_replacement_overlap();
 
--- After commit, the latest transition must describe the current state and the
--- updater. Further transitions for that state are rejected.
+-- Emergency and ordinary replacement share this history. Emergency only allows
+-- the record to be inserted already at the second state; both transitions must
+-- still be appended in this order inside that transaction.
+CREATE FUNCTION owner.expected_operation_statuses(
+  kind text,
+  observed_status varchar
+) RETURNS text[]
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE
+    WHEN kind = 'LICENSE' AND observed_status = 'ISSUED'
+      THEN ARRAY['ISSUED']::text[]
+    WHEN kind = 'LICENSE' AND observed_status = 'ACTIVATED'
+      THEN ARRAY['ISSUED', 'ACTIVATED']::text[]
+    WHEN kind = 'SERVER_REPLACEMENT' AND observed_status = 'REPLACEMENT_AUTHORIZED'
+      THEN ARRAY['REPLACEMENT_AUTHORIZED']::text[]
+    WHEN kind = 'SERVER_REPLACEMENT' AND observed_status = 'OLD_SERVER_STATE_RECORDED'
+      THEN ARRAY['REPLACEMENT_AUTHORIZED', 'OLD_SERVER_STATE_RECORDED']::text[]
+    WHEN kind = 'SERVER_REPLACEMENT' AND observed_status = 'REPLACEMENT_RECORDED'
+      THEN ARRAY['REPLACEMENT_AUTHORIZED', 'OLD_SERVER_STATE_RECORDED', 'REPLACEMENT_RECORDED']::text[]
+    ELSE NULL::text[]
+  END;
+$$;
+
+-- At commit, the stored chain must be exactly the legal path to the final row.
+-- Re-read the row so an insert-then-update in one transaction is judged once.
 CREATE FUNCTION owner.operation_history_matches() RETURNS trigger
 LANGUAGE plpgsql AS $$
 DECLARE
-  latest_status varchar(64);
+  current_kind text;
+  current_status varchar(64);
+  current_actor varchar(26);
+  expected text[];
+  actual_new text[];
+  actual_prior text[];
   latest_actor varchar(26);
+  step integer;
 BEGIN
-  SELECT new_status, actor_id
-    INTO latest_status, latest_actor
+  SELECT kind, observed_status, updated_by
+    INTO current_kind, current_status, current_actor
+    FROM owner.operational_records
+    WHERE id = NEW.id;
+  IF current_status IS NULL THEN
+    RETURN NULL;
+  END IF;
+  expected := owner.expected_operation_statuses(current_kind, current_status);
+  SELECT array_agg(new_status::text ORDER BY occurred_at, id),
+         array_agg(prior_status::text ORDER BY occurred_at, id),
+         (array_agg(actor_id ORDER BY occurred_at DESC, id DESC))[1]
+    INTO actual_new, actual_prior, latest_actor
     FROM owner.operational_transitions
-    WHERE record_id = NEW.id
-    ORDER BY occurred_at DESC, id DESC
-    LIMIT 1;
-  IF latest_status IS DISTINCT FROM NEW.observed_status
-    OR latest_actor IS DISTINCT FROM NEW.updated_by
+    WHERE record_id = NEW.id;
+  IF expected IS NULL
+    OR actual_new IS DISTINCT FROM expected
+    OR actual_prior[1] IS DISTINCT FROM 'UNRECORDED'
+    OR latest_actor IS DISTINCT FROM current_actor
   THEN
     RAISE EXCEPTION 'Operational history does not match the recorded state'
       USING ERRCODE = '23514';
   END IF;
+  FOR step IN 2 .. coalesce(array_length(actual_prior, 1), 0) LOOP
+    IF actual_prior[step] IS DISTINCT FROM actual_new[step - 1] THEN
+      RAISE EXCEPTION 'Operational history is not continuous'
+        USING ERRCODE = '23514';
+    END IF;
+  END LOOP;
   RETURN NULL;
 END $$;
 CREATE CONSTRAINT TRIGGER operation_history_matches
@@ -345,14 +390,20 @@ CREATE CONSTRAINT TRIGGER operation_history_matches
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION owner.operation_history_matches();
 
-CREATE FUNCTION owner.reject_extra_current_transition() RETURNS trigger
+CREATE FUNCTION owner.reject_inconsistent_transition() RETURNS trigger
 LANGUAGE plpgsql AS $$
 DECLARE
+  current_kind text;
   current_status varchar(64);
   current_actor varchar(26);
+  expected text[];
+  existing_count integer;
+  prev_new varchar(64);
+  prev_at timestamptz;
+  prev_id varchar(26);
 BEGIN
-  SELECT observed_status, updated_by
-    INTO current_status, current_actor
+  SELECT kind, observed_status, updated_by
+    INTO current_kind, current_status, current_actor
     FROM owner.operational_records
     WHERE id = NEW.record_id
     FOR UPDATE;
@@ -360,22 +411,57 @@ BEGIN
     RAISE EXCEPTION 'Operational record not found'
       USING ERRCODE = '23503';
   END IF;
-  IF EXISTS (
-    SELECT 1 FROM owner.operational_transitions
-    WHERE record_id = NEW.record_id AND new_status = current_status
-  ) THEN
+  expected := owner.expected_operation_statuses(current_kind, current_status);
+  IF expected IS NULL THEN
+    RAISE EXCEPTION 'Observed status has no legal history'
+      USING ERRCODE = '23514';
+  END IF;
+  SELECT count(*)::integer
+    INTO existing_count
+    FROM owner.operational_transitions
+    WHERE record_id = NEW.record_id;
+  IF existing_count >= array_length(expected, 1) THEN
     RAISE EXCEPTION 'Operational history for the current state is already recorded'
       USING ERRCODE = '23514';
   END IF;
-  IF NEW.new_status = current_status AND NEW.actor_id IS DISTINCT FROM current_actor THEN
+  SELECT new_status, occurred_at, id
+    INTO prev_new, prev_at, prev_id
+    FROM owner.operational_transitions
+    WHERE record_id = NEW.record_id
+    ORDER BY occurred_at DESC, id DESC
+    LIMIT 1;
+  IF prev_id IS NOT NULL AND (NEW.occurred_at, NEW.id) <= (prev_at, prev_id) THEN
+    RAISE EXCEPTION 'Operational history must be appended in order'
+      USING ERRCODE = '23514';
+  END IF;
+  IF prev_id IS NOT NULL AND prev_new IS DISTINCT FROM expected[existing_count] THEN
+    RAISE EXCEPTION 'Operational history is not a legal prefix'
+      USING ERRCODE = '23514';
+  END IF;
+  IF prev_id IS NULL THEN
+    IF NEW.prior_status <> 'UNRECORDED' THEN
+      RAISE EXCEPTION 'The first operational transition must start from UNRECORDED'
+        USING ERRCODE = '23514';
+    END IF;
+  ELSIF NEW.prior_status IS DISTINCT FROM prev_new THEN
+    RAISE EXCEPTION 'Operational transition prior status is not continuous'
+      USING ERRCODE = '23514';
+  END IF;
+  IF NEW.new_status IS DISTINCT FROM expected[existing_count + 1] THEN
+    RAISE EXCEPTION 'Operational transition is not the next permitted state'
+      USING ERRCODE = '23514';
+  END IF;
+  IF NEW.new_status = current_status
+    AND NEW.actor_id IS DISTINCT FROM current_actor
+  THEN
     RAISE EXCEPTION 'Transition actor must match the recorded updater'
       USING ERRCODE = '23514';
   END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER reject_extra_current_transition
+CREATE TRIGGER reject_inconsistent_transition
   BEFORE INSERT ON owner.operational_transitions
-  FOR EACH ROW EXECUTE FUNCTION owner.reject_extra_current_transition();
+  FOR EACH ROW EXECUTE FUNCTION owner.reject_inconsistent_transition();
 
 -- Runtime grants are deployment-specific and are NOT applied here. The runtime
 -- role needs SELECT/INSERT/UPDATE on owner.operational_records and

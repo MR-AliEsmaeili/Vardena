@@ -101,8 +101,10 @@ false`. License observations move only `ISSUED` → `ACTIVATED`. Same-customer
 server replacement moves `REPLACEMENT_AUTHORIZED` → `OLD_SERVER_STATE_RECORDED` →
 `REPLACEMENT_RECORDED`. Emergency old-server loss inserts the authorized decision
 and the unavailable observation in one transaction; it does not wait for the old
-server. History is append-only. No cancellation, renewal, revocation, recovery or
-client-device state is defined, so none is implemented. An abandoned non-terminal
+server. History is append-only and must be the continuous legal sequence for
+the current state, starting at `UNRECORDED`. Emergency old-server loss still
+records both steps in one transaction. No cancellation, renewal, revocation,
+recovery or client-device state is defined, so none is implemented. An abandoned non-terminal
 replacement keeps its installation slot until a later decision defines withdrawal.
 A completed replacement of installation B may later be the old installation of
 another observation. Whether a replaced reference may be reused as a new

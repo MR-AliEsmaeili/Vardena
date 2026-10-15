@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import { ulid } from "ulid";
 import type { Express } from "express";
+import type { PoolClient } from "pg";
 import { Database } from "../src/db.js";
 import { migrate } from "../src/migrate.js";
 import { bootstrap } from "../src/bootstrap.js";
@@ -41,6 +42,44 @@ async function customer(cookie = adminCookie, code = `C-${ulid()}`) {
     customerCode: code,
     displayName: "مشتری آزمایشی",
   });
+}
+
+async function transitionChain(recordId: string) {
+  const found = await db.pool.query<{
+    prior_status: string;
+    new_status: string;
+  }>(
+    `SELECT prior_status, new_status
+     FROM owner.operational_transitions
+     WHERE record_id = $1
+     ORDER BY occurred_at, id`,
+    [recordId],
+  );
+  return found.rows.map((row) => `${row.prior_status}->${row.new_status}`);
+}
+async function observedStatus(recordId: string) {
+  const found = await db.pool.query<{ observed_status: string }>(
+    "SELECT observed_status FROM owner.operational_records WHERE id = $1",
+    [recordId],
+  );
+  return found.rows[0]?.observed_status ?? null;
+}
+async function insertTransition(
+  tx: PoolClient,
+  recordId: string,
+  actorId: string,
+  prior: string,
+  next: string,
+  reason: string,
+  occurredAt?: string,
+) {
+  await tx.query(
+    `INSERT INTO owner.operational_transitions(
+      id, record_id, actor_id, occurred_at, prior_status, new_status, reason,
+      confirmation_kind)
+    VALUES ($1,$2,$3,COALESCE($4::timestamptz, clock_timestamp()),$5,$6,$7,'OPERATOR_OBSERVED')`,
+    [ulid(), recordId, actorId, occurredAt ?? null, prior, next, reason],
+  );
 }
 
 async function expectUnavailableOperations(cookie: string) {
@@ -922,11 +961,437 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     await expect(
       db.pool.query(
         `INSERT INTO owner.operational_transitions(
-          id, record_id, actor_id, prior_status, new_status, reason)
-        VALUES ($1,$2,$3,'UNRECORDED','REPLACEMENT_AUTHORIZED','forged history')`,
+          id, record_id, actor_id, prior_status, new_status, reason,
+          confirmation_kind)
+        VALUES ($1,$2,$3,'UNRECORDED','REPLACEMENT_AUTHORIZED','forged history','OPERATOR_OBSERVED')`,
         [ulid(), chained.body.id, adminId],
       ),
     ).rejects.toThrow();
+  });
+  it("rejects discontinuous direct-SQL history and accepts legal chains", async () => {
+    const created = await customer(adminCookie, `Hist-${ulid()}`);
+    const customerId = created.body.id as string;
+    const historian = ulid();
+    await db.pool.query(
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'READ_ONLY_OBSERVER',false)",
+      [historian, historian, await hashPassword("Disposable_hist_45")],
+    );
+    const insertLicense = (tx: PoolClient, id: string, reference: string) =>
+      tx.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          installation_reference, emergency_old_server_lost, created_by, updated_by)
+        VALUES ($1,$2,'LICENSE','ISSUED','EXTERNAL_ISSUANCE_OBSERVED',$3,false,$4,$4)`,
+        [id, customerId, reference, adminId],
+      );
+    const activate = (tx: PoolClient, id: string) =>
+      tx.query(
+        `UPDATE owner.operational_records
+        SET observed_status='ACTIVATED', observation_category='ACTIVATION_OBSERVED',
+          updated_by=$2, updated_at=clock_timestamp()
+        WHERE id=$1`,
+        [id, adminId],
+      );
+    const insertReplacement = (
+      tx: PoolClient,
+      id: string,
+      oldInstallation: string,
+      nextInstallation: string,
+      emergency: boolean,
+    ) =>
+      tx.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          old_installation_reference, replacement_installation_reference,
+          old_server_observed_state, emergency_old_server_lost, created_by, updated_by)
+        VALUES ($1,$2,'SERVER_REPLACEMENT',$3,$4,$5,$6,$7,$8,$9,$9)`,
+        [
+          id,
+          customerId,
+          emergency ? "OLD_SERVER_STATE_RECORDED" : "REPLACEMENT_AUTHORIZED",
+          emergency ? "OLD_SERVER_STATE_OBSERVED" : "REPLACEMENT_AUTHORIZED",
+          oldInstallation,
+          nextInstallation,
+          emergency ? "UNAVAILABLE_EMERGENCY_LOSS" : null,
+          emergency,
+          adminId,
+        ],
+      );
+    const recordOldServer = (tx: PoolClient, id: string) =>
+      tx.query(
+        `UPDATE owner.operational_records
+        SET observed_status='OLD_SERVER_STATE_RECORDED',
+          observation_category='OLD_SERVER_STATE_OBSERVED',
+          old_server_observed_state='DEACTIVATION_OBSERVED',
+          updated_by=$2, updated_at=clock_timestamp()
+        WHERE id=$1`,
+        [id, adminId],
+      );
+    const recordReplacement = (tx: PoolClient, id: string) =>
+      tx.query(
+        `UPDATE owner.operational_records
+        SET observed_status='REPLACEMENT_RECORDED',
+          observation_category='REPLACEMENT_INSTALLATION_OBSERVED',
+          replacement_observed_state='INSTALLATION_OBSERVED',
+          updated_by=$2, updated_at=clock_timestamp()
+        WHERE id=$1`,
+        [id, adminId],
+      );
+
+    const licenseId = ulid();
+    await db.transaction(async (tx) => {
+      await insertLicense(tx, licenseId, `H${ulid()}`);
+      await insertTransition(
+        tx,
+        licenseId,
+        adminId,
+        "UNRECORDED",
+        "ISSUED",
+        "external issuance observed",
+      );
+    });
+    expect(await observedStatus(licenseId)).toBe("ISSUED");
+    expect(await transitionChain(licenseId)).toEqual(["UNRECORDED->ISSUED"]);
+
+    const badStart = ulid();
+    await expect(
+      db.transaction(async (tx) => {
+        await insertLicense(tx, badStart, `B${ulid()}`);
+        await insertTransition(
+          tx,
+          badStart,
+          adminId,
+          "ISSUED",
+          "ACTIVATED",
+          "does not start at UNRECORDED",
+        );
+      }),
+    ).rejects.toThrow(/must start from UNRECORDED/);
+    expect(await observedStatus(badStart)).toBeNull();
+
+    const forgedFinal = ulid();
+    await expect(
+      db.transaction(async (tx) => {
+        await insertLicense(tx, forgedFinal, `F${ulid()}`);
+        await activate(tx, forgedFinal);
+        await insertTransition(
+          tx,
+          forgedFinal,
+          adminId,
+          "UNRECORDED",
+          "ACTIVATED",
+          "forged final status",
+        );
+      }),
+    ).rejects.toThrow(/not the next permitted state/);
+    expect(await observedStatus(forgedFinal)).toBeNull();
+
+    await expect(
+      db.transaction(async (tx) => {
+        await activate(tx, licenseId);
+        await insertTransition(
+          tx,
+          licenseId,
+          adminId,
+          "UNRECORDED",
+          "ACTIVATED",
+          "forged prior on a valid final status",
+        );
+      }),
+    ).rejects.toThrow(/prior status is not continuous/);
+    expect(await observedStatus(licenseId)).toBe("ISSUED");
+    expect(await transitionChain(licenseId)).toEqual(["UNRECORDED->ISSUED"]);
+
+    await expect(
+      db.transaction(async (tx) => {
+        await activate(tx, licenseId);
+        await insertTransition(
+          tx,
+          licenseId,
+          adminId,
+          "ISSUED",
+          "ACTIVATED",
+          "out of order activation",
+          "2000-01-01T00:00:00Z",
+        );
+      }),
+    ).rejects.toThrow(/appended in order/);
+    expect(await observedStatus(licenseId)).toBe("ISSUED");
+    expect(await transitionChain(licenseId)).toEqual(["UNRECORDED->ISSUED"]);
+
+    const inconsistent = ulid();
+    await expect(
+      db.transaction(async (tx) => {
+        await insertLicense(tx, inconsistent, `C${ulid()}`);
+        await insertTransition(
+          tx,
+          inconsistent,
+          adminId,
+          "UNRECORDED",
+          "REPLACEMENT_AUTHORIZED",
+          "record inconsistent",
+        );
+      }),
+    ).rejects.toThrow(/not the next permitted state/);
+    expect(await observedStatus(inconsistent)).toBeNull();
+
+    await db.transaction(async (tx) => {
+      await activate(tx, licenseId);
+      await insertTransition(
+        tx,
+        licenseId,
+        adminId,
+        "ISSUED",
+        "ACTIVATED",
+        "activation observed",
+      );
+    });
+    expect(await observedStatus(licenseId)).toBe("ACTIVATED");
+    expect(await transitionChain(licenseId)).toEqual([
+      "UNRECORDED->ISSUED",
+      "ISSUED->ACTIVATED",
+    ]);
+    await expect(
+      db.pool.query(
+        `INSERT INTO owner.operational_transitions(
+          id, record_id, actor_id, prior_status, new_status, reason,
+          confirmation_kind)
+        VALUES ($1,$2,$3,'ACTIVATED','REPLACEMENT_RECORDED','extra transition','OPERATOR_OBSERVED')`,
+        [ulid(), licenseId, adminId],
+      ),
+    ).rejects.toThrow(/already recorded/);
+    await expect(
+      db.pool.query(
+        "UPDATE owner.operational_transitions SET reason='rewritten' WHERE record_id=$1",
+        [licenseId],
+      ),
+    ).rejects.toThrow(/append-only/);
+    await expect(
+      db.pool.query(
+        "DELETE FROM owner.operational_transitions WHERE record_id=$1",
+        [licenseId],
+      ),
+    ).rejects.toThrow(/append-only/);
+    expect(await transitionChain(licenseId)).toEqual([
+      "UNRECORDED->ISSUED",
+      "ISSUED->ACTIVATED",
+    ]);
+
+    const replacementId = ulid();
+    await db.transaction(async (tx) => {
+      await insertReplacement(
+        tx,
+        replacementId,
+        `O${ulid()}`,
+        `N${ulid()}`,
+        false,
+      );
+      await insertTransition(
+        tx,
+        replacementId,
+        adminId,
+        "UNRECORDED",
+        "REPLACEMENT_AUTHORIZED",
+        "replacement authorized",
+      );
+    });
+    await db.transaction(async (tx) => {
+      await recordOldServer(tx, replacementId);
+      await insertTransition(
+        tx,
+        replacementId,
+        adminId,
+        "REPLACEMENT_AUTHORIZED",
+        "OLD_SERVER_STATE_RECORDED",
+        "old server observed",
+      );
+    });
+    await db.transaction(async (tx) => {
+      await recordReplacement(tx, replacementId);
+      await insertTransition(
+        tx,
+        replacementId,
+        adminId,
+        "OLD_SERVER_STATE_RECORDED",
+        "REPLACEMENT_RECORDED",
+        "replacement observed",
+      );
+    });
+    expect(await observedStatus(replacementId)).toBe("REPLACEMENT_RECORDED");
+    expect(await transitionChain(replacementId)).toEqual([
+      "UNRECORDED->REPLACEMENT_AUTHORIZED",
+      "REPLACEMENT_AUTHORIZED->OLD_SERVER_STATE_RECORDED",
+      "OLD_SERVER_STATE_RECORDED->REPLACEMENT_RECORDED",
+    ]);
+
+    const gapId = ulid();
+    await db.transaction(async (tx) => {
+      await insertReplacement(tx, gapId, `G${ulid()}`, `H${ulid()}`, false);
+      await insertTransition(
+        tx,
+        gapId,
+        adminId,
+        "UNRECORDED",
+        "REPLACEMENT_AUTHORIZED",
+        "authorized before a gap",
+      );
+    });
+    await expect(
+      db.transaction(async (tx) => {
+        await recordOldServer(tx, gapId);
+        await insertTransition(
+          tx,
+          gapId,
+          adminId,
+          "ISSUED",
+          "OLD_SERVER_STATE_RECORDED",
+          "discontinuous history",
+        );
+      }),
+    ).rejects.toThrow(/not continuous/);
+    expect(await observedStatus(gapId)).toBe("REPLACEMENT_AUTHORIZED");
+    expect(await transitionChain(gapId)).toEqual([
+      "UNRECORDED->REPLACEMENT_AUTHORIZED",
+    ]);
+
+    const emergencyId = ulid();
+    await db.transaction(async (tx) => {
+      await insertReplacement(
+        tx,
+        emergencyId,
+        `E${ulid()}`,
+        `R${ulid()}`,
+        true,
+      );
+      await insertTransition(
+        tx,
+        emergencyId,
+        historian,
+        "UNRECORDED",
+        "REPLACEMENT_AUTHORIZED",
+        "authorized decision",
+      );
+      await insertTransition(
+        tx,
+        emergencyId,
+        adminId,
+        "REPLACEMENT_AUTHORIZED",
+        "OLD_SERVER_STATE_RECORDED",
+        "old server lost",
+      );
+    });
+    expect(await observedStatus(emergencyId)).toBe("OLD_SERVER_STATE_RECORDED");
+    expect(await transitionChain(emergencyId)).toEqual([
+      "UNRECORDED->REPLACEMENT_AUTHORIZED",
+      "REPLACEMENT_AUTHORIZED->OLD_SERVER_STATE_RECORDED",
+    ]);
+    const actors = await db.pool.query<{ actor_id: string }>(
+      `SELECT actor_id FROM owner.operational_transitions
+      WHERE record_id=$1 ORDER BY occurred_at, id`,
+      [emergencyId],
+    );
+    expect(actors.rows.map((row) => row.actor_id)).toEqual([
+      historian,
+      adminId,
+    ]);
+
+    const incomplete = ulid();
+    await expect(
+      db.transaction(async (tx) => {
+        await insertReplacement(
+          tx,
+          incomplete,
+          `I${ulid()}`,
+          `J${ulid()}`,
+          true,
+        );
+        await insertTransition(
+          tx,
+          incomplete,
+          adminId,
+          "UNRECORDED",
+          "REPLACEMENT_AUTHORIZED",
+          "prefix only",
+        );
+      }),
+    ).rejects.toThrow(/does not match the recorded state/);
+    expect(await observedStatus(incomplete)).toBeNull();
+
+    const jumped = ulid();
+    await expect(
+      db.transaction(async (tx) => {
+        await insertReplacement(tx, jumped, `K${ulid()}`, `L${ulid()}`, true);
+        await insertTransition(
+          tx,
+          jumped,
+          adminId,
+          "UNRECORDED",
+          "OLD_SERVER_STATE_RECORDED",
+          "skipped authorization",
+        );
+      }),
+    ).rejects.toThrow(/not the next permitted state/);
+    expect(await observedStatus(jumped)).toBeNull();
+
+    const forgedEmergency = ulid();
+    await expect(
+      db.transaction(async (tx) => {
+        await insertReplacement(
+          tx,
+          forgedEmergency,
+          `M${ulid()}`,
+          `P${ulid()}`,
+          true,
+        );
+        await insertTransition(
+          tx,
+          forgedEmergency,
+          adminId,
+          "UNRECORDED",
+          "REPLACEMENT_AUTHORIZED",
+          "authorized decision",
+        );
+        await insertTransition(
+          tx,
+          forgedEmergency,
+          adminId,
+          "UNRECORDED",
+          "OLD_SERVER_STATE_RECORDED",
+          "forged emergency prior",
+        );
+      }),
+    ).rejects.toThrow(/not continuous/);
+    expect(await observedStatus(forgedEmergency)).toBeNull();
+
+    const mismatched = ulid();
+    await expect(
+      db.transaction(async (tx) => {
+        await insertReplacement(
+          tx,
+          mismatched,
+          `Q${ulid()}`,
+          `S${ulid()}`,
+          true,
+        );
+        await insertTransition(
+          tx,
+          mismatched,
+          adminId,
+          "UNRECORDED",
+          "REPLACEMENT_AUTHORIZED",
+          "authorized decision",
+        );
+        await insertTransition(
+          tx,
+          mismatched,
+          historian,
+          "REPLACEMENT_AUTHORIZED",
+          "OLD_SERVER_STATE_RECORDED",
+          "wrong completing actor",
+        );
+      }),
+    ).rejects.toThrow(/actor must match/);
+    expect(await observedStatus(mismatched)).toBeNull();
   });
   it("rolls back an operation when durable audit insertion fails", async () => {
     const created = await customer(adminCookie, `Audit-op-${ulid()}`);
