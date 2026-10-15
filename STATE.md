@@ -2330,9 +2330,14 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   on `5cc3a88be143894a3eff74fb85340b18dd11aebd` confirmed the OQ-83 live suite,
   license-import fixtures, Prisma, migration rehearsals and generated client
   passed; the general E2E step then found one stale exact-key assertion in
-  `license-state-route.e2e-spec.ts` that omitted the new device fields. Updated
-  its response and OpenAPI expectations. The new exact-head run is pending; no
-  acceptance or final CI-green claim is made here.
+  `license-state-route.e2e-spec.ts` that omitted the new device fields. Commit
+  `20fa85b8b70eea69280ea2bd447f17364ded1ab8` updated its response and OpenAPI
+  expectations. Exact-head run
+  [38697748025](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38697748025)
+  passed on that SHA: `classify`, `ci-gate`, backend (including E2E and both
+  licensing live PostgreSQL suites), docs, frontend and generated API client.
+  The PR body holds the full verification record. OQ-83 remains open; this is
+  not a product acceptance or merge.
 - **Review/acceptance guardrails:** license-import rejection audit remains
   best-effort as previously designed. OQ-83 implementation is submitted for
   review, not accepted or merged. No main push, merge, auto-merge or repository
