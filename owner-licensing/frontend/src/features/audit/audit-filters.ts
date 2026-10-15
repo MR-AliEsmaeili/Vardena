@@ -75,10 +75,27 @@ const filterKeys = [
   'to',
 ] as const satisfies readonly (keyof AuditFilterValues)[];
 
+const pagePattern = /^[1-9][0-9]{0,5}$/;
+const urlKeys: readonly string[] = ['page', ...filterKeys];
+
+/**
+ * True only when every URL parameter is one the backend accepts, supplied once,
+ * with a valid page. Anything else makes the URL invalid, so the page can say so
+ * instead of silently showing different results from what the URL states.
+ */
+export function auditUrlIsWellFormed(params: URLSearchParams): boolean {
+  for (const key of new Set(params.keys())) {
+    if (!urlKeys.includes(key)) return false;
+    if (params.getAll(key).length > 1) return false;
+  }
+  const page = params.get('page');
+  return page === null || pagePattern.test(page);
+}
+
+/** Callers must check `auditUrlIsWellFormed` first; the fallback is for display only. */
 export function pageFromParams(params: URLSearchParams): number {
   const raw = params.get('page') ?? '';
-  // Malformed or out-of-range page numbers fall back to the first page.
-  return /^[1-9][0-9]{0,5}$/.test(raw) ? Number(raw) : 1;
+  return pagePattern.test(raw) ? Number(raw) : 1;
 }
 
 export function filtersFromParams(params: URLSearchParams): AuditFilterValues {
@@ -124,7 +141,9 @@ export function isCalendarDay(value: string): boolean {
 /** Exclusive upper bound: the start of the UTC day after `day`, or none past year 9999. */
 export function utcExclusiveEnd(day: string): string | undefined {
   const [year = 0, month = 1, date = 1] = day.split('-').map(Number);
-  const next = new Date(Date.UTC(year, month - 1, date + 1));
+  // Date.UTC maps years 0–99 onto 1900–1999, so the year is set explicitly.
+  const next = new Date(0);
+  next.setUTCFullYear(year, month - 1, date + 1);
   if (next.getUTCFullYear() > 9999) return undefined;
   return next.toISOString();
 }

@@ -18,9 +18,12 @@ page shows the forbidden message and sends no request.
   applied filters to the URL and returns to page one. Reset clears the draft and
   removes every filter parameter from the URL. Browser back and forward and deep
   links reproduce the same query.
-- **URL state**: an invalid URL (for example, a malformed identifier) is not sent
-  to the API. The page says the filters are invalid, rather than showing stale
-  rows.
+- **URL state**: a URL the backend would reject is not sent to the API. That
+  covers a malformed identifier or value, a parameter repeated (`?eventType=A&eventType=B`),
+  an unknown parameter (such as a typo like `?actor=`), and a malformed `page`
+  (`page=abc`, `page=0`, `page=`). The page says the filters are invalid. It never
+  shows unfiltered rows under a URL that names filters, and never falls back
+  silently to page one.
 - **States**: loading, empty ("no results" for filtered queries), error with a
   retry action, and forbidden are each rendered explicitly.
 - **Pagination**: backend pages only. Next is enabled when the response says

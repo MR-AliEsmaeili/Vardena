@@ -22,6 +22,7 @@ import {
   hasAppliedFilters,
   knownAuditEventTypes,
   observedAuditEventTypes,
+  auditUrlIsWellFormed,
   pageFromParams,
   paramsFromFilters,
   toAuditQuery,
@@ -96,7 +97,11 @@ export function AuditPage() {
   const page = pageFromParams(params);
   const applied = filtersFromParams(params);
   const appliedKey = paramsFromFilters(applied).toString();
-  const validation = auditFilterSchema.safeParse(applied);
+  // A URL the backend would reject (repeated, unknown or malformed parameters) is
+  // not queried, so it can never show results that differ from what it states.
+  const filtersValid =
+    auditUrlIsWellFormed(params) &&
+    auditFilterSchema.safeParse(applied).success;
 
   const form = useForm<AuditFilterValues>({
     resolver: zodResolver(auditFilterSchema),
@@ -113,7 +118,7 @@ export function AuditPage() {
   const query = useQuery({
     queryKey: queryKeys.auditEvents(auditQuery),
     queryFn: ({ signal }) => api.auditEvents(auditQuery, signal),
-    enabled: permissions.has('audit.view') && validation.success,
+    enabled: permissions.has('audit.view') && filtersValid,
   });
 
   if (!permissions.loaded) return <LoadingState />;
@@ -274,12 +279,12 @@ export function AuditPage() {
         </div>
       </form>
 
-      {validation.success ? null : (
+      {filtersValid ? null : (
         <p role="alert" className="text-sm text-rose-700">
           {o.auditInvalidFilters}
         </p>
       )}
-      {!validation.success ? null : query.isPending ? (
+      {!filtersValid ? null : query.isPending ? (
         <LoadingState />
       ) : query.isError ? (
         <ApiErrorAlert

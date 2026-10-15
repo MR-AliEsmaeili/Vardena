@@ -102,12 +102,12 @@ such as "verified" or "proof", and no claim that a signature was produced or tha
 | Requirement | Local result (2026-10-15) | Verification location |
 | --- | --- | --- |
 | Owner backend lint, format, typecheck | Passed: 0 warnings/errors, format clean, `tsc --noEmit` exit 0 | Existing backend job repeats these on the PR head |
-| Backend pure unit files (`unit`, `domain-operations`, new `audit-query`) | 42 of 42 passed | Existing backend `npm test` |
+| Backend pure unit files (`unit`, `domain-operations`, new `audit-query`) | 43 of 43 passed | Existing backend `npm test` |
 | Filter reject table, UTC instant rules, parameter binding, projection, hasNext, allowlist | Included in the 42 passed | `test/audit-query.test.ts` in `npm test` |
 | PostgreSQL explorer: AND semantics, half-open window, tie-break and paging, LIKE-free hostile inputs, secret-key projection, role matrix (all four roles), direct-ID denial, trail links | Not run locally (live PostgreSQL is CI-only) | `test/api.test.ts` in `test:integration` |
 | Frontend lint, format, typecheck | Passed: 0 warnings/errors, format clean, `tsc --noEmit` exit 0 | Existing frontend job repeats these |
-| Frontend pure tests (URL state, UTC mapping, schema, Persian copy) | 39 of 39 passed | `audit-filters.test.ts` in `npm test` |
-| Audit page flow: forbidden, apply/reset, URL coherence, invalid input, empty/error, pagination, observation copy, customer link | Not run locally (jsdom flow; CI only) | `audit-page.test.tsx` in `npm test` |
+| Frontend pure tests (URL state and well-formedness, UTC mapping, schema, Persian copy) | 49 of 49 passed | `audit-filters.test.ts` in `npm test` |
+| Audit page flow: forbidden, apply/reset, URL coherence, invalid input, repeated/unknown/malformed URL, empty/error, pagination, observation copy, customer link | Not run locally (jsdom flow; CI only) | `audit-page.test.tsx` in `npm test` |
 | Migration rehearsal, Docker, E2E, customer suites | Not run locally | Existing CI jobs only |
 
 No local result is carried to a later commit. Exact-head CI is the review gate.
@@ -119,10 +119,46 @@ OQ-75, OQ-77 (retention), OQ-78, OQ-82, OQ-83, OQ-84, OQ-85 and U-1 stay OPEN.
 Retention, the external evidence source, and the cryptographic protocol are still
 undecided. Nothing in this slice decides them.
 
+## Review follow-up (PR #162)
+
+An independent review of the PR diff found these items:
+
+- **Repeated, unknown or malformed URL parameters were silently reinterpreted in
+  the UI.** `?eventType=A&eventType=B` used `A`, `?actor=…` (a typo) was ignored,
+  and `?page=abc` showed page one under the same URL. The backend rejects all three
+  with 400, so the UI could show results that differed from what the URL states.
+  Fixed: a URL the backend would reject is not queried, and the page shows the
+  invalid-filters message. Regression tests: `audit-filters.test.ts` (run locally)
+  and `audit-page.test.tsx` (CI).
+- **Latent: the UTC day helper mis-computed years 0–99.** `Date.UTC` maps them onto
+  1900–1999, so the exclusive end of `0099-12-31` came out as `2000-01-01`. The UI
+  schema rejects those years first, so this was not reachable from the UI. Fixed
+  with `setUTCFullYear`. Regression test in `audit-filters.test.ts`.
+- **Documentation inaccuracy.** The backend README said every parameter treats an
+  empty value as absent. That is true for filters but not for `page`, which the
+  shared `page()` helper rejects with 400. The README is corrected, and a
+  characterization test locks in `page=` → 400.
+- **Test label accuracy.** The case named "year below 1000" actually uses year 0050.
+  It is renamed to match what it tests.
+
+Not changed, and recorded as limits for a decision:
+
+- **Deep pagination cost.** `page` accepts up to 999999, so `OFFSET` can reach about
+  49,999,950 rows. Any holder of `audit.view` can request such a page, and the
+  database has to walk past every earlier row. The existing customer and operation
+  lists use the same bounded-offset pattern. A page-depth cap or keyset pagination
+  would change the contract, so this needs a Product Owner or technical decision.
+- **Rare filters scan the table.** There is no index on `event_type`, `actor_id`,
+  or `outcome`. A filter that matches little forces a backward walk of the
+  `sequence` index over the whole append-only table. An index would have to be a
+  new additive migration. No index is added until measured evidence shows the need.
+- **External review status.** The Codex code review on the PR head reported a
+  failure with a usage-limit message and published no findings. See the PR
+  follow-up report for details.
+
 ## Known limits
 
 - The audit trail is append-only to the application, but it is not tamper-proof
   against database owners. This was already documented and is unchanged.
 - No count is shown. Paging is next/previous only.
-- Filter by actor or event type over a very large table may need an index. None
-  is added now, and the need is not yet demonstrated.
+- See "Review follow-up" above for the deep-pagination and rare-filter limits.

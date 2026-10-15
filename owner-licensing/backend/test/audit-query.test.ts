@@ -83,7 +83,10 @@ describe("audit explorer query contract", () => {
     ["instant without zone", { occurredFrom: "2026-10-01T00:00:00" }],
     ["calendar rollover", { occurredFrom: "2026-02-31T00:00:00Z" }],
     ["leap second", { occurredFrom: "2026-06-30T23:59:60Z" }],
-    ["year below 1000", { occurredFrom: "0050-01-01T00:00:00Z" }],
+    [
+      "year below 100 (Date.UTC two-digit mapping)",
+      { occurredFrom: "0050-01-01T00:00:00Z" },
+    ],
     [
       "inverted window",
       {
@@ -98,6 +101,7 @@ describe("audit explorer query contract", () => {
         occurredBefore: "2026-10-01T00:00:00Z",
       },
     ],
+    ["empty page (page is strict, unlike filters)", { page: "" }],
     ["page zero", { page: "0" }],
     ["non-numeric page", { page: "abc" }],
     ["oversized page", { page: "1000000" }],

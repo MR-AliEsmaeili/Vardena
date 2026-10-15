@@ -195,6 +195,25 @@ describe('audit explorer filters', () => {
     expect(api.auditEvents).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      'a repeated filter',
+      '/app/audit?eventType=AUTH_LOGIN&eventType=AUTH_LOGOUT',
+    ],
+    ['an unknown parameter', '/app/audit?actor=01ARZ3NDEKTSV4RRFFQ69G5FAV'],
+    ['a malformed page', '/app/audit?outcome=DENIED&page=abc'],
+  ])(
+    'refuses %s in the URL instead of showing silently different results',
+    async (_label, path) => {
+      mount(path);
+      expect(
+        await screen.findByText(o.auditInvalidFilters),
+      ).toBeInTheDocument();
+      expect(api.auditEvents).not.toHaveBeenCalled();
+      expect(screen.queryByText('ویرایش مشتری')).toBeNull();
+    },
+  );
+
   it('shows the empty state for a filter with no matches', async () => {
     vi.mocked(api.auditEvents).mockResolvedValue(page([]));
     mount('/app/audit?eventType=AUTH_LOGOUT');

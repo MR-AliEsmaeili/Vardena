@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { o } from '@/lib/owner-i18n';
 import {
   auditTrailHref,
+  auditUrlIsWellFormed,
   emptyAuditFilters,
   filtersFromParams,
   hasAppliedFilters,
@@ -149,5 +150,36 @@ describe('observation copy', () => {
 
   it.each(knownAuditEventTypes)('has a Persian label for %s', (code) => {
     expect(labelOf(code)).toBeDefined();
+  });
+});
+
+describe('URL well-formedness (no silent fallback)', () => {
+  // The backend rejects these with 400. The UI must not quietly use the first
+  // value, drop the unknown key, or show page one for a malformed page.
+  it.each([
+    ['repeated filter key', 'eventType=AUTH_LOGIN&eventType=AUTH_LOGOUT'],
+    ['repeated page key', 'page=2&page=3'],
+    ['unknown key (typo)', 'actor=01ARZ3NDEKTSV4RRFFQ69G5FAV'],
+    ['unknown key next to valid filters', 'outcome=DENIED&actor=x'],
+    ['empty page', 'page='],
+    ['zero page', 'page=0'],
+    ['non-numeric page', 'page=abc'],
+    ['oversized page', 'page=1000000'],
+  ])('flags a URL with %s as not well formed', (_label, query) => {
+    expect(auditUrlIsWellFormed(new URLSearchParams(query))).toBe(false);
+  });
+
+  it('accepts an empty URL, a valid page and empty filter values', () => {
+    expect(auditUrlIsWellFormed(new URLSearchParams(''))).toBe(true);
+    expect(
+      auditUrlIsWellFormed(new URLSearchParams('page=12&eventType=')),
+    ).toBe(true);
+  });
+});
+
+describe('UTC day arithmetic', () => {
+  it('computes the exclusive end for years below 100 without the two-digit year mapping', () => {
+    // Date.UTC maps 0–99 onto 1900–1999; the day after 0099-12-31 is 0100-01-01.
+    expect(utcExclusiveEnd('0099-12-31')).toBe('0100-01-01T00:00:00.000Z');
   });
 });

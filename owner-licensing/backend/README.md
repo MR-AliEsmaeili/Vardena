@@ -10,7 +10,9 @@ customer database, runtime modules, migrations or credentials.
 Specialist and Observer; Support receives 403 `PermissionDenied`). It is
 read-only; no edit, delete or purge route exists.
 
-Query parameters (all optional; an empty value means "not supplied"):
+Query parameters. Each filter is optional, and an empty filter value means "not
+supplied". `page` is strict: when present it must match the table, so `page=` is
+400.
 
 | Parameter | Accepted value | Match |
 | --- | --- | --- |
@@ -20,8 +22,8 @@ Query parameters (all optional; an empty value means "not supplied"):
 | `targetType` | `Customer`, `OperationalRecord`, `User` | exact |
 | `targetId` | ULID | exact |
 | `outcome` | `SUCCESS`, `DENIED` | exact |
-| `occurredFrom` | `YYYY-MM-DDTHH:MM:SS(.mmm)Z` | inclusive lower bound |
-| `occurredBefore` | `YYYY-MM-DDTHH:MM:SS(.mmm)Z` | exclusive upper bound, later than `occurredFrom` |
+| `occurredFrom` | `YYYY-MM-DDTHH:MM:SS` + optional 1–3 digit fraction + `Z` | inclusive lower bound |
+| `occurredBefore` | same instant format | exclusive upper bound, later than `occurredFrom` |
 
 - Filters combine with AND. No substring search exists, so there is no LIKE and
   no LIKE escaping.
