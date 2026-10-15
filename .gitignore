@@ -3,3 +3,9 @@
 
 # Python bytecode from the CI helper scripts in scripts/.
 __pycache__/
+
+# Private keys and authority credentials (never commit key material)
+*.key
+*.pem
+*.p8
+*.pkcs8

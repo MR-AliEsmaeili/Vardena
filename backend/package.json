@@ -11,6 +11,7 @@
   },
   "scripts": {
     "build": "nest build",
+    "build:tools": "tsc -p tsconfig.tools.json",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "start": "nest start",
@@ -34,8 +35,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "bootstrap:system-admin": "node --enable-source-maps dist/bootstrap-system-administrator.js",
-    "license:keygen": "node --enable-source-maps dist/issue-development-license.js --keygen",
-    "license:issue": "node --enable-source-maps dist/issue-development-license.js",
+    "license:keygen": "npm run build:tools && node --enable-source-maps dist-tools/issue-development-license.js --keygen",
+    "license:issue": "npm run build:tools && node --enable-source-maps dist-tools/issue-development-license.js",
     "prisma:format": "prisma format",
     "prisma:validate": "prisma validate",
     "openapi:dump": "node --enable-source-maps dist/tools/dump-openapi.js"

@@ -833,6 +833,7 @@ class WorkflowContractTest(unittest.TestCase):
             "npm run test:licensing-migration-rehearsal",
             "test/licensing-persistence-live.e2e-spec.ts",
             "bash scripts/check-generated-api-client.sh",
+            "python3 scripts/check-production-artifacts.py",
         ):
             with self.subTest(step=needle):
                 self.assertIn(needle, self.text)
@@ -953,3 +954,80 @@ class DocsLinkCheckTest(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main(verbosity=2)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 0.5A Production Artifact & Secret Hygiene Scanner Tests
+# --------------------------------------------------------------------------- #
+
+class ProductionArtifactGateTest(unittest.TestCase):
+    def setUp(self):
+        self.checker = load("check-production-artifacts.py")
+
+    def test_clean_dist_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dist = Path(tmp) / "dist"
+            dist.mkdir()
+            for req in self.checker.REQUIRED_FILES:
+                p = dist / req
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("export const ok = 1;", encoding="utf-8")
+            errors = self.checker.inspect_dist(dist)
+            self.assertEqual(errors, [])
+
+    def test_forbidden_file_in_dist_fails_gate(self):
+        for forbidden in self.checker.FORBIDDEN_FILES:
+            with self.subTest(forbidden=forbidden):
+                with tempfile.TemporaryDirectory() as tmp:
+                    dist = Path(tmp) / "dist"
+                    dist.mkdir()
+                    for req in self.checker.REQUIRED_FILES:
+                        p = dist / req
+                        p.parent.mkdir(parents=True, exist_ok=True)
+                        p.write_text("export const ok = 1;", encoding="utf-8")
+                    bad = dist / forbidden
+                    bad.parent.mkdir(parents=True, exist_ok=True)
+                    bad.write_text("export const evil = 1;", encoding="utf-8")
+                    errors = self.checker.inspect_dist(dist)
+                    self.assertTrue(any("Forbidden development file" in err for err in errors))
+
+    def test_forbidden_symbol_in_dist_fails_gate(self):
+        for symbol in self.checker.FORBIDDEN_SYMBOLS:
+            with self.subTest(symbol=symbol.decode()):
+                with tempfile.TemporaryDirectory() as tmp:
+                    dist = Path(tmp) / "dist"
+                    dist.mkdir()
+                    for req in self.checker.REQUIRED_FILES:
+                        p = dist / req
+                        p.parent.mkdir(parents=True, exist_ok=True)
+                        p.write_text("export const ok = 1;", encoding="utf-8")
+                    # inject forbidden symbol into main.js
+                    (dist / "main.js").write_bytes(b"/* " + symbol + b" */")
+                    errors = self.checker.inspect_dist(dist)
+                    self.assertTrue(any(f"Forbidden symbol '{symbol.decode()}'" in err for err in errors))
+
+    def test_missing_required_entrypoint_fails_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dist = Path(tmp) / "dist"
+            dist.mkdir()
+            # Omit main.js
+            for req in self.checker.REQUIRED_FILES:
+                if req == "main.js":
+                    continue
+                p = dist / req
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("export const ok = 1;", encoding="utf-8")
+            errors = self.checker.inspect_dist(dist)
+            self.assertTrue(any("Required production file missing" in err for err in errors))
+
+    def test_forbidden_production_package_script_fails_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = Path(tmp) / "package.json"
+            pkg.write_text(json.dumps({
+                "scripts": {
+                    "start:prod": "node dist/issue-development-license.js",
+                    "start:worker": "node dist/worker.js"
+                }
+            }), encoding="utf-8")
+            errors = self.checker.inspect_package_scripts(pkg)
+            self.assertTrue(any("Production script 'start:prod' invokes development issuer" in err for err in errors))

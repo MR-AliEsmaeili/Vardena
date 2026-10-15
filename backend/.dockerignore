@@ -1,5 +1,6 @@
 node_modules
 dist
+dist-tools
 coverage
 test
 .env
@@ -13,3 +14,7 @@ README.md
 Dockerfile
 .dockerignore
 src/**/*.spec.ts
+*.key
+*.pem
+*.p8
+*.pkcs8
