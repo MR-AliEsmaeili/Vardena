@@ -749,8 +749,8 @@ async function snapshotPreDeviceState(client) {
     const result = await client.query(
       `SELECT COALESCE(jsonb_agg("row_data" ORDER BY "id"), '[]'::jsonb) AS "rows"
          FROM (
-           SELECT "id", to_jsonb(source)${subtraction} AS "row_data"
-             FROM "licensing"."${table}" AS source
+           SELECT "id", to_jsonb(row_source)${subtraction} AS "row_data"
+             FROM "licensing"."${table}" AS row_source
          ) AS snapshot_rows`,
     );
     snapshot[table] = result.rows[0].rows;

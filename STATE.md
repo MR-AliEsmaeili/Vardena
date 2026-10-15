@@ -2394,4 +2394,11 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   log host is unavailable from this sandbox. The rehearsal now emits its caught
   stack as a bounded GitHub error annotation so the next CI run supplies the
   actual PostgreSQL/assertion diagnostic without weakening or skipping the
-  test. A later exact-head run is the only valid verification.
+  test. Run
+  [38702436263](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38702436263)
+  on `390b38e38a3fbabfd2f2434a181dfa4bd38b626d` then exposed `cannot delete
+  from scalar` in `snapshotPreDeviceState`: PostgreSQL resolved the snapshot
+  alias `source` as the scalar `source` column on version/audit rows instead of
+  the composite table row. The alias was made unambiguous as `row_source`; no
+  fixture, migration, assertion, or product behavior changed. A later
+  exact-head run is the only valid verification.
