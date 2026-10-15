@@ -1,5 +1,9 @@
 # Vardena
 
+Owner-only licensing administration is a **separate application**: see
+[`owner-licensing/`](owner-licensing/README.md). It is not part of customer
+Vardena builds, runtime configuration, database or production images.
+
 A modern **modular ERP** system: NestJS + TypeScript + PostgreSQL (Prisma)
 backend; React + TypeScript (Vite, Tailwind, shadcn/ui) frontend on the fixed
 stack of ADR-0002, whose **first vertical slice is implemented**. Extensible by

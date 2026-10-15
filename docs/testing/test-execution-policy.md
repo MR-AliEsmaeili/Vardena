@@ -116,3 +116,14 @@ sandboxes cannot produce the interleavings these suites exist to catch.
    a suite to make a run cheaper, or making a required job skippable while
    `ci-gate` is not a required check, is a policy violation rather than an
    optimization. See `docs/operations/ci-minutes-optimization.md`.
+
+## Owner Phase 1 execution boundary (2026-10-15)
+
+Owner domain/form-schema units and isolation helper tests may be run as focused,
+bounded local checks. `owner-licensing/backend`'s `test:integration` requires
+`OWNER_TEST_DATABASE_URL` and fails rather than silently skipping when absent.
+It is CI-only (fresh Owner PostgreSQL migration deployment, HTTP/security/RBAC,
+credential-concurrency/rollback and customer/audit persistence). Full Owner React
+flow tests, customer Docker/image/artifact checks and existing protocol suites
+are CI-only for this task. Owner SQL migrations are independent of the customer
+Prisma chain. See [the execution matrix](../tasks/licensing-owner-side-phase-1.md).

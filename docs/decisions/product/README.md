@@ -28,6 +28,7 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 
 | ID | Title | Type | Status | Blocks MVP |
 |---|---|---|---|---|
+| [PDR-17](./PDR-17-owner-web-application-phase-1.md) | Owner web app, separate PostgreSQL, RBAC subset, audit and manual operations | PDR | Decided directions; restricted missing permissions/retention wording documented | Owner first slice |
 | [OQ-44](./OQ-44-multi-device-offline-sync.md) | Multi-device offline sync: scope and timing | OQ | Open | No (excluded from MVP) |
 | [OQ-45](./OQ-45-license-expiry-behavior.md) | License expiry behavior (incl. internet outage, post-termination mode) | OQ | Open — **Grace → Read-Only decided (2026-10-05)**; durations/override open | Foundation only |
 | [OQ-46](./OQ-46-customer-data-export-format.md) | Customer data export format and completeness | OQ | Open — **Excel = Business Export ≠ full technical backup decided (2026-10-05)**; contract-end boundary open | No (Excel confirmed) |

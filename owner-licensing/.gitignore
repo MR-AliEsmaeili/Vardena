@@ -1,0 +1,11 @@
+.env
+.env.*.local
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+*.key
+*.pem
+*.p8
+*.pkcs8

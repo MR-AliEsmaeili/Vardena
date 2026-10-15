@@ -1,0 +1,615 @@
+import express, {
+  type Request,
+  type Response,
+  type NextFunction,
+} from "express";
+import { randomUUID } from "node:crypto";
+import { ulid } from "ulid";
+import type { PoolClient } from "pg";
+import type { Config } from "./config.js";
+import { Database, audit } from "./db.js";
+import {
+  ApiError,
+  customerCode,
+  customerResponse,
+  digest,
+  fail,
+  id,
+  invalid,
+  object,
+  page,
+  password,
+  permissions,
+  role,
+  safeUser,
+  status,
+  text,
+  token,
+  type Permission,
+  type User,
+} from "./domain.js";
+import {
+  authenticate,
+  cookieToken,
+  hashPassword,
+  newSession,
+  verifyPassword,
+  type Principal,
+} from "./security.js";
+
+export async function createApp(db: Database, cfg: Config) {
+  const app = express();
+  app.disable("x-powered-by");
+  // No CORS; deployment is one browser origin via the Owner reverse proxy.
+  app.use((_req, res, next) => {
+    res.set({
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "no-referrer",
+    });
+    next();
+  });
+  app.use((req, res, next) => {
+    if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+      if (
+        req.get("x-owner-request") !== "1" ||
+        (req.get("origin") && req.get("origin") !== cfg.origin)
+      )
+        return next(
+          new ApiError(403, "PermissionDenied", "Invalid request origin."),
+        );
+      if (!req.is("application/json"))
+        return next(new ApiError(415, "ValidationFailed", "JSON is required."));
+    }
+    next();
+  });
+  app.use(express.json({ limit: "16kb", strict: true }));
+  const router = express.Router();
+  const cookieName = cfg.production ? "__Host-owner_session" : "owner_session";
+  const cookieOptions = {
+    httpOnly: true,
+    secure: cfg.production,
+    sameSite: "lax" as const,
+    path: "/",
+  };
+  const dummyHash = await hashPassword(token());
+  type Work = (
+    tx: PoolClient,
+    actor: Principal,
+    req: Request,
+    res: Response,
+  ) => Promise<void>;
+  const protectedRoute =
+    (
+      permission: Permission | undefined,
+      ordinary: boolean,
+      work: Work,
+      usersLock = false,
+    ) =>
+    async (req: Request, res: Response) => {
+      await db.transaction(async (tx) => {
+        if (usersLock) await tx.query("SELECT pg_advisory_xact_lock(78153216)");
+        const actor = await authenticate(
+          tx,
+          cookieToken(req, cfg.production),
+          ordinary,
+          permission,
+        );
+        // Do not send a success response before audit/mutation COMMIT.
+        await work(tx, actor, req, res);
+      });
+    };
+  // Route work stages response in locals; flush only after a successful transaction.
+  const route = (
+    method: "get" | "post" | "patch",
+    path: string,
+    permission: Permission | undefined,
+    ordinary: boolean,
+    work: Work,
+    usersLock = false,
+  ) => {
+    router[method](path, async (req, res) => {
+      await protectedRoute(permission, ordinary, work, usersLock)(req, res);
+      if (res.locals.clearCookie) res.clearCookie(cookieName, cookieOptions);
+      res.status(res.locals.status ?? 200).json(res.locals.body ?? {});
+    });
+  };
+  router.get("/health", async (_req, res) => {
+    await db.pool.query("SELECT 1");
+    res.json({ status: "ok" });
+  });
+  router.post("/auth/login", async (req, res) => {
+    const input = object(req.body, ["username", "password"]);
+    const username = text(input.username, "username", 1, 64);
+    const rawPassword = text(input.password, "password", 1, 128, false);
+    // Shared PostgreSQL bucket per direct-peer IP, bounded in time; no trust in spoofable forwarded headers.
+    const bucket = digest(req.ip ?? "unknown");
+    const attempts = await db.pool.query<{ attempts: number }>(
+      `INSERT INTO owner.login_limits(bucket) VALUES($1)
+      ON CONFLICT(bucket) DO UPDATE SET attempts=CASE WHEN owner.login_limits.reset_at<clock_timestamp() THEN 1 ELSE owner.login_limits.attempts+1 END,
+      reset_at=CASE WHEN owner.login_limits.reset_at<clock_timestamp() THEN clock_timestamp()+interval '15 minutes' ELSE owner.login_limits.reset_at END RETURNING attempts`,
+      [bucket],
+    );
+    if (attempts.rows[0]!.attempts > 10)
+      fail(
+        429,
+        "RateLimitExceeded",
+        "Too many login attempts. Try again later.",
+      );
+    const found = await db.pool.query<User>(
+      "SELECT * FROM owner.users WHERE username=$1",
+      [username],
+    );
+    const snapshot = found.rows[0];
+    const verified = await verifyPassword(
+      snapshot?.password_hash ?? dummyHash,
+      rawPassword,
+    );
+    const rawToken = token();
+    const result = await db.transaction(async (tx) => {
+      const current = snapshot
+        ? (
+            await tx.query<User>(
+              "SELECT * FROM owner.users WHERE id=$1 FOR UPDATE",
+              [snapshot.id],
+            )
+          ).rows[0]
+        : undefined;
+      if (
+        !verified ||
+        !current?.is_active ||
+        current.password_hash !== snapshot?.password_hash
+      ) {
+        await audit(tx, {
+          actor: current?.id ?? null,
+          type: "AUTH_LOGIN_FAILED",
+          targetType: "User",
+          targetId: current?.id ?? null,
+          outcome: "DENIED",
+          reason: "Invalid credentials or disabled account",
+        });
+        return null;
+      }
+      return newSession(tx, current, digest(rawToken));
+    });
+    if (!result) fail(401, "Unauthorized", "Invalid username or password.");
+    res.cookie(cookieName, rawToken, {
+      ...cookieOptions,
+      maxAge: 12 * 60 * 60 * 1000,
+    });
+    res.json(result);
+  });
+  route("get", "/auth/me", undefined, false, async (_tx, a, _req, res) => {
+    res.locals.body = safeUser(a.user);
+  });
+  route(
+    "get",
+    "/permissions/effective",
+    undefined,
+    true,
+    async (_tx, a, _req, res) => {
+      res.locals.body = { permissions: permissions(a.user.role) };
+    },
+  );
+  // Logout is idempotent, including expired/absent sessions. No client actor id is accepted.
+  router.post("/auth/logout", async (req, res) => {
+    object(req.body, []);
+    const raw = cookieToken(req, cfg.production);
+    if (raw) {
+      await db.transaction(async (tx) => {
+        const session = (
+          await tx.query<{ id: string; user_id: string }>(
+            "SELECT id,user_id FROM owner.sessions WHERE token_hash=$1",
+            [digest(raw)],
+          )
+        ).rows[0];
+        if (session) {
+          await tx.query("SELECT id FROM owner.users WHERE id=$1 FOR UPDATE", [
+            session.user_id,
+          ]);
+          const revoked = await tx.query(
+            "UPDATE owner.sessions SET revoked_at=clock_timestamp() WHERE id=$1 AND revoked_at IS NULL RETURNING id",
+            [session.id],
+          );
+          if (revoked.rowCount)
+            await audit(tx, {
+              actor: session.user_id,
+              type: "AUTH_LOGOUT",
+              targetType: "User",
+              targetId: session.user_id,
+            });
+        }
+      });
+    }
+    res.clearCookie(cookieName, cookieOptions);
+    res.status(204).end();
+  });
+  route(
+    "post",
+    "/auth/change-password",
+    undefined,
+    false,
+    async (tx, a, req, res) => {
+      const input = object(req.body, ["currentPassword", "newPassword"]);
+      const current = text(
+        input.currentPassword,
+        "currentPassword",
+        1,
+        128,
+        false,
+      );
+      const next = password(input.newPassword);
+      if (current === next) invalid("New password must differ.");
+      if (!(await verifyPassword(a.user.password_hash, current)))
+        fail(401, "Unauthorized", "Invalid current password.");
+      const hash = await hashPassword(next);
+      await tx.query(
+        "UPDATE owner.users SET password_hash=$1,must_change_password=false,updated_at=clock_timestamp() WHERE id=$2",
+        [hash, a.user.id],
+      );
+      await tx.query(
+        "UPDATE owner.sessions SET revoked_at=clock_timestamp() WHERE user_id=$1 AND id<>$2 AND revoked_at IS NULL",
+        [a.user.id, a.sessionId],
+      );
+      await audit(tx, {
+        actor: a.user.id,
+        type: "PASSWORD_CHANGED",
+        targetType: "User",
+        targetId: a.user.id,
+        before: { mustChangePassword: a.user.must_change_password },
+        after: { mustChangePassword: false },
+      });
+      res.locals.body = safeUser({ ...a.user, must_change_password: false });
+    },
+  );
+  route(
+    "get",
+    "/users",
+    "users.manage",
+    true,
+    async (tx, _a, req, res) => {
+      const p = page(req.query.page);
+      const rows = await tx.query<User>(
+        "SELECT * FROM owner.users ORDER BY id LIMIT 50 OFFSET $1",
+        [(p - 1) * 50],
+      );
+      res.locals.body = {
+        items: rows.rows.map(safeUser),
+        page: p,
+        pageSize: 50,
+      };
+    },
+    true,
+  );
+  route(
+    "post",
+    "/users",
+    "users.manage",
+    true,
+    async (tx, a, req, res) => {
+      const input = object(req.body, ["username", "password", "role"]);
+      const username = text(input.username, "username", 1, 64),
+        r = role(input.role);
+      const hash = await hashPassword(password(input.password)),
+        uid = ulid();
+      const user = (
+        await tx.query<User>(
+          "INSERT INTO owner.users(id,username,password_hash,role) VALUES($1,$2,$3,$4) RETURNING *",
+          [uid, username, hash, r],
+        )
+      ).rows[0]!;
+      await audit(tx, {
+        actor: a.user.id,
+        type: "USER_CREATED",
+        targetType: "User",
+        targetId: uid,
+        after: { username, role: r, isActive: true, mustChangePassword: true },
+      });
+      res.locals.status = 201;
+      res.locals.body = safeUser(user);
+    },
+    true,
+  );
+  route(
+    "patch",
+    "/users/:id",
+    "users.manage",
+    true,
+    async (tx, a, req, res) => {
+      const targetId = id(req.params.id),
+        input = object(req.body, ["role", "isActive", "reason"]);
+      const reason = text(input.reason, "reason", 1, 500);
+      const target = (
+        await tx.query<User>(
+          "SELECT * FROM owner.users WHERE id=$1 FOR UPDATE",
+          [targetId],
+        )
+      ).rows[0];
+      if (!target) fail(404, "EntityNotFound", "User not found.");
+      const nextRole =
+        input.role === undefined ? target.role : role(input.role);
+      if (input.isActive !== undefined && typeof input.isActive !== "boolean")
+        invalid("isActive must be boolean.");
+      const active =
+        input.isActive === undefined
+          ? target.is_active
+          : (input.isActive as boolean);
+      if (
+        target.role === "SYSTEM_ADMIN" &&
+        target.is_active &&
+        (nextRole !== "SYSTEM_ADMIN" || !active)
+      ) {
+        const count = await tx.query<{ count: string }>(
+          "SELECT count(*) FROM owner.users WHERE role='SYSTEM_ADMIN' AND is_active",
+        );
+        if (Number(count.rows[0]!.count) <= 1)
+          fail(409, "Conflict", "Cannot remove the last active administrator.");
+      }
+      const updated = (
+        await tx.query<User>(
+          "UPDATE owner.users SET role=$1,is_active=$2,updated_at=clock_timestamp() WHERE id=$3 RETURNING *",
+          [nextRole, active, targetId],
+        )
+      ).rows[0]!;
+      await tx.query(
+        "UPDATE owner.sessions SET revoked_at=clock_timestamp() WHERE user_id=$1 AND revoked_at IS NULL",
+        [targetId],
+      );
+      await audit(tx, {
+        actor: a.user.id,
+        type: "USER_ACCESS_CHANGED",
+        targetType: "User",
+        targetId,
+        reason,
+        before: { role: target.role, isActive: target.is_active },
+        after: { role: nextRole, isActive: active },
+      });
+      res.locals.body = safeUser(updated);
+    },
+    true,
+  );
+  route(
+    "post",
+    "/users/:id/reset-password",
+    "users.manage",
+    true,
+    async (tx, a, req, res) => {
+      const targetId = id(req.params.id),
+        input = object(req.body, ["password", "reason"]);
+      const reason = text(input.reason, "reason", 1, 500),
+        hash = await hashPassword(password(input.password));
+      await tx.query("SELECT id FROM owner.users WHERE id=$1 FOR UPDATE", [
+        targetId,
+      ]);
+      const updated = (
+        await tx.query<User>(
+          "UPDATE owner.users SET password_hash=$1,must_change_password=true,updated_at=clock_timestamp() WHERE id=$2 RETURNING *",
+          [hash, targetId],
+        )
+      ).rows[0];
+      if (!updated) fail(404, "EntityNotFound", "User not found.");
+      await tx.query(
+        "UPDATE owner.sessions SET revoked_at=clock_timestamp() WHERE user_id=$1 AND revoked_at IS NULL",
+        [targetId],
+      );
+      await audit(tx, {
+        actor: a.user.id,
+        type: "PASSWORD_RESET",
+        targetType: "User",
+        targetId,
+        reason,
+        after: { mustChangePassword: true },
+      });
+      res.locals.body = safeUser(updated);
+    },
+    true,
+  );
+  route(
+    "get",
+    "/customers",
+    "customers.view",
+    true,
+    async (tx, a, req, res) => {
+      const p = page(req.query.page);
+      const search =
+        req.query.search === undefined
+          ? ""
+          : text(req.query.search, "search", 0, 100);
+      // Escape LIKE wildcards: this is literal substring search.
+      const pattern = `%${search.replace(/[\\%_]/g, "\\$&")}%`;
+      const where = "customer_code ILIKE $1 OR display_name ILIKE $1";
+      const total = await tx.query<{ count: string }>(
+        `SELECT count(*) FROM owner.customers WHERE ${where}`,
+        [pattern],
+      );
+      const rows = await tx.query(
+        `SELECT * FROM owner.customers WHERE ${where} ORDER BY id DESC LIMIT 50 OFFSET $2`,
+        [pattern, (p - 1) * 50],
+      );
+      res.locals.body = {
+        items: rows.rows.map((c) => customerResponse(c, a.user.role)),
+        total: Number(total.rows[0]!.count),
+        page: p,
+        pageSize: 50,
+      };
+    },
+  );
+  route(
+    "get",
+    "/customers/:id",
+    "customers.view",
+    true,
+    async (tx, a, req, res) => {
+      const row = (
+        await tx.query("SELECT * FROM owner.customers WHERE id=$1", [
+          id(req.params.id),
+        ])
+      ).rows[0];
+      if (!row) fail(404, "EntityNotFound", "Customer not found.");
+      res.locals.body = customerResponse(row, a.user.role);
+    },
+  );
+  route(
+    "post",
+    "/customers",
+    "customers.write",
+    true,
+    async (tx, a, req, res) => {
+      const input = object(req.body, [
+        "customerCode",
+        "displayName",
+        "status",
+        "contractReference",
+      ]);
+      const uid = ulid(),
+        code = customerCode(input.customerCode, uid),
+        name = text(input.displayName, "displayName", 1, 200);
+      const state = status(input.status ?? "ACTIVE");
+      const reference =
+        input.contractReference === undefined || input.contractReference === ""
+          ? ""
+          : text(input.contractReference, "contractReference", 1, 200);
+      const c = (
+        await tx.query(
+          `INSERT INTO owner.customers(id,customer_code,display_name,status,contract_reference,created_by,updated_by)
+      VALUES($1,$2,$3,$4,$5,$6,$6) RETURNING *`,
+          [uid, code, name, state, reference, a.user.id],
+        )
+      ).rows[0];
+      await audit(tx, {
+        actor: a.user.id,
+        type: "CUSTOMER_CREATED",
+        targetType: "Customer",
+        targetId: uid,
+        after: {
+          customerCode: code,
+          displayName: name,
+          status: state,
+          contractReference: reference,
+        },
+      });
+      res.locals.status = 201;
+      res.locals.body = customerResponse(c, a.user.role);
+    },
+  );
+  route(
+    "patch",
+    "/customers/:id",
+    "customers.write",
+    true,
+    async (tx, a, req, res) => {
+      const uid = id(req.params.id),
+        input = object(req.body, [
+          "displayName",
+          "status",
+          "contractReference",
+          "reason",
+        ]);
+      const reason = text(input.reason, "reason", 1, 500);
+      const c = (
+        await tx.query("SELECT * FROM owner.customers WHERE id=$1 FOR UPDATE", [
+          uid,
+        ])
+      ).rows[0];
+      if (!c) fail(404, "EntityNotFound", "Customer not found.");
+      const name =
+        input.displayName === undefined
+          ? c.display_name
+          : text(input.displayName, "displayName", 1, 200);
+      const state =
+        input.status === undefined ? c.status : status(input.status);
+      const reference =
+        input.contractReference === undefined
+          ? c.contract_reference
+          : input.contractReference === ""
+            ? ""
+            : text(input.contractReference, "contractReference", 1, 200);
+      const updated = (
+        await tx.query(
+          "UPDATE owner.customers SET display_name=$1,status=$2,contract_reference=$3,updated_by=$4,updated_at=clock_timestamp() WHERE id=$5 RETURNING *",
+          [name, state, reference, a.user.id, uid],
+        )
+      ).rows[0];
+      await audit(tx, {
+        actor: a.user.id,
+        type: "CUSTOMER_UPDATED",
+        targetType: "Customer",
+        targetId: uid,
+        reason,
+        before: {
+          displayName: c.display_name,
+          status: c.status,
+          contractReference: c.contract_reference,
+        },
+        after: {
+          displayName: name,
+          status: state,
+          contractReference: reference,
+        },
+      });
+      res.locals.body = customerResponse(updated, a.user.role);
+    },
+  );
+  route(
+    "get",
+    "/audit-events",
+    "audit.view",
+    true,
+    async (tx, _a, req, res) => {
+      const p = page(req.query.page);
+      const target =
+        req.query.targetId === undefined ? null : id(req.query.targetId);
+      const rows = await tx.query(
+        `SELECT id,actor_id AS "actorId",event_type AS "eventType",target_type AS "targetType",target_id AS "targetId",occurred_at AS "occurredAt",outcome,reason,before_state AS "beforeState",after_state AS "afterState"
+      FROM owner.audit_events WHERE ($1::text IS NULL OR target_id=$1) ORDER BY sequence DESC LIMIT 50 OFFSET $2`,
+        [target, (p - 1) * 50],
+      );
+      res.locals.body = { items: rows.rows, page: p, pageSize: 50 };
+    },
+  );
+  app.use("/api/v1", router);
+  app.use((_req, _res, next) =>
+    next(new ApiError(404, "EntityNotFound", "Endpoint not found.")),
+  );
+  app.use(
+    (error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+      const correlationId = randomUUID();
+      if (error instanceof ApiError) {
+        res
+          .status(error.status)
+          .json({ code: error.code, message: error.message, correlationId });
+        return;
+      }
+      const e = error as { code?: string; type?: string };
+      if (e.code === "23505") {
+        res.status(409).json({
+          code: "Conflict",
+          message: "The unique code or username already exists.",
+          correlationId,
+        });
+        return;
+      }
+      if (
+        e.code === "23514" ||
+        e.code === "22001" ||
+        e.type === "entity.parse.failed" ||
+        e.type === "entity.too.large"
+      ) {
+        res.status(400).json({
+          code: "ValidationFailed",
+          message: "Invalid input.",
+          correlationId,
+        });
+        return;
+      }
+      console.error(`Owner request failed (${correlationId}).`); // No raw error/query/body/credentials.
+      res.status(500).json({
+        code: "InternalError",
+        message: "The operation failed. Please retry.",
+        correlationId,
+      });
+    },
+  );
+  return app;
+}
