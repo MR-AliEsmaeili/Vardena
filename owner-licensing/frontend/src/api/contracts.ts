@@ -86,6 +86,8 @@ export interface OperationalRecord {
   updatedBy: string;
   transitions?: OperationTransition[];
 }
+export type AuditTargetType = 'Customer' | 'OperationalRecord' | 'User';
+export type AuditOutcome = 'SUCCESS' | 'DENIED';
 export interface AuditEvent {
   id: string;
   actorId: string | null;
@@ -93,8 +95,28 @@ export interface AuditEvent {
   targetType: string;
   targetId: string | null;
   occurredAt: string;
-  outcome: string;
+  outcome: AuditOutcome;
   reason: string | null;
   beforeState: Record<string, unknown> | null;
   afterState: Record<string, unknown> | null;
+}
+/** Query contract of `GET /audit-events`. Every filter is optional; `page` is 1-based. */
+export interface AuditQuery {
+  page: number;
+  eventType?: string;
+  actorId?: string;
+  targetType?: AuditTargetType;
+  targetId?: string;
+  outcome?: AuditOutcome;
+  /** Inclusive canonical UTC instant. */
+  occurredFrom?: string;
+  /** Exclusive canonical UTC instant. */
+  occurredBefore?: string;
+}
+/** Audit pages carry `hasNext` from the backend; no total is computed over the append-only table. */
+export interface AuditPage {
+  items: AuditEvent[];
+  page: number;
+  pageSize: number;
+  hasNext: boolean;
 }

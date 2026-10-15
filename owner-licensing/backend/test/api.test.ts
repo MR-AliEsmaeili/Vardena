@@ -82,6 +82,38 @@ async function insertTransition(
   );
 }
 
+/** Direct audit-row insert for explorer fixtures (the append-only trigger rejects only UPDATE/DELETE). */
+async function insertAudit(row: {
+  actor: string | null;
+  type: string;
+  targetType: string;
+  targetId: string | null;
+  occurredAt: string;
+  outcome?: string;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+}): Promise<string> {
+  const id = ulid();
+  await db.pool.query(
+    `INSERT INTO owner.audit_events(id,actor_id,event_type,target_type,target_id,occurred_at,outcome,reason,before_state,after_state)
+     VALUES($1,$2,$3,$4,$5,$6::timestamptz,$7,NULL,$8,$9)`,
+    [
+      id,
+      row.actor,
+      row.type,
+      row.targetType,
+      row.targetId,
+      row.occurredAt,
+      row.outcome ?? "SUCCESS",
+      row.before ?? null,
+      row.after ?? null,
+    ],
+  );
+  return id;
+}
+const explorer = (cookie: string, query: Record<string, string>) =>
+  request(app).get("/api/v1/audit-events").query(query).set("Cookie", cookie);
+
 async function expectUnavailableOperations(cookie: string) {
   // No audit mutation or fabricated lifecycle endpoint is available to ANY role.
   for (const method of ["post", "patch", "delete"] as const)
@@ -1510,5 +1542,275 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       "operations.view",
       "operations.record",
     ]);
+  });
+  it("filters audit events in PostgreSQL with exact AND semantics, half-open UTC windows and stable bounded pages", async () => {
+    const eventType = `EXPLORER_${ulid()}`;
+    const other = `EXPLORER_${ulid()}`;
+    const target = ulid();
+    const ids: string[] = [];
+    for (let i = 0; i < 52; i++)
+      ids.push(
+        await insertAudit({
+          actor: adminId,
+          type: eventType,
+          targetType: "OperationalRecord",
+          targetId: target,
+          // Pairs share an occurred_at, so only the sequence tie-breaker orders them.
+          occurredAt: new Date(
+            Date.UTC(2001, 5, 1, 0, 0, Math.floor(i / 2)),
+          ).toISOString(),
+        }),
+      );
+    const denied = await insertAudit({
+      actor: adminId,
+      type: other,
+      targetType: "User",
+      targetId: adminId,
+      occurredAt: "2001-06-01T00:00:00.000Z",
+      outcome: "DENIED",
+    });
+
+    const first = await explorer(adminCookie, {
+      eventType,
+      targetId: target,
+      page: "1",
+    });
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({ page: 1, pageSize: 50, hasNext: true });
+    expect(first.body.items).toHaveLength(50);
+    expect(first.body.items[0].id).toBe(ids[51]);
+    expect(first.body.items[1].id).toBe(ids[50]);
+    expect(first.body.items[0].occurredAt).toBe(first.body.items[1].occurredAt);
+    const second = await explorer(adminCookie, {
+      eventType,
+      targetId: target,
+      page: "2",
+    });
+    expect(second.body).toMatchObject({ page: 2, hasNext: false });
+    expect(second.body.items.map((item: { id: string }) => item.id)).toEqual([
+      ids[1],
+      ids[0],
+    ]);
+
+    // [from, before): 10s is included, 20s is excluded.
+    const windowed = await explorer(adminCookie, {
+      eventType,
+      occurredFrom: "2001-06-01T00:00:10.000Z",
+      occurredBefore: "2001-06-01T00:00:20.000Z",
+    });
+    const windowIds = windowed.body.items.map(
+      (item: { id: string }) => item.id,
+    );
+    expect(windowed.status).toBe(200);
+    expect(windowIds).toHaveLength(20);
+    expect(windowIds).toEqual(expect.arrayContaining([ids[20], ids[39]]));
+    expect(windowIds).not.toContain(ids[19]);
+    expect(windowIds).not.toContain(ids[40]);
+
+    // Every criterion narrows the result; none widens it.
+    const narrowings: Record<string, string>[] = [
+      { outcome: "DENIED" },
+      { targetType: "User" },
+      { actorId: ulid() },
+      { targetId: ulid() },
+    ];
+    for (const narrowing of narrowings)
+      expect(
+        (await explorer(adminCookie, { eventType, ...narrowing })).body.items,
+      ).toEqual([]);
+    const deniedOnly = await explorer(adminCookie, {
+      eventType: other,
+      outcome: "DENIED",
+      targetType: "User",
+    });
+    expect(
+      deniedOnly.body.items.map((item: { id: string }) => item.id),
+    ).toEqual([denied]);
+
+    // Filters are literal equality: `_` is an ordinary character, never a LIKE wildcard.
+    expect(
+      (await explorer(adminCookie, { eventType: "EXPLORER_" })).body.items,
+    ).toEqual([]);
+    const hostiles: Record<string, string>[] = [
+      { eventType: "EXPLORER%" },
+      { eventType: "_" },
+      { eventType: "x' OR '1'='1" },
+      { targetType: "Customer' OR '1'='1" },
+      { actorId: "%" },
+      { actorId: `${adminId}' OR 1=1 --` },
+      { occurredFrom: "2001-06-01" },
+      { occurredFrom: "2001-06-01T00:00:00+01:00" },
+      { occurredFrom: "2001-06-01T00:00:00Z' OR '1'='1" },
+      {
+        occurredFrom: "2001-06-02T00:00:00Z",
+        occurredBefore: "2001-06-01T00:00:00Z",
+      },
+      { outcome: "SUCCESS%" },
+      { actor: adminId },
+      { page: "0" },
+      { page: "1000000" },
+    ];
+    for (const hostile of hostiles)
+      expect(
+        (await explorer(adminCookie, hostile)).status,
+        JSON.stringify(hostile),
+      ).toBe(400);
+    expect(
+      (
+        await request(app)
+          .get(`/api/v1/audit-events?eventType=${eventType}&eventType=${other}`)
+          .set("Cookie", adminCookie)
+      ).status,
+    ).toBe(400);
+  });
+  it("returns only allowlisted audit state even when stored JSON contains secret-like keys", async () => {
+    const eventType = `PROJECT_${ulid()}`;
+    await insertAudit({
+      actor: adminId,
+      type: eventType,
+      targetType: "Customer",
+      targetId: ulid(),
+      occurredAt: "2001-07-01T00:00:00.000Z",
+      before: { displayName: "old", password_hash: "$argon2id$SECRET-HASH" },
+      after: {
+        displayName: "new",
+        evidenceReference: "CASE-42",
+        token_hash: "SECRET-TOKEN-HASH",
+        sessionToken: "SECRET-SESSION",
+        nested: { password_hash: "$argon2id$NESTED" },
+      },
+    });
+    const res = await explorer(adminCookie, { eventType });
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].beforeState).toEqual({ displayName: "old" });
+    expect(res.body.items[0].afterState).toEqual({
+      displayName: "new",
+      evidenceReference: "CASE-42",
+    });
+    const raw = JSON.stringify(res.body);
+    for (const secret of [
+      "SECRET-HASH",
+      "SECRET-TOKEN-HASH",
+      "SECRET-SESSION",
+      "NESTED",
+      "$argon2id",
+    ])
+      expect(raw).not.toContain(secret);
+  });
+  it("applies the audit.view grant to every explorer filter on direct API requests", async () => {
+    const eventType = `ROLES_${ulid()}`;
+    const target = ulid();
+    const eventId = await insertAudit({
+      actor: adminId,
+      type: eventType,
+      targetType: "Customer",
+      targetId: target,
+      occurredAt: "2001-08-01T00:00:00.000Z",
+    });
+    const filters = {
+      eventType,
+      targetType: "Customer",
+      targetId: target,
+      actorId: adminId,
+      outcome: "SUCCESS",
+      occurredFrom: "2001-08-01T00:00:00Z",
+      occurredBefore: "2001-08-02T00:00:00Z",
+    };
+    for (const role of [
+      "LICENSE_ISSUANCE",
+      "READ_ONLY_OBSERVER",
+      "SUPPORT_SPECIALIST",
+    ] as const) {
+      const uid = ulid(),
+        pw = "Disposable_role_45";
+      await db.pool.query(
+        "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,$4,false)",
+        [uid, uid, await hashPassword(pw), role],
+      );
+      const { cookie } = await login(uid, pw);
+      const allowed = role !== "SUPPORT_SPECIALIST";
+      const res = await explorer(cookie, filters);
+      if (allowed) {
+        expect(res.status).toBe(200);
+        expect(res.body.items.map((i: { id: string }) => i.id)).toEqual([
+          eventId,
+        ]);
+      } else {
+        expect(res.status).toBe(403);
+        expect(res.body.items).toBeUndefined();
+        expect(JSON.stringify(res.body)).not.toContain(eventType);
+      }
+      // Authorization is decided before query validation: Support gets 403, not a validation detail.
+      expect(
+        (await explorer(cookie, { eventType: "bad%", actor: "x" })).status,
+      ).toBe(allowed ? 400 : 403);
+      // No identifier lookup exists for any role.
+      expect(
+        (
+          await request(app)
+            .get(`/api/v1/audit-events/${eventId}`)
+            .set("Cookie", cookie)
+        ).status,
+      ).toBe(404);
+    }
+    // The client-supplied actorId is only a filter; it never becomes the caller's identity.
+    const support = ulid(),
+      supportPw = "Disposable_role_45";
+    await db.pool.query(
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,$4,false)",
+      [support, support, await hashPassword(supportPw), "SUPPORT_SPECIALIST"],
+    );
+    const supportLogin = await login(support, supportPw);
+    expect(
+      (await explorer(supportLogin.cookie, { actorId: adminId })).status,
+    ).toBe(403);
+    // A password-change-pending credential is denied even though the query is valid.
+    const pending = ulid();
+    await db.pool.query(
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,$4,true)",
+      [pending, pending, await hashPassword(supportPw), "SYSTEM_ADMIN"],
+    );
+    const pendingLogin = await login(pending, supportPw);
+    expect((await explorer(pendingLogin.cookie, filters)).status).toBe(403);
+  });
+  it("lets an operator reach the audit trail of an operational record and of a customer", async () => {
+    const created = await customer(adminCookie, `Trail-${ulid()}`);
+    expect(created.status).toBe(201);
+    const cid = created.body.id;
+    const issued = await write(
+      "post",
+      "/operational-records/license-observations",
+      adminCookie,
+    ).send({
+      customerId: cid,
+      installationReference: `TRAIL-${ulid()}`,
+      reason: "trail observation",
+    });
+    expect(issued.status).toBe(201);
+    const recordTrail = await explorer(adminCookie, {
+      targetType: "OperationalRecord",
+      targetId: issued.body.id,
+    });
+    expect(recordTrail.status).toBe(200);
+    const observed = recordTrail.body.items.find(
+      (item: { eventType: string }) =>
+        item.eventType === "LICENSE_ISSUANCE_OBSERVED",
+    );
+    expect(observed).toBeDefined();
+    expect(observed.afterState).toMatchObject({
+      observedStatus: "ISSUED",
+      evidenceBasis: "OPERATOR_OBSERVED",
+    });
+    const customerTrail = await explorer(adminCookie, {
+      targetType: "Customer",
+      targetId: cid,
+      eventType: "CUSTOMER_CREATED",
+      actorId: adminId,
+    });
+    expect(customerTrail.body.items).toHaveLength(1);
+    expect(customerTrail.body.items[0].afterState).toMatchObject({
+      customerCode: created.body.customerCode,
+    });
   });
 });

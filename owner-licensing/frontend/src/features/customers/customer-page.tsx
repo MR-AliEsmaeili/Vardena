@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as api from '@/api/owner.api';
 import type { Customer } from '@/api/contracts';
 import { usePermissions } from '@/features/permissions/use-permissions';
+import { auditTrailHref } from '@/features/audit/audit-filters';
 import { o } from '@/lib/owner-i18n';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
@@ -76,6 +77,13 @@ export function CustomerPage({ mode }: { mode: 'new' | 'detail' | 'edit' }) {
             <Link to={`/app/customers/${id}/edit`}>{o.edit}</Link>
           </Button>
         )}
+        {permissions.has('audit.view') ? (
+          <Button asChild variant="outline">
+            <Link to={auditTrailHref('Customer', c.id)}>
+              {o.auditCustomerLink}
+            </Link>
+          </Button>
+        ) : null}
         <Button asChild variant="outline">
           <Link to="/app/customers">{o.back}</Link>
         </Button>

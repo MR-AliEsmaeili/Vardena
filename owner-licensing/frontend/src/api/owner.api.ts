@@ -1,6 +1,7 @@
 import { apiGet, apiPost, apiPatch } from './client';
 import type {
-  AuditEvent,
+  AuditPage,
+  AuditQuery,
   AuthenticatedUser,
   Customer,
   CustomerRead,
@@ -114,7 +115,9 @@ export const recordReplacementObservation = (
     `/operational-records/${encodeURIComponent(id)}/replacement-observations`,
     body,
   );
-export const auditEvents = (page: number, targetId?: string) =>
-  apiGet<Paginated<AuditEvent>>('/audit-events', {
-    params: { page, targetId },
+export const auditEvents = (query: AuditQuery, signal?: AbortSignal) =>
+  apiGet<AuditPage>('/audit-events', {
+    // Undefined filters are omitted by Axios, so only applied criteria are sent.
+    params: query,
+    ...(signal ? { signal } : {}),
   });

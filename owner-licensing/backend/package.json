@@ -14,7 +14,7 @@
     "lint": "oxlint src test",
     "format": "prettier --write src test *.json",
     "format:check": "prettier --check src test *.json",
-    "test": "vitest run test/unit.test.ts test/domain-operations.test.ts",
+    "test": "vitest run test/unit.test.ts test/domain-operations.test.ts test/audit-query.test.ts",
     "test:integration": "vitest run test/api.test.ts",
     "migrate": "tsx src/migrate.ts",
     "bootstrap": "tsx src/bootstrap.ts"
