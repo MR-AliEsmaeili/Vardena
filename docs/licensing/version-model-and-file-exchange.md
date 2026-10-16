@@ -569,7 +569,7 @@ explicit-retirement arm — is refused by the same rule, corrective slice
 | 5 | Canonical form / typed payload validation | `payload` |
 | 6 | Installation binding: `installationId` is this installation's identity | `installation-mismatch` |
 | 7 | Document semantics: interval, limits, entitlements, status `ACTIVE`, document not already expired at `now` | `validity`, `limits`, `entitlements`, `not-active`, `expired-document` |
-| 8 | Replay: `operationId` (and artifact hash) already applied on this installation | `duplicate-operation` (409, no state change) |
+| 8 | Replay/duplicate guard: current code rejects an already-applied `operationId` or artifact hash; OQ-81 target is authorized receipt replay only for the same identity + matching versioned fingerprint | Current: `duplicate-operation` (409); target replay behavior is described in §5 and the linked OQ-81 design; not implemented |
 | 9 | Version conflicts: overlap without explicit supersession, an overlap the named supersession does not retire, unknown/already-retired supersession target, supersession that would hand over before the import instant, a reduction of the retired version's capacity or entitlements (explicit supersession included), closing an open end where the version is not named, a license identifier already bound to another customer (§3.5) | `overlapping-range`, `unknown-supersession`, `license-binding-conflict`, `reduction-requires-resolution`, `renewal-gap` (409, no state change); `backdated-supersession` (422, no state change; OQ-86) |
 | 10 | Persist: ONE transaction that **first locks the installation row and re-runs stages 8–9 under the lock** (§3.4), refuses a license identifier that belongs to another installation or customer (§3.5), then customer upsert, license upsert, version + entitlements insert, supersession stamps, audit event | `duplicate-operation`, `overlapping-range`, `unknown-supersession`, `license-binding-conflict` (409, no state change); `backdated-supersession` (422, no state change) |
 
@@ -606,20 +606,25 @@ limit. Unavailable counts and prohibited term changes remain unresolvable.
   stored original receipt. Historical rows without receipts must not be
   reconstructed from current state. Different valid legacy codes keep their
   documented replacement rules.
-- **Product policy and technical-design update:** exact successful retries
-  return the previously persisted result; same identity with conflicting
-  semantic request content is rejected; a semantically equivalent re-signed
-  artifact with a different operation identity is not replay and must be
-  rejected by a separate content-equivalence check. The artifact-hash guard
-  alone only detects identical artifact bytes (VLIC2 signs `operationId`). The
-  proposed versioned request fingerprint is limited to identity- or
-  result-defining inputs (operation kind and applicable normalized dedicated
-  operation reason), not arbitrary transport fields. Replay remains subject to
-  authentication, authorization, signature, scope, and applicable validity
-  checks. See [OQ-81 technical design](../tasks/oq-81-idempotent-replay-technical-design.md)
-  for the proposed receipt, atomicity, concurrency, legacy, and unresolved DTO
-  details. Implementation remains outstanding; formats and vectors do not
-  change.
+- **Product policy and technical-design update (Owner decisions A–J, 2026-10-16):**
+  exact successful retry of the same identity and matching versioned semantic
+  request fingerprint must return that operation's receipt; same identity with
+  mismatching fingerprint is rejected. A different `operationId` is a new
+  operation even when the effective grant is semantically equivalent; semantic
+  equality alone must NOT reject it or return another receipt. The existing
+  artifact-hash guard still prevents identical bytes from being re-applied
+  (VLIC2 signs `operationId`). Fingerprint excludes `customerName` and
+  `issuedAt`, includes `supersedesOperationId`, and includes operation kind and
+  audited normalized reason for dedicated operations. All signature, trusted-key,
+  installation/customer, authorization, lifecycle and business checks remain.
+  Replacement commits are serialized under the installation lock; competing
+  already-retired predecessors are rejected. A narrow, unique contiguous stale
+  chain may be resolved only under the conditions in the linked design; no
+  guessing or overlapping branch selection. VLIC1 no-receipt retry remains
+  `UNCHANGED`, not receipt replay. Replay DTO after a later replacement remains
+  open for explicit Owner approval. See [OQ-81 technical design](../tasks/oq-81-idempotent-replay-technical-design.md).
+  Replay persistence and stale-pointer resolution are not implemented; signed
+  formats and vectors do not change.
 - A rejected operation is recorded in the audit trail with its outcome; it does
   **not** consume the operation id, so an operator may re-issue a corrected
   document with a new operation id at any time.

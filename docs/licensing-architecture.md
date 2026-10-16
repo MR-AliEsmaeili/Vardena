@@ -178,12 +178,17 @@ nothing. A document whose `licenseId` is bound to another customer, or belongs t
 another installation, is refused with 409 (`license-binding-conflict`, nothing
 written; see `docs/licensing/version-model-and-file-exchange.md` §3.5). A repeated legacy `VLIC1` code keeps its documented idempotent no-op
 (`changed: false`) when the existing legacy case applies; without a stored
-original receipt this is `UNCHANGED`, not a replay. Product policy requires exact
-successful replay, conflicting reuse rejection, and no repeated effects. The
-proposed semantic-content comparison (needed because VLIC2 signs `operationId`),
-fingerprint and receipt design is recorded in
-[`docs/tasks/oq-81-idempotent-replay-technical-design.md`](tasks/oq-81-idempotent-replay-technical-design.md);
-implementation remains outstanding. Concurrency details and existing runtime
+original receipt this is `UNCHANGED`, not a replay. Under the 2026-10-16 Owner
+decisions, same-identity matching-fingerprint retries must return a persisted
+receipt, but a new operation ID is a new operation even when grant content is
+equivalent; fingerprint excludes `customerName`/`issuedAt` and includes
+`supersedesOperationId`. Authorization and current chain/business checks remain
+mandatory. Replacement transactions serialize under the installation row
+lock, and an already-retired competing predecessor is refused. The narrow stale
+chain continuation proposal, atomic receipt behavior and unresolved historical
+replay DTO are recorded in
+[`docs/tasks/oq-81-idempotent-replay-technical-design.md`](tasks/oq-81-idempotent-replay-technical-design.md).
+These replay and stale-predecessor behaviors are not implemented. Concurrency
 evidence: design §3.4, ADR-0046 Decision 11,
 `test/licensing-persistence-live.e2e-spec.ts`.
 

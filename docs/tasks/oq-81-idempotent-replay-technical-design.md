@@ -1,124 +1,137 @@
-# OQ-81 — Exact successful-result replay: technical design
+# OQ-81 — Idempotent licensing operations: approved policy and technical design
 
-**Status:** Updated design for Product Owner/reviewer review; not approved for implementation. OQ-81 remains open. The three Owner decisions incorporated here are: (1) semantically repeated license content under a different operation ID is rejected and never receives another operation's receipt; (2) fingerprints cover contractually meaningful operation inputs, not arbitrary HTTP fields; (3) VLIC1 retains `UNCHANGED` where no original receipt was persisted. This document specifies a technical proposal and identifies the remaining Owner decisions; it does not create new product policy.
+**Status:** Product Owner policy A–J is recorded below. This is documentation-only; replay implementation is not claimed. OQ-81 remains open only for the replay-response contract identified below and implementation/verification. No OQ-45 or OQ-82 scope is changed.
 
-## Baseline and source evidence
+## 1. Repository evidence and boundaries
 
-The repository baseline inspected is `main`/`origin/main` at `712085a97a487eef09744a8fd4ecd1b36133fde0`. Relevant current paths include:
+Current implementation evidence is from these files:
 
-- `backend/src/modules/licensing/domain/license-document.ts`: VLIC2 payload parsing, `canonicalizeLicenseVersion`, `licenseDocumentHash`.
-- `backend/src/modules/licensing/application/license-import.service.ts`: ordinary import, recovery, transfer, reduction resolution, authorization rechecks and receipt-domain results.
-- `backend/src/modules/licensing/api/license-{import,gap-recovery,customer-transfer,reduction-resolution}.controller.ts`, `license-state.view.ts`, `api/dto/license.dto.ts`: HTTP permissions and actual response mapping.
-- `backend/src/modules/licensing/data/licenses.repository.ts`: transaction, installation lock and success writes.
-- `backend/prisma/schema/licensing.prisma`: unique keys on installation+operation ID and installation+document hash.
-- Policy: PDR-11 §§8, 10.8, 20.6; PDR-12/OD-LIC-01; PDR-13; PDR-14; PDR-15; PDR-16; ADR-0045/0046; `docs/licensing-architecture.md`; this document's companion §5 in `docs/licensing/version-model-and-file-exchange.md`.
+- VLIC2 canonical payload and hash: `backend/src/modules/licensing/domain/license-document.ts` (`canonicalizeLicenseVersion`, `licenseDocumentHash`).
+- Operation paths, authorization, validation, result types: `backend/src/modules/licensing/application/license-import.service.ts` (`importDocument`, `recoverAfterGap`, `transferCustomer`, `resolveReduction`, `runImport`, permission rechecks).
+- Public response mapping: `backend/src/modules/licensing/api/license-import.controller.ts`, `license-gap-recovery.controller.ts`, `license-customer-transfer.controller.ts`, `license-reduction-resolution.controller.ts`, `license-state.view.ts`, `api/dto/license.dto.ts`.
+- Locking, atomic writes and audit: `backend/src/modules/licensing/data/licenses.repository.ts` (`importVersion`).
+- Operation/artifact uniqueness: `backend/prisma/schema/licensing.prisma`, `LicenseVersion` unique keys `(installationId, operationId)` and `(installationId, documentHash)`.
+- Governing rules: PDR-11 §§8, 10.8, 12, 20.6; PDR-12 / OD-LIC-01; PDR-13; PDR-14; PDR-15; PDR-16; ADR-0045/0046; `docs/licensing/version-model-and-file-exchange.md` §§2–6; `docs/licensing-architecture.md`.
 
-The shared application pipeline checks `Licensing.License.Activate` on every import and also checks the dedicated transfer, recovery, or reduction-resolution permission when that intent is supplied. Controllers repeat those guards. The installation identity is a singleton boundary; the service validates installation/customer binding against the signed payload. Audit records attribute an actor, but no source evidence establishes that the original actor alone owns/read-accesses an operation receipt.
+**Current behavior, not target behavior:** v2 duplicate operation or document hash is rejected as `duplicate-operation`; no original success receipt is stored/returned. The repository already holds the installation row lock, reruns conflict evaluation, then writes license/version/entitlements, supersession stamps, customer binding and typed success audit in one database transaction. This is verified by source inspection; no tests were run in this documentation change. `LicenseImportService` and controllers build/evaluate state after the repository transaction, so the *current HTTP state snapshot* is not part of that transaction.
 
-## VLIC2 semantic-content equivalence (distinct from identity and replay)
+## 2. Operation identity, semantic fingerprint and valid new operations
 
-`canonicalizeLicenseVersion` emits the following VLIC2 canonical payload fields in fixed order: `v`, `kind`, `operationId`, `licenseId`, `customerId`, `customerCode`, `customerName`, `installationId`, `status`, `validFrom`, `validUntil`, `organizationLimit`, `userLimit`, optional `deviceLimit`, sorted `modules`, sorted `features`, `supersedesOperationId`, `issuedAt`. `licenseDocumentHash` hashes the trimmed full artifact text, including signature. VLIC2's `operationId` is signed; changing it changes canonical bytes and, for a newly signed artifact, the signature and artifact hash. Thus exact artifact bytes cannot encode a different operation ID. The Owner decision also covers reissued/re-signed artifacts with a changed ID but otherwise semantically repeated content; the exact document-hash unique index alone cannot detect those.
+### 2.1 Separate concerns
 
-**Proposal for review:** keep operation identity/fingerprint separate from a versioned semantic-content projection. Compare the projection only to refuse reuse under a different operation ID; never use it to find or return a prior receipt. Preserve both existing unique constraints. No signed bytes, canonicalizer, signature, keys or vectors change.
+- **Identity:** VLIC2 operation identity is `(installationId, operationId)`; VLIC1 keeps its existing hash-derived identity. Identity decides whether to look up the *same operation's* result.
+- **Same-operation fingerprint:** a versioned digest checks that a repeat of that identity has the same semantic request and operation intent. A matching fingerprint is necessary for replay, not authorization.
+- **Different operation ID:** a new ID is a new operation even if the effective grant is otherwise identical. Do **not** reject it merely for matching another operation's semantic content, and never return the other operation's receipt. It must pass the full current signature, trust, scope, authorization, lifecycle and business validation. Existing window/chain constraints may independently reject it.
+- **Validity and access:** signature verification, canonical parsing, trusted-key checks, installation/customer binding, required permissions and applicable business checks are still required. No ID or fingerprint bypasses these.
+- **Exact artifact hash:** the existing unique hash guard remains to prevent reapplying identical bytes. Since `operationId` is signed, byte-identical VLIC2 necessarily has the same operation ID. A reissued document with a different ID has a different artifact hash and is a separate operation under Decision A.
 
-| VLIC2 field | Proposed content-equivalence treatment | Rationale / evidence and review point |
+### 2.2 VLIC2 fields
+
+`canonicalizeLicenseVersion` emits, in declared order, `v`, `kind`, `operationId`, `licenseId`, `customerId`, `customerCode`, `customerName`, `installationId`, `status`, `validFrom`, `validUntil`, `organizationLimit`, `userLimit`, optional `deviceLimit`, sorted `modules`, sorted `features`, `supersedesOperationId`, `issuedAt`. The semantic fingerprint is **not** a change to that signed encoding.
+
+| Field | Same-operation effective semantic fingerprint | Reason / independent checks |
 |---|---|---|
-| `operationId` | Exclude | It is operation identity, not grant content. If included, changing it defeats the cross-ID content guard. Used separately for exact replay key. |
-| `licenseId` | Include | Identifies the commercial license in retained versions and binding rules; a changed license identity is not assumed to be the same artifact. Example 4 below. |
-| `customerId` | Include | Defines commercial customer binding; changing it is a different binding and subject to transfer policy. |
-| `customerCode` | Include | PDR-14 stable customer identity/binding contract; not merely descriptive text. |
-| `customerName` | **Owner confirmation required**; proposal exclude | Current importer does not overwrite existing customer display name on import (PDR-14). But this is signed payload content; whether a name-only change counts as semantic repetition is not expressly settled. Proposed exclusion treats it as presentation metadata, while signature validation remains mandatory. |
-| `installationId` | Include | Hard installation binding; a change must never be collapsed into equivalent content. |
-| `status` | Include | Status is a grant/lifecycle property; current parser accepts specific statuses and import rejects non-active candidates. |
-| `validFrom`, `validUntil` | Include | Define the coverage window; changed coverage is genuinely different grant content. Canonical UTC instants, exclusive end/null semantics retained. |
-| `organizationLimit`, `userLimit` | Include | Grant capacity; a changed limit is materially different. |
-| `deviceLimit` | Include value **and specified/omitted state** | PDR-15 distinguishes unspecified legacy field from explicit unlimited (`null`) and finite quota. Preserve omission semantics; do not normalize omitted and null together. |
-| `modules`, `features` | Include as sorted sets | Canonicalizer sorts these arrays and entitlements define grant. Equality compares normalized sorted arrays, not source order. |
-| `supersedesOperationId` | **Owner confirmation required**; proposal include | Names the version lifecycle transition and may change predecessor/supersession effects; therefore not safely ignored as descriptive metadata. A candidate with same grant fields but a different predecessor may be a materially different lifecycle operation. |
-| `issuedAt` | **Owner confirmation required**; proposal exclude | Provenance/issuance instant is signed but not used by current retained-version evaluation as grant window; changing it alone appears not to change entitlement. Product contract does not explicitly say it is semantically irrelevant for duplicate-content policy. |
-| `kind` | Include as protocol discriminator | Must match the supported license-document kind; incompatible kind is invalid, not equivalent. |
-| `v` | Include as protocol version | Must match the supported version. No cross-version semantic collapsing is proposed. |
+| `operationId` | Excluded from digest; primary identity key | Changing it creates a different operation; it is signed and checked as identity. |
+| `licenseId` | Included | License identity and binding are lifecycle-relevant; changing it is not hidden by fingerprint equality. |
+| `customerId`, `customerCode` | Included | Customer binding and stable customer-code checks remain mandatory. |
+| `customerName` | Excluded | PO Decision B: display-name-only variation is not effective license content. Existing customer display name is not overwritten on import (PDR-14). Payload/signature validation still applies. |
+| `installationId` | Included and identity scope | Scope cannot be normalized away; current installation binding remains required. |
+| `status` | Included | License lifecycle field; ordinary application still requires the permitted active status. |
+| `validFrom`, `validUntil` | Included | Determine effective coverage; canonical UTC instants and exclusive-end/null semantics remain unchanged. |
+| `organizationLimit`, `userLimit` | Included | Effective quotas; e.g. 50→70 changes semantic result and must not replay the 50 result. |
+| `deviceLimit` | Include value and presence/`deviceLimitSpecified` | Omitted/unspecified, explicit unlimited (`null`) and finite value are distinct per PDR-15. |
+| `modules`, `features` | Included as sorted sets | Entitlements define grant; compare normalized sorted arrays. |
+| `supersedesOperationId` | Included | Determines the replacement-chain edge and can change which predecessor is retired. |
+| `issuedAt` | Excluded | PO Decision B: issuance metadata is not effective grant content. Signature/payload validity checks still apply. |
+| `kind`, `v` | Included as protocol discriminators | Must be supported and valid; no cross-kind/version semantic equivalence. |
+| Signature bytes / key ID hint / file envelope | Excluded from semantic digest | Cryptographic verification and trust remain mandatory; file and bare-artifact transports decode to the same signed artifact. Hash/signature bytes are not effective grant semantics. |
 
-The semantic projection should be a typed value, not a modification to the signed canonicalizer. Fixed field order; UTC instants in the existing three-fraction-digit ISO form; arrays sorted as the protocol specifies; explicit distinction for omitted `deviceLimit` versus `null`; then SHA-256 over domain-separated, version-prefixed UTF-8 JSON (or an equivalently fixed binary encoding). SHA-256 is already used by `licenseDocumentHash` and legacy code hashing; the projection encoding/version is a new technical contract and requires review. Hash collision risk is negligible but equality should be based on the digest plus stored projection version; no raw signed document is retained for this purpose.
+Entitlement arrays are sorted as the existing canonicalizer does. Dates use the existing `toISOString()` canonical instant representation. The fingerprint proposal is SHA-256 over a domain-separated, version-prefixed deterministic encoding of this typed semantic tuple plus operation kind and applicable dedicated-operation reason. SHA-256 is already used for document/code hashes. A new fingerprint encoder/version is technical work; it must not alter canonical signed bytes, keys, signatures or PDR-16 vectors.
 
-### Examples and expected outcomes
+### 2.3 Operation-specific fingerprint inputs
 
-1. **Identical artifact bytes submitted again:** same signed operation ID and exact document hash. After authorization and validity checks, matching receipt/fingerprint returns its receipt; absent a receipt (historical row), preserve safe existing duplicate refusal rather than inventing a result.
-2. **Same projected content, changed operation ID, re-signed:** operation identity differs and document hash changes, but semantic projection matches. Reject as semantically repeated content; do not return old receipt. This is the added comparison required by Owner policy.
-3. **Genuinely changed grant under a new operation ID:** changed limit, entitlement, validity, customer, or installation means projection differs. It is not classified as semantically equivalent; normal binding, signature, precedence, reduction and retained-history rules decide whether it may apply.
-4. **Changed `licenseId`, otherwise similar:** projection differs. It is not a replay/content duplicate under this proposal, but it still must satisfy license-ID binding, customer and lifecycle rules; a new identity does not bypass recovery/gap rules.
-5. **Changed `issuedAt`, otherwise similar:** proposal treats content as equivalent and rejects different-ID reapplication; Owner must confirm whether provenance-only distinction is intended.
-6. **Explicit supersession with changed permitted grant properties:** include the supersession target and grant properties in projection; if the target differs, projection differs. The new operation is evaluated under existing PDR-12 term rules and PDR-11 precedence/reduction checks. It cannot use replay to skip the transition. If same target and same grant are reissued with another operation ID, proposal considers it semantic duplicate; Owner confirmation on this projection is required.
+| Request | Identity scope | Additional fingerprint inputs | Normalization / exclusions |
+|---|---|---|---|
+| Ordinary import | installation + VLIC2 operationId | kind=`import`; VLIC2 semantic tuple above | Decode envelope first; exclude envelope whitespace, file/text transport, headers, request time, trace IDs. |
+| Gap recovery | same | kind=`gap-recovery`; trimmed reason | Recovery intent is distinct and audited under PDR-13; reason’s trimmed form is what the repository audit event records. |
+| Customer transfer | same | kind=`customer-transfer`; trimmed reason | Dedicated route/permission and audited transfer reason (PDR-14); ordinary import cannot transfer. |
+| Reduction resolution | same | kind=`reduction-resolution`; trimmed reason | Required audited authorization; conflict facts/usage are recomputed under locks, not caller-provided fingerprint fields. |
 
-### Product questions required before implementation
+`assertOperationReason` validates trimmed minimum length and raw maximum length; transfer returns a trimmed reason, and repository audit helpers trim recovery/transfer/resolution reasons. The fingerprint must use the trimmed form, matching audit/result semantics. Caller identity, authorization headers, transport metadata, timestamps supplied by the client, and display/presentation fields are excluded. Actor attribution remains in audit; Decision D governs who may replay.
 
-- Should `customerName` differences alone count as semantic content difference or repetition?
-- Should `issuedAt` differences alone count as semantic content difference or repetition?
-- Must `supersedesOperationId` be included in equivalence exactly as proposed, so a different named predecessor is a distinct lifecycle operation, or should same grant content be rejected despite that difference?
+**Behavior:** same identity + equal fingerprint returns that operation’s persisted receipt after authentication, authorization, signature, installation/customer scope and applicable validation. Same identity + different fingerprint is rejected without mutation or receipt disclosure. Different identity—even with identical effective licensing content—is a new operation; validate normally, do not treat as duplicate on semantic digest alone, and do not return another operation’s receipt.
 
-These are narrow product-semantic questions. The source defines signed fields and current use, but does not determine those duplicate-policy outcomes. No option is recorded as Owner decision here.
+## 3. Replacement chain, atomicity and concurrency
 
-## Versioned request fingerprint proposal
+### 3.1 Existing enforced chain behavior
 
-Identity, validity/authorization, semantic content equivalence, and request fingerprint are separate concepts:
+`evaluateImportConflicts` in `backend/src/modules/licensing/domain/license-version.ts` currently resolves an explicit `supersedesOperationId` by exact retained operation ID. The target must exist in this installation, have no recorded supersession, and be eligible at import time. A named target permits only that one overlap; other overlapping or historically conflicting windows are rejected. Repository `importVersion` locks the installation row and reruns this same evaluation against committed versions under the lock. It also verifies the resolved predecessor matches the precheck expectation. The predecessor is guarded by `supersededAt: null`; if the guard fails, the transaction aborts. Version + nested entitlement inserts, supersession stamp (`supersededAt`, `governsUntil`, successor links), binding changes and success audit writes are in one transaction.
 
-- **Identity:** VLIC2 `(installationId, operationId)`; VLIC1 existing hash-derived legacy identity. Customer is separately bound and validated.
-- **Fingerprint:** same-identity request consistency and response-semantic equality. It does not grant access.
-- **Semantic content digest:** cross-operation duplicate refusal described above; it never selects a receipt.
-- **Validity/access:** authentication, required permissions, signature/canonical validation, installation/customer binding, and applicable current business checks remain required before a receipt is returned. Replay bypasses only repeating the committed mutation, not these checks.
+Therefore:
 
-| Entry point / kind | Identity scope | Proposed fingerprint inputs | Excluded inputs | Normalization and expected behavior |
-|---|---|---|---|---|
-| Ordinary import | Installation + signed VLIC2 `operationId` | Fingerprint version; kind `import`; installation ID; validated signed artifact semantic content including operation ID (document hash may be included as an exact-artifact discriminator) | Envelope formatting/key wrapper, text-vs-file transport, HTTP headers, request time, trace/correlation IDs | Decode envelope to artifact; validate and canonical-parse first. Matching identity+fingerprint => receipt; matching identity+mismatch => conflict. Different identity+equivalent projection => reject, no receipt. |
-| Gap recovery | Same signed identity/scope | Same artifact inputs; kind `gap-recovery`; validated reason because it is audit/result-semantic under PDR-13 | Transport/presentation metadata; actor ID is authorization/audit context, not an established receipt discriminator | Reason is checked against trimmed length but code currently records/passes paths inconsistently; propose trim once and fingerprint exactly the persisted/audited/returned form. Confirm implementation behavior before coding. |
-| Customer transfer | Same signed identity/scope | Same artifact inputs; kind `customer-transfer`; reason, because transfer receipt and typed audit include it | Transport/presentation metadata, trace IDs | Current service explicitly returns `reason.trim()` and documents it equals audited reason. Fingerprint that exact trimmed string. |
-| Reduction resolution | Same signed identity/scope | Same artifact inputs; kind `reduction-resolution`; reason because audited; not recomputed conflict facts | Usage snapshot, conflict result, request timestamp, transport fields | Conflict facts are recomputed under transaction locks, not caller-selected identity inputs. Proposed trim reason as semantic value, but confirm exact value written by audit path. |
+- Failed validation or transaction rollback writes no OP-101 version, entitlement, supersession stamp, binding change, or applied/superseded success audit; OP-100 remains effective and its limit remains 50. The existing rejection-audit path may separately record a rejected attempt; it is not a partial success.
+- A successful OP-101 commits its version, entitlements, predecessor stamp and applied/superseded audits atomically. The effective version is computed from retained windows, so the new 70-user limit applies at the successor’s `validFrom`; historical OP-100 is not reactivated by receipt lookup.
+- Current allocation usage locks are also acquired where required by reduction checks. Concurrency is database-wide for an installation, not process-local.
 
-Operation kind is included because dedicated intents have distinct authorization, audit, and result shapes even when artifact/reason happen to match. Installation scope is included and also enforced in lookup. Reasons are included only for the dedicated operations whose contracts make them required and audited/result-relevant. Authenticated actor is not asserted as fingerprint input: current contracts identify permission gates and audit actor attribution, but do not state original-actor-only replay. This is a separate access-policy question below.
+These are verified source boundaries; replay receipt atomicity is **not implemented**. The proposed receipt/fingerprint must be stored in the same transaction as these effects and success audit. Replay must return stored data only; it must not rerun allocations, transition, supersession, customer-binding changes, or success audit.
 
-Encoding: recommended `SHA-256(UTF-8("vardena-license-replay\0v1\0" + deterministic canonical semantic tuple))`, with JSON fixed key order and protocol-normalized values or an explicitly specified length-prefixed encoding. Domain prefix prevents cross-purpose hash reuse. Store fingerprint version alongside digest; a future version is additive and must define how old receipts are compared, never silently reinterpret prior fingerprints. The exact string/byte grammar is a technical proposal, not an existing repository contract.
+### 3.2 Competing replacements and stale predecessor handling
 
-## Current response shapes and proposed receipt semantics
+**Competing branch:** first successful transaction wins. Once OP-101 retires OP-100, a concurrent or later OP-102 that explicitly names OP-100 is not allowed to replace OP-101 merely because its signature is valid or its limit is higher. Current code rejects a target already superseded. Under the lock the second importer sees OP-100’s committed supersession and is refused; it does not silently choose a higher limit.
 
-All four HTTP controllers return a fresh `LicenseStateView` mapped through `toLicenseStateView(snapshot.license, snapshot.versions)`, plus operation-specific fields. State fields are `licensed`, `status`, `active`, `inactiveReason`, `installationId`, `customerId`, `customerCode`, `licenseId`, `validFrom`, `validUntil`, `organizationLimit`, `userLimit`, `deviceLimit`, `deviceLimitSpecified`, `entitlements`, `provider`, `effectiveVersionId`, `scheduledVersion`, and bounded `versions` history (max 20), per `backend/src/modules/licensing/api/license-state.view.ts` and `LicenseStateDto`.
+**Narrow stale-pointer continuation proposal:** automatic resolution is permitted only for a *strict, date-proven contiguous continuation*, not for a competing overlapping branch. Given signed candidate naming an ancestor OP-X:
 
-| Endpoint | Current public successful shape | Current source of added receipt fields |
+1. Follow persisted `supersededByVersionId` links from OP-X; require exactly one complete, acyclic chain with matching reciprocal predecessor links, one installation, one customer, and one `licenseId` (unless a separate approved recovery/transfer operation governs the case).
+2. Require a unique current terminal version (the leaf has no successor and is eligible); any missing link, multiple successor, inconsistent link, cross-customer/install/license link, or non-current leaf fails closed.
+3. Require the candidate to be a contiguous successor to the leaf: candidate `validFrom` equals the leaf’s finite `validUntil`. It must not overlap the leaf or any other retained effective/history interval, leave a prohibited renewal gap, backdate governance, or violate reductions/capacity/entitlements. A perpetual leaf, gap, overlap, or other ambiguous temporal relationship is not auto-resolved.
+4. Apply the validated operation as a new version whose actual predecessor is the leaf, without altering the signed payload. Keep original signed `supersedesOperationId` for audit/provenance; record resolved predecessor separately as transaction result/audit context if implementation requires it, through an additive design reviewed separately.
+5. Recompute all of the above under the installation lock and usage locks before writing. No precheck-only resolution.
+
+This narrow rule gives a deterministic distinction: OP-102 trying to replace OP-100 over OP-101’s already-covered window is a competing overlap and is rejected; a candidate that exactly follows the end of the unique current leaf is a contiguous continuation and can be considered. A higher limit alone has no effect. This uses existing retained links and signed validity dates; it asserts no new cryptographic guarantee. This is a proposed technical realization of PO Decision H and must not be broadened to overlapping “best” candidates.
+
+**Important source gap:** current implementation does not perform stale-predecessor resolution; exact stale targets are rejected. Also current schema has scalar `supersededByVersionId` and a guarded one-time retirement, which prevents multiple recorded successors in the normal path. If corrupted/inconsistent history presents multiple/invalid edges, reject; do not repair or guess.
+
+### 3.3 Scope, trust and authority
+
+Every operation must pass trusted signature verification and payload/canonical checks. License ID is bound to one installation and customer; service/repository rejects foreign binding. Installation customer mismatch is rejected on ordinary import; existing transfer is a separate explicit, permission-gated, reasoned and audited operation under PDR-14—not an OQ-81 shortcut. Recovery and reduction resolution retain their own permissions and checks. A valid signature alone does not authorize another customer/install or a broken chain.
+
+The current server trusts configured Ed25519 public keys (`LICENSE_SIGNING_PUBLIC_KEYS`) and has no online Owner License lookup; the development issuer refuses production. Keep this narrow trust boundary. The current business authority is Owner License under PO control, potentially a specialist using an approved tool/process. No issuer registry, federated trust, KMS, multi-tenant issuer platform or arbitrary-file trust is proposed. Future approved issuer tooling can continue to issue the same signed format and be validated through existing key trust; no platform expansion here.
+
+## 4. Receipt DTO, historical result and current state
+
+### 4.1 Current public success responses
+
+Each controller maps a fresh state through `toLicenseStateView(snapshot.license, snapshot.versions)` and adds operation fields:
+
+| Endpoint | Current DTO | Added fields/source |
 |---|---|---|
-| `POST /api/v1/license/import` | LicenseStateView + `changed`, `outcome` (`LicenseImportResultDto`) | Controller fresh read; application result supplies flags. |
-| `POST /api/v1/license/gap-recovery` | Same + `lapsedLicenseId`, `coverageEnd` (`GapRecoveryResultDto`) | App receipt takes lapsed facts from import transaction; controller adds fresh state read. |
-| `POST /api/v1/license/customer-transfer` | Same + `previousCustomerId`, `previousCustomerCode`, `previousLicenseId`, `bindingChanged`, `reason` (`LicenseCustomerTransferResultDto`) | Transaction supplies previous binding/license and changed fact; reason returned trimmed; controller adds fresh state read. |
-| `POST /api/v1/license/reduction-resolution` | Same + `resolvedPredecessorVersionId`, `resolvedConflicts` (`ReductionResolutionResultDto`) | App result uses transaction-recomputed conflicts; controller adds fresh state read. |
+| import | `LicenseImportResultDto`: `LicenseStateDto` + `changed`, `outcome` | Fresh controller read; result flags from `LicenseImportService`. |
+| gap recovery | `GapRecoveryResultDto`: state + flags + `lapsedLicenseId`, `coverageEnd` | Lapse facts originate in locked transaction; state is fresh controller read. |
+| transfer | `LicenseCustomerTransferResultDto`: state + flags + `previousCustomerId`, `previousCustomerCode`, `previousLicenseId`, `bindingChanged`, `reason` | Binding facts from transaction; reason trimmed; state is fresh controller read. |
+| reduction resolution | `ReductionResolutionResultDto`: state + flags + `resolvedPredecessorVersionId`, `resolvedConflicts` | Conflicts recomputed in transaction; state is fresh controller read. |
 
-**Recommended contract:** persist and replay the exact original public HTTP success representation, including its original state snapshot and operation-specific additions, as an opaque versioned receipt. That is the only interpretation consistent with “previously persisted result” and avoids making a retry appear to be a new read at a later time. Do not recompute `currentState()` for replay. The receipt version identifies the DTO serialization schema; existing response schema is evidence, not a newly invented shape. Receipt bytes should use deterministic JSON serialization over DTO field order/values, preserving nulls and array ordering as returned. API changes that alter the receipt shape require an explicit compatibility/versioning plan.
+`LicenseStateDto` fields are `licensed`, `status`, `active`, `inactiveReason`, `installationId`, `customerId`, `customerCode`, `licenseId`, `validFrom`, `validUntil`, `organizationLimit`, `userLimit`, `deviceLimit`, `deviceLimitSpecified`, `entitlements`, `provider`, `effectiveVersionId`, `scheduledVersion`, and bounded `versions` history (up to 20).
 
-Current architecture constructs the state snapshot in the HTTP controller after the application transaction, so it is not presently atomic with the operation. To meet OQ-81, implementation must move receipt construction to a boundary where it can capture the response facts consistently and persist them atomically with the transaction. For transfer, receipt should contain the same public state/extra fields returned on initial success, not only the domain transfer receipt. Whether building the bounded state view within the Licensing transaction/repository is architecturally acceptable is a technical design question for implementation review; do not claim current atomicity of the HTTP response.
+### 4.2 Replay after replacement and unresolved response decision
 
-Receipt MUST NOT contain raw signed document, signature, key material, access token, HTTP headers, trace IDs, or secrets. Keep fingerprint/content digests and receipt under Licensing access controls; audit remains typed audit, not a duplicate receipt store.
+OP-100 receipt is a historical operation result. After OP-101 supersedes it, returning OP-100’s old state snapshot as if current could mislead clients; returning only current state would not replay the original response. Product policy requires historical result and current effective licensing state not be confused, but no exact replay DTO has been approved.
 
-## Authorization, scope, transaction and recovery
+**Smallest safe proposal:** leave first-application response DTOs unchanged. For a replay, return a clearly marked replay representation containing (a) the persisted historical operation receipt, explicitly labelled/versioned as historical and keyed by operation/version IDs, and (b) a fresh current-state view in a separately named field. Do not return the historical state snapshot in the ordinary top-level fields as if current. Do not recalculate/overwrite the stored receipt. The exact envelope/fields/status code is a public API decision and must be approved before code/API changes. **OQ-81 remains open for this narrow DTO contract.**
 
-Before lookup/return: authenticate; recheck `Licensing.License.Activate`; for recovery, transfer, or resolution also recheck the corresponding dedicated permission; validate document signature/canonical form; validate installation and customer scope; run applicable validity/business rules while ensuring an already-applied duplicate is recognized before rules that would incorrectly reject solely because state has since changed. Caller knowing `operationId` is insufficient; receipt query is installation-scoped and inaccessible without those checks.
+Persist receipt with a schema version and deterministic serialization of the chosen public receipt. Never store raw license document, signature, private key, auth token, arbitrary HTTP headers or trace IDs. Receipt/fingerprint write must commit atomically with version, entitlements, customer/supersession changes and typed success audit. Replays add no success audit. Historical v2 rows without receipts cannot be backfilled from current state; retain existing duplicate refusal for those rows until explicit compatibility behavior is approved. After a lost response following commit, an authorized same-identity retry reads the durable receipt after restart. If transaction did not commit, no receipt/effect exists and retry may execute. An ambiguous commit is resolved by retrying same identity through the locked lookup, never speculative reapplication.
 
-Current ordinary import requires Activate; recovery requires Activate + RecoverAfterGap; transfer requires Activate + TransferCustomer; reduction resolution requires Activate + ResolveReduction. `LicenseImportService.runImport` rechecks permissions. Installation/customer binding is checked from the existing identity and signed payload. No existing contract establishes original-actor-only receipt access or affirmatively grants every authorized installation user the right to read prior operation results. Actor is stored on audit events. **Owner question:** may any caller currently holding the exact operation permission(s), within the same installation/customer boundary, retrieve the original receipt, or must the caller match original actor? Recommend any currently authorized caller under same scope because authorization is already permission-based and installation is the ownership boundary; Product Owner must confirm.
+## 5. Authorization and VLIC1
 
-Repository transaction is `READ COMMITTED`, locks installation row, reruns conflicts, and writes versions, entitlements, customer binding/supersession changes, and success audit atomically. Proposal adds fingerprint and response receipt in that same transaction. On the lock, same identity/matching fingerprint returns stored receipt without repeating quota/allocation, transition, supersession, binding, or success audit. Same identity/mismatch conflicts. Different identity/semantic-equivalent content is refused, never mapped to prior receipt. For recognized unique-constraint races, re-read only under the same authorized installation scope and compare identity, fingerprint, and content digest; unrelated unique violations stay errors.
+Before receipt lookup/disclosure: authenticate; require `Licensing.License.Activate`; additionally require `RecoverAfterGap`, `TransferCustomer`, or `ResolveReduction` for the corresponding operation; verify signature/current trusted key; enforce installation and customer scope; perform applicable validity and business validation. Caller knowing an operation ID is never sufficient. **Decision D:** any caller currently holding required permission(s) in the same customer-installation scope may receive the receipt; original actor matching is not required. Do not let replay bypass checks or mutate state.
 
-After committed transaction but lost response, retry resolves receipt after process restart. If transaction rolled back, no receipt or success effects exist and retry may execute normally. If client/database cannot tell whether commit completed, same authorized retry locks and looks up durable state; it must not blindly repeat effects. Historical V2 versions without receipts cannot be reconstructed from current state; preserve current duplicate refusal until a receipt exists, unless Product Owner directs otherwise.
+VLIC1 has no operation ID and current legacy behavior uses its hash-derived identity. Where the existing already-governing legacy case applies and no receipt exists, preserve `changed:false`, `outcome:UNCHANGED`. This is a no-op, not replay. Do not reconstruct/backfill a historical receipt or add VLIC1 receipt storage. Other VLIC1 lifecycle rules remain unchanged.
 
-## VLIC1, migration, compatibility
+## 6. Implementation plan and acceptance (separate authorization required)
 
-VLIC1 has no operation ID and the existing legacy identity is hash-derived. For the documented already-governing repeated-code case, code returns `changed:false`, `outcome:UNCHANGED`; no persisted original response is evidenced. This is compatibility no-op, not exact receipt replay. Do not fabricate/backfill a receipt or add VLIC1 receipt storage in this task. If a future genuine receipt exists, only its actual persisted content can be replayed after applicable authorization; no current such record is established.
+A later implementation should be bounded to Licensing domain/application/data/API response mapping plus an additive Licensing migration if approved. Retain the modular-monolith boundary, installation/usage locks and unique indexes. No universal idempotency engine or broad payload table.
 
-VLIC2 persistence likely needs an additive Licensing migration for content digest, request fingerprint, receipt version and receipt data. Do not edit applied migrations, rewrite audit/history, or claim historical rows have responses. Rollback must preserve old state and clearly acknowledge that removing receipts disables replay; define downgrade/retention plan before implementation (OQ-77). No changes to canonical bytes, signatures, vectors, keys, `supersedesOperationId` semantics, PDR-12 term rules, PDR-13 recovery, or PDR-15 cancellation/replacement constraints. OQ-45 and OQ-82 remain outside scope.
+Acceptance cases: exact same operation/fingerprint replays without duplicate effects/audit; mismatch under same operation rejected; semantically identical new operation ID not rejected solely on fingerprint but must satisfy normal rules; 50→70 successful replacement atomically changes current result; validation/transaction failure leaves 50 unchanged; competing overlapping replacement loses under sequential and concurrent requests; stale target auto-resolves only under narrow clear contiguous criteria and otherwise fails closed; replay of OP-100 after OP-101 never restores 50; customer/install/issuer/signature/authorization checks persist; any authorized in-scope caller may replay; VLIC1 no-receipt retry remains `UNCHANGED`; historical v2 without receipt is not fabricated; canonical bytes/vectors and OQ-45/OQ-82 remain unchanged.
 
-## Bounded future implementation and acceptance
+## 7. Status and open scope
 
-After design approval and a separate implementation instruction: settle the Product Owner questions above; review DTO snapshot construction and reason normalization; lock field projection and byte encoding; implement only Licensing persistence/service/controller mapping as needed with additive migration; retain lock order and constraints; add focused rollback, restart, concurrency, authorization, exact-response, semantic-content and compatibility tests; run CI on the exact implementation SHA. No universal idempotency framework.
-
-Acceptance: identical authorized request replays exact original response after restart; same identity/different fingerprint conflicts; changed-ID same projected license content is refused and never gets prior receipt; genuinely changed grant follows current rules; atomic receipt/audit/effects; no duplicate allocation/state/audit; rollback/no-commit safe retry; lost-response retry safe; each operation permission and scope verified; historical v2 missing receipt safely handled; VLIC1 remains `UNCHANGED`; vectors and signed bytes unchanged.
-
-## Remaining decisions and design questions
-
-**Product Owner decisions required:** semantic equivalence treatment of `customerName`, `issuedAt`, and `supersedesOperationId`; whether receipt retrieval is any currently authorized caller within installation/customer scope or original actor only.
-
-**Technical design questions:** exact deterministic JSON/byte serializer and fingerprint version grammar; whether transaction can construct the exact HTTP snapshot receipt without cross-layer coupling; additive storage shape and rollback/retention; behavior for historical v2 rows without receipts. These are not reasons to alter signed protocol or authorization defaults. OQ-81 is not ready for implementation until central content projection and response/access contract are approved.
+Product decisions A–J are incorporated. OQ-81 remains **OPEN only for approval of the replay response representation** described in §4.2 and its later implementation/verification. OQ-45 deadline arithmetic/zone/day-count and OQ-82 replacement revocation timing are untouched and remain open. Current v2 duplicate rejection and lack of durable receipts remain implementation gaps; stale-predecessor auto-resolution is a proposed future behavior, not currently implemented.
