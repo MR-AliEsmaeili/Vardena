@@ -8,7 +8,13 @@ import type { Express } from "express";
 import type { PoolClient } from "pg";
 import { Database } from "../src/db.js";
 import { digest, token } from "../src/domain.js";
-import { migrate } from "../src/migrate.js";
+import {
+  RoleUpgradeError,
+  migrate,
+  preflightRoleUpgrade,
+  remediateLegacyRolesAndMigrate,
+  runMigrateCli,
+} from "../src/migrate.js";
 import { bootstrap } from "../src/bootstrap.js";
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/security.js";
@@ -277,7 +283,7 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
     }
   });
 
-  it("fails closed on mixed legacy roles, preserves prior state on rollback, and succeeds on retry once rows hold only two-role values", async () => {
+  it("verifies preflight, missing/invalid/elevation rejections, mid-operation rollback, transactional remediation, and safe idempotent re-run on mixed legacy and current-role data", async () => {
     await resetToMigration002();
     const pw = "Disposable_mixed_45";
     const hash = await hashPassword(pw);
@@ -285,6 +291,8 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
     const issuanceId = ulid();
     const observerId = ulid();
     const supportId = ulid();
+    const existingOperatorId = ulid();
+    const preUpgradeSession = token();
     for (const [uid, username, legacyRole] of [
       [sysAdminId, "mix_admin", "SYSTEM_ADMIN"],
       [issuanceId, "mix_issuance", "LICENSE_ISSUANCE"],
@@ -296,6 +304,19 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
         [uid, username, hash, legacyRole],
       );
     }
+    await db.pool.query(
+      "INSERT INTO owner.sessions(id,user_id,token_hash) VALUES($1,$2,$3)",
+      [ulid(), issuanceId, digest(preUpgradeSession)],
+    );
+    // Widen constraint temporarily to seed a mixed database with both legacy and current-role rows, then restore 001's check on legacy rows.
+    await db.pool.query(
+      `ALTER TABLE owner.users DROP CONSTRAINT users_role_check,
+       ADD CONSTRAINT users_role_check CHECK (role IN ('SYSTEM_ADMIN','LICENSE_ISSUANCE','READ_ONLY_OBSERVER','SUPPORT_SPECIALIST','OWNER_ADMIN','LICENSE_OPERATOR'))`,
+    );
+    await db.pool.query(
+      "INSERT INTO owner.users(id,username,password_hash,role,is_active,must_change_password) VALUES($1,'mix_current_op',$2,'LICENSE_OPERATOR',true,false)",
+      [existingOperatorId, hash],
+    );
     const custId = ulid();
     const opId = ulid();
     await db.pool.query(
@@ -320,11 +341,134 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
       );
     });
 
+    // Automatic migrate fails closed without modifying the ledger or existing rows.
     await expect(migrate(db)).rejects.toThrow(
       "Refusing to apply two-role constraint while superseded four-role user rows exist (LICENSE_ISSUANCE, READ_ONLY_OBSERVER, SUPPORT_SPECIALIST, SYSTEM_ADMIN)",
     );
+    expect(
+      (
+        await db.pool.query<{ name: string }>(
+          "SELECT name FROM public.owner_migrations ORDER BY name",
+        )
+      ).rows.map((r) => r.name),
+    ).toEqual(["001-foundation.sql", "002-manual-operations.sql"]);
 
-    // Rollback preserved the 001..002 ledger and all existing rows.
+    // Preflight report identifies affected legacy accounts and existing current-role accounts without leaking secrets.
+    const preflight = await preflightRoleUpgrade(db);
+    const cliPreflightJson = await runMigrateCli(db, ["--preflight"]);
+    expect(cliPreflightJson).not.toContain(hash);
+    expect(cliPreflightJson).not.toContain(preUpgradeSession);
+    expect(cliPreflightJson).not.toContain(digest(preUpgradeSession));
+    expect(preflight.migration003Applied).toBe(false);
+    expect(preflight.requiresRemediation).toBe(true);
+    expect(preflight.canRunAutomaticMigrate).toBe(false);
+    expect(preflight.currentRoleAccounts.map((u) => u.username)).toEqual([
+      "mix_current_op",
+    ]);
+    expect(
+      preflight.legacyAccounts
+        .map((u) => `${u.username}:${u.legacyRole}`)
+        .sort(),
+    ).toEqual([
+      "mix_admin:SYSTEM_ADMIN",
+      "mix_issuance:LICENSE_ISSUANCE",
+      "mix_observer:READ_ONLY_OBSERVER",
+      "mix_support:SUPPORT_SPECIALIST",
+    ]);
+
+    // Missing disposition, targeting current-role user, or unauthorized privilege elevation fails closed.
+    await expect(
+      remediateLegacyRolesAndMigrate(db, {
+        authorizedByUserId: sysAdminId,
+        reason: "Incomplete and unapproved elevation attempt",
+        dispositions: [
+          {
+            userId: sysAdminId,
+            username: "mix_admin",
+            fromRole: "SYSTEM_ADMIN",
+            disposition: "MAP_EQUIVALENT",
+            targetRole: "OWNER_ADMIN",
+            isActive: true,
+            reason: "ok",
+          },
+          {
+            userId: observerId,
+            username: "mix_observer",
+            fromRole: "READ_ONLY_OBSERVER",
+            disposition: "RETAIN_REDUCED",
+            targetRole: "LICENSE_OPERATOR",
+            isActive: true,
+            reason: "unauthorized write elevation",
+          },
+          {
+            userId: existingOperatorId,
+            username: "mix_current_op",
+            fromRole: "LICENSE_ISSUANCE",
+            disposition: "RETAIN_REDUCED",
+            targetRole: "LICENSE_OPERATOR",
+            isActive: true,
+            reason: "already current role",
+          },
+        ],
+      }),
+    ).rejects.toThrow(RoleUpgradeError);
+
+    const approvedPlan = {
+      authorizedByUserId: sysAdminId,
+      reason: "Deployment-owner approved Phase 1.3 legacy role dispositions",
+      dispositions: [
+        {
+          userId: sysAdminId,
+          username: "mix_admin",
+          fromRole: "SYSTEM_ADMIN" as const,
+          disposition: "MAP_EQUIVALENT" as const,
+          targetRole: "OWNER_ADMIN" as const,
+          isActive: true,
+          reason: "Preserve SYSTEM_ADMIN as active OWNER_ADMIN",
+        },
+        {
+          userId: issuanceId,
+          username: "mix_issuance",
+          fromRole: "LICENSE_ISSUANCE" as const,
+          disposition: "RETAIN_REDUCED" as const,
+          targetRole: "LICENSE_OPERATOR" as const,
+          isActive: true,
+          reason:
+            "Retain issuance specialist as LICENSE_OPERATOR without replacement authority",
+        },
+        {
+          userId: observerId,
+          username: "mix_observer",
+          fromRole: "READ_ONLY_OBSERVER" as const,
+          disposition: "DEACTIVATE" as const,
+          targetRole: "LICENSE_OPERATOR" as const,
+          isActive: false,
+          reason: "Deactivate read-only observer to preserve least privilege",
+        },
+        {
+          userId: supportId,
+          username: "mix_support",
+          fromRole: "SUPPORT_SPECIALIST" as const,
+          disposition: "ELEVATE_PRIVILEGE" as const,
+          targetRole: "LICENSE_OPERATOR" as const,
+          isActive: true,
+          allowPrivilegeElevation: true,
+          reason:
+            "Explicitly approved transition of support specialist to active LICENSE_OPERATOR",
+        },
+      ],
+    };
+
+    // Failure halfway through the operation (after user updates and audit writes, before migration 003 commits)
+    // rolls back the entire transaction cleanly.
+    await expect(
+      remediateLegacyRolesAndMigrate(db, approvedPlan, {
+        beforeMigration003Hook: () => {
+          throw new Error("Injected failure halfway through remediation");
+        },
+      }),
+    ).rejects.toThrow("Injected failure halfway through remediation");
+
     expect(
       (
         await db.pool.query<{ name: string }>(
@@ -333,34 +477,54 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
       ).rows.map((r) => r.name),
     ).toEqual(["001-foundation.sql", "002-manual-operations.sql"]);
     expect(
-      (await db.pool.query("SELECT count(*) FROM owner.users")).rows[0]?.count,
-    ).toBe("4");
+      (
+        await db.pool.query<{ role: string }>(
+          "SELECT role FROM owner.users WHERE id=$1",
+          [sysAdminId],
+        )
+      ).rows[0]?.role,
+    ).toBe("SYSTEM_ADMIN");
+    expect(
+      (
+        await db.pool.query(
+          "SELECT 1 FROM owner.audit_events WHERE event_type='USER_LEGACY_ROLE_REMEDIATED'",
+        )
+      ).rowCount,
+    ).toBe(0);
+    expect(
+      (
+        await db.pool.query<{ revoked_at: Date | null }>(
+          "SELECT revoked_at FROM owner.sessions WHERE token_hash=$1",
+          [digest(preUpgradeSession)],
+        )
+      ).rows[0]?.revoked_at,
+    ).toBeNull();
 
-    // Explicit pre-migration remediation under DBA/migration-owner authority:
-    // transition SYSTEM_ADMIN -> OWNER_ADMIN, LICENSE_ISSUANCE -> LICENSE_OPERATOR,
-    // and deactivate READ_ONLY_OBSERVER / SUPPORT_SPECIALIST with LICENSE_OPERATOR
-    // so read-only/support accounts never silently gain active write privileges.
-    await db.transaction(async (tx) => {
-      await tx.query(
-        "ALTER TABLE owner.users DROP CONSTRAINT users_role_check",
-      );
-      await tx.query(
-        "UPDATE owner.users SET role='OWNER_ADMIN', updated_at=clock_timestamp() WHERE id=$1",
-        [sysAdminId],
-      );
-      await tx.query(
-        "UPDATE owner.users SET role='LICENSE_OPERATOR', updated_at=clock_timestamp() WHERE id=$1",
-        [issuanceId],
-      );
-      await tx.query(
-        "UPDATE owner.users SET role='LICENSE_OPERATOR', is_active=false, updated_at=clock_timestamp() WHERE id IN ($1,$2)",
-        [observerId, supportId],
-      );
+    // Retry with the approved disposition plan succeeds transactionally.
+    const applied = await remediateLegacyRolesAndMigrate(db, approvedPlan);
+    expect(applied).toEqual({
+      status: "APPLIED",
+      remediatedCount: 4,
+      migrationApplied: true,
     });
 
-    // Retry migration 003 on a database containing only current two-role values.
+    // Re-running the remediation procedure with the same plan is a safe idempotent no-op,
+    // while a contradictory plan is rejected and plain migrate(db) is idempotent.
+    const rerun = await remediateLegacyRolesAndMigrate(db, approvedPlan);
+    expect(rerun).toEqual({
+      status: "ALREADY_APPLIED",
+      remediatedCount: 0,
+      migrationApplied: false,
+    });
+    await expect(
+      remediateLegacyRolesAndMigrate(db, {
+        ...approvedPlan,
+        dispositions: approvedPlan.dispositions.map((d) =>
+          d.userId === observerId ? { ...d, isActive: true } : d,
+        ),
+      }),
+    ).rejects.toThrow(RoleUpgradeError);
     await migrate(db);
-    await migrate(db); // idempotent after retry
 
     expect(
       (
@@ -379,20 +543,61 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
       ]),
     ).rejects.toThrow();
 
-    // Verify remediated accounts and preserved customer/operational records.
+    // Pre-existing session of remediated user was revoked during remediation.
+    expect(
+      (
+        await db.pool.query<{ revoked_at: Date | null }>(
+          "SELECT revoked_at FROM owner.sessions WHERE token_hash=$1",
+          [digest(preUpgradeSession)],
+        )
+      ).rows[0]?.revoked_at,
+    ).not.toBeNull();
+
+    // Verify remediated accounts, preserved existing current-role account, customer/operational records, and audit trail.
     const adminLogin = await login("mix_admin", pw);
     expect(adminLogin.r.status).toBe(200);
+    expect(adminLogin.r.body.id).toBe(sysAdminId);
     expect(adminLogin.r.body.role).toBe("OWNER_ADMIN");
     const operatorLogin = await login("mix_issuance", pw);
     expect(operatorLogin.r.status).toBe(200);
+    expect(operatorLogin.r.body.id).toBe(issuanceId);
     expect(operatorLogin.r.body.role).toBe("LICENSE_OPERATOR");
+    const elevatedSupportLogin = await login("mix_support", pw);
+    expect(elevatedSupportLogin.r.status).toBe(200);
+    expect(elevatedSupportLogin.r.body.id).toBe(supportId);
+    expect(elevatedSupportLogin.r.body.role).toBe("LICENSE_OPERATOR");
+    const existingOpLogin = await login("mix_current_op", pw);
+    expect(existingOpLogin.r.status).toBe(200);
+    expect(existingOpLogin.r.body.id).toBe(existingOperatorId);
     expect((await login("mix_observer", pw)).r.status).toBe(401);
-    expect((await login("mix_support", pw)).r.status).toBe(401);
+
     const preservedOp = await request(app)
       .get(`/api/v1/operational-records/${opId}`)
       .set("Cookie", operatorLogin.cookie);
     expect(preservedOp.status).toBe(200);
     expect(preservedOp.body.customerCode).toBe("MIX-01");
+
+    const remediationAudits = await explorer(adminLogin.cookie, {
+      eventType: "USER_LEGACY_ROLE_REMEDIATED",
+    });
+    expect(remediationAudits.status).toBe(200);
+    expect(remediationAudits.body.items).toHaveLength(4);
+    expect(
+      remediationAudits.body.items
+        .map(
+          (item: {
+            beforeState: { role: string };
+            afterState: { role: string; isActive: boolean };
+          }) =>
+            `${item.beforeState.role}->${item.afterState.role}:${String(item.afterState.isActive)}`,
+        )
+        .sort(),
+    ).toEqual([
+      "LICENSE_ISSUANCE->LICENSE_OPERATOR:true",
+      "READ_ONLY_OBSERVER->LICENSE_OPERATOR:false",
+      "SUPPORT_SPECIALIST->LICENSE_OPERATOR:true",
+      "SYSTEM_ADMIN->OWNER_ADMIN:true",
+    ]);
   });
 });
 

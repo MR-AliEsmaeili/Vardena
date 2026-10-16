@@ -17,12 +17,24 @@ import {
   roles,
 } from "../src/domain.js";
 import {
+  getOperation,
+  listOperations,
   recordActivationObservation,
   recordLicenseObservation,
   recordOldServerObservation,
   recordReplacementObservation,
   recordServerReplacement,
 } from "../src/operations.js";
+import {
+  createCustomerService,
+  createUserService,
+  getCustomerService,
+  listCustomersService,
+  listUsersService,
+  resetUserPasswordService,
+  updateCustomerService,
+  updateUserAccessService,
+} from "../src/app.js";
 
 function code(fn: () => unknown) {
   try {
@@ -263,6 +275,13 @@ describe("manual observation transitions", () => {
       "READ_ONLY_OBSERVER",
       "SUPPORT_SPECIALIST",
     ] as unknown as (typeof roles)[number][]) {
+      await expect(listOperations(fakeTx, legacy, {})).rejects.toMatchObject({
+        status: 403,
+        code: "PermissionDenied",
+      });
+      await expect(
+        getOperation(fakeTx, legacy, "01ARZ3NDEKTSV4RRFFQ69G5FAV"),
+      ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
       await expect(
         recordLicenseObservation(
           fakeTx,
@@ -307,5 +326,89 @@ describe("manual observation transitions", () => {
         ),
       ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
     }
+
+    // Direct user and customer service calls enforce role permissions, active state, and must_change_password
+    const operatorActor = {
+      id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      role: "LICENSE_OPERATOR" as const,
+      is_active: true,
+      must_change_password: false,
+    };
+    await expect(
+      listUsersService(fakeTx, operatorActor, "1"),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "PermissionDenied",
+    });
+    await expect(
+      createUserService(fakeTx, operatorActor, {}),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "PermissionDenied",
+    });
+    await expect(
+      updateUserAccessService(
+        fakeTx,
+        operatorActor,
+        "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        {},
+      ),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "PermissionDenied",
+    });
+    await expect(
+      resetUserPasswordService(
+        fakeTx,
+        operatorActor,
+        "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        {},
+      ),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "PermissionDenied",
+    });
+    await expect(
+      createCustomerService(fakeTx, operatorActor, {}),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "PermissionDenied",
+    });
+    await expect(
+      updateCustomerService(
+        fakeTx,
+        operatorActor,
+        "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        {},
+      ),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "PermissionDenied",
+    });
+
+    const inactiveAdmin = {
+      id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      role: "OWNER_ADMIN" as const,
+      is_active: false,
+      must_change_password: false,
+    };
+    await expect(
+      listUsersService(fakeTx, inactiveAdmin, "1"),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "Unauthorized",
+    });
+    await expect(
+      listCustomersService(fakeTx, inactiveAdmin, {}),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "Unauthorized",
+    });
+    await expect(
+      getCustomerService(fakeTx, inactiveAdmin, "01ARZ3NDEKTSV4RRFFQ69G5FAV"),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "Unauthorized",
+    });
   });
 });

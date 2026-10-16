@@ -2,6 +2,7 @@ import { ulid } from "ulid";
 import type { PoolClient } from "pg";
 import { audit } from "./db.js";
 import {
+  assertPermission,
   evidenceReference,
   fail,
   flag,
@@ -16,7 +17,6 @@ import {
   operationStatusFilter,
   optionalId,
   page,
-  permissions,
   queryText,
   reasonText,
   replacementCreate,
@@ -192,6 +192,7 @@ export async function listOperations(
   role: Role,
   query: Record<string, unknown>,
 ) {
+  assertOperationPermission(role, "operations.view");
   const currentPage = page(query.page);
   const search = queryText(query.search, "search") ?? "";
   const kind = operationKindFilter(query.kind);
@@ -240,6 +241,7 @@ export async function listOperations(
   };
 }
 export async function getOperation(tx: PoolClient, role: Role, rawId: unknown) {
+  assertOperationPermission(role, "operations.view");
   const found = await readOperation(tx, id(rawId));
   return operationResponse(found.row, role, found.transitions);
 }
@@ -248,11 +250,10 @@ function assertOperationPermission(
   role: Role,
   requiredPermission: Extract<
     Permission,
-    "operations.record" | "replacements.authorize"
+    "operations.view" | "operations.record" | "replacements.authorize"
   >,
 ) {
-  if (!permissions(role).includes(requiredPermission))
-    fail(403, "PermissionDenied", "You do not have permission.");
+  assertPermission(role, requiredPermission);
 }
 
 export async function recordLicenseObservation(

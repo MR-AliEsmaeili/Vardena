@@ -152,22 +152,35 @@ row, or extra transition is rejected. No cancellation state exists.
 `003-two-role-authorization.sql` enforces the two-role MVP policy on
 `owner.users.role` (`CHECK (role IN ('OWNER_ADMIN', 'LICENSE_OPERATOR'))`) after
 refusing to run (`ERRCODE = '23514'`, listing the distinct legacy roles found)
-if any superseded four-role user row exists. On a fresh database or an unbootstrapped
-`001`–`002` database with zero `owner.users` rows, `001` → `002` → `003` applies
-directly. On an existing populated `001`–`002` database that already contains
-legacy `SYSTEM_ADMIN`, `LICENSE_ISSUANCE`, `READ_ONLY_OBSERVER`, or
-`SUPPORT_SPECIALIST` rows, `npm run migrate` rolls back cleanly without altering
-`public.owner_migrations`, `users_role_check`, or existing rows. Because no
-canonical Product Owner decision authorizes an automatic mapping of legacy
-read-only/support accounts to a write-capable role, `003` does not silently
-remap, deactivate, or delete existing users; an explicit pre-migration
-remediation under migration-owner authority (dropping `users_role_check`,
-updating `owner.users` to approved `OWNER_ADMIN` / `LICENSE_OPERATOR` roles and
-`is_active` states, then re-running `npm run migrate`) is required before `003`
-can apply on populated pre-003 databases. Even if the Phase 1.3 API server is
-started against an unmigrated `002` database, `POST /auth/login` and session
-authentication (`authenticate`) fail closed (`401 Unauthorized`) for any user row
-holding a superseded role.
+if any superseded four-role user row exists.
+
+### Legacy-role compatibility matrix and upgrade runbook (`002` → `003`)
+
+| Legacy role (`001`–`002`) | Actual historical permissions | Allowed dispositions (`migrate:remediate-roles`) | Privilege impact | Can automate without explicit disposition? | Deployment-owner decision required |
+| --- | --- | --- | --- | --- | --- |
+| `SYSTEM_ADMIN` | `customers.view`, `customers.write`, `users.manage`, `audit.view`, `operations.view`, `operations.record` (including server-replacement authorization) | `MAP_EQUIVALENT` → `OWNER_ADMIN` (preserves `is_active`); `RETAIN_REDUCED` → `LICENSE_OPERATOR`; `DEACTIVATE` → `isActive: false` | `MAP_EQUIVALENT`: **Preserves** · `RETAIN_REDUCED` / `DEACTIVATE`: **Reduces** | No (explicit entry required; at least one active `OWNER_ADMIN` must remain) | Confirm whether each `SYSTEM_ADMIN` maps to active `OWNER_ADMIN`, is reduced to `LICENSE_OPERATOR`, or is deactivated. |
+| `LICENSE_ISSUANCE` | `customers.view`, `audit.view`, `operations.view`, `operations.record` | `RETAIN_REDUCED` → `LICENSE_OPERATOR` (preserves `is_active`); `DEACTIVATE` → `isActive: false`, `LICENSE_OPERATOR`; `ELEVATE_PRIVILEGE` → `OWNER_ADMIN` (`allowPrivilegeElevation: true`) | `RETAIN_REDUCED` / `DEACTIVATE`: **Reduces** (removes server-replacement authorization `replacements.authorize`) · `ELEVATE_PRIVILEGE`: **Increases** | No | Confirm whether each `LICENSE_ISSUANCE` account is retained as `LICENSE_OPERATOR` (without `replacements.authorize`) or deactivated. Assigning `OWNER_ADMIN` requires explicit `ELEVATE_PRIVILEGE` + `allowPrivilegeElevation: true`. |
+| `READ_ONLY_OBSERVER` | `customers.view`, `audit.view`, `operations.view` (read-only; zero write permissions) | `DEACTIVATE` → `isActive: false`, `LICENSE_OPERATOR`; `ELEVATE_PRIVILEGE` → active `LICENSE_OPERATOR` or `OWNER_ADMIN` (`allowPrivilegeElevation: true`) | `DEACTIVATE`: **Reduces** (zero active permissions; preserves user ID and audit history) · `ELEVATE_PRIVILEGE`: **Increases** (`+operations.record` write access) | No (neither MVP role is read-only) | Deactivate (`DEACTIVATE`, `isActive: false`) to preserve least privilege, or explicitly authorize write elevation (`ELEVATE_PRIVILEGE`, `allowPrivilegeElevation: true`). |
+| `SUPPORT_SPECIALIST` | `customers.support.view` (restricted customer summary only; no contract reference, audit, operations, or writes) | `DEACTIVATE` → `isActive: false`, `LICENSE_OPERATOR`; `ELEVATE_PRIVILEGE` → active `LICENSE_OPERATOR` or `OWNER_ADMIN` (`allowPrivilegeElevation: true`) | `DEACTIVATE`: **Reduces** (zero active permissions; preserves user ID and audit history) · `ELEVATE_PRIVILEGE`: **Increases** (`+customers.view`, `+audit.view`, `+operations.view`, `+operations.record`) | No | Deactivate (`DEACTIVATE`, `isActive: false`) to preserve least privilege, or explicitly authorize elevation (`ELEVATE_PRIVILEGE`, `allowPrivilegeElevation: true`). |
+
+- **Fresh installation (automatic schema migration + bootstrap):**
+  1. Run `npm --prefix owner-licensing/backend run migrate` (or `node dist/migrate.js` in the production container). On an empty database, `001-foundation.sql`, `002-manual-operations.sql`, and `003-two-role-authorization.sql` apply in one transaction.
+  2. Run `OWNER_BOOTSTRAP_USERNAME=<admin> OWNER_BOOTSTRAP_PASSWORD=<initial-secret> npm --prefix owner-licensing/backend run bootstrap` (or `node dist/bootstrap.js`) to create the initial `OWNER_ADMIN` account with `must_change_password = true`.
+- **Upgrading an existing populated database (`001`–`002` → `003`):**
+  1. **Backup (required before production upgrade):** create a logical backup of the dedicated Owner PostgreSQL database before running remediation or migration:
+     `pg_dump --format=custom --file=owner-pre-003.dump "$OWNER_DATABASE_URL"`
+  2. **Preflight inspection (read-only, secret-free):** run:
+     `npm --prefix owner-licensing/backend run migrate:preflight > owner-role-preflight.json` (or `node dist/migrate.js --preflight`).
+     The JSON report lists `migration003Applied`, `requiresRemediation`, `activeOwnerAdminCount`, `currentRoleAccounts`, `legacyAccounts` (`id`, `username`, `legacyRole`, `isActive`, `mustChangePassword`, `historicalPermissions`, `allowedDispositions`), `compatibilityMatrix`, and a pre-populated `dispositionPlanTemplate`. Passwords, password hashes, and session tokens are never included.
+  3. **Review and authorize dispositions (human deployment-owner step):** if `requiresRemediation` is `false`, run `npm --prefix owner-licensing/backend run migrate` directly. If `requiresRemediation` is `true`, copy `dispositionPlanTemplate` from the preflight output to `dispositions.json` and review every entry:
+     - `MAP_EQUIVALENT`, `RETAIN_REDUCED`, and `DEACTIVATE` never increase effective privileges.
+     - Any transition that increases effective privileges (such as keeping a `READ_ONLY_OBSERVER` or `SUPPORT_SPECIALIST` active as `LICENSE_OPERATOR`, promoting `LICENSE_ISSUANCE` to `OWNER_ADMIN`, or reactivating a previously inactive account) is rejected with `PrivilegeElevationDenied` unless `disposition` is `"ELEVATE_PRIVILEGE"` and `allowPrivilegeElevation` is explicitly set to `true` with an audited `reason`.
+     - Deleting user rows or hand-editing `owner.users` with ad-hoc SQL is prohibited; `owner.users.id` foreign keys on `owner.customers`, `owner.operational_records`, `owner.operational_transitions`, and append-only `owner.audit_events` must remain intact.
+  4. **Execute transactional remediation and migration:** run:
+     `npm --prefix owner-licensing/backend run migrate:remediate-roles -- /path/to/dispositions.json` (or `node dist/migrate.js --remediate-roles /path/to/dispositions.json`).
+     Inside one PostgreSQL transaction under advisory lock `78153214`, the command locks `owner.users`, validates the entire disposition set (rejecting missing, duplicate, unknown, current-role, contradictory, or unauthorized elevation entries, and enforcing `LastAdminProtected` so at least one active `OWNER_ADMIN` remains), updates each legacy user's `role` and `is_active`, revokes all active sessions for remediated users, records an append-only `USER_LEGACY_ROLE_REMEDIATED` audit event (`beforeState` and `afterState`) per account, applies `003-two-role-authorization.sql`, and records `003-two-role-authorization.sql` in `public.owner_migrations`.
+  5. **Validation failure, rollback, and retry recovery:** if any validation check or SQL step fails, the single transaction rolls back completely—leaving `public.owner_migrations`, `users_role_check`, `owner.users`, `owner.sessions`, and `owner.audit_events` in their exact pre-attempt state. Correct `dispositions.json` and re-run `npm --prefix owner-licensing/backend run migrate:remediate-roles -- /path/to/dispositions.json`. Re-running with the same already-applied plan returns `{"status": "ALREADY_APPLIED", "remediatedCount": 0, "migrationApplied": false}` without duplicating audit rows.
+  6. **Post-upgrade verification and rollback boundary:** run `npm --prefix owner-licensing/backend run migrate:preflight` and verify `migration003Applied: true`, `requiresRemediation: false`, `legacyAccounts: []`, and `activeOwnerAdminCount >= 1`. Even if the Phase 1.3 API server is started against an unmigrated `002` database, `POST /api/v1/auth/login` and session authentication (`authenticate`) fail closed (`401 Unauthorized`) for any user row holding a superseded role. Because Owner migrations are forward-only and `owner.audit_events` is append-only, reverting a committed `003` upgrade requires restoring the pre-upgrade logical backup (`pg_restore --clean --if-exists --dbname="$OWNER_DATABASE_URL" owner-pre-003.dump`).
 
 ## Security
 

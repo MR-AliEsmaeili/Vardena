@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  assertActiveAuthorizedActor,
+  assertPermission,
   customerCode,
   customerResponse,
   isRole,
@@ -12,6 +14,13 @@ import {
   safeUser,
   text,
 } from "../src/domain.js";
+import {
+  RoleUpgradeError,
+  legacyRoleCompatibilityMatrix,
+  legacyRoles,
+  validateRoleUpgradePlan,
+  type SafeUserUpgradeRow,
+} from "../src/migrate.js";
 import { config } from "../src/config.js";
 
 describe("Owner deny-by-default policy and input boundary", () => {
@@ -171,5 +180,253 @@ describe("Customer field allowlist for the two-role model", () => {
     expect(sql).toContain("NOT IN ('OWNER_ADMIN', 'LICENSE_OPERATOR')");
     expect(sql).toContain("string_agg(DISTINCT role, ', ' ORDER BY role)");
     expect(sql).toContain("RAISE EXCEPTION");
+  });
+  it("validates legacy role upgrade compatibility matrix and disposition plans", () => {
+    expect(legacyRoles).toEqual([
+      "SYSTEM_ADMIN",
+      "LICENSE_ISSUANCE",
+      "READ_ONLY_OBSERVER",
+      "SUPPORT_SPECIALIST",
+    ]);
+    expect(
+      legacyRoleCompatibilityMatrix.SYSTEM_ADMIN
+        .canPreserveWithoutPrivilegeIncrease,
+    ).toBe(true);
+    expect(
+      legacyRoleCompatibilityMatrix.LICENSE_ISSUANCE
+        .canPreserveWithoutPrivilegeIncrease,
+    ).toBe(true);
+    expect(
+      legacyRoleCompatibilityMatrix.READ_ONLY_OBSERVER
+        .canPreserveWithoutPrivilegeIncrease,
+    ).toBe(false);
+    expect(
+      legacyRoleCompatibilityMatrix.SUPPORT_SPECIALIST
+        .canPreserveWithoutPrivilegeIncrease,
+    ).toBe(false);
+
+    const now = new Date("2026-10-16T00:00:00.000Z");
+    const users: SafeUserUpgradeRow[] = [
+      {
+        id: "01ARZ3NDEKTSV4RRFFQ69G5FA1",
+        username: "legacy_admin",
+        role: "SYSTEM_ADMIN",
+        is_active: true,
+        must_change_password: false,
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: "01ARZ3NDEKTSV4RRFFQ69G5FA2",
+        username: "legacy_issuance",
+        role: "LICENSE_ISSUANCE",
+        is_active: true,
+        must_change_password: false,
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: "01ARZ3NDEKTSV4RRFFQ69G5FA3",
+        username: "legacy_observer",
+        role: "READ_ONLY_OBSERVER",
+        is_active: true,
+        must_change_password: false,
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: "01ARZ3NDEKTSV4RRFFQ69G5FA4",
+        username: "legacy_support",
+        role: "SUPPORT_SPECIALIST",
+        is_active: true,
+        must_change_password: false,
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: "01ARZ3NDEKTSV4RRFFQ69G5FA5",
+        username: "existing_operator",
+        role: "LICENSE_OPERATOR",
+        is_active: true,
+        must_change_password: false,
+        created_at: now,
+        updated_at: now,
+      },
+    ];
+
+    // Valid least-privilege disposition plan
+    const valid = validateRoleUpgradePlan(users, {
+      authorizedByUserId: "01ARZ3NDEKTSV4RRFFQ69G5FA1",
+      reason: "Approved Phase 1.3 role migration",
+      dispositions: [
+        {
+          userId: "01ARZ3NDEKTSV4RRFFQ69G5FA1",
+          username: "legacy_admin",
+          fromRole: "SYSTEM_ADMIN",
+          disposition: "MAP_EQUIVALENT",
+          targetRole: "OWNER_ADMIN",
+          isActive: true,
+          reason: "Map SYSTEM_ADMIN to OWNER_ADMIN",
+        },
+        {
+          userId: "01ARZ3NDEKTSV4RRFFQ69G5FA2",
+          username: "legacy_issuance",
+          fromRole: "LICENSE_ISSUANCE",
+          disposition: "RETAIN_REDUCED",
+          targetRole: "LICENSE_OPERATOR",
+          isActive: true,
+          reason:
+            "Retain issuance account as LICENSE_OPERATOR without replacement authority",
+        },
+        {
+          userId: "01ARZ3NDEKTSV4RRFFQ69G5FA3",
+          username: "legacy_observer",
+          fromRole: "READ_ONLY_OBSERVER",
+          disposition: "DEACTIVATE",
+          targetRole: "LICENSE_OPERATOR",
+          isActive: false,
+          reason:
+            "Deactivate read-only observer to prevent unapproved write access",
+        },
+        {
+          userId: "01ARZ3NDEKTSV4RRFFQ69G5FA4",
+          username: "legacy_support",
+          fromRole: "SUPPORT_SPECIALIST",
+          disposition: "DEACTIVATE",
+          targetRole: "LICENSE_OPERATOR",
+          isActive: false,
+          reason:
+            "Deactivate support specialist to prevent unapproved write access",
+        },
+      ],
+    });
+    expect(valid.dispositions).toHaveLength(4);
+    expect(valid.dispositions[0]?.privilegeImpact).toBe("PRESERVES");
+    expect(valid.dispositions[1]?.privilegeImpact).toBe("REDUCES");
+    expect(valid.dispositions[2]?.privilegeImpact).toBe("REDUCES");
+    expect(valid.dispositions[3]?.privilegeImpact).toBe("REDUCES");
+
+    // Unauthorized privilege elevation on READ_ONLY_OBSERVER and SUPPORT_SPECIALIST is rejected.
+    expect(() =>
+      validateRoleUpgradePlan(users, {
+        reason: "Attempted unapproved elevation",
+        dispositions: [
+          {
+            userId: "01ARZ3NDEKTSV4RRFFQ69G5FA1",
+            username: "legacy_admin",
+            fromRole: "SYSTEM_ADMIN",
+            disposition: "MAP_EQUIVALENT",
+            targetRole: "OWNER_ADMIN",
+            isActive: true,
+            reason: "ok",
+          },
+          {
+            userId: "01ARZ3NDEKTSV4RRFFQ69G5FA2",
+            username: "legacy_issuance",
+            fromRole: "LICENSE_ISSUANCE",
+            disposition: "RETAIN_REDUCED",
+            targetRole: "LICENSE_OPERATOR",
+            isActive: true,
+            reason: "ok",
+          },
+          {
+            userId: "01ARZ3NDEKTSV4RRFFQ69G5FA3",
+            username: "legacy_observer",
+            fromRole: "READ_ONLY_OBSERVER",
+            disposition: "RETAIN_REDUCED",
+            targetRole: "LICENSE_OPERATOR",
+            isActive: true,
+            reason:
+              "Attempt active observer as operator without elevation flag",
+          },
+          {
+            userId: "01ARZ3NDEKTSV4RRFFQ69G5FA4",
+            username: "legacy_support",
+            fromRole: "SUPPORT_SPECIALIST",
+            disposition: "ELEVATE_PRIVILEGE",
+            targetRole: "LICENSE_OPERATOR",
+            isActive: true,
+            allowPrivilegeElevation: false,
+            reason:
+              "Attempt support elevation with allowPrivilegeElevation false",
+          },
+        ],
+      }),
+    ).toThrow(RoleUpgradeError);
+
+    // Demoting/deactivating all admins is rejected with LastAdminProtected.
+    expect(() =>
+      validateRoleUpgradePlan(users, {
+        reason: "Demote only admin",
+        dispositions: [
+          {
+            userId: "01ARZ3NDEKTSV4RRFFQ69G5FA1",
+            username: "legacy_admin",
+            fromRole: "SYSTEM_ADMIN",
+            disposition: "RETAIN_REDUCED",
+            targetRole: "LICENSE_OPERATOR",
+            isActive: true,
+            reason: "demote",
+          },
+          {
+            userId: "01ARZ3NDEKTSV4RRFFQ69G5FA2",
+            username: "legacy_issuance",
+            fromRole: "LICENSE_ISSUANCE",
+            disposition: "RETAIN_REDUCED",
+            targetRole: "LICENSE_OPERATOR",
+            isActive: true,
+            reason: "retain",
+          },
+          {
+            userId: "01ARZ3NDEKTSV4RRFFQ69G5FA3",
+            username: "legacy_observer",
+            fromRole: "READ_ONLY_OBSERVER",
+            disposition: "DEACTIVATE",
+            targetRole: "LICENSE_OPERATOR",
+            isActive: false,
+            reason: "deactivate",
+          },
+          {
+            userId: "01ARZ3NDEKTSV4RRFFQ69G5FA4",
+            username: "legacy_support",
+            fromRole: "SUPPORT_SPECIALIST",
+            disposition: "DEACTIVATE",
+            targetRole: "LICENSE_OPERATOR",
+            isActive: false,
+            reason: "deactivate",
+          },
+        ],
+      }),
+    ).toThrow(/LastAdminProtected/);
+
+    // Enforce assertPermission and assertActiveAuthorizedActor
+    expect(assertPermission("OWNER_ADMIN", "replacements.authorize")).toBe(
+      "OWNER_ADMIN",
+    );
+    expect(() =>
+      assertPermission("LICENSE_OPERATOR", "replacements.authorize"),
+    ).toThrow("You do not have permission.");
+    expect(() =>
+      assertActiveAuthorizedActor(
+        {
+          id: "01ARZ3NDEKTSV4RRFFQ69G5FA1",
+          role: "OWNER_ADMIN",
+          is_active: false,
+          must_change_password: false,
+        },
+        "users.manage",
+      ),
+    ).toThrow("Authentication is required.");
+    expect(() =>
+      assertActiveAuthorizedActor(
+        {
+          id: "01ARZ3NDEKTSV4RRFFQ69G5FA1",
+          role: "OWNER_ADMIN",
+          is_active: true,
+          must_change_password: true,
+        },
+        "users.manage",
+      ),
+    ).toThrow("Initial password must be changed first.");
   });
 });

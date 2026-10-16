@@ -78,10 +78,13 @@ foundation tables when empty, and `003-two-role-authorization.sql` replaces the
 historical `users_role_check` constraint with `CHECK (role IN ('OWNER_ADMIN',
 'LICENSE_OPERATOR'))` after failing closed (`ERRCODE = '23514'`, listing the
 legacy roles present) if any superseded role row exists. On a populated pre-003
-database, `003` rolls back cleanly without modifying `public.owner_migrations` or
-`users_role_check` until an explicit pre-migration remediation under
-migration-owner authority transitions `owner.users` rows to `OWNER_ADMIN` /
-`LICENSE_OPERATOR`. `001-foundation.sql` and `002-manual-operations.sql` are
+database, automatic `npm run migrate` rolls back cleanly without modifying
+`public.owner_migrations` or `users_role_check`; operators inspect affected
+accounts with `npm run migrate:preflight` and apply an explicitly authorized
+disposition plan with `npm run migrate:remediate-roles -- <dispositions.json>`,
+which updates `owner.users`, revokes pre-upgrade sessions, appends
+`USER_LEGACY_ROLE_REMEDIATED` audit rows, and applies `003` in one PostgreSQL
+transaction. `001-foundation.sql` and `002-manual-operations.sql` are
 unchanged to preserve applied migration checksums. Runtime needs
 SELECT/INSERT/UPDATE on
 `owner.operational_records` and SELECT/INSERT on

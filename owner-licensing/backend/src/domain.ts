@@ -84,6 +84,34 @@ export function role(value: unknown): Role {
 export function isRole(value: unknown): value is Role {
   return roles.includes(value as Role);
 }
+export function assertPermission(
+  actorRole: unknown,
+  requiredPermission: Permission,
+): Role {
+  if (
+    !isRole(actorRole) ||
+    !permissions(actorRole).includes(requiredPermission)
+  )
+    fail(403, "PermissionDenied", "You do not have permission.");
+  return actorRole;
+}
+export function assertActiveAuthorizedActor(
+  actor:
+    | Pick<User, "id" | "role" | "is_active" | "must_change_password">
+    | null
+    | undefined,
+  requiredPermission: Permission,
+): Role {
+  if (!actor || !actor.is_active || !isRole(actor.role))
+    fail(401, "Unauthorized", "Authentication is required.");
+  if (actor.must_change_password)
+    fail(
+      403,
+      "PasswordChangeRequired",
+      "Initial password must be changed first.",
+    );
+  return assertPermission(actor.role, requiredPermission);
+}
 // PDR-14 grammar, case-sensitive, no implicit uppercasing or identity inference.
 export function customerCode(value: unknown, id?: string): string {
   if (

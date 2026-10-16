@@ -11,10 +11,14 @@ initial Phase 1 slice. The later observation-only slice is recorded in
 Owner's two-role MVP decision (`Owner Admin` / `OWNER_ADMIN` and `License
 Operator` / `LICENSE_OPERATOR`, with `replacements.authorize` gating
 server-replacement and emergency old-server-lost authorization to `Owner Admin`).
-Fresh installations migrate `001` → `002` → `003` directly; populated pre-003
-databases containing legacy four-role user rows fail closed and roll back cleanly
-until an explicit, authorized pre-migration remediation transitions `owner.users`
-to `OWNER_ADMIN` / `LICENSE_OPERATOR`. It does not rewrite the historical PR #160
+Fresh installations migrate `001` → `002` → `003` directly (`npm run migrate`);
+populated pre-003 databases containing legacy four-role user rows fail closed on
+automatic `migrate` and upgrade via the explicit preflight and transactional
+remediation workflow (`npm run migrate:preflight` followed by `npm run
+migrate:remediate-roles -- <dispositions.json>`), which validates every legacy
+account disposition, prevents unapproved privilege elevation, preserves account
+IDs and referential integrity, records `USER_LEGACY_ROLE_REMEDIATED` audit
+events, and applies `003` atomically. It does not rewrite the historical PR #160
 records below and does not close remaining Phase 2 open questions (`U-1`/OQ-74,
 OQ-78, OQ-80, OQ-81, OQ-82).
 

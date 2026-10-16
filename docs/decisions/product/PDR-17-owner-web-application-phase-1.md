@@ -60,14 +60,19 @@ Superseded four-role identifiers (`SYSTEM_ADMIN`, `LICENSE_ISSUANCE`,
 authentication/session revalidation (`401 Unauthorized` even against an
 unmigrated database), service-level operation guards, and database constraint.
 For existing populated pre-003 databases containing legacy four-role rows,
-`003-two-role-authorization.sql` fails closed (`ERRCODE = '23514'`) and rolls
-back cleanly rather than inventing an unapproved automatic mapping (which would
-risk escalating `READ_ONLY_OBSERVER` or `SUPPORT_SPECIALIST` to write-capable
-`LICENSE_OPERATOR`); upgrading a populated pre-003 database requires an explicit
-Product Owner disposition / migration-owner remediation of `owner.users` to
-`OWNER_ADMIN` / `LICENSE_OPERATOR` before `003` is applied. Operational access
-review and final Product Owner acceptance remain separate governance steps; there
-is no required second-person approval.
+automatic `003-two-role-authorization.sql` (`npm run migrate`) fails closed
+(`ERRCODE = '23514'`) and rolls back cleanly rather than inventing an unapproved
+automatic mapping (which would risk escalating `READ_ONLY_OBSERVER` or
+`SUPPORT_SPECIALIST` to write-capable `LICENSE_OPERATOR`). Upgrading a populated
+pre-003 database uses the supported preflight and transactional remediation
+workflow (`npm run migrate:preflight` and `npm run migrate:remediate-roles --
+<dispositions.json>`), which validates explicit per-account dispositions
+(`MAP_EQUIVALENT`, `RETAIN_REDUCED`, `DEACTIVATE`, or explicitly authorized
+`ELEVATE_PRIVILEGE` with `allowPrivilegeElevation: true`), enforces
+`LastAdminProtected`, revokes pre-upgrade sessions, writes append-only
+`USER_LEGACY_ROLE_REMEDIATED` audit events, and applies `003` in one PostgreSQL
+transaction. Operational access review and final Product Owner acceptance remain
+separate governance steps; there is no required second-person approval.
 
 ### Historical record — PR #160 four-role matrix (superseded 2026-10-16)
 

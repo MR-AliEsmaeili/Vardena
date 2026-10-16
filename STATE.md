@@ -2448,21 +2448,24 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   [decision traceability matrix](docs/tasks/licensing-po-decision-traceability-2026-10-16.md).
 - **Implemented scope (PR #166):**
   - Added forward-only migration
-    `owner-licensing/backend/migrations/003-two-role-authorization.sql` that
-    fails closed (`ERRCODE = '23514'`, reporting the distinct legacy roles
-    present) if any superseded four-role user row exists and replaces
-    `users_role_check` on `owner.users` (`DROP CONSTRAINT IF EXISTS
-    users_role_check`) with `CHECK (role IN ('OWNER_ADMIN',
-    'LICENSE_OPERATOR'))`, preserving the immutable checksums of
-    `001-foundation.sql` and `002-manual-operations.sql`. On a fresh or
-    unbootstrapped database, `001` → `002` → `003` applies directly; on a
-    populated pre-003 database containing legacy four-role rows, `migrate` rolls
-    back cleanly without altering `public.owner_migrations` or `users_role_check`
-    until an explicit, authorized pre-migration remediation transitions
-    `owner.users` to `OWNER_ADMIN` / `LICENSE_OPERATOR`.
+    `owner-licensing/backend/migrations/003-two-role-authorization.sql` and
+    transactional legacy-upgrade workflow (`src/role-upgrade.ts`,
+    `src/migrate.ts`: `npm run migrate:preflight` and `npm run
+    migrate:remediate-roles -- <dispositions.json>`). Automatic `npm run migrate`
+    applies `001` → `002` → `003` directly on a fresh or unbootstrapped database
+    and fails closed (`ERRCODE = '23514'`, reporting the distinct legacy roles
+    present) if any superseded four-role user row exists, preserving the
+    immutable checksums of `001-foundation.sql` and `002-manual-operations.sql`.
+    For populated pre-003 databases, `migrate:preflight` generates a secret-free
+    report and disposition template, and `migrate:remediate-roles` validates the
+    entire disposition set (preventing unapproved privilege elevation and
+    enforcing `LastAdminProtected`), updates `owner.users` while preserving user
+    IDs and referential integrity, revokes pre-upgrade sessions, writes
+    append-only `USER_LEGACY_ROLE_REMEDIATED` audit events, and applies `003` in
+    one PostgreSQL transaction.
   - Updated `owner-licensing/backend/src/domain.ts`, `src/security.ts`,
     `src/bootstrap.ts`, `src/operations.ts`, and `src/app.ts` to enforce the
-    two-role MVP model:
+    two-role MVP model at both HTTP route and service boundaries:
     - `OWNER_ADMIN`: `customers.view`, `customers.write`, `users.manage`,
       `audit.view`, `operations.view`, `operations.record`,
       `replacements.authorize`.
@@ -2472,7 +2475,8 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
       `READ_ONLY_OBSERVER`, `SUPPORT_SPECIALIST`) receive `[]` permissions and
       are rejected at input validation, login/session authentication (`401
       Unauthorized` even against an unmigrated `002` database), service-level
-      operation guards, user serialization (`safeUser`), and SQL boundaries.
+      user/customer/operation guards (`assertActiveAuthorizedActor`,
+      `assertPermission`), user serialization (`safeUser`), and SQL boundaries.
     - Server-replacement authorization and emergency old-server-lost handling
       (`POST /api/v1/operational-records/server-replacements`) require
       `replacements.authorize` (`OWNER_ADMIN` only) at both the route and
@@ -2480,7 +2484,8 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
       `OPERATION_MUTATION_DENIED` audit event and return `403 PermissionDenied`.
     - Bootstrap initial administrator provisioning (`src/bootstrap.ts`) creates
       `OWNER_ADMIN` with `must_change_password = true`, and last-active-admin
-      protection in `PATCH /api/v1/users/:id` guards `OWNER_ADMIN`.
+      protection in `PATCH /api/v1/users/:id` (`updateUserAccessService`) and
+      `remediateLegacyRolesAndMigrate` guards `OWNER_ADMIN`.
   - Updated `owner-licensing/frontend/` (`src/api/contracts.ts`,
     `src/lib/owner-i18n.ts`, `src/app/layouts/app-shell.tsx`,
     `src/features/users/users-page.tsx`,
@@ -2492,13 +2497,11 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
     `src/features/operations/operations-flow.test.tsx`,
     `src/features/audit/audit-page.test.tsx`,
     `src/features/auth/change-password-page.test.tsx`).
-- **Explicit non-goals, legacy-upgrade blocker, and open Phase 2 boundaries:**
-  no automatic remapping is invented for populated pre-003 databases holding
-  legacy four-role user rows (requiring explicit Product Owner disposition or
-  migration-owner remediation before `003` can apply on populated pre-003
-  databases); no production signing key, custody mechanism, or cryptographic
-  artifact generation (`U-1`/OQ-74); no new-server-first replacement sequence or
-  1h–7d pending confirmation timer enforcement (OQ-82); no restricted-admin
-  recovery or revocation artifact flow (OQ-78); no changes to customer
-  `backend/` or `frontend/` packages or migrations. No OQ is closed by this
-  implementation increment.
+- **Explicit non-goals and open Phase 2 boundaries:**
+  no silent or unapproved privilege elevation during legacy-role remediation; no
+  production signing key, custody mechanism, or cryptographic artifact generation
+  (`U-1`/OQ-74); no new-server-first replacement sequence or 1h–7d pending
+  confirmation timer enforcement (OQ-82); no restricted-admin recovery or
+  revocation artifact flow (OQ-78); no changes to customer `backend/` or
+  `frontend/` packages or migrations. No OQ is closed by this implementation
+  increment.
