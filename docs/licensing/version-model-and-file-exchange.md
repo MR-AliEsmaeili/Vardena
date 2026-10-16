@@ -560,6 +560,13 @@ explicit-retirement arm — is refused by the same rule, corrective slice
 
 ## 4. Import pipeline (strict order, nothing written until every stage passes)
 
+The ordering below records the **OQ-81 target** and labels the current-code
+variation explicitly: current `runImport` checks import-time status/expiry and
+other candidate semantics before its duplicate guard, so an old retry may not
+reach duplicate handling. Target replay dispatch moves ahead of these
+state/time-dependent new-import checks, but only after common authentication,
+canonical/signature/trust and installation/customer scope checks.
+
 | # | Stage | Rejection code |
 | --- | --- | --- |
 | 1 | Authorization: session + `Licensing.License.Activate` (route guard and application service, AR-21) | 401 / 403 |
@@ -568,14 +575,20 @@ explicit-retirement arm — is refused by the same rule, corrective slice
 | 4 | Signature verified against trusted keys; unknown key hint rejected | `signature`, `unknown-key` |
 | 5 | Canonical form / typed payload validation | `payload` |
 | 6 | Installation binding: `installationId` is this installation's identity | `installation-mismatch` |
-| 7 | Document semantics: interval, limits, entitlements, status `ACTIVE`, document not already expired at `now` | `validity`, `limits`, `entitlements`, `not-active`, `expired-document` |
-| 8 | Replay/duplicate guard: current code rejects an already-applied `operationId` or artifact hash; OQ-81 target is authorized receipt replay only for the same identity + matching versioned fingerprint | Current: `duplicate-operation` (409); target replay behavior is described in §5 and the linked OQ-81 design; not implemented |
-| 9 | Version conflicts: overlap without explicit supersession, an overlap the named supersession does not retire, unknown/already-retired supersession target, supersession that would hand over before the import instant, a reduction of the retired version's capacity or entitlements (explicit supersession included), closing an open end where the version is not named, a license identifier already bound to another customer (§3.5) | `overlapping-range`, `unknown-supersession`, `license-binding-conflict`, `reduction-requires-resolution`, `renewal-gap` (409, no state change); `backdated-supersession` (422, no state change; OQ-86) |
-| 10 | Persist: ONE transaction that **first locks the installation row and re-runs stages 8–9 under the lock** (§3.4), refuses a license identifier that belongs to another installation or customer (§3.5), then customer upsert, license upsert, version + entitlements insert, supersession stamps, audit event | `duplicate-operation`, `overlapping-range`, `unknown-supersession`, `license-binding-conflict` (409, no state change); `backdated-supersession` (422, no state change) |
+| 7 | Identity dispatch after authentication, payload/canonical form, signature/trust and installation/customer scope checks. Current code rejects an applied operation/hash; target branches on committed installation-scoped identity. | Current: `duplicate-operation` (409); target matching identity: fingerprint comparison; no receipt: safe legacy refusal; not implemented |
+| 8 | Matching committed identity: compare fingerprint and use read-only receipt path. New identity: perform admission semantics at attempted import instant (validity window, limits, entitlements, `ACTIVE` status, not expired). A committed retry does not rerun time/state-dependent admission merely because time or retained state changed after success. | Retry mismatch: non-disclosing conflict; match: receipt; new op errors: `validity`, `limits`, `entitlements`, `not-active`, `expired-document` |
+| 9 | **New-operation branch only:** authoritative business-conflict evaluation, including windows, explicit/stale-chain target eligibility, retained history, reductions/current usage, customer/license binding, recovery/transfer/resolution intent. | `overlapping-range`, `unknown-supersession`, `license-binding-conflict`, `reduction-requires-resolution`, `renewal-gap` (409); `backdated-supersession` (422); no mutation on refusal |
+| 10 | New operation: one transaction first locks installation, repeats identity/conflict decision under lock, and writes customer/license/version/entitlements/supersession/audit plus receipt atomically. Matching replay: read-only receipt retrieval; no state transition or success audit. | New op: existing conflict errors; replay: stored receipt or non-disclosing fingerprint conflict; target replay persistence not implemented |
 
-Stages 8 and 9 share one implementation between the read-side pass and the
-in-transaction pass, so the two cannot drift apart: the pre-check is an early,
-informative rejection and the transaction's verdict is the one that decides.
+**Current implementation:** duplicate and conflict checks run in the shared
+import path and authoritative state evaluation is repeated inside the import
+transaction. **OQ-81 target:** after the common authentication, artifact,
+trusted-key and scope checks, dispatch by committed operation identity. A
+matching committed identity takes the fingerprint-checked read-only receipt
+path; a mismatch is refused without disclosure. Only an identity not previously
+committed proceeds through time-dependent new-import admission and the full
+read-side plus under-lock business-conflict evaluation. The new-operation
+precheck may be informative, but the locked transaction verdict decides.
 
 Capacity validation includes both **shape** checks (positive-or-null limits,
 known entitlements) and the PDR-11 §8.6 usage-aware conflict check. The import
@@ -615,10 +628,16 @@ limit. Unavailable counts and prohibited term changes remain unresolvable.
   artifact-hash guard still prevents identical bytes from being re-applied
   (VLIC2 signs `operationId`). Fingerprint excludes `customerName` and
   `issuedAt`, includes `supersedesOperationId`, and includes operation kind and
-  audited normalized reason for dedicated operations. All signature, trusted-key,
-  installation/customer, authorization, lifecycle and business checks remain.
-  Replacement commits are serialized under the installation lock; competing
-  already-retired predecessors are rejected. A narrow, unique contiguous stale
+  audited normalized reason for dedicated operations. **New operation:** run
+  signature/trusted-key, binding, validity/lifecycle, version-window,
+  supersession, entitlement and capacity checks before mutation; authoritative
+  conflicts are repeated under the installation lock. **Committed retry:**
+  authenticate/authorize and validate signed canonical form, signature/trust,
+  scope and fingerprint before read-only receipt lookup; do not rerun
+  state-dependent admission checks that would fail solely because the committed
+  operation's predecessor has since been superseded. Replacement commits are
+  serialized under the installation lock; competing already-retired
+  predecessors are rejected. A narrow, unique contiguous stale
   chain may be resolved only under the conditions in the linked design; no
   guessing or overlapping branch selection. VLIC1 no-receipt retry remains
   `UNCHANGED`, not receipt replay. Replay DTO after a later replacement remains

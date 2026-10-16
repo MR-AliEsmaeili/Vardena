@@ -182,9 +182,13 @@ original receipt this is `UNCHANGED`, not a replay. Under the 2026-10-16 Owner
 decisions, same-identity matching-fingerprint retries must return a persisted
 receipt, but a new operation ID is a new operation even when grant content is
 equivalent; fingerprint excludes `customerName`/`issuedAt` and includes
-`supersedesOperationId`. Authorization and current chain/business checks remain
-mandatory. Replacement transactions serialize under the installation row
-lock, and an already-retired competing predecessor is refused. The narrow stale
+`supersedesOperationId`. New operations undergo full validity and current
+chain/business evaluation before mutation. For a committed retry, current
+authorization, canonical/signature/trust, scope and fingerprint checks precede a
+read-only receipt lookup; state-dependent admission checks are not rerun merely
+because the operation's predecessor has since been superseded. Replacement
+transactions serialize under the installation row lock, and an already-retired
+competing predecessor is refused. The narrow stale
 chain continuation proposal, atomic receipt behavior and unresolved historical
 replay DTO are recorded in
 [`docs/tasks/oq-81-idempotent-replay-technical-design.md`](tasks/oq-81-idempotent-replay-technical-design.md).

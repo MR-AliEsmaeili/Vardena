@@ -17,13 +17,24 @@ Current implementation evidence is from these files:
 
 ## 2. Operation identity, semantic fingerprint and valid new operations
 
-### 2.1 Separate concerns
+### 2.1 Separate concerns and validation order
 
-- **Identity:** VLIC2 operation identity is `(installationId, operationId)`; VLIC1 keeps its existing hash-derived identity. Identity decides whether to look up the *same operation's* result.
-- **Same-operation fingerprint:** a versioned digest checks that a repeat of that identity has the same semantic request and operation intent. A matching fingerprint is necessary for replay, not authorization.
-- **Different operation ID:** a new ID is a new operation even if the effective grant is otherwise identical. Do **not** reject it merely for matching another operation's semantic content, and never return the other operation's receipt. It must pass the full current signature, trust, scope, authorization, lifecycle and business validation. Existing window/chain constraints may independently reject it.
-- **Validity and access:** signature verification, canonical parsing, trusted-key checks, installation/customer binding, required permissions and applicable business checks are still required. No ID or fingerprint bypasses these.
-- **Exact artifact hash:** the existing unique hash guard remains to prevent reapplying identical bytes. Since `operationId` is signed, byte-identical VLIC2 necessarily has the same operation ID. A reissued document with a different ID has a different artifact hash and is a separate operation under Decision A.
+**A. New operation identity — full validation before mutation.** A request whose installation-scoped identity has not committed must pass, in order, current authentication and required operation authorization; transport and payload parsing; supported VLIC version and canonical-form checks; signature verification and trusted-key validation; installation/customer binding; document validity/lifecycle checks; and the complete current business-conflict evaluation (window, exact supersession target/approved stale-chain rule, retained history, entitlements, capacity/usage and operation-specific requirements). The authoritative conflict evaluation is repeated under the installation lock. Only then may the operation mutate state, and all state changes, success audit and eventual receipt must commit atomically. An equivalent grant under a different operation ID is not by itself a duplicate refusal; the new operation still undergoes this full validation.
+
+**B. Retry of a previously committed identity — authorized, read-only receipt path.** The replay path is separate from new-operation evaluation:
+
+1. Authenticate the caller; enforce current operation permission(s) and installation/customer scope before disclosing anything.
+2. Parse/canonical-validate the incoming artifact, verify its signature and trusted-key requirements according to the established security policy, and validate that its signed installation/customer scope is the stored operation's scope. Do not invent key-revocation behavior: the applicable policy for replay if a signing key has since been removed/compromised remains governed only by existing trust/security decisions; do not bypass current trust checks.
+3. Compute the versioned semantic fingerprint and compare with the committed identity's stored fingerprint. A mismatch returns a non-disclosing conflict; do not reveal receipt contents or mutate state.
+4. If identity and fingerprint match, return the stored receipt using a read-only path. Do not rerun new-operation state-transition checks that can now fail solely because a later successful operation superseded the original predecessor. In particular, do not reapply original supersession, window hand-over, current quota/capacity mutation, or success audit.
+5. Do not restore historical effective state. Replay only reads the receipt; current license state remains whatever the latest committed version resolves to.
+
+Replay still requires current authorization, scope and cryptographic artifact verification. It does **not** rerun time/state-dependent admission checks for a new import (for example, whether the old candidate may newly supersede its predecessor now, or whether it would overlap today's retained version). An independent failure of a required artifact/security check remains a refusal. The verifier uses the currently configured trusted-key set; if the signing key is no longer trusted, replay verification can fail even though the operation was accepted earlier. The consequence for receipt access after key removal/compromise is not separately settled: OQ-74’s key-compromise policy remains authoritative and open. This design adds no exception and does not change effective license state or invent revocation behavior.
+
+- **Identity:** VLIC2 operation identity is `(installationId, operationId)`; VLIC1 keeps its existing hash-derived identity. Identity decides whether to look up the same operation's result.
+- **Same-operation fingerprint:** a versioned digest checks the incoming request's semantic content and operation intent. Equality is necessary for replay, not authorization.
+- **Different operation ID:** a new ID is a new operation even if effective grant content matches. Do not reject solely on semantic equality and never return the other operation's receipt. Apply the full new-operation validation above; existing chain/window rules may independently reject it.
+- **Exact artifact hash:** retain the existing unique hash guard. Byte-identical VLIC2 necessarily has the same signed operation ID; a reissued artifact with a new ID has a different hash and is a new operation under Decision A.
 
 ### 2.2 VLIC2 fields
 
@@ -59,7 +70,7 @@ Entitlement arrays are sorted as the existing canonicalizer does. Dates use the 
 
 `assertOperationReason` validates trimmed minimum length and raw maximum length; transfer returns a trimmed reason, and repository audit helpers trim recovery/transfer/resolution reasons. The fingerprint must use the trimmed form, matching audit/result semantics. Caller identity, authorization headers, transport metadata, timestamps supplied by the client, and display/presentation fields are excluded. Actor attribution remains in audit; Decision D governs who may replay.
 
-**Behavior:** same identity + equal fingerprint returns that operation’s persisted receipt after authentication, authorization, signature, installation/customer scope and applicable validation. Same identity + different fingerprint is rejected without mutation or receipt disclosure. Different identity—even with identical effective licensing content—is a new operation; validate normally, do not treat as duplicate on semantic digest alone, and do not return another operation’s receipt.
+**Behavior:** new identity takes path A above and receives full admission/business-conflict evaluation. Existing identity takes path B: after current authentication/authorization, artifact signature/trust and scope checks, equal fingerprint returns the persisted receipt read-only; a mismatch is rejected without receipt disclosure or mutation. Replay does not rerun current-state admission checks, such as whether an already superseded predecessor may be retired now. Different identity—even with identical effective licensing content—is a new operation; validate normally and do not return another operation’s receipt.
 
 ## 3. Replacement chain, atomicity and concurrency
 
@@ -114,6 +125,8 @@ Each controller maps a fresh state through `toLicenseStateView(snapshot.license,
 
 ### 4.2 Replay after replacement and unresolved response decision
 
+**Required scenario:** OP-100 commits a 50-user grant and its receipt; OP-101 later commits a 70-user grant and supersedes OP-100. A currently authorized caller in the same installation scope retries OP-100. If signature/trust, scope and fingerprint checks pass, the retry must not fail merely because OP-100’s predecessor is now superseded; it returns through the read-only receipt path. It must not execute transition checks or mutate any licensing row, restore 50 users, or change the current effective OP-101 limit of 70. OP-101's success remains atomic; a failed OP-101 would leave OP-100 and the 50-user limit unchanged. Historical OP-100 result must not be confused with current state.
+
 OP-100 receipt is a historical operation result. After OP-101 supersedes it, returning OP-100’s old state snapshot as if current could mislead clients; returning only current state would not replay the original response. Product policy requires historical result and current effective licensing state not be confused, but no exact replay DTO has been approved.
 
 **Smallest safe proposal:** leave first-application response DTOs unchanged. For a replay, return a clearly marked replay representation containing (a) the persisted historical operation receipt, explicitly labelled/versioned as historical and keyed by operation/version IDs, and (b) a fresh current-state view in a separately named field. Do not return the historical state snapshot in the ordinary top-level fields as if current. Do not recalculate/overwrite the stored receipt. The exact envelope/fields/status code is a public API decision and must be approved before code/API changes. **OQ-81 remains open for this narrow DTO contract.**
@@ -122,7 +135,7 @@ Persist receipt with a schema version and deterministic serialization of the cho
 
 ## 5. Authorization and VLIC1
 
-Before receipt lookup/disclosure: authenticate; require `Licensing.License.Activate`; additionally require `RecoverAfterGap`, `TransferCustomer`, or `ResolveReduction` for the corresponding operation; verify signature/current trusted key; enforce installation and customer scope; perform applicable validity and business validation. Caller knowing an operation ID is never sufficient. **Decision D:** any caller currently holding required permission(s) in the same customer-installation scope may receive the receipt; original actor matching is not required. Do not let replay bypass checks or mutate state.
+Before receipt lookup/disclosure: authenticate; require `Licensing.License.Activate`; additionally require `RecoverAfterGap`, `TransferCustomer`, or `ResolveReduction` for the corresponding operation; parse/canonical-validate and verify the signed artifact using the established trusted-key policy; bind the request and authorized caller to the same installation/customer scope; then compare fingerprint. Caller knowing an operation ID is never sufficient. **Decision D:** any caller currently holding required permission(s) in the same customer-installation scope may receive the receipt; original actor matching is not required. On a matching replay, do not repeat new-operation, time-dependent admission or state-transition checks. Do not let replay bypass the security checks above or mutate state.
 
 VLIC1 has no operation ID and current legacy behavior uses its hash-derived identity. Where the existing already-governing legacy case applies and no receipt exists, preserve `changed:false`, `outcome:UNCHANGED`. This is a no-op, not replay. Do not reconstruct/backfill a historical receipt or add VLIC1 receipt storage. Other VLIC1 lifecycle rules remain unchanged.
 
