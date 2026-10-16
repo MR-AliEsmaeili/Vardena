@@ -22,6 +22,8 @@ export interface LicenseStateView {
   status: string;
   active: boolean;
   inactiveReason: string | null;
+  accessMode: string;
+  graceEndsAt: string | null;
   installationId: string | null;
   customerId: string | null;
   customerCode: string | null;
@@ -51,6 +53,8 @@ export function toLicenseStateView(
     status: license.status,
     active: license.active,
     inactiveReason: license.inactiveReason,
+    accessMode: license.accessMode,
+    graceEndsAt: license.graceEndsAt?.toISOString() ?? null,
     installationId: license.installationId,
     customerId: license.customerId,
     customerCode: license.customerCode,

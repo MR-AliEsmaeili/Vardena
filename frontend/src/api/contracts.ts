@@ -153,6 +153,8 @@ export interface LicenseState {
   status: 'ACTIVE' | 'EXPIRED' | 'SUSPENDED' | 'UNLICENSED';
   active: boolean;
   inactiveReason: 'unlicensed' | 'status' | 'not-yet-valid' | 'expired' | null;
+  accessMode: 'ACTIVE' | 'GRACE' | 'READ_ONLY' | 'BLOCKED';
+  graceEndsAt: string | null;
   installationId: string | null;
   customerId: string | null;
   customerCode: string | null;

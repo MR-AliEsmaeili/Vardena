@@ -1,5 +1,17 @@
 # Vardena Project State
 
+> **OQ-45 Grace/Read-Only, 2026-10-16 (unmerged implementation for review):**
+> starting `main` = `74079fe83c6f0023e0ade10ca0d39c02246bf1fa` (merge of PR
+> #166; live-verified, no open PRs at start). Implements natural-expiry
+> Active → Grace (signed expiry + 14×24h UTC) → Read-Only under ADR-0049
+> (Proposed): evaluated `accessMode`/`graceEndsAt`, central licensed-permission
+> filtering (Grace = entitled operation; Read-Only = entitled View/Export +
+> platform licensing; other inactive states unchanged), system-context
+> mutation refusal in Read-Only, license-state API/UI exposure. No signed
+> format, migration, role or permission-assignment change. OQ-45 remains OPEN
+> (contract-termination strictness undecided; PO acceptance pending);
+> exact-head GitHub Actions verification required. Historical state below is retained.
+>
 > **Owner Phase 1.3, 2026-10-16 (unmerged implementation for review):** starting
 > `main` = `1a982323db7f4bde13038f6dfd757b762512676e` (merge of PR #165).
 > Aligns the standalone Owner application (`owner-licensing/`) with the

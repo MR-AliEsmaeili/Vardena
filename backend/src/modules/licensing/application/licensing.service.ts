@@ -3,6 +3,7 @@ import { AppException } from '../../../kernel/errors/app-exception.js';
 import {
   evaluateLicense,
   isPlatformPermission,
+  isReadPermissionCode,
   permissionModuleCode,
   unlicensedEvaluation,
   type EntitlementKind,
@@ -101,10 +102,29 @@ export class LicensingService {
   ): Promise<boolean> {
     const license = await this.current(at);
     return (
-      license.active &&
+      (license.accessMode === 'ACTIVE' || license.accessMode === 'GRACE') &&
       license.entitlements.some(
         (entry) => entry.kind === kind && entry.code === code.toLowerCase(),
       )
+    );
+  }
+
+  /** Fail-closed mutation gate for non-permission-checked/async paths. */
+  async assertBusinessMutationAllowed(at = new Date()): Promise<void> {
+    const license = await this.current(at);
+    if (license.accessMode === 'ACTIVE' || license.accessMode === 'GRACE')
+      return;
+    if (license.accessMode === 'READ_ONLY') {
+      throw AppException.forbidden(
+        'The installation license is in read-only mode after the grace period. Renew the license to make changes.',
+        {
+          reason: 'license_read_only',
+          graceEndsAt: license.graceEndsAt?.toISOString() ?? null,
+        },
+      );
+    }
+    throw AppException.businessRule(
+      'An active installation license is required for this capability.',
     );
   }
 
@@ -113,6 +133,17 @@ export class LicensingService {
     at = new Date(),
   ): Promise<boolean> {
     if (isPlatformPermission(permissionCode)) return true;
+    const license = await this.current(at);
+    if (license.accessMode === 'READ_ONLY') {
+      return (
+        isReadPermissionCode(permissionCode) &&
+        license.entitlements.some(
+          (e) =>
+            e.kind === 'MODULE' &&
+            e.code === permissionModuleCode(permissionCode),
+        )
+      );
+    }
     return this.isEntitled('MODULE', permissionModuleCode(permissionCode), at);
   }
 
@@ -131,16 +162,17 @@ export class LicensingService {
   ): Promise<string[]> {
     const license = await this.current(at);
     const platform = permissionCodes.filter(isPlatformPermission);
-    if (!license.active) return platform;
+    if (license.accessMode === 'BLOCKED') return platform;
     const modules = new Set(
       license.entitlements
         .filter((entry) => entry.kind === 'MODULE')
         .map((entry) => entry.code),
     );
-    return permissionCodes.filter(
-      (code) =>
-        isPlatformPermission(code) || modules.has(permissionModuleCode(code)),
-    );
+    return permissionCodes.filter((code) => {
+      if (isPlatformPermission(code)) return true;
+      if (!modules.has(permissionModuleCode(code))) return false;
+      return license.accessMode !== 'READ_ONLY' || isReadPermissionCode(code);
+    });
   }
 
   async requirePermissionLicensed(permissionCode: string): Promise<void> {
@@ -226,7 +258,17 @@ export class LicensingService {
 
   private async requireActive(): Promise<EvaluatedLicense> {
     const license = await this.current();
-    if (!license.active) {
+    // Grace preserves normal operation (OQ-45); Read-Only/Blocked refuse.
+    if (license.accessMode !== 'ACTIVE' && license.accessMode !== 'GRACE') {
+      if (license.accessMode === 'READ_ONLY') {
+        throw AppException.forbidden(
+          'The installation license is in read-only mode after the grace period. Renew the license to make changes.',
+          {
+            reason: 'license_read_only',
+            graceEndsAt: license.graceEndsAt?.toISOString() ?? null,
+          },
+        );
+      }
       throw AppException.businessRule(
         'An active installation license is required for this capability.',
       );

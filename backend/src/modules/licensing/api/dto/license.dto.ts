@@ -263,6 +263,22 @@ export class LicenseStateDto implements LicenseStateView {
   inactiveReason!: string | null;
 
   @ApiProperty({
+    description:
+      'Evaluated runtime access policy (OQ-45): ACTIVE, GRACE, READ_ONLY or BLOCKED. GRACE/READ_ONLY derive from natural expiry only and never extend signed validity.',
+    enum: ['ACTIVE', 'GRACE', 'READ_ONLY', 'BLOCKED'],
+  })
+  accessMode!: string;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Signed validUntil plus exactly 14x24 hours in UTC; null for perpetual or unlicensed installations.',
+  })
+  graceEndsAt!: string | null;
+
+  @ApiProperty({
     type: String,
     nullable: true,
   })

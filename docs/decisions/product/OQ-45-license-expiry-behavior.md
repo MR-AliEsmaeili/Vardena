@@ -79,6 +79,27 @@ extension authority and Read-Only capabilities are decided; enforcement and
 verification require a separate change. The distinct contract-termination
 strictness question remains open.
 
+## Implementation submitted for review (2026-10-16, ADR-0049)
+
+Engineering implementation was submitted in a dedicated PR from starting
+`main` `74079fe83c6f0023e0ade10ca0d39c02246bf1fa` (live-verified; no open PRs
+at start). Domain evaluation now derives `accessMode`/`graceEndsAt`
+(`validUntil + 14×24h`, `now >= graceEndsAt` => Read-Only) without mutating
+signed validity; `LicensingService.filterLicensedPermissions` (the central
+filter behind HTTP and service authorization) keeps entitled permissions in
+Grace, entitled `View`/`Export` plus platform licensing permissions in
+Read-Only, and the previous platform-only behavior for
+unlicensed/suspended/not-yet-valid states. System-context service checks
+refuse mutations in Read-Only (queued-work defence; no production worker
+dispatch loop exists). API state exposes `accessMode`/`graceEndsAt`; the
+frontend workspace remains reachable in Grace/Read-Only with a Persian
+notice, and the status card shows the mode/deadline. Stored RBAC assignments
+are untouched, so valid renewal (re-evaluated per call, no new cache)
+restores prior operation. Tests: new domain/service/RBAC unit specs;
+heavy verification is GitHub Actions on the exact PR head. **OQ-45 remains
+OPEN**: no Product Owner acceptance is claimed and the contract-termination
+strictness question is undecided.
+
 ## Historical record — superseded options and unresolved wording
 
 The following is the original dated record, preserved as history only. Its

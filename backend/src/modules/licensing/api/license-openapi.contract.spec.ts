@@ -82,6 +82,8 @@ describe('Licensing OpenAPI success-response contracts', () => {
         'status',
         'active',
         'inactiveReason',
+        'accessMode',
+        'graceEndsAt',
         'installationId',
         'customerId',
         'customerCode',
