@@ -530,9 +530,14 @@ Ordered by whether they block Owner implementation.
 | GAP-9 | Separate archive, retention execution and sensitive-data controls not implemented | Yes, but gated | OQ-77 policy decided: append-only, minimum three years from event occurrence, unresolved security incidents excluded from automatic deletion; permanent separate archive remains |
 | GAP-10 | Exact Owner role-to-endpoint permission mapping is not implemented | Yes, but gated | OQ-75 policy decided: Owner Admin and License Operator only; code still has four roles, not migrated |
 
-GAP-8, GAP-9 and GAP-10 are **not** design work this phase may complete: each is
-an OPEN product question, and inventing an answer would violate PDR-11 §17.2
-G-10 and the task's prohibition on closing OQs by inference.
+The product-policy decisions relevant to GAP-8 through GAP-10 are recorded in
+the current canonical records, PDR-11 §21 and PDR-17: OQ-82's replacement order
+and confirmation window, OQ-77's retention/archive policy, and OQ-75's two-role
+model. The technical, specification, implementation, security and evidence gaps
+identified in these rows remain open and gated; deciding policy does not resolve
+those gaps. This historical Phase 0 design document does not authorize resolving
+them unilaterally or claiming implementation is complete. Do not infer a change
+to any OQ status.
 
 ## 6. Acceptance criteria for the boundary
 
