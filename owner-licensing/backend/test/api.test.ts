@@ -501,6 +501,20 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
     ).toBeNull();
 
     // Retry with the approved disposition plan succeeds transactionally.
+    // Missing or non-admin authorizedByUserId is rejected before any changes apply.
+    await expect(
+      remediateLegacyRolesAndMigrate(db, {
+        reason: approvedPlan.reason,
+        dispositions: approvedPlan.dispositions,
+      }),
+    ).rejects.toThrow(/authorizedByUserId is required/);
+    await expect(
+      remediateLegacyRolesAndMigrate(db, {
+        ...approvedPlan,
+        authorizedByUserId: issuanceId,
+      }),
+    ).rejects.toThrow(/is not an active administrator/);
+
     const applied = await remediateLegacyRolesAndMigrate(db, approvedPlan);
     expect(applied).toEqual({
       status: "APPLIED",
@@ -508,20 +522,41 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
       migrationApplied: true,
     });
 
-    // Re-running the remediation procedure with the same plan is a safe idempotent no-op,
-    // while a contradictory plan is rejected and plain migrate(db) is idempotent.
+    // Re-running the remediation procedure with the exact same valid plan is a safe idempotent no-op,
+    // while incomplete plans, plans with unknown fields, or contradictory plans are rejected.
     const rerun = await remediateLegacyRolesAndMigrate(db, approvedPlan);
     expect(rerun).toEqual({
       status: "ALREADY_APPLIED",
       remediatedCount: 0,
       migrationApplied: false,
     });
+    // Incomplete plan (missing one of the remediated accounts) is rejected on repeated run.
+    await expect(
+      remediateLegacyRolesAndMigrate(db, {
+        ...approvedPlan,
+        dispositions: approvedPlan.dispositions.slice(0, 3),
+      }),
+    ).rejects.toThrow(/Missing disposition for legacy account/);
+    // Unknown field is rejected on repeated run.
+    await expect(
+      remediateLegacyRolesAndMigrate(db, {
+        ...approvedPlan,
+        extraUnknownField: true,
+      }),
+    ).rejects.toThrow(/Unknown top-level field/);
+    // Contradictory target state or mismatched authorizedByUserId is rejected on repeated run.
     await expect(
       remediateLegacyRolesAndMigrate(db, {
         ...approvedPlan,
         dispositions: approvedPlan.dispositions.map((d) =>
           d.userId === observerId ? { ...d, isActive: true } : d,
         ),
+      }),
+    ).rejects.toThrow(RoleUpgradeError);
+    await expect(
+      remediateLegacyRolesAndMigrate(db, {
+        ...approvedPlan,
+        authorizedByUserId: issuanceId,
       }),
     ).rejects.toThrow(RoleUpgradeError);
     await migrate(db);
@@ -582,6 +617,9 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
     });
     expect(remediationAudits.status).toBe(200);
     expect(remediationAudits.body.items).toHaveLength(4);
+    for (const item of remediationAudits.body.items as { actorId: string }[]) {
+      expect(item.actorId).toBe(sysAdminId);
+    }
     expect(
       remediationAudits.body.items
         .map(

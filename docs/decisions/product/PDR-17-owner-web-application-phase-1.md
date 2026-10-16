@@ -67,11 +67,18 @@ automatic mapping (which would risk escalating `READ_ONLY_OBSERVER` or
 pre-003 database uses the supported preflight and transactional remediation
 workflow (`npm run migrate:preflight` and `npm run migrate:remediate-roles --
 <dispositions.json>`), which validates explicit per-account dispositions
-(`MAP_EQUIVALENT`, `RETAIN_REDUCED`, `DEACTIVATE`, or explicitly authorized
-`ELEVATE_PRIVILEGE` with `allowPrivilegeElevation: true`), enforces
+(`MAP_EQUIVALENT` for `SYSTEM_ADMIN` → `OWNER_ADMIN`, which preserves exact
+effective access because `POST /api/v1/operational-records/server-replacements`
+was already authorized for `SYSTEM_ADMIN` under `operations.record` in
+`1a982323db7f` and `replacements.authorize` is a permission-code split that
+narrows `LICENSE_OPERATOR`; `RETAIN_REDUCED`; `DEACTIVATE`; or explicitly
+authorized `ELEVATE_PRIVILEGE` with `allowPrivilegeElevation: true`), requires a
+mandatory active-administrator `authorizedByUserId`, enforces
 `LastAdminProtected`, revokes pre-upgrade sessions, writes append-only
-`USER_LEGACY_ROLE_REMEDIATED` audit events, and applies `003` in one PostgreSQL
-transaction. Operational access review and final Product Owner acceptance remain
+`USER_LEGACY_ROLE_REMEDIATED` audit events attributed strictly to
+`authorizedByUserId`, applies `003` in one PostgreSQL transaction, and performs
+full pre-upgrade state reconstruction and plan re-validation on repeated runs.
+Operational access review and final Product Owner acceptance remain
 separate governance steps; there is no required second-person approval.
 
 ### Historical record — PR #160 four-role matrix (superseded 2026-10-16)

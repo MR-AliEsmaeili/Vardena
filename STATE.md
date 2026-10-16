@@ -2457,12 +2457,14 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
     present) if any superseded four-role user row exists, preserving the
     immutable checksums of `001-foundation.sql` and `002-manual-operations.sql`.
     For populated pre-003 databases, `migrate:preflight` generates a secret-free
-    report and disposition template, and `migrate:remediate-roles` validates the
-    entire disposition set (preventing unapproved privilege elevation and
-    enforcing `LastAdminProtected`), updates `owner.users` while preserving user
-    IDs and referential integrity, revokes pre-upgrade sessions, writes
-    append-only `USER_LEGACY_ROLE_REMEDIATED` audit events, and applies `003` in
-    one PostgreSQL transaction.
+    report and disposition template, and `migrate:remediate-roles` requires a
+    mandatory active-administrator `authorizedByUserId`, validates the entire
+    disposition set (including full pre-upgrade reconstruction and validation on
+    repeated runs, preventing unapproved privilege elevation, and enforcing
+    `LastAdminProtected`), updates `owner.users` while preserving user IDs and
+    referential integrity, revokes pre-upgrade sessions, writes append-only
+    `USER_LEGACY_ROLE_REMEDIATED` audit events attributed strictly to
+    `authorizedByUserId`, and applies `003` in one PostgreSQL transaction.
   - Updated `owner-licensing/backend/src/domain.ts`, `src/security.ts`,
     `src/bootstrap.ts`, `src/operations.ts`, and `src/app.ts` to enforce the
     two-role MVP model at both HTTP route and service boundaries:

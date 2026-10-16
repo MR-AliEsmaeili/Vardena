@@ -25,6 +25,8 @@ export type PrivilegeImpact = "PRESERVES" | "REDUCES" | "INCREASES";
 export interface LegacyRoleCompatibilityEntry {
   legacyRole: LegacyRole;
   historicalPermissions: readonly string[];
+  historicalEffectiveCapabilities: readonly string[];
+  permissionDecompositionProof: string;
   recommendedDisposition: {
     disposition: DispositionKind;
     targetRole: Role;
@@ -57,6 +59,17 @@ export const legacyRoleCompatibilityMatrix: Record<
       "operations.view",
       "operations.record",
     ],
+    historicalEffectiveCapabilities: [
+      "GET /api/v1/customers and GET /api/v1/customers/:id (full customer projection including contractReference, createdBy, updatedBy)",
+      "POST /api/v1/customers and PATCH /api/v1/customers/:id",
+      "GET /api/v1/users, POST /api/v1/users, PATCH /api/v1/users/:id, POST /api/v1/users/:id/reset-password",
+      "GET /api/v1/audit-events",
+      "GET /api/v1/operational-records and GET /api/v1/operational-records/:id",
+      "POST /api/v1/operational-records/license-observations, /:id/activation-observations, /:id/old-server-observations, /:id/replacement-observations",
+      "POST /api/v1/operational-records/server-replacements (both normal and emergencyOldServerLost=true, historically gated by operations.record)",
+    ],
+    permissionDecompositionProof:
+      "In pre-003 baseline (1a982323db7f:owner-licensing/backend/src/app.ts lines 576-647 and test/api.test.ts lines 742-756, 814-830), POST /api/v1/operational-records/server-replacements was gated by recorded() checking permissions(role).includes('operations.record'), which SYSTEM_ADMIN held. Phase 1.3 splits that existing server-replacement capability out of operations.record into the explicit permission code replacements.authorize so LICENSE_OPERATOR can be denied server-replacement creation while OWNER_ADMIN retains the exact same route and operation authority as SYSTEM_ADMIN with zero new endpoints or capabilities.",
     recommendedDisposition: {
       disposition: "MAP_EQUIVALENT",
       targetRole: "OWNER_ADMIN",
@@ -106,6 +119,15 @@ export const legacyRoleCompatibilityMatrix: Record<
       "operations.view",
       "operations.record",
     ],
+    historicalEffectiveCapabilities: [
+      "GET /api/v1/customers and GET /api/v1/customers/:id (full customer projection)",
+      "GET /api/v1/audit-events",
+      "GET /api/v1/operational-records and GET /api/v1/operational-records/:id",
+      "POST /api/v1/operational-records/license-observations, /:id/activation-observations, /:id/old-server-observations, /:id/replacement-observations",
+      "POST /api/v1/operational-records/server-replacements (historically permitted via operations.record in Phase 1.2, removed from LICENSE_OPERATOR in Phase 1.3)",
+    ],
+    permissionDecompositionProof:
+      "In pre-003 baseline (1a982323db7f:owner-licensing/backend/src/domain.ts lines 28-34 and src/app.ts lines 576-647), LICENSE_ISSUANCE held operations.record, which also permitted POST /api/v1/operational-records/server-replacements. In Phase 1.3, server-replacement authorization is separated into replacements.authorize (granted only to OWNER_ADMIN), so transitioning LICENSE_ISSUANCE to LICENSE_OPERATOR strictly reduces effective privileges (RETAIN_REDUCED).",
     recommendedDisposition: {
       disposition: "RETAIN_REDUCED",
       targetRole: "LICENSE_OPERATOR",
@@ -143,6 +165,14 @@ export const legacyRoleCompatibilityMatrix: Record<
   READ_ONLY_OBSERVER: {
     legacyRole: "READ_ONLY_OBSERVER",
     historicalPermissions: ["customers.view", "audit.view", "operations.view"],
+    historicalEffectiveCapabilities: [
+      "GET /api/v1/customers and GET /api/v1/customers/:id (full customer projection)",
+      "GET /api/v1/audit-events",
+      "GET /api/v1/operational-records and GET /api/v1/operational-records/:id",
+      "Zero mutation endpoints (all POST/PATCH business routes denied with 403)",
+    ],
+    permissionDecompositionProof:
+      "In pre-003 baseline (1a982323db7f:owner-licensing/backend/src/domain.ts lines 35-36), READ_ONLY_OBSERVER held only read permissions (customers.view, audit.view, operations.view). Because both Phase 1.3 MVP roles (LICENSE_OPERATOR and OWNER_ADMIN) grant write capabilities (operations.record), keeping READ_ONLY_OBSERVER active in either role increases effective privileges.",
     recommendedDisposition: {
       disposition: "DEACTIVATE",
       targetRole: "LICENSE_OPERATOR",
@@ -179,7 +209,13 @@ export const legacyRoleCompatibilityMatrix: Record<
   },
   SUPPORT_SPECIALIST: {
     legacyRole: "SUPPORT_SPECIALIST",
-    historicalPermissions: ["customers.support.view"],
+    historicalPermissions: ["customers.view"],
+    historicalEffectiveCapabilities: [
+      "GET /api/v1/customers and GET /api/v1/customers/:id with restricted support projection (id, customerCode, displayName, status, createdAt, updatedAt only; contractReference, createdBy, updatedBy omitted by customerResponse in 1a982323db7f:src/domain.ts lines 86-97)",
+      "Zero access to GET /api/v1/audit-events, GET /api/v1/operational-records, or any mutation endpoint",
+    ],
+    permissionDecompositionProof:
+      "In pre-003 baseline (1a982323db7f:owner-licensing/backend/src/domain.ts lines 37 and 86-97), SUPPORT_SPECIALIST received ['customers.view'] in permissions() but customerResponse() restricted its projection to omit contractReference, createdBy, and updatedBy, and it lacked audit.view, operations.view, and operations.record. Assigning active LICENSE_OPERATOR or OWNER_ADMIN increases both read scope and write authority.",
     recommendedDisposition: {
       disposition: "DEACTIVATE",
       targetRole: "LICENSE_OPERATOR",
@@ -212,7 +248,7 @@ export const legacyRoleCompatibilityMatrix: Record<
     canAutomateWithoutExplicitDisposition: false,
     canPreserveWithoutPrivilegeIncrease: false,
     deploymentOwnerDecisionRequired:
-      "SUPPORT_SPECIALIST had only restricted customer summary read access (customers.support.view). Choose DEACTIVATE (isActive: false, targetRole: LICENSE_OPERATOR) to preserve least privilege, or explicitly authorize ELEVATE_PRIVILEGE with allowPrivilegeElevation: true.",
+      "SUPPORT_SPECIALIST had only restricted customer summary read access (omitting contractReference/attribution and lacking audit/operations access). Choose DEACTIVATE (isActive: false, targetRole: LICENSE_OPERATOR) to preserve least privilege, or explicitly authorize ELEVATE_PRIVILEGE with allowPrivilegeElevation: true.",
   },
 };
 
@@ -242,7 +278,7 @@ export interface AccountDispositionInput {
 }
 
 export interface RoleUpgradePlanInput {
-  authorizedByUserId?: string | null;
+  authorizedByUserId: string;
   reason: string;
   dispositions: AccountDispositionInput[];
 }
@@ -254,7 +290,7 @@ export interface ValidatedAccountDisposition extends AccountDispositionInput {
 }
 
 export interface ValidatedRoleUpgradePlan {
-  authorizedByUserId: string | null;
+  authorizedByUserId: string;
   reason: string;
   dispositions: ValidatedAccountDisposition[];
 }
@@ -411,19 +447,32 @@ export function validateRoleUpgradePlan(
     }
   }
   const planReason = trimmedText(planObj.reason, "reason", 1, 500, errors);
+  const usersById = new Map(users.map((u) => [u.id, u]));
+
   let authorizedByUserId: string | null = null;
   if (
-    planObj.authorizedByUserId !== undefined &&
-    planObj.authorizedByUserId !== null
+    typeof planObj.authorizedByUserId !== "string" ||
+    !ulidPattern.test(planObj.authorizedByUserId)
   ) {
-    if (
-      typeof planObj.authorizedByUserId !== "string" ||
-      !ulidPattern.test(planObj.authorizedByUserId)
-    ) {
-      errors.push("authorizedByUserId must be a valid 26-character ULID.");
-    } else if (!users.some((u) => u.id === planObj.authorizedByUserId)) {
+    errors.push(
+      "authorizedByUserId is required and must be a valid 26-character ULID of an active administrator.",
+    );
+  } else {
+    const authUser = usersById.get(planObj.authorizedByUserId);
+    if (!authUser) {
       errors.push(
         `authorizedByUserId '${planObj.authorizedByUserId}' does not match any existing user in owner.users.`,
+      );
+    } else if (!authUser.is_active) {
+      errors.push(
+        `authorizedByUserId '${planObj.authorizedByUserId}' belongs to an inactive account and cannot authorize role remediation.`,
+      );
+    } else if (
+      authUser.role !== "OWNER_ADMIN" &&
+      authUser.role !== "SYSTEM_ADMIN"
+    ) {
+      errors.push(
+        `authorizedByUserId '${planObj.authorizedByUserId}' has role '${authUser.role}' and is not an active administrator.`,
       );
     } else {
       authorizedByUserId = planObj.authorizedByUserId;
@@ -435,7 +484,6 @@ export function validateRoleUpgradePlan(
     throw new RoleUpgradeError(errors);
   }
 
-  const usersById = new Map(users.map((u) => [u.id, u]));
   const legacyUsers = users.filter((u) => !isRole(u.role));
   const seenUserIds = new Set<string>();
   const seenUsernames = new Set<string>();
@@ -608,8 +656,9 @@ export function validateRoleUpgradePlan(
   }
 
   // Verify that if the database has any users, at least one active OWNER_ADMIN
-  // will exist after remediation (LastAdminProtected).
-  if (users.length > 0 && errors.length === 0) {
+  // will exist after remediation (LastAdminProtected), and that authorizedByUserId
+  // is an active OWNER_ADMIN at execution time.
+  if (users.length > 0 && errors.length === 0 && authorizedByUserId) {
     const dispositionByUserId = new Map(
       validatedDispositions.map((d) => [d.userId, d]),
     );
@@ -627,31 +676,43 @@ export function validateRoleUpgradePlan(
         "LastAdminProtected: At least one active OWNER_ADMIN account must remain after legacy role remediation.",
       );
     }
-    if (authorizedByUserId) {
-      const authDisposition = dispositionByUserId.get(authorizedByUserId);
-      const authUser = usersById.get(authorizedByUserId)!;
-      const finalAuthRole = authDisposition
-        ? authDisposition.targetRole
-        : authUser.role;
-      const finalAuthActive = authDisposition
-        ? authDisposition.isActive
-        : authUser.is_active;
-      if (finalAuthRole !== "OWNER_ADMIN" || !finalAuthActive) {
-        errors.push(
-          `authorizedByUserId '${authorizedByUserId}' must belong to an account that is an active OWNER_ADMIN after remediation.`,
-        );
-      }
+    const authDisposition = dispositionByUserId.get(authorizedByUserId);
+    const authUser = usersById.get(authorizedByUserId)!;
+    const finalAuthRole = authDisposition
+      ? authDisposition.targetRole
+      : authUser.role;
+    const finalAuthActive = authDisposition
+      ? authDisposition.isActive
+      : authUser.is_active;
+    if (
+      !authUser.is_active ||
+      finalAuthRole !== "OWNER_ADMIN" ||
+      !finalAuthActive ||
+      (authDisposition && authDisposition.disposition !== "MAP_EQUIVALENT")
+    ) {
+      errors.push(
+        `authorizedByUserId '${authorizedByUserId}' must belong to an active OWNER_ADMIN (or an active SYSTEM_ADMIN mapped to active OWNER_ADMIN via MAP_EQUIVALENT).`,
+      );
     }
   }
 
-  if (errors.length > 0 || !planReason) {
+  if (errors.length > 0 || !planReason || !authorizedByUserId) {
     throw new RoleUpgradeError(errors);
   }
+
+  // Order dispositions so that if authorizedByUserId is a legacy SYSTEM_ADMIN being
+  // transitioned to OWNER_ADMIN, it is upgraded to active OWNER_ADMIN first before
+  // any other account remediation or audit event executes.
+  const orderedDispositions = [...validatedDispositions].sort((a, b) => {
+    if (a.userId === authorizedByUserId) return -1;
+    if (b.userId === authorizedByUserId) return 1;
+    return a.userId.localeCompare(b.userId);
+  });
 
   return {
     authorizedByUserId,
     reason: planReason,
-    dispositions: validatedDispositions,
+    dispositions: orderedDispositions,
   };
 }
 
@@ -678,6 +739,8 @@ export interface RoleUpgradePreflightReport {
     createdAt: string;
     updatedAt: string;
     historicalPermissions: readonly string[];
+    historicalEffectiveCapabilities: readonly string[];
+    permissionDecompositionProof: string;
     recommendedDisposition:
       LegacyRoleCompatibilityEntry["recommendedDisposition"] | null;
     allowedDispositions: LegacyRoleCompatibilityEntry["allowedDispositions"];
@@ -685,7 +748,7 @@ export interface RoleUpgradePreflightReport {
   }[];
   compatibilityMatrix: Record<LegacyRole, LegacyRoleCompatibilityEntry>;
   dispositionPlanTemplate: {
-    authorizedByUserId: string | null;
+    authorizedByUserId: string;
     reason: string;
     dispositions: {
       userId: string;
@@ -779,6 +842,11 @@ export async function preflightRoleUpgrade(
           createdAt: u.created_at.toISOString(),
           updatedAt: u.updated_at.toISOString(),
           historicalPermissions: compat?.historicalPermissions ?? [],
+          historicalEffectiveCapabilities:
+            compat?.historicalEffectiveCapabilities ?? [],
+          permissionDecompositionProof:
+            compat?.permissionDecompositionProof ??
+            "Unknown legacy role; explicit remediation required.",
           recommendedDisposition: compat?.recommendedDisposition ?? null,
           allowedDispositions: compat?.allowedDispositions ?? [],
           deploymentOwnerDecisionRequired:
@@ -797,7 +865,7 @@ export async function preflightRoleUpgrade(
         ?.id ??
       legacyAccounts.find((u) => u.legacyRole === "SYSTEM_ADMIN" && u.isActive)
         ?.id ??
-      null;
+      "<REQUIRED_ACTIVE_OWNER_ADMIN_USER_ID>";
 
     return {
       migration003Applied,
@@ -840,61 +908,111 @@ export async function preflightRoleUpgrade(
   });
 }
 
-function validateIdempotentAlreadyAppliedPlan(
+interface PriorRemediationAuditRow {
+  target_id: string;
+  actor_id: string | null;
+  reason: string | null;
+  before_state: {
+    username?: string;
+    role?: string;
+    isActive?: boolean;
+    mustChangePassword?: boolean;
+  } | null;
+  after_state: {
+    username?: string;
+    role?: string;
+    isActive?: boolean;
+    mustChangePassword?: boolean;
+  } | null;
+}
+
+async function validateIdempotentAlreadyAppliedPlan(
+  tx: PoolClient,
   users: readonly SafeUserUpgradeRow[],
   rawPlan: unknown,
-): void {
+): Promise<void> {
+  const priorAudits = (
+    await tx.query<PriorRemediationAuditRow>(
+      `SELECT target_id, actor_id, reason, before_state, after_state
+       FROM owner.audit_events
+       WHERE event_type = 'USER_LEGACY_ROLE_REMEDIATED'
+       ORDER BY sequence ASC`,
+    )
+  ).rows;
+
+  const latestAuditByTargetId = new Map<string, PriorRemediationAuditRow>();
+  for (const row of priorAudits) {
+    latestAuditByTargetId.set(row.target_id, row);
+  }
+
+  // Reconstruct the pre-remediation user rows from the recorded audit trail so
+  // the full validateRoleUpgradePlan validation (field allowlists, mandatory
+  // authorizedByUserId, complete account coverage, privilege-elevation rules,
+  // and LastAdminProtected) executes identically on repeated runs.
+  const reconstructedPreUpgradeUsers: SafeUserUpgradeRow[] = users.map((u) => {
+    const prior = latestAuditByTargetId.get(u.id);
+    if (!prior || !prior.before_state) return u;
+    return {
+      ...u,
+      role:
+        typeof prior.before_state.role === "string"
+          ? prior.before_state.role
+          : u.role,
+      is_active:
+        typeof prior.before_state.isActive === "boolean"
+          ? prior.before_state.isActive
+          : u.is_active,
+    };
+  });
+
+  const validated = validateRoleUpgradePlan(
+    reconstructedPreUpgradeUsers,
+    rawPlan,
+  );
+
   const errors: string[] = [];
-  if (!rawPlan || typeof rawPlan !== "object" || Array.isArray(rawPlan)) {
-    throw new RoleUpgradeError(["Disposition plan must be a JSON object."]);
+  const currentUsersById = new Map(users.map((u) => [u.id, u]));
+  const currentAuthUser = currentUsersById.get(validated.authorizedByUserId);
+  if (
+    !currentAuthUser ||
+    !currentAuthUser.is_active ||
+    currentAuthUser.role !== "OWNER_ADMIN"
+  ) {
+    errors.push(
+      `authorizedByUserId '${validated.authorizedByUserId}' must currently be an active OWNER_ADMIN account.`,
+    );
   }
-  const planObj = rawPlan as Record<string, unknown>;
-  trimmedText(planObj.reason, "reason", 1, 500, errors);
-  if (!Array.isArray(planObj.dispositions)) {
-    errors.push("dispositions must be an array.");
-    throw new RoleUpgradeError(errors);
-  }
-  const usersById = new Map(users.map((u) => [u.id, u]));
-  const seenIds = new Set<string>();
-  for (let i = 0; i < planObj.dispositions.length; i++) {
-    const entry = planObj.dispositions[i] as
-      Record<string, unknown> | undefined;
-    const prefix = `dispositions[${i}]`;
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      errors.push(`${prefix} must be an object.`);
+
+  for (const d of validated.dispositions) {
+    const currentUser = currentUsersById.get(d.userId);
+    const prior = latestAuditByTargetId.get(d.userId);
+    if (!currentUser) {
+      errors.push(`Unknown userId '${d.userId}'.`);
       continue;
-    }
-    const userId =
-      typeof entry.userId === "string" && ulidPattern.test(entry.userId)
-        ? entry.userId
-        : null;
-    if (!userId) {
-      errors.push(`${prefix}: userId must be a valid 26-character ULID.`);
-      continue;
-    }
-    if (seenIds.has(userId)) {
-      errors.push(`${prefix}: duplicate disposition for userId '${userId}'.`);
-    }
-    seenIds.add(userId);
-    const dbUser = usersById.get(userId);
-    if (!dbUser) {
-      errors.push(`${prefix}: unknown userId '${userId}'.`);
-      continue;
-    }
-    if (entry.username !== dbUser.username) {
-      errors.push(
-        `${prefix}: username mismatch for userId '${userId}': database has '${dbUser.username}'.`,
-      );
     }
     if (
-      entry.targetRole !== dbUser.role ||
-      entry.isActive !== dbUser.is_active
+      currentUser.role !== d.targetRole ||
+      currentUser.is_active !== d.isActive
     ) {
       errors.push(
-        `${prefix}: migration 003 is already applied and account '${dbUser.username}' (${userId}) currently has role='${dbUser.role}', isActive=${String(dbUser.is_active)}, which does not match targetRole='${String(entry.targetRole)}', isActive=${String(entry.isActive)}.`,
+        `Account '${currentUser.username}' (${d.userId}) currently has role='${currentUser.role}', isActive=${String(currentUser.is_active)}, which contradicts disposition targetRole='${d.targetRole}', isActive=${String(d.isActive)}.`,
       );
     }
+    if (prior) {
+      const expectedReason = `[${d.disposition}] ${d.reason}`.slice(0, 500);
+      if (prior.actor_id !== validated.authorizedByUserId) {
+        errors.push(
+          `Account '${currentUser.username}' (${d.userId}) was remediated under authorizedByUserId '${String(prior.actor_id)}', not '${validated.authorizedByUserId}'.`,
+        );
+      }
+      if (prior.reason !== expectedReason) {
+        errors.push(
+          `Account '${currentUser.username}' (${d.userId}) disposition reason/kind does not match the recorded remediation audit.`,
+        );
+      }
+    }
   }
+
   if (errors.length > 0) {
     throw new RoleUpgradeError(errors);
   }
@@ -962,7 +1080,7 @@ export async function remediateLegacyRolesAndMigrate(
 
     // Safe idempotent re-run when 003 is already applied and no legacy rows remain.
     if (prev003 && legacyUsers.length === 0) {
-      validateIdempotentAlreadyAppliedPlan(users, rawPlan);
+      await validateIdempotentAlreadyAppliedPlan(tx, users, rawPlan);
       return {
         status: "ALREADY_APPLIED",
         remediatedCount: 0,
@@ -986,7 +1104,7 @@ export async function remediateLegacyRolesAndMigrate(
           [d.userId],
         );
         await audit(tx, {
-          actor: plan.authorizedByUserId ?? d.userId,
+          actor: plan.authorizedByUserId,
           type: "USER_LEGACY_ROLE_REMEDIATED",
           targetType: "User",
           targetId: d.userId,
@@ -1005,6 +1123,23 @@ export async function remediateLegacyRolesAndMigrate(
           },
         });
       }
+    }
+
+    // Verify that the authorizing account is now an active OWNER_ADMIN in owner.users.
+    const authCheck = (
+      await tx.query<{ role: string; is_active: boolean }>(
+        "SELECT role, is_active FROM owner.users WHERE id=$1",
+        [plan.authorizedByUserId],
+      )
+    ).rows[0];
+    if (
+      !authCheck ||
+      !authCheck.is_active ||
+      authCheck.role !== "OWNER_ADMIN"
+    ) {
+      throw new RoleUpgradeError([
+        `authorizedByUserId '${plan.authorizedByUserId}' is not an active OWNER_ADMIN at remediation execution time.`,
+      ]);
     }
 
     if (options?.beforeMigration003Hook) {

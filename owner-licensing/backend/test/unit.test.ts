@@ -193,6 +193,17 @@ describe("Customer field allowlist for the two-role model", () => {
         .canPreserveWithoutPrivilegeIncrease,
     ).toBe(true);
     expect(
+      legacyRoleCompatibilityMatrix.SYSTEM_ADMIN
+        .historicalEffectiveCapabilities,
+    ).toContain(
+      "POST /api/v1/operational-records/server-replacements (both normal and emergencyOldServerLost=true, historically gated by operations.record)",
+    );
+    expect(
+      legacyRoleCompatibilityMatrix.SYSTEM_ADMIN.permissionDecompositionProof,
+    ).toContain(
+      "1a982323db7f:owner-licensing/backend/src/app.ts lines 576-647",
+    );
+    expect(
       legacyRoleCompatibilityMatrix.LICENSE_ISSUANCE
         .canPreserveWithoutPrivilegeIncrease,
     ).toBe(true);
@@ -204,6 +215,9 @@ describe("Customer field allowlist for the two-role model", () => {
       legacyRoleCompatibilityMatrix.SUPPORT_SPECIALIST
         .canPreserveWithoutPrivilegeIncrease,
     ).toBe(false);
+    expect(
+      legacyRoleCompatibilityMatrix.SUPPORT_SPECIALIST.historicalPermissions,
+    ).toEqual(["customers.view"]);
 
     const now = new Date("2026-10-16T00:00:00.000Z");
     const users: SafeUserUpgradeRow[] = [
@@ -306,9 +320,56 @@ describe("Customer field allowlist for the two-role model", () => {
     expect(valid.dispositions[2]?.privilegeImpact).toBe("REDUCES");
     expect(valid.dispositions[3]?.privilegeImpact).toBe("REDUCES");
 
+    // Missing, null, non-admin, or inactive authorizedByUserId is rejected.
+    const validDispositions = valid.dispositions.map((d) => ({
+      userId: d.userId,
+      username: d.username,
+      fromRole: d.fromRole,
+      disposition: d.disposition,
+      targetRole: d.targetRole,
+      isActive: d.isActive,
+      allowPrivilegeElevation: d.allowPrivilegeElevation,
+      reason: d.reason,
+    }));
+    expect(() =>
+      validateRoleUpgradePlan(users, {
+        reason: "Missing authorizedByUserId",
+        dispositions: validDispositions,
+      }),
+    ).toThrow(/authorizedByUserId is required/);
+    expect(() =>
+      validateRoleUpgradePlan(users, {
+        authorizedByUserId: null,
+        reason: "Null authorizedByUserId",
+        dispositions: validDispositions,
+      }),
+    ).toThrow(/authorizedByUserId is required/);
+    expect(() =>
+      validateRoleUpgradePlan(users, {
+        authorizedByUserId: "01ARZ3NDEKTSV4RRFFQ69G5FA2",
+        reason: "Non-admin authorizedByUserId",
+        dispositions: validDispositions,
+      }),
+    ).toThrow(/is not an active administrator/);
+    expect(() =>
+      validateRoleUpgradePlan(
+        users.map((u) =>
+          u.id === "01ARZ3NDEKTSV4RRFFQ69G5FA1"
+            ? { ...u, is_active: false }
+            : u,
+        ),
+        {
+          authorizedByUserId: "01ARZ3NDEKTSV4RRFFQ69G5FA1",
+          reason: "Inactive admin authorizedByUserId",
+          dispositions: validDispositions,
+        },
+      ),
+    ).toThrow(/belongs to an inactive account/);
+
     // Unauthorized privilege elevation on READ_ONLY_OBSERVER and SUPPORT_SPECIALIST is rejected.
     expect(() =>
       validateRoleUpgradePlan(users, {
+        authorizedByUserId: "01ARZ3NDEKTSV4RRFFQ69G5FA1",
         reason: "Attempted unapproved elevation",
         dispositions: [
           {
@@ -357,6 +418,7 @@ describe("Customer field allowlist for the two-role model", () => {
     // Demoting/deactivating all admins is rejected with LastAdminProtected.
     expect(() =>
       validateRoleUpgradePlan(users, {
+        authorizedByUserId: "01ARZ3NDEKTSV4RRFFQ69G5FA1",
         reason: "Demote only admin",
         dispositions: [
           {
