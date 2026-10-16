@@ -8,15 +8,15 @@
 > explicit 2026-10-15 decisions below now establish audit retention and the
 > licensing restriction/recovery policies; no unknown permission is inferred.
 
-> **Current decision reconciliation (2026-10-15, documentation only):** the
-> Product Owner's explicit Grace/Read-Only, emergency/recovery, clock, audit,
-> duplicate, key-compromise and conceptual-state decisions supersede contrary
-> earlier wording in this record. §§9–10, 12 and 15 are updated in place;
-> **§20** records assessment, compatibility constraints, acceptance criteria and
-> evidence-backed follow-ups. §18 and §19 retain the dated original traceability
-> and reconciliation history, **not current open-question statuses**. Consult
-> §20 and the registry for current dispositions. Approval of behavior is not
-> implementation, verification, acceptance of code, or authorization to merge.
+> **Current decision reconciliation (2026-10-16, documentation only):** current
+> Product Owner decisions for OQ-45 and OQ-74–OQ-85 are consolidated in **§21**;
+> consult §21, [`docs/tasks/licensing-po-decision-traceability-2026-10-16.md`](../../tasks/licensing-po-decision-traceability-2026-10-16.md)
+> and the central registry for current decisions and status. §20 remains relevant
+> for source-backed technical assessment, compatibility constraints, acceptance
+> criteria and evidence-backed follow-ups; it is not the sole current decision-
+> status source. §§18–19 preserve dated traceability and reconciliation history,
+> not current open-question statuses. Approval of behavior is not implementation,
+> verification, acceptance of code, or authorization to merge.
 
 
 - **Type:** PDR (Product Decision Record) · decision IDs: **none assigned**. This record is traced by section (§); see §18. No OQ, C, or ADR identifier was created by this record.
@@ -25,7 +25,7 @@
 - **Decided by:** Repository Owner / Product Owner, via the Owner-approved licensing brief of 2026-10-11. The brief itself is not stored in the repository; this record is its canonical transcription.
 - **Date:** 2026-10-11
 - **Language:** English, consistent with the other PDR and OQ records. Established technical terms are kept in English.
-- **Scope of this record:** the Vardena licensing product requirements. It does not change implemented behavior. §19 records original conflicts; §20 records the current scoped product reconciliation and required engineering follow-ups, without self-approving technical architecture.
+- **Scope of this record:** the Vardena licensing product requirements. It does not change implemented behavior. §19 records original conflicts; §20 retains technical assessment, compatibility constraints, acceptance criteria and evidence-backed follow-ups; §21 is the current scoped Product Owner decision reconciliation and status summary, without self-approving technical architecture.
 - **Companion records:** [`docs/licensing-architecture.md`](../../licensing-architecture.md) (implemented foundation, L-01/L-02) · [ADR-0030](../../adr/0030-license-foundation.md) · [ADR-0045 — installation identity and license activation](../../adr/0045-installation-identity-and-license-activation.md) (filed as ADR-0036 until the 2026-10-11 renumbering recorded in §19.4 and CF-14) · [OQ-45](./OQ-45-license-expiry-behavior.md) · [OQ-53](./OQ-53-disaster-recovery-and-restore.md) · [OQ-61](./OQ-61-crm-ticketing-timing-ownership.md) · [`docs/operations/backup-and-restore.md`](../../operations/backup-and-restore.md) · [PB-BASELINE v1](../../product/product-business-decision-baseline-v1.md) §10–§12.
 
 > **How to read this record.**

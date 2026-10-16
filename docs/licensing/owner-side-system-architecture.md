@@ -56,7 +56,23 @@ Cryptographic lifecycle operations remain unavailable.
 
 Manual activation is an explicit authorized operator confirmation of issued →
 activated, retaining actor, server time, reason and available evidence reference,
-not a cryptographic customer receipt. Manual server replacement: specialist
+not a cryptographic customer receipt.
+
+> **Historical implementation snapshot only (2026-10-15):** the next paragraph
+> describes the existing/manual-observation implementation, not the current
+> approved server-replacement workflow. “Administrator” and “Issuance Specialist”
+> are historical implementation role names, not current MVP roles. Current policy
+> is governed by PDR-11 §21 and PDR-17: activate the replacement server before
+> manually decommissioning the old server; keep the record pending until an
+> authorized operator records auditable confirmation of decommission. The
+> confirmation period is Owner Admin-configurable from 1 hour to 7 days (24-hour
+> default). Operator observations are not cryptographic proof, do not prove remote
+> shutdown and do not themselves execute a transition on the customer server.
+> Under OQ-82, activation/binding under the one-active-installation rule and
+> pending/finalization consistency remain an open specification gap. Do not infer
+> a workaround or implementation completion.
+
+Manual server replacement: specialist
 manually deactivates/revokes the old lock; Administrator or Issuance Specialist
 authorizes replacement for the same customer; specialist installs; authorized
 Owner user records observed prior/new status with actor/time/reason. Emergency
