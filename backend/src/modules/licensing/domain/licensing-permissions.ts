@@ -4,10 +4,20 @@ import type { PermissionDefinition } from '../../rbac/domain/permission-definiti
  * The Licensing module's permissions (AR-22, docs/security.md §3).
  *
  * `Licensing.License.Activate` is an ordinary RBAC permission: it must be
- * granted to a role and held by the principal like any other code. It is the
- * only permission in the repository that is not itself gated by a module
- * entitlement (`isPlatformPermission`), because requiring a license to
- * install a license is an unbreakable deadlock on a fresh installation.
+ * granted to a role and held by the principal like any other code. It is not
+ * gated by a module entitlement, because requiring a license to install a
+ * license is an unbreakable deadlock on a fresh installation.
+ *
+ * That exemption is applied to the whole `Licensing.*` namespace by
+ * `isPlatformPermission` (`domain/license.ts`), NOT to this code alone: every
+ * code below — including the device-lifecycle mutations — stays part of the
+ * effective permission set in every access mode, so that renewal, recovery and
+ * the bootstrap of a fresh installation remain reachable. The namespace is a
+ * closed constant; a permission in any other module is filtered by its
+ * entitlement exactly like the rest of the catalog (`isReadPermissionCode`
+ * still decides what Read-Only keeps). Device operations are additionally
+ * gated by the effective signed license inside the repository, which is what
+ * actually decides whether a device may be registered.
  *
  * `Licensing.Installation.TransferCustomer` is the authority for the explicit
  * installation customer transfer (Owner decision 2026-10-12, Q4). It is a

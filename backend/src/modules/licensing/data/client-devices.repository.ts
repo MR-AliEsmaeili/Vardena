@@ -301,9 +301,21 @@ export class ClientDevicesRepository {
   ) {}
 
   /**
-   * Persist time-based and signed-license-context terminal transitions before
-   * a read or operation relies on pending-state indexes. The update and its
-   * audit rows share the installation and device-allocation locks.
+   * Persist the terminal transitions of pending device operations before a read
+   * or operation relies on the pending-state indexes. The update and its audit
+   * rows share the installation and device-allocation locks.
+   *
+   * Exactly TWO triggers, and each one gets its own `reason`:
+   * - the operation's own clock ran out (`challenge-expired` /
+   *   `request-expired`);
+   * - the signed license context it was created under is gone
+   *   (`license-context-changed`): a different effective version, a moved
+   *   customer binding, or a version without a signed device entitlement.
+   *
+   * A license that is merely inactive — natural expiry inside Grace, Read-Only,
+   * or a blocked/suspended status — is NOT a trigger. Reads must not destroy
+   * retained state, and the refusal an operation gets in those modes comes from
+   * its own gate (`license-not-active`), not from here.
    */
   async expireStaleOperations(
     installationId: string,
@@ -794,17 +806,21 @@ export class ClientDevicesRepository {
           'The replacement key is already part of a pending enrollment.',
         );
       }
+      // The fingerprint belongs IN the lookup, not in a post-comparison: with
+      // two pending requests in flight an unfiltered `findFirst` may return an
+      // arbitrary row, let the duplicate through, and leave
+      // `uq_device_replacement_requests_active_key_fingerprint` to reject the
+      // insert — which reaches the client as an unmapped database error instead
+      // of this stable reason.
       const existingRequest =
         await client.clientDeviceReplacementRequest.findFirst({
           where: {
             installationId: input.installationId,
+            keyFingerprint: input.keyFingerprint,
             state: { in: ['CHALLENGE', 'PENDING'] },
           },
         });
-      if (
-        existingRequest !== null &&
-        existingRequest.keyFingerprint === input.keyFingerprint
-      ) {
+      if (existingRequest !== null) {
         throw lifecycleError(
           'replacement-device-key-used',
           'The replacement key is already used by another pending request.',
@@ -939,17 +955,10 @@ export class ClientDevicesRepository {
           'The device replacement challenge has expired.',
         );
       }
-      if (
-        context.version === null ||
-        !context.active ||
-        !context.version.deviceLimitSpecified ||
-        context.installation.customerId !== request.customerId ||
-        context.version.versionId !== request.licenseVersionId ||
-        context.version.customerCode !== request.customerCode
-      ) {
+      if (!licenseBindingIsCurrent(context, request)) {
         const failure = lifecycleError(
           'replacement-request-expired',
-          'The replacement no longer matches the active signed license.',
+          'The replacement no longer matches the signed license it was created under.',
         );
         await client.clientDeviceReplacementRequest.updateMany({
           where: {
@@ -976,11 +985,23 @@ export class ClientDevicesRepository {
           actorId: input.actorId,
           source: 'api',
           documentHash: null,
-          reason: 'license-version-changed',
+          reason: 'license-context-changed',
           detail: null,
           occurredAt: input.now,
         });
         return { error: failure } as const;
+      }
+      if (context.version === null || !context.active) {
+        // The version still governs this request, but the license does not
+        // permit device-lifecycle changes right now (natural expiry, Read-Only
+        // or a blocked status). Refuse WITHOUT destroying the retained
+        // request: it expires on its own clock at the latest, and a valid
+        // renewal restores the operation without a fresh offline exchange
+        // (OQ-45, PDR-15 §2.13).
+        throw lifecycleError(
+          'license-not-active',
+          'The effective signed license is not active; the pending replacement is retained until the license permits it again.',
+        );
       }
       if (request.canonicalPayload !== input.canonicalPayload) {
         throw lifecycleError(
@@ -1216,17 +1237,10 @@ export class ClientDevicesRepository {
           'The device replacement request has expired or is incomplete.',
         );
       }
-      if (
-        context.version === null ||
-        !context.active ||
-        !context.version.deviceLimitSpecified ||
-        context.installation.customerId !== request.customerId ||
-        context.version.versionId !== request.licenseVersionId ||
-        context.version.customerCode !== request.customerCode
-      ) {
+      if (!licenseBindingIsCurrent(context, request)) {
         const failure = lifecycleError(
           'replacement-request-expired',
-          'The replacement no longer matches the active signed license.',
+          'The replacement no longer matches the signed license it was created under.',
         );
         await client.clientDeviceReplacementRequest.updateMany({
           where: {
@@ -1253,11 +1267,21 @@ export class ClientDevicesRepository {
           actorId: input.actorId,
           source: input.source,
           documentHash: input.responseHash,
-          reason: 'license-version-changed',
+          reason: 'license-context-changed',
           detail: null,
           occurredAt: input.now,
         });
         return { error: failure } as const;
+      }
+      if (context.version === null || !context.active) {
+        // As in `proveReplacement`: the binding is intact, so the retained
+        // request is NOT destroyed. The accepted Owner-signed response stays
+        // valid until the request's own expiry and applies after a valid
+        // renewal, which is what OQ-45 requires of restoration.
+        throw lifecycleError(
+          'license-not-active',
+          'The effective signed license is not active; the replacement response is retained until the license permits it.',
+        );
       }
       const responseOperation =
         await client.clientDeviceReplacementRequest.findFirst({
@@ -1845,13 +1869,32 @@ type DeviceLicenseBinding = {
   licenseVersionId: string;
 };
 
+/**
+ * Is this device operation still bound to the signed license context it was
+ * created under?
+ *
+ * `active` is deliberately NOT part of the predicate. A license that has
+ * crossed its natural expiry instant still governs the installation, and a
+ * retained enrollment challenge or replacement request must survive it: it
+ * expires on its own clock, and a valid renewal then restores the operation
+ * without a fresh offline exchange (OQ-45's "restore ... without manual
+ * reconstruction"; PDR-15 §2.13's "may remain pending until a valid signed
+ * response/evidence is imported").
+ *
+ * Whether an operation may EXECUTE right now is a separate question, answered
+ * by each operation with an accurate refusal (`license-not-active`,
+ * `license-entitlement-unspecified`, ...) that never destroys retained state.
+ * Only a real context change — a different effective version, a moved customer
+ * binding or a version that no longer carries a signed device entitlement —
+ * makes a retained operation meaningless, and that is the one condition that
+ * expires it.
+ */
 function licenseBindingIsCurrent(
   context: AllocationLicenseContext,
   binding: DeviceLicenseBinding,
 ): boolean {
   const version = context.version;
   return (
-    context.active &&
     context.limitSpecified &&
     version !== null &&
     context.installation.customerId === binding.customerId &&

@@ -16,6 +16,23 @@ class DateContractTest(unittest.TestCase):
             self.assertTrue(module.violations(path, 'value.toLocaleDateString()'))
             self.assertTrue(module.violations(path, '<input type="date" />'))
 
+    def test_rejects_any_raw_camel_case_instant_property(self):
+        # The class, not one instance: the license gate shipped
+        # `{license.license?.graceEndsAt}` as a raw ISO string because the
+        # original guard named five fields explicitly (OQ-45 / ADR-0049).
+        path = Path('frontend/src/app/layouts/license-gate.tsx')
+        self.assertTrue(module.violations(path, '<span>{license.graceEndsAt}</span>'))
+        self.assertTrue(module.violations(path, '<span>{state.window.expiresAt}</span>'))
+        self.assertTrue(module.violations(path, '<span>{row.postingTimestamp}</span>'))
+        # …and still permits the canonical formatter and title/dateTime evidence.
+        self.assertEqual(
+            [],
+            module.violations(
+                path,
+                '<span title={state.expiresAt}>{formatDateTime(state.expiresAt)}</span>',
+            ),
+        )
+
     def test_permits_canonical_layer_and_secondary_evidence(self):
         path = Path('frontend/src/features/history.tsx')
         self.assertEqual([], module.violations(path, '<span title={event.occurredAt}>{formatDateTime(event.occurredAt)}</span>'))

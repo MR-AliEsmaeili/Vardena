@@ -4,6 +4,7 @@ import {
   graceEndsAtFor,
   isReadPermissionCode,
   LICENSE_GRACE_DURATION_MS,
+  unlicensedEvaluation,
   type InstallationLicense,
 } from './license.js';
 
@@ -81,5 +82,57 @@ describe('OQ-45 Grace evaluation (exact UTC)', () => {
     expect(isReadPermissionCode('Sales.Invoice.Export')).toBe(true);
     expect(isReadPermissionCode('Accounting.Document.Create')).toBe(false);
     expect(isReadPermissionCode('Inventory.Movement.Reverse')).toBe(false);
+  });
+
+  it('adds exactly 336h to a locally constructed expiry, across a DST transition', () => {
+    // A locally constructed Date (no zone in the literal) proves the span is
+    // epoch arithmetic: calendar arithmetic in a zone that changes offset, or
+    // any rounding to a local midnight, would not end 336h later.
+    const localExpiry = new Date(2026, 9, 8, 8, 30, 0, 0);
+    const localEnd = graceEndsAtFor(localExpiry);
+    expect(localEnd).not.toBeNull();
+    expect(localEnd!.getTime() - localExpiry.getTime()).toBe(
+      LICENSE_GRACE_DURATION_MS,
+    );
+
+    // Europe/Berlin leaves DST at 2026-10-25T01:00Z, inside this window.
+    const straddling = new Date('2026-10-18T12:00:00.000Z');
+    expect(graceEndsAtFor(straddling)?.toISOString()).toBe(
+      '2026-11-01T12:00:00.000Z',
+    );
+    expect(
+      evaluateLicense(
+        license({ validUntil: straddling }),
+        new Date('2026-10-31T12:00:00.000Z'),
+      ).accessMode,
+    ).toBe('GRACE');
+    expect(
+      evaluateLicense(
+        license({ validUntil: straddling }),
+        new Date('2026-11-01T12:00:00.000Z'),
+      ).accessMode,
+    ).toBe('READ_ONLY');
+  });
+
+  it('evaluates one instant identically however the same instant is expressed', () => {
+    const utc = new Date('2026-10-08T08:30:00.000Z');
+    const withOffset = new Date('2026-10-08T12:00:00.000+03:30');
+    expect(withOffset.getTime()).toBe(utc.getTime());
+    expect(graceEndsAtFor(withOffset)?.toISOString()).toBe(
+      graceEndsAtFor(utc)?.toISOString(),
+    );
+    expect(evaluateLicense(license({ validUntil: withOffset }), utc)).toEqual(
+      evaluateLicense(license({ validUntil: utc }), utc),
+    );
+  });
+
+  it('never grants Grace or a deadline to an unlicensed evaluation', () => {
+    const unlicensed = unlicensedEvaluation({
+      installationId: 'i1',
+      provider: 'test',
+    });
+    expect(unlicensed.accessMode).toBe('BLOCKED');
+    expect(unlicensed.graceEndsAt).toBeNull();
+    expect(unlicensed.active).toBe(false);
   });
 });

@@ -1450,16 +1450,66 @@ export function evaluateImportConflicts(
     // of the dedicated, authorized, audited resolution operation. An open end
     // may be closed only where the document names the version it retires
     // (PDR-12); that arm is never operator-resolvable.
-    const guard = evaluateReductionHandOver(
-      supersedes,
+    //
+    // Rule 6b′ (corrective 2026-10-16): the version a document names is not
+    // automatically the grant the candidate continues. A document may name an
+    // already-ended (or scheduled) version — the documented correction of an
+    // expired or scheduled version — while starting exactly where the version
+    // that actually governs the installation ends. Measuring the named version
+    // there would let a weak, unrelated target displace the §8.6 control
+    // entirely, and measuring BOTH would let one operator confirmation
+    // authorize a reduction the operator was never shown. So when a distinct
+    // continuation baseline exists, it is the ONE predecessor measured: it is
+    // the grant the installation is actually on, the refusal names it, and a
+    // resolution's single subject is that same version. The named version is
+    // still validated, made eligible and retired by rules 3/6 above; it is
+    // simply not a grant this candidate continues.
+    const continuationBaseline = continuationBaselineFor(
       candidate,
-      target !== null,
-      usage,
-      reductionResolution,
+      versions,
+      installationCustomerId,
     );
-    if (guard.action === 'refuse') return guard.evaluation;
-    resolutionApplied = resolutionApplied || guard.resolutionUsed;
-    if (guard.resolutionUsed) resolutionSubject = supersedes;
+    const distinctBaseline =
+      target !== null &&
+      continuationBaseline !== null &&
+      continuationBaseline.versionId !== supersedes.versionId
+        ? continuationBaseline
+        : null;
+    if (distinctBaseline !== null) {
+      const baselineConflicts = reductionConflicts(
+        distinctBaseline,
+        candidate,
+        usage,
+      );
+      if (baselineConflicts.length > 0) {
+        if (
+          reductionResolution === null ||
+          !baselineConflicts.every(isResolvableReductionConflict)
+        ) {
+          return conflictOnly({
+            reason: 'reduction-requires-resolution',
+            overlapping: 1,
+            reduction: {
+              predecessorVersionId: distinctBaseline.versionId,
+              conflicts: baselineConflicts,
+            },
+          });
+        }
+        resolutionApplied = true;
+        resolutionSubject = distinctBaseline;
+      }
+    } else {
+      const guard = evaluateReductionHandOver(
+        supersedes,
+        candidate,
+        target !== null,
+        usage,
+        reductionResolution,
+      );
+      if (guard.action === 'refuse') return guard.evaluation;
+      resolutionApplied = resolutionApplied || guard.resolutionUsed;
+      if (guard.resolutionUsed) resolutionSubject = supersedes;
+    }
   } else {
     // Rule 6c (PDR-11 §8.6, L-05): the candidate retires nothing — the
     // ordinary contiguous renewal — so rule 6b had no predecessor to compare.

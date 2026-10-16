@@ -385,10 +385,35 @@ import ──► retained (not yet effective | effective | expired)
   (corrective slice, 2026-10-14). A supersession declared for a non-overlapping
   version is allowed and simply retires that version at the successor's start
   (a correction of an expired or scheduled version); it never creates ambiguity
-  precisely because nothing else may overlap. A legacy code cannot express
+  precisely because nothing else may overlap. Naming such a version does **not**
+  choose which grant §8.6 measures: when the installation is on a different
+  retained version whose effective window ends exactly at the candidate's
+  `validFrom`, that continuation baseline **is** the measured predecessor (rule
+  6b′, corrective slice 2026-10-16), so a weak, already-ended target can never
+  displace the capacity/entitlement control — and the named version is not
+  measured at all, so a change relative to a grant that never governed this
+  window is not a reduction. Exactly one predecessor is measured and named as
+  `reduction.predecessorVersionId`, which is also the single subject a supplied
+  resolution is consumed against: one operator confirmation can never authorize
+  a reduction it was not shown. A legacy code cannot express
   *which* version it replaces, so it may replace at most one still-governing
   version that has no recorded supersession; anything else is refused rather
   than guessed.
+- **Known gap — the post-gap recovery path is not measured (open decision).**
+  [PDR-13](../decisions/product/PDR-13-post-gap-recovery.md) §4.2 requires the
+  reduction guard to run on the recovery path "exactly as on every other path",
+  and it does not: a recovery candidate starts strictly after the installation's
+  coverage end, while the baseline rule above requires exact adjacency, so no
+  predecessor exists and a reducing recovery is applied. Enabling the guard is
+  not a one-line change, because the dedicated recovery route carries only the
+  recovery intent and the dedicated resolution route carries only the resolution
+  intent — the latter is refused by `post-gap-recovery-requires-dedicated-operation`
+  before any reduction rule runs — so a guard without a resolution-capable
+  recovery operation would make a legitimate reducing recovery permanently
+  inapplicable. The current behaviour is pinned by a labelled characterisation
+  suite in `license-version.spec.ts` as evidence for the pending Product Owner
+  decision recorded in
+  [`docs/tasks/licensing-open-decisions-brief.md`](../tasks/licensing-open-decisions-brief.md) §4.
 - **A supersession may not hand over in the past.** The hand-over is the
   candidate's own `validFrom`, so retiring a version at an instant that is
   already past removes coverage that version really had, and the as-of answer
@@ -1025,13 +1050,13 @@ customer stays the explicit, authorized, audited
 | Not implemented | Blocker |
 | --- | --- |
 | Full revocation, reactivation artifact and independent restricted administrator recovery | Product behavior decided (PDR-11 §10/§20); security/session/incident/protocol design and implementation remain OQ-78, with legacy compatibility work OQ-79. |
-| Grace / Read-Only enforcement | Natural subscription expiry only: signed expiry + 14×24h UTC; Grace ends at `now >= boundary`. Intentional subscription cancellation gets no automatic Grace. Contract-termination strictness remains open; enforcement/restoration and tests are unimplemented (PDR-11 §21). |
+| Grace / Read-Only enforcement | **Implemented 2026-10-16 (PR #167, [ADR-0049](../adr/0049-license-grace-read-only-enforcement.md), Proposed).** Natural subscription expiry only: signed expiry + 14×24h UTC; Grace ends at `now >= boundary`; Grace keeps entitled operation, Read-Only keeps entitled `View`/`Export` plus the `Licensing.*` platform codes, and the backend filter — not the UI — is the enforcement point. Intentional subscription cancellation gets no automatic Grace. Still open: contract-termination strictness, Product Owner acceptance, and the device-lifecycle interaction with Grace (see [`licensing-open-decisions-brief.md`](../tasks/licensing-open-decisions-brief.md)). |
 | Installation identity key | PDR-11 U-2 + U-9/PQ-3 (see §7) |
 | Signed server replacement/failure recovery | Manual Owner-authorized replacement policy: activate new before manual old-server decommission; pending until auditable confirmation; configurable expiry 1h–7d, default 24h. No remote shutdown. Evidence/recovery implementation remains OQ-82. Ordinary activation needs no separate signed receipt (OQ-84 decided). |
 | Client-device licensing | Existing customer-server implementation described in §14 is a prior customer self-service/signed-response slice. The 2026-10-16 MVP policy instead requires manual Owner Admin-managed replacement, old device active until activation, then atomic quota-neutral swap; implementation reconciliation remains open (PDR-15 §6). |
 | Owner-side issuance system and role matrix | PDR-11 §4, U-5 → OQ-75; CRM/billing and OQ-61 out of scope |
 | Clock-rollback enforcement | Restrict only on reliable evidence of meaningful rollback; a small backward change alone does not restrict. After correction, trusted-time/license evidence must be revalidated; resolution permits only controlled attributable audited rollback-only unlock, not automatic clearance. Failed/uncertain validation requires secure authorized recovery; mechanisms/tests remain OQ-76/U-6. |
-| §8.6 capacity-conflict detection and resolution UI | needs the owning modules' public count contracts; separate slice (L-04). Until it exists, a version that reduces the retired version's capacity or entitlements is refused on every path — the interim fail-closed behaviour, not the flow. The **term** dimension of this section is decided: [PDR-12](../decisions/product/PDR-12-license-term-supersession.md) allows an explicit signed supersession to convert a perpetual grant into a time-limited one under the non-reduction invariants |
+| §8.6 reduction **operator UI** | Detection, the explain payload and the dedicated authorized resolution flow are implemented (L-04 in PR #142/#143, the renewal/continuation arm L-05 in PR #146; `POST /api/v1/license/reduction-resolution` under `Licensing.License.ResolveReduction` + `Licensing.License.Activate`). What does not exist is a dedicated resolution *screen* — the frontend carries Persian reason-aware copy for the refusals only, a documented non-goal in PDR-13 §7. The **term** dimension is decided: [PDR-12](../decisions/product/PDR-12-license-term-supersession.md) allows an explicit signed supersession to convert a perpetual grant into a time-limited one under the non-reduction invariants. Rule 6b′ additionally measures the continuation baseline when a document names a non-overlapping version (2026-10-16). |
 | Customer audit read API / permanent separate archive | Retention/access policy decided (PDR-11 §12.8); archive/schema/minimization/access-control design and implementation remain OQ-77/U-7. Owner audit viewing is a separate existing slice, not a permanent archive. |
 
 ## 14. Client-device licensing (OQ-83)

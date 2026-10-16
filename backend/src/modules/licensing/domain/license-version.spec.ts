@@ -1729,6 +1729,202 @@ describe('an explicit supersession sanctions exactly the version it names', () =
     expect(applied.supersedes).toBe(parts.scheduled);
   });
 
+  it('measures the continuation baseline when the document names a non-overlapping version', () => {
+    // F-01 reproduction (§8.6, corrective 2026-10-16): naming a weak version
+    // the candidate does not overlap must not displace the measurement of the
+    // grant the installation actually continues.
+    const low = version({
+      ...window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+      organizationLimit: 5,
+      entitlements: [],
+    });
+    const high = version({
+      ...window('2027-01-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'),
+      organizationLimit: 50,
+      entitlements: [],
+    });
+    const candidate = version({
+      ...window('2028-01-01T00:00:00.000Z', '2029-01-01T00:00:00.000Z'),
+      organizationLimit: 6,
+      entitlements: [],
+    });
+    const usage = {
+      organizationCount: 40,
+      activeUserCount: 0,
+      registeredDeviceCount: 0,
+    };
+
+    const named = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'explicit', operationId: low.operationId },
+      versions: [low, high],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+    });
+
+    // Against the NAMED version this is an increase (5 → 6). Against the
+    // version the installation is actually on (50) it is a reduction with 40
+    // organizations in use, so the import is refused — and the explain payload
+    // names the baseline, not the weak target.
+    expect(named.conflict).toEqual({
+      reason: 'reduction-requires-resolution',
+      overlapping: 1,
+      reduction: {
+        predecessorVersionId: high.versionId,
+        conflicts: [
+          { kind: 'organization-capacity', limit: 6, currentUsage: 40 },
+        ],
+      },
+    });
+    expect(named.supersedes).toBeNull();
+
+    // The same document WITHOUT the supersession has always reached this
+    // verdict through rule 6c, so the target choice cannot decide the outcome.
+    const unnamed = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'none' },
+      versions: [low, high],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+    });
+    expect(unnamed.conflict).toEqual(named.conflict);
+
+    // The explicit resolution of the real conflict still applies the document,
+    // and the BASELINE is the recorded resolution subject.
+    const resolved = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'explicit', operationId: low.operationId },
+      versions: [low, high],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+      reductionResolution: { reason: 'Operator confirmed the renewal.' },
+    });
+    if (resolved.conflict !== null)
+      throw new Error('expected the resolved import to apply');
+    expect(resolved.supersedes).toBe(low);
+    expect(resolved.resolutionSubject?.versionId).toBe(high.versionId);
+
+    // A candidate that stays within counted usage is not a reduction against
+    // either version, so the named supersession still applies normally.
+    const withinUsage = version({
+      ...window('2028-01-01T00:00:00.000Z', '2029-01-01T00:00:00.000Z'),
+      organizationLimit: 45,
+      entitlements: [],
+    });
+    const applied = evaluateImportConflicts({
+      candidate: withinUsage,
+      operationId: withinUsage.operationId,
+      documentHash: withinUsage.documentHash,
+      supersession: { kind: 'explicit', operationId: low.operationId },
+      versions: [low, high],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+    });
+    if (applied.conflict !== null)
+      throw new Error('expected the named supersession to apply');
+    expect(applied.supersedes).toBe(low);
+  });
+
+  it('measures only the continuation baseline, never the non-overlapping version it corrects', () => {
+    // The document corrects a version it does not overlap; the grant it
+    // actually continues is the one that ends where the document starts. A
+    // change relative to the corrected version is therefore not a reduction —
+    // and a change relative to the REAL grant still is.
+    const corrected = version({
+      ...window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+      organizationLimit: 5,
+      entitlements: [
+        { kind: 'MODULE', code: 'accounting' } as LicenseEntitlement,
+        { kind: 'MODULE', code: 'inventory' } as LicenseEntitlement,
+      ],
+    });
+    const governing = version({
+      ...window('2027-01-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'),
+      organizationLimit: 50,
+      entitlements: [
+        { kind: 'MODULE', code: 'accounting' } as LicenseEntitlement,
+      ],
+    });
+    const usage = {
+      organizationCount: 40,
+      activeUserCount: 0,
+      registeredDeviceCount: 0,
+    };
+
+    // `inventory` was granted only by the corrected version, which never
+    // governed this window: dropping it is not a reduction of the real grant.
+    const corrects = version({
+      ...window('2028-01-01T00:00:00.000Z', '2029-01-01T00:00:00.000Z'),
+      organizationLimit: 45,
+      entitlements: [
+        { kind: 'MODULE', code: 'accounting' } as LicenseEntitlement,
+      ],
+    });
+    const applied = evaluateImportConflicts({
+      candidate: corrects,
+      operationId: corrects.operationId,
+      documentHash: corrects.documentHash,
+      supersession: { kind: 'explicit', operationId: corrected.operationId },
+      versions: [corrected, governing],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+    });
+    if (applied.conflict !== null)
+      throw new Error(
+        `expected the correction to apply, refused: ${applied.conflict.reason}`,
+      );
+    expect(applied.supersedes).toBe(corrected);
+    expect(applied.resolutionSubject).toBeNull();
+
+    // Dropping what the REAL grant carried is refused, and the explain payload
+    // names that grant — never the corrected version.
+    const drops = version({
+      ...window('2028-01-01T00:00:00.000Z', '2029-01-01T00:00:00.000Z'),
+      organizationLimit: 45,
+      entitlements: [],
+    });
+    const refused = evaluateImportConflicts({
+      candidate: drops,
+      operationId: drops.operationId,
+      documentHash: drops.documentHash,
+      supersession: { kind: 'explicit', operationId: corrected.operationId },
+      versions: [corrected, governing],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+    });
+    expect(refused.conflict).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      overlapping: 1,
+      reduction: {
+        predecessorVersionId: governing.versionId,
+        conflicts: [
+          {
+            kind: 'entitlement-removed',
+            entitlement: { kind: 'MODULE', code: 'accounting' },
+          },
+        ],
+      },
+    });
+  });
+
   it('still applies a supersession of a non-overlapping version when nothing else overlaps', () => {
     // The documented "correction of a scheduled version": naming a version the
     // candidate does not overlap stays allowed while it overlaps NOTHING else.
@@ -2359,6 +2555,131 @@ describe('continuation baseline of a renewal that retires nothing (L-05)', () =>
       }).conflict,
     ).toEqual({
       reason: 'customer-code-mismatch',
+      overlapping: 0,
+    });
+  });
+});
+
+/**
+ * CHARACTERISATION (temporary) — the post-gap recovery path and §8.6.
+ *
+ * [PDR-13](../../decisions/product/PDR-13-post-gap-recovery.md) §4.2 states that
+ * the capacity/entitlement reduction guard "runs on the recovery path exactly
+ * as on every other path". It does not: {@link continuationBaselineFor}
+ * requires exact adjacency (a retained effective window ending exactly at the
+ * candidate's `validFrom`), and a post-gap candidate starts strictly AFTER the
+ * installation's coverage end, so no predecessor is measured and the recovery
+ * applies with any lower capacity or entitlement set.
+ *
+ * This suite pins that behaviour as evidence for the pending Product Owner
+ * decision, rather than freezing it as the product contract. Enabling the guard
+ * requires a way to carry an explicit reduction resolution on the recovery
+ * operation: `POST /api/v1/license/gap-recovery` passes only the recovery
+ * intent, and the dedicated resolution route passes only the resolution intent,
+ * so a post-gap candidate that conflicts is refused by `postGapGuard` on that
+ * route — a guard enabled without the combined operation would make a reducing
+ * recovery permanently inapplicable. Replace these expectations when the
+ * decision is made.
+ */
+describe('post-gap recovery and the §8.6 reduction guard (characterisation)', () => {
+  const LAPSED_END = '2026-06-01T00:00:00.000Z';
+
+  function lapsedVersion(): RetainedLicenseVersion {
+    return version({
+      ...window('2026-01-01T00:00:00.000Z', LAPSED_END),
+      organizationLimit: 50,
+      entitlements: [
+        { kind: 'MODULE', code: 'accounting' } as LicenseEntitlement,
+      ],
+    });
+  }
+
+  function recoveryCandidate(): RetainedLicenseVersion {
+    return version({
+      ...window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
+      licenseId: '01K7NEWLICENSE00000000000',
+      organizationLimit: 2,
+      entitlements: [],
+    });
+  }
+
+  const usage = {
+    organizationCount: 40,
+    activeUserCount: 0,
+    registeredDeviceCount: 0,
+  };
+
+  it('applies a reducing recovery with no measurement (known gap)', () => {
+    const lapsed = lapsedVersion();
+    const candidate = recoveryCandidate();
+
+    const applied = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'none' },
+      versions: [lapsed],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+      gapRecovery: { reason: 'Operator confirmed the recovery.' },
+    });
+
+    // 50 organizations granted and 40 in use, the recovery grants 2 and drops
+    // the entitlement — and it is applied.
+    if (applied.conflict !== null)
+      throw new Error(
+        `expected the recovery to apply, refused: ${applied.conflict.reason}`,
+      );
+    expect(applied.resolutionSubject).toBeNull();
+  });
+
+  it('refuses the same document without the dedicated recovery intent', () => {
+    const lapsed = lapsedVersion();
+    const candidate = recoveryCandidate();
+
+    const refused = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'none' },
+      versions: [lapsed],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+    });
+
+    // The gap is the missing MEASUREMENT, not a missing gate: without the
+    // dedicated intent the very same document is refused.
+    expect(refused.conflict).toEqual({
+      reason: 'post-gap-recovery-requires-dedicated-operation',
+      overlapping: 0,
+    });
+  });
+
+  it('does not let the resolution route carry a post-gap candidate either', () => {
+    const lapsed = lapsedVersion();
+    const candidate = recoveryCandidate();
+
+    // The deadlock the decision has to resolve: the resolution intent cannot
+    // reach a post-gap candidate, because the recovery gate refuses it first.
+    const refused = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'none' },
+      versions: [lapsed],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+      reductionResolution: { reason: 'Operator confirmed the reduction.' },
+    });
+
+    expect(refused.conflict).toEqual({
+      reason: 'post-gap-recovery-requires-dedicated-operation',
       overlapping: 0,
     });
   });

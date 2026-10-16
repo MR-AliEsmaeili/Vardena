@@ -16,7 +16,11 @@ FALLBACKS = {
     Path('owner-licensing/frontend/src/ui/patterns/date-input.tsx'),
 }
 LIBRARY = re.compile(r"(?:from\s*|import\s*\()\s*['\"](?:dayjs|jalaali-js)(?:/[^'\"]*)?['\"]")
-RAW = re.compile(r'\{\s*(?!t\.|o\.)[A-Za-z_$][\w$.]*\.(?:createdAt|updatedAt|occurredAt|activatedAt|postingTimestamp)\s*\}')
+# Any camelCase `*At` / `*Timestamp` property rendered directly in JSX is a raw
+# primary Instant: it must go through the shared formatter. The earlier list
+# named five fields explicitly, which let `graceEndsAt` through in the license
+# gate (OQ-45/ADR-0049) — the general shape closes that class, not one instance.
+RAW = re.compile(r'\{\s*(?!t\.|o\.)[A-Za-z_$][\w$.]*\.\w*(?:At|Timestamp)\s*\}')
 
 
 def violations(path: Path, text: str) -> list[str]:
