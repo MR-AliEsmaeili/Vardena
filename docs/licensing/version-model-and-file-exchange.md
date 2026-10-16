@@ -4,11 +4,13 @@
 > govern current licensing policy. The existing self-service device-replacement
 > slice is prior implementation evidence, not the current OQ-83 MVP workflow;
 > Owner Admin-managed replacement is not yet evidenced as implemented. OQ-82's
-> manual server sequence and confirmation window are decided, but exact evidence
-> and timeout recovery remain open. OQ-75 has exactly two MVP roles; OQ-77's
-> append-only minimum-three-year retention and permanent separate archive policy
-> are decided, while archive/access implementation remains open. OQ-45's natural
-> expiry boundary is signed expiry + 14×24h UTC (`now >= boundary`); enforcement
+> manual server sequence and confirmation window are decided, but new-server
+> activation under the one-active-installation binding, pending/finalization
+> consistency, exact evidence and timeout recovery remain open. OQ-75 has exactly two MVP roles; OQ-77's
+> append-only minimum-three-year-from-occurrence retention and permanent separate
+> archive policy are decided, while archive/access implementation remains open.
+> OQ-45's natural-subscription-expiry boundary is signed expiry + 14×24h UTC
+> (`now >= boundary`); enforcement
 > is not implemented. This document is technical design/code evidence, not proof
 > of policy implementation; no runtime or signed-protocol changes are made here.
 
@@ -27,7 +29,7 @@
 | --- | --- |
 | Status | Active design record and existing implementation snapshot; the prior customer self-service OQ-83 slice merged and CI-verified, but its conformance to current manual Owner Admin policy remains open alongside operational evidence |
 | Authority | [ADR-0046](../adr/0046-signed-license-documents-and-version-lifecycle.md) (decision) · [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) (product source) · [PDR-15](../decisions/product/PDR-15-client-device-licensing-and-replacement.md) (OQ-83 policy) |
-| Date | 2026-10-11; OQ-83 addendum updated 2026-10-15 |
+| Date | 2026-10-11; licensing policy reconciliation updated 2026-10-16 |
 | Scope | Server license import: signed document format, retained versions, effective-version resolution, replay protection, audit, migration, API and frontend boundary; OQ-83 signed device quota and its import conflict rules |
 | Out of scope (unchanged, gated) | Owner-side licensing system and client-device issuer, CRM/billing, server replacement, full revocation/reactivation, Grace/Read-Only enforcement, installation identity key, clock-rollback enforcement, test/training entitlements |
 
@@ -61,13 +63,13 @@ PDR-11 §14 conceptual entities → implemented tables (CF-17):
 | ClientDevice | `licensing.client_devices`; `licensing.device_enrollment_challenges` | Retained device identity/state and one-use signed enrollment challenges. Only public key material and fingerprints are retained; the external client owns key generation and private-key storage. |
 | AuditEvent | `licensing.license_audit_events` | Typed import and device-lifecycle events, append-only application paths; permanent separate archive policy decided (PDR-11 §12.8), archive/security implementation outstanding (U-7/OQ-77). |
 
-Status vocabulary is **unchanged** from ADR-0030/ADR-0045 —
-`ACTIVE | EXPIRED | SUSPENDED` on a version, `UNLICENSED` as the absence of any
-version. PDR-11 §3.5 now removes `SUSPENDED` as a separate concept; safe
-legacy compatibility/mapping remains engineering follow-up (PQ-4/OQ-79). The
-original slice's state model below describes runtime, not new product policy.
-PDR-11 §20.3 requires an evidence-based compatibility/removal plan; nothing here
-re-labels historical values, and no migration rewrites a status value.
+The existing runtime status vocabulary remains `ACTIVE | EXPIRED | SUSPENDED`
+on a version and `UNLICENSED` as absence of any version. Current OQ-79/PDR-11
+§3.5 policy forbids blanket-mapping legacy `SUSPENDED` to any status: classify
+only from attributable historical cause, with ambiguous records restricted and
+reviewable. The original slice's state model below describes runtime, not new
+product policy. PDR-11 §20.3 requires an evidence-based compatibility plan;
+nothing here relabels historical values, and no migration rewrites a status.
 
 ## 2. The signed document
 
@@ -584,8 +586,8 @@ canonical/signature/trust and installation/customer scope checks.
 | 1 | Authorization: session + `Licensing.License.Activate` (route guard and application service, AR-21) | 401 / 403 |
 | 2 | Transport parse: envelope or bare artifact (legacy `VLIC1` supported) | `malformed` |
 | 3 | Payload version supported (`v: 1 | 2`, `fileVersion: 1`) | `unsupported-version` |
-| 4 | Signature verified against trusted keys; unknown key hint rejected | `signature`, `unknown-key` |
-| 5 | Canonical form / typed payload validation | `payload` |
+| 4 | Canonical form / typed payload validation | `payload` |
+| 5 | Signature verified against trusted keys; unknown key hint rejected | `signature`, `unknown-key` |
 | 6 | Installation binding: `installationId` is this installation's identity | `installation-mismatch` |
 | 7 | Identity dispatch after authentication, payload/canonical form, signature/trust and installation/customer scope checks. Current code rejects an applied operation/hash; target branches on committed installation-scoped identity. | Current: `duplicate-operation` (409); target matching identity: fingerprint comparison; no receipt: safe legacy refusal; not implemented |
 | 8 | Matching committed identity: compare fingerprint and use read-only receipt path. New identity: perform admission semantics at attempted import instant (validity window, limits, entitlements, `ACTIVE` status, not expired). A committed retry does not rerun time/state-dependent admission merely because time or retained state changed after success. | Retry mismatch: non-disclosing conflict; match: receipt; new op errors: `validity`, `limits`, `entitlements`, `not-active`, `expired-document` |
@@ -1023,12 +1025,12 @@ customer stays the explicit, authorized, audited
 | Not implemented | Blocker |
 | --- | --- |
 | Full revocation, reactivation artifact and independent restricted administrator recovery | Product behavior decided (PDR-11 §10/§20); security/session/incident/protocol design and implementation remain OQ-78, with legacy compatibility work OQ-79. |
-| Grace / Read-Only enforcement | Natural expiry only: signed expiry + 14×24h UTC; ends at `now >= boundary`. Intentional subscription cancellation gets no automatic Grace. OQ-45 termination strictness remains open; exact enforcement/restoration and tests remain unimplemented (PDR-11 §21). |
+| Grace / Read-Only enforcement | Natural subscription expiry only: signed expiry + 14×24h UTC; Grace ends at `now >= boundary`. Intentional subscription cancellation gets no automatic Grace. Contract-termination strictness remains open; enforcement/restoration and tests are unimplemented (PDR-11 §21). |
 | Installation identity key | PDR-11 U-2 + U-9/PQ-3 (see §7) |
 | Signed server replacement/failure recovery | Manual Owner-authorized replacement policy: activate new before manual old-server decommission; pending until auditable confirmation; configurable expiry 1h–7d, default 24h. No remote shutdown. Evidence/recovery implementation remains OQ-82. Ordinary activation needs no separate signed receipt (OQ-84 decided). |
 | Client-device licensing | Existing customer-server implementation described in §14 is a prior customer self-service/signed-response slice. The 2026-10-16 MVP policy instead requires manual Owner Admin-managed replacement, old device active until activation, then atomic quota-neutral swap; implementation reconciliation remains open (PDR-15 §6). |
 | Owner-side issuance system and role matrix | PDR-11 §4, U-5 → OQ-75; CRM/billing and OQ-61 out of scope |
-| Clock-rollback enforcement | PDR-11 §12.6 behavior decided: immediate restriction, trusted-time revalidation and automatic rollback-only clearance; detection/persistence/recovery mechanism and tests remain OQ-76/U-6. |
+| Clock-rollback enforcement | Restrict only on reliable evidence of meaningful rollback; a small backward change alone does not restrict. After correction, trusted-time/license evidence must be revalidated; resolution permits only controlled attributable audited rollback-only unlock, not automatic clearance. Failed/uncertain validation requires secure authorized recovery; mechanisms/tests remain OQ-76/U-6. |
 | §8.6 capacity-conflict detection and resolution UI | needs the owning modules' public count contracts; separate slice (L-04). Until it exists, a version that reduces the retired version's capacity or entitlements is refused on every path — the interim fail-closed behaviour, not the flow. The **term** dimension of this section is decided: [PDR-12](../decisions/product/PDR-12-license-term-supersession.md) allows an explicit signed supersession to convert a perpetual grant into a time-limited one under the non-reduction invariants |
 | Customer audit read API / permanent separate archive | Retention/access policy decided (PDR-11 §12.8); archive/schema/minimization/access-control design and implementation remain OQ-77/U-7. Owner audit viewing is a separate existing slice, not a permanent archive. |
 

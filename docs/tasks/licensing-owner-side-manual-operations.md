@@ -5,9 +5,11 @@
 > before manual old-server decommission, pending auditable confirmation, with
 > configurable 1h–7d confirmation expiry (24h default); the row/API here does not
 > prove decommission or implement that expiry. OQ-75's two roles supersede the
-> role table below; OQ-77's minimum three-year append-only retention supplements
-> the historical no-retention-decision text. See PDR-11 §21 and the current OQ
-> registry. No remote customer-server contact or shutdown is implied.
+> role table below; OQ-77 requires append-only retention for at least three years
+> from each event's occurrence (not an automatic purge deadline), excludes unresolved
+> security incidents from automatic deletion, and retains the previously approved
+> permanent separate archive. These policies supersede the historical
+> no-retention-decision text. See PDR-11 §21 and the current OQ registry. No remote customer-server contact or shutdown is implied.
 
 Date: 2026-10-15. Status: implementation submitted for exact-head CI and review.
 This is not Product Owner acceptance, operational rollout, or permission to merge.
@@ -40,9 +42,10 @@ artifact. No signed receipt or signed refusal. No customer contact, callback,
 synchronization, database change or runtime change. No client-device
 replacement. No offline revocation or recovery artifact. This code snapshot has
 no second-person approval mechanism; that is implementation evidence, not a
-current role-policy decision. No audit purge or invented retention period. No
-cancellation, renewal, revocation or recovery state: those transitions are not
-defined here, so they are not invented. An abandoned non-terminal replacement
+current role-policy decision. This code snapshot has no audit purge/retention enforcement; current OQ-77
+retention policy is stated above. No cancellation, renewal, revocation or recovery
+state is implemented in this observation slice; those transitions are not
+specified here, so none is invented. An abandoned non-terminal replacement
 therefore keeps its installation slot in this implementation snapshot.
 
 ## Authorization

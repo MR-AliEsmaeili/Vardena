@@ -9,7 +9,7 @@
 > Existing observation/API descriptions below are implementation/design evidence,
 > not proof the new sequence or expiry is implemented.
 
-## Current product-policy reconciliation — 2026-10-15
+## Historical product-policy reconciliation — 2026-10-15 (superseded where updated above)
 
 [PDR-11 §§4.4, 9–10, 12, 15 and 20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
 and [PDR-17](../decisions/product/PDR-17-owner-web-application-phase-1.md)
@@ -26,7 +26,7 @@ License Operator, and current code is not represented as migrated.
 Owner dates must follow [the global Jalali-first date/time contract](../datetime.md)
 §0; raw-ISO views are an evidenced implementation gap (PDR-11 §20.5).
 
-## Current Phase 1 addendum — 2026-10-15 (supersedes historical proposals below)
+## Phase 1 implementation snapshot — 2026-10-15 (policy overlays above control)
 
 Authority: [PDR-17](../decisions/product/PDR-17-owner-web-application-phase-1.md),
 [implementation record](../tasks/licensing-owner-side-phase-1.md),
@@ -45,11 +45,14 @@ Runtime: one small modular Node/Express/pg API and independent React/Vite UI.
 Own numbered SQL/checksum-ledger migrations, not the customer Prisma chain.
 Password hashes/first-login restriction and session revocation commit atomically
 with durable audit. Permissions are checked using the authenticated current
-user/session, never a client actor or hidden button. The Product Owner correction to PR #160 confirms Issuance Specialist customer/
-audit reads and Support customer identity/status reads with a server-side field
-allowlist; see the current PDR-17 matrix. Observer remains read-only and Admin
-retains administrative operations. No audit purge exists; the explicit permanent-archive policy now supersedes
-the former retention deferral without reconstructing historical option C. Cryptographic lifecycle operations remain unavailable.
+user/session, never a client actor or hidden button. **Historical PR #160 role
+snapshot, superseded as MVP policy on 2026-10-16:** System Administrator, Issuance
+Specialist, Observer and Support grants describe prior code/evidence only; they
+are not current roles or approved permissions. Current policy is Owner Admin and
+License Operator, with exact endpoint grants open and no runtime migration claimed.
+No audit purge exists; the explicit permanent-archive policy now supersedes the
+former retention deferral without reconstructing historical option C.
+Cryptographic lifecycle operations remain unavailable.
 
 Manual activation is an explicit authorized operator confirmation of issued →
 activated, retaining actor, server time, reason and available evidence reference,
@@ -508,7 +511,7 @@ Ordered by whether they block Owner implementation.
 | GAP-6 | `docs/licensing/version-model-and-file-exchange.md` §2.1 canonical example omits `deviceLimit` | No | Example shows the pre-OQ-83 shape; prose §11 covers the field. Documentation drift only — but it edits the same normative §2.1 block, so its correction travels with **Phase 0.5B** (D-2(b)), not with Phase 0.5A |
 | GAP-7 | No Owner intake bound / operator summary / export naming convention for offline exchange | Yes, for Phase 2 | §3.8 |
 | GAP-8 | Revocation/reactivation instruments and OQ-82 replacement evidence/state workflow are not implemented | Yes, but gated | OQ-78 protocol remains open; OQ-82's manual order and 1h–7d/24h confirmation policy are decided, while proof/API/timeout recovery remain open |
-| GAP-9 | Separate archive, retention execution and sensitive-data controls not implemented | Yes, but gated | OQ-77 policy decided: append-only, minimum three years, no automatic deletion of unresolved incidents; permanent separate archive remains |
+| GAP-9 | Separate archive, retention execution and sensitive-data controls not implemented | Yes, but gated | OQ-77 policy decided: append-only, minimum three years from event occurrence, unresolved security incidents excluded from automatic deletion; permanent separate archive remains |
 | GAP-10 | Exact Owner role-to-endpoint permission mapping is not implemented | Yes, but gated | OQ-75 policy decided: Owner Admin and License Operator only; code still has four roles, not migrated |
 
 GAP-8, GAP-9 and GAP-10 are **not** design work this phase may complete: each is

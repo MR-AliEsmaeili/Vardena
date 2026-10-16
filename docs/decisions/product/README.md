@@ -26,7 +26,7 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 
 > **Licensing decision reconciliation (2026-10-16):** current policies are in
 > PDR-11 §21 and the concise [traceability matrix](../../tasks/licensing-po-decision-traceability-2026-10-16.md).
-> OQ-45's natural-expiry UTC boundary is decided; distinct termination remains
+> OQ-45's natural-subscription-expiry UTC boundary is decided; distinct termination remains
 > open. OQ-74–OQ-85 decisions are recorded with technical/API/implementation
 > gaps kept open; OQ-84 remains product-closed. No new OQ was created and no
 > implementation is claimed. Earlier dated notes remain historical unless
@@ -38,7 +38,7 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 |---|---|---|---|---|
 | [PDR-17](./PDR-17-owner-web-application-phase-1.md) | Owner web app, separate PostgreSQL, two-role RBAC policy, audit and manual observations | PDR | Decided directions; two-role policy and replacement/retention boundary recorded; permissions/archive/replacement implementation evidence outstanding | Owner first slice |
 | [OQ-44](./OQ-44-multi-device-offline-sync.md) | Multi-device offline sync: scope and timing | OQ | Open | No (excluded from MVP) |
-| [OQ-45](./OQ-45-license-expiry-behavior.md) | License expiry behavior (incl. internet outage, post-termination mode) | OQ | **Partially decided (2026-10-16); OPEN** for termination strictness and implementation; natural-expiry Grace = signed expiry + 14×24h UTC, `now >= boundary`; intentional cancellation gets no automatic Grace | Enforcement/verification not implemented |
+| [OQ-45](./OQ-45-license-expiry-behavior.md) | License expiry behavior (incl. internet outage, post-termination mode) | OQ | **Partially decided (2026-10-16); OPEN** for contract-termination strictness and implementation; natural-subscription-expiry Grace = signed expiry + 14×24h UTC, `now >= boundary`; intentional subscription cancellation gets no automatic Grace | Enforcement/verification not implemented |
 | [OQ-46](./OQ-46-customer-data-export-format.md) | Customer data export format and completeness | OQ | Open — **Excel = Business Export ≠ full technical backup decided (2026-10-05)**; contract-end boundary open | No (Excel confirmed) |
 | [OQ-47](./OQ-47-exchange-rate-and-multicurrency-rules.md) | Exchange-rate and multi-currency accounting rules | OQ | Open — **deferred by Owner ("do nothing for now", 2026-10-05)** | No (single-currency MVP) |
 | [OQ-48](./OQ-48-revaluation-and-fx-gain-loss.md) | Revaluation and foreign-exchange gain/loss | OQ | Open | No (single-currency MVP) |

@@ -34,7 +34,16 @@ below. Its automated customer-side replacement workflow is superseded for MVP by
 §6's manually managed Owner Admin process; it does not establish the server
 installation replacement workflow.
 
-## 2. Decision (OD-LIC-04) — binding
+## 2. Original device decision — retained constraints and historical workflow
+
+> **Current policy scope (2026-10-16):** the device-key identity, private-key
+> custody, quota accounting, retained history and quota-neutral atomic-swap
+> constraints below remain where compatible. Earlier customer-admin/self-service
+> replacement steps and signed request/response choreography are historical
+> requirements/implementation evidence, not the current MVP replacement workflow.
+> The manual Owner Admin policy in §6 controls; do not present customer
+> self-service replacement as approved or conformant. Regular enrollment is not
+> re-decided by this replacement addendum.
 
 1. **Cryptographic identity.** A device is identified by its own cryptographic key.
    An IP address or host name alone is never a device identity.
@@ -107,26 +116,29 @@ This decision does **not** decide or authorize:
 - any new licensing customer, installation, or entitlement source outside the
   signed server-license version already authoritative on this installation.
 
-## 4. Implementation consequences (recorded, not additional product policy)
+## 4. Historical implementation consequences for the former replacement workflow (not current MVP policy)
 
-- OQ-83's quota effect and replacement/offline behavior are decided, while the
-  registry row remains OPEN until implementation and exact-head CI are verified.
-- The implementation adds a device-capacity field to signed server-license
-  versions and uses the same retained-version authority as organization/user
-  capacity. A pre-existing artifact without that signed field remains
-  **UNSPECIFIED** (distinct from both finite zero and signed unlimited); device
-  registration is blocked until an explicit signed entitlement exists. The
-  parser preserves the original canonical bytes and signature verification.
-  A signed explicit `null` continues the established license-limit convention
-  of unlimited. No commercial grant is inferred from a missing field.
-- The client device signs a canonical enrollment/replacement request with its own
-  key. The customer server verifies the proof and retains only public key material.
-  An offline replacement response is verified using the installation's existing
-  trusted licensing public keys and is correlated to the retained request, current
-  customer/installation binding, and effective LicenseVersion.
-- Device records, pending replacement requests, quota counts and typed licensing
-  audit events remain inside the existing Licensing module and database schema.
-  No Owner-side issuer, device-sync service, or server-replacement path is added.
+- OQ-83's quota effect and replacement/offline behavior were decided in the
+  original record; the registry row remains OPEN for current-policy reconciliation,
+  implementation evidence and exact-head CI. This status line does not claim that
+  the superseding Owner Admin workflow is implemented or verified.
+- The former implementation design called for a device-capacity field in signed
+  server-license versions, using retained-version authority like organization/user
+  capacity. Under that former design, artifacts lacking the field were
+  **UNSPECIFIED** (distinct from finite zero and signed unlimited), and registration
+  was to be blocked until an explicit signed entitlement existed. The parser was
+  required to preserve canonical bytes and signature verification; signed `null`
+  represented unlimited. These are historical design notes, not evidence that the
+  field or behavior was implemented or that a missing field grants entitlement.
+- The former customer self-service design called for a device-signed canonical
+  enrollment/replacement request, server verification, public-key-only retention,
+  and an offline signed response correlated to request, binding and LicenseVersion.
+  This choreography is not the approved MVP replacement flow and its implementation
+  does not prove conformity to PDR-15 §6.
+- The prior design kept device records, pending replacement requests, quota counts
+  and typed audit events inside the existing Licensing module/database; it added no
+  Owner issuer, device-sync service or server-replacement path. Preserve this as
+  historical design scope, not a new runtime assertion.
 
 The protocol/state-machine detail and stable API contracts are maintained in
 [`docs/licensing/client-device-lifecycle.md`](../../licensing/client-device-lifecycle.md).
@@ -140,10 +152,11 @@ are complete. No other OQ is closed, reopened, or reinterpreted by this record.
 
 ## 6. Product Owner update — MVP replacement operating model (2026-10-16)
 
-This dated decision supersedes conflicting parts of §§2, 3 and 5 about the
-**MVP replacement workflow** only. Device identity remains key-based, private
-keys remain on the client, device history is retained, and quota accounting
-remains one-for-one.
+This dated decision supersedes any conflicting prior customer self-service or
+signed-response **MVP replacement workflow** wording in §§2–5. It changes only
+replacement operations: device identity remains key-based, private keys remain
+on the client, device history is retained, and quota accounting remains
+one-for-one. Regular enrollment is not re-decided.
 
 1. Client-device replacement in the MVP is **manually managed by Owner Admin**.
    It is not an automated customer self-service replacement workflow.

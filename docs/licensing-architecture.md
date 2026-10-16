@@ -4,18 +4,21 @@
 > §21 and [`licensing-po-decision-traceability-2026-10-16.md`](tasks/licensing-po-decision-traceability-2026-10-16.md).
 > The device self-service/signed-response implementation description below is a
 > snapshot of existing code and is not conformant evidence for the later manual
-> Owner Admin OQ-83 policy. Exact expiry boundary is UTC expiry + 14×24h; no
-> remote server shutdown, continuous Owner connectivity or federated issuer is
-> authorized. No runtime changes are made by this documentation update.
+> Owner Admin OQ-83 policy. Natural-subscription-expiry Grace ends at the
+> recorded UTC expiry + 14×24h; intentional subscription cancellation gets no
+> automatic Grace. No remote server shutdown, continuous Owner connectivity or
+> federated issuer is authorized. No runtime changes are made by this update.
 
-> **Current product policy (2026-10-15):**
+> **Historical reconciliation snapshot (2026-10-15; superseded by the 2026-10-16 policy update above):**
 > [PDR-11 §§9–10, 12 and 20](decisions/product/PDR-11-vardena-licensing-product-requirements.md)
-> records the newly approved behaviors and source-backed implementation gaps.
+> recorded the then-current behaviors and source-backed implementation gaps.
 > Existing foundation descriptions below describe runtime, not proof of the
 > approved Grace/Read-Only/emergency/recovery/clock/archive/replay behavior.
-> `SUSPENDED` is removed conceptually, but legacy values/consumers remain until
-> a safe staged compatibility/mapping design; signed bytes remain unchanged.
-> Owner and customer dates follow [the global date/time contract](datetime.md) §0.
+> Its earlier statement that `SUSPENDED` was "removed conceptually" is historical
+> and superseded by OQ-79: do not blanket-map it to any status; classify only from
+> attributable historical cause, and keep ambiguous records restricted/reviewable.
+> Signed bytes remain unchanged. Owner and customer dates follow [the global
+> date/time contract](datetime.md) §0.
 
 
 > **Status note (2026-10-15, updated).** This document describes the
@@ -150,10 +153,12 @@ windows. A version therefore hands over exactly at its successor's `validFrom`,
 which is what lets a future-dated renewal (or a future-dated supersession) be
 imported without interrupting the license that is valid today. When nothing
 covers the instant, an ended version reports `expired` and a future version
-reports `not-yet-valid`; `UNLICENSED` remains the absence of any version. Status
-vocabulary (`ACTIVE|EXPIRED|SUSPENDED`, `UNLICENSED`) is unchanged; the
-`SUSPENDED` conceptual removal is decided, but its compatibility/mapping
-follow-up stays open (OQ-79; PDR-11 §20.3); no migration rewrites a status value.
+reports `not-yet-valid`; `UNLICENSED` remains the absence of any version. The existing runtime status vocabulary (`ACTIVE|EXPIRED|SUSPENDED`,
+`UNLICENSED`) is unchanged. **Current OQ-79 policy:** do not blanket-map legacy
+`SUSPENDED` to any status. Classify only from attributable historical cause;
+ambiguous records remain restricted and reviewable. The earlier "conceptual
+removal" wording is not a migration rule. Compatibility, audit and migration
+work remain open; no migration is claimed.
 
 ### Overlap, gaps and supersession — current status
 
@@ -414,17 +419,19 @@ import exemption. Restore stays license-unblocked under OQ-53/G-9.
 
 ## Expiry policy (product decision — enforcement not implemented)
 
-**Product Owner decision (2026-10-15, OQ-45/PDR-11 §9):**
-Active → Grace (**14 calendar days**, existing license-time semantics) → Read-Only.
-Show actual reason/status. Extension requires Owner authorization plus a valid
-Owner-issued signed artifact; no local database/settings/restart/clock bypass.
-All existing users may log in under normal auth and retain existing authorized
-document/report views, print and Excel export; approved backup, license status
-and renewal remain available. Backend/API and relevant async paths block business
-creation/modification and inventory/accounting effects. Preserve data/history/
-permissions; valid renewal plus revalidation restores prior authorized operation,
-not an unrelated emergency restriction. Outages alone do not suspend; emergency
-stops are immediate on valid applicable authority, not expiry Grace.
+**Current Product Owner decision (2026-10-16, OQ-45/PDR-11 §21):** for natural
+subscription expiry only, **Active → Grace (14×24 hours in UTC) → Read-Only**.
+Grace ends at `now >= recorded expiry Instant + 14×24h`. Intentional subscription
+cancellation gets no automatic Grace; contract-termination strictness remains
+open. Show actual reason/status. Extension requires Owner authorization plus a
+valid Owner-issued signed artifact; no local database/settings/restart/clock
+bypass. All existing users may log in under normal auth and retain existing
+authorized document/report views, print and Excel export; approved backup, license
+status and renewal remain available. Backend/API and relevant async paths block
+business creation/modification and inventory/accounting effects. Preserve
+data/history/permissions; valid renewal plus revalidation restores prior authorized
+operation, not an unrelated emergency restriction. Outages alone do not suspend;
+emergency stops are immediate on valid applicable authority, not expiry Grace.
 
 **The exact Grace boundary is now decided:** recorded signed expiry + 14×24 hours
 in UTC; Grace ends at `now >= boundary` (OQ-45/PDR-11 §21). Implementation and

@@ -7,7 +7,7 @@
 > but do not treat this protocol as the approved MVP workflow or change its
 > artifacts/vectors in this documentation decision.
 
-**Status:** customer-server implementation merged and CI-verified; external client and Owner issuer remain operational dependencies, 2026-10-15 · Product policy: [PDR-15 / OD-LIC-04](../decisions/product/PDR-15-client-device-licensing-and-replacement.md) · canonical product requirements: [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) §§7–8, 12, 15.2.
+**Historical implementation status (2026-10-15):** the prior customer-server slice was merged and CI-verified; external client and Owner issuer remained operational dependencies. This does not evidence conformance to the 2026-10-16 manual Owner Admin policy. · Product policy: [PDR-15 / OD-LIC-04](../decisions/product/PDR-15-client-device-licensing-and-replacement.md) · canonical product requirements: [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) §§7–8, 12, 15.2.
 
 This is a vertical slice inside the existing Licensing module. It adds no Owner-side
 issuer, no application synchronization, no server-installation replacement and no

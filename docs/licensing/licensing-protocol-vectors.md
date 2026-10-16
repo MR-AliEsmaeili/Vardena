@@ -1,5 +1,13 @@
 # Licensing protocol conformance vectors — contract and gap analysis
 
+> **OQ-83 policy note (2026-10-16):** VDRQ1/VDRP1 vectors remain byte-level
+> evidence for the existing signed customer-self-service replacement
+> implementation; their presence neither makes that workflow current MVP policy
+> nor authorizes it as an MVP feature. PDR-15 §6 requires manual Owner Admin
+> replacement. Do not change these vectors or signed artifacts in this policy
+> reconciliation. These are replacement-specific artifacts, not OQ-84 ordinary
+> activation receipts or OQ-81 historical API replay receipts.
+
 **Status:** Phase 1 implemented (2026-10-15). D-2(a)=VECTORS_ONLY and D-2(b)=APPROVE
 recorded in [PDR-16](../decisions/product/PDR-16-licensing-protocol-canonical-byte-contract-and-vectors.md).
 Vector corpus published under `docs/licensing/vectors/`. Canonical byte contract ratified in
@@ -344,7 +352,7 @@ outcomes rather than refusals:
 | TIME-03 | response window beyond the governing license `validUntil` | same |
 | TIME-04 | enrollment challenge older than 15 minutes | expired |
 | TIME-05 | replacement request older than 30 days | expired |
-| REPLAY-01 | VLIC2 operation already committed; retry has the same installation-scoped `operationId` and matching versioned semantic fingerprint | After current authorization/validity checks, return that operation's persisted receipt; no state change or repeated effects/audit. Same ID with a mismatching fingerprint is a machine-readable conflict. Current implementation still rejects duplicates; receipt replay is the OQ-81 implementation target. |
+| REPLAY-01 | VLIC2 operation already committed; retry has the same installation-scoped `operationId` and matching versioned semantic fingerprint | After current authorization, required artifact verification/trust and caller/artifact scope checks, return that operation's persisted receipt; do not rerun new-operation time/state admission checks. No state change or repeated effects/audit. Same ID with a mismatching fingerprint is a machine-readable conflict. Current implementation still rejects duplicates; receipt replay is the OQ-81 implementation target. |
 | REPLAY-02 | identical `responseOperationId` presented twice | replay refusal |
 | REPLAY-03 | response presented after successful completion | replay refusal |
 | REPLAY-04 | response presented for a **cancelled** request | refused, old device stays `ACTIVE` |

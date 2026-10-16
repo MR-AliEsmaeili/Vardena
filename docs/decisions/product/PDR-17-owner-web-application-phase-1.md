@@ -21,26 +21,65 @@ No mandatory second-person approval or pending-approval workflow.
 The Owner MVP has exactly two operational roles: **Owner Admin** and **License
 Operator**. The previously recorded four-role matrix (System Administrator,
 Issuance Specialist, Observer, Support) is superseded; do not create or retain
-those as MVP authorization roles. Owner Admin governs Owner users, access and
-configuration and holds the authorized Owner-admin decision authority. License
-Operator performs the approved routine customer/license operations. Every
-operation remains explicitly permissioned and server-enforced; this role naming
-does not by itself grant a signer, private-key custody, unrestricted recovery, or
-any lifecycle operation not separately decided. Define and test the exact
-endpoint/permission mapping before implementation; unknown operations deny.
+those as MVP authorization roles.
+
+- **Owner Admin** manages the Owner system, its settings/security and authorized
+  Owner users, and holds Owner-admin decision authority.
+- **License Operator** may view customer records and perform license operations
+  such as issuance, renewal, cancellation and replacement only within explicit
+  granted permissions. A License Operator cannot change Owner security settings
+  or the primary signing key.
+
+Sensitive operations must be attributable and audited. Owner-system roles are
+separate from customer-system roles and from license entitlements. The primary
+signing key remains under Owner control and outside the customer runtime; role
+membership alone does not confer key custody, unrestricted recovery, or any
+lifecycle operation not separately decided. Every operation remains explicitly
+permissioned and server-enforced; unknown operations deny. Define and test the
+exact endpoint/permission mapping before implementation.
 
 OQ-75's role-count/role-purpose decision is closed at product level. Exact
 permission enforcement, credential lifecycle, access review and acceptance
 remain implementation/security work; no claim of implemented RBAC follows from
 this record. There is no required second-person approval.
 
+### Historical record — PR #160 four-role matrix (superseded 2026-10-16)
+
+> Retained for auditability only. The following role names, access matrix and
+> grants describe the former policy snapshot and are **not current MVP policy**;
+> the two-role section above controls.
+
+| Historical operation | System Administrator | Issuance Specialist | Observer | Support |
+| --- | --- | --- | --- | --- |
+| Login, own identity, own password change, logout | yes | yes | yes | yes |
+| Customer list/detail | full current DTO | full current DTO | full current DTO | identity/status projection only |
+| Customer create/edit name/status/reference | yes | no | no | no |
+| User list/create, role assignment, enable/disable/reset | yes | no | no | no |
+| Audit view | yes | yes | yes | no |
+| Audit edit/delete/purge | no endpoint | no endpoint | no endpoint | no endpoint |
+| Settings mutations | no endpoint | no endpoint | no endpoint | no endpoint |
+| Inspect operator-observed activation and same-customer server-replacement records | yes | yes | yes | no |
+| Record those operator observations | yes | yes | no | no |
+| Cryptographic issuance, signed receipt, deactivation proof, client-device replacement, revocation/recovery | not implemented | not implemented | not implemented | not implemented |
+
+The former backend grants were: Administrator (`customers.view`,
+`customers.write`, `users.manage`, `audit.view`, `operations.view`,
+`operations.record`); Issuance Specialist (`customers.view`, `audit.view`,
+`operations.view`, `operations.record`); Observer (`customers.view`, `audit.view`,
+`operations.view`); Support (`customers.view`, with a server-side field allowlist
+and no operational-record grant). The former Support projection was limited to
+`id`, `customerCode`, `displayName` and `status`; other roles' full DTO and
+response/search details were described in the superseded PR #160 snapshot. These
+permissions are historical evidence only, not an approved migration or runtime
+state claim.
+
 ## Audit and OQ-77
 
 **2026-10-16 retention clarification:** licensing audit records are append-only
-and must be retained for at least three years. Unresolved incidents must never
-be automatically deleted. The earlier Owner decision for permanent retention in
-a separate archive remains the stronger current policy; three years is a minimum,
-not an automatic purge date. OQ-77 remains open for archive/storage, access,
+and must be retained for at least three years from each event's occurrence.
+Unresolved security incidents must never be automatically deleted. The earlier
+Owner decision for permanent retention in a separate archive remains the stronger
+current policy; three years is a minimum, not an automatic purge date. OQ-77 remains open for archive/storage, access,
 minimization, incident resolution criteria and implementation evidence.
 
 
@@ -64,9 +103,11 @@ Grace. License cancellation, replacement, reissuance and contract termination
 remain distinct events; contract-termination strictness remains open. The records
 also cover immediate validated emergency restriction with explicit reason,
 independent authenticated customer-administrator recovery, signed applicable
-restoration, rollback-only
-automatic clearance after trustworthy-time validation, and exact-successful-repeat
-result replay. These are required behaviors, **not implemented Owner/customer
+restoration, and rollback-only unlock only through controlled, attributable,
+audited action after trustworthy-time and license/time revalidation establish
+resolution. Failed or uncertain validation requires secure authorized recovery;
+unrelated restrictions remain. Exact-successful-repeat result replay remains a
+separate OQ-81 concern. These are required behaviors, **not implemented Owner/customer
 lifecycle operations**. They do not grant additional Owner roles/permissions or
 make manual observation an authorization artifact. OQ-78/76/81 track technical
 follow-ups. PQ-3 is decided at product-policy level, not pending: ordinary
@@ -92,9 +133,10 @@ which remains to be implemented) records issued → activated, actor, timestamp,
 reason and available evidence reference. This is operator confirmation, **not** a
 cryptographically verified customer receipt. The additive Owner migration
 `002-manual-operations.sql` and its API/UI now store that fact. They do not issue
-a license or produce a receipt. **Ordinary activation requires no signed
+a license or produce a receipt. **Ordinary activation requires no separate signed
 receipt** (OQ-84/PQ-9, product question now Decided); this attributable manual
-history is sufficient for the approved scope. It is not signed customer evidence.
+history is sufficient for the approved scope. It is not signed customer evidence
+and does not decide OQ-81's distinct durable API replay receipt/response DTO.
 
 Every new customer-server installation/replacement requires **manual Owner
 approval** attributable to an authorized Owner user; never automatic unrestricted
@@ -164,19 +206,23 @@ workflow**. The replacement license must be activated on the new server before
 the old server is manually decommissioned. Replacement stays pending until an
 authorized operator records auditable confirmation that the old server was
 manually decommissioned; only then may the replacement be finalized. The
-confirmation expiry is configurable from **1 hour through 7 days**, defaulting
-to **24 hours**. Expiry of that confirmation window is not proof of decommission
-and does not authorize a remote shutdown, remote deactivation, or a claim that
-the Owner can contact or control the customer's server. Exact evidence fields,
-expired-pending recovery and the workflow/API remain implementation gaps under
-OQ-82.
+pending-request/confirmation period is configurable by Owner Admin from **1 hour
+through 7 days**, defaulting to **24 hours**. Its start/end semantics remain to be
+specified. Expiry is not proof of decommission and does not authorize a remote
+shutdown, remote deactivation, or a claim that the Owner can contact/control the
+customer server. The approved docs do not explain how the new server activates
+before decommission while respecting the existing one-active-installation/license
+binding, nor how pending/finalization avoids inconsistent records. Exact evidence
+and expiry/failure recovery remain open; OQ-82 implementation is blocked pending
+specification.
 
 The Owner licensing system and trust boundary are Owner-controlled
 infrastructure. Customer deployments need no continuous connectivity to the
 Owner, and the MVP does not use a federated issuer. Existing approved signed-file
-exchange remains the offline trust mechanism; this boundary grants no new key
-custody or signing design. OQ-85's product boundary is decided; operational
-hardening and deployment evidence remain open.
+exchange remains the offline trust mechanism; offline transfer does not remove
+the need for a local customer server to apply and verify licensing data. This
+boundary grants no new key custody or signing design. OQ-85's product boundary is
+decided; operational hardening and deployment evidence remain open.
 
 OQ-83's 2026-10-16 product decision is recorded in PDR-15: client-device
 replacement is manually managed by Owner Admin in the MVP, not a customer

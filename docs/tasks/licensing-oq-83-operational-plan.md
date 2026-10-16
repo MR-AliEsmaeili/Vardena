@@ -1,4 +1,4 @@
-# OQ-83 populated-migration evidence and operational implementation plan
+# OQ-83 historical customer-side implementation and populated-migration plan
 
 > **Current MVP policy correction (2026-10-16):** PDR-15 §6 supersedes the prior
 > automated customer self-service/signed-response replacement workflow: device
@@ -16,8 +16,10 @@
 > signing is still disabled pending U-1; no additional signed format is created.
 
 
-**Status:** READY FOR REVIEW — not Product Owner acceptance, not operational
-completion, and not closure of OQ-83.  
+**Historical status (2026-10-15):** READY FOR REVIEW for the prior customer-side
+signed-response implementation plan only — not Product Owner acceptance, not
+operational completion, and not closure of OQ-83 or approval of the current
+manual Owner Admin workflow.
 **Baseline:** `main` at `a58fd19df0bcff76e594749d825ac8b37f95ba4f`
 (verified against `origin/main` on 2026-10-15).  
 **Authority:** [PDR-15 / OD-LIC-04](../decisions/product/PDR-15-client-device-licensing-and-replacement.md),
@@ -233,10 +235,11 @@ applicable choices are recorded:
 5. **Owner issuance lifecycle:** whether a request needs single or dual approval,
    denial/cancellation synchronization, response validity bounds, and recovery
    procedure after an interrupted issuance.
-6. **Audit retention:** policy is decided: append-only, minimum three years,
-   no automatic deletion of unresolved incidents; the previously approved permanent
-   separate archive remains. Archive/access/retention implementation is still OQ-77
-   and is not decided by OQ-83.
+6. **Audit retention:** policy is decided: append-only; retain each event at least
+   three years from its occurrence; unresolved security incidents are excluded from
+   automatic deletion; the previously approved permanent separate archive remains.
+   Three years is not a purge deadline. Archive/access/retention implementation is
+   still OQ-77 and is not decided by OQ-83.
 
 ## 7. Phased implementation plan and acceptance criteria
 
