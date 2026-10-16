@@ -81,6 +81,9 @@ export function role(value: unknown): Role {
   if (!roles.includes(value as Role)) invalid("Invalid role.");
   return value as Role;
 }
+export function isRole(value: unknown): value is Role {
+  return roles.includes(value as Role);
+}
 // PDR-14 grammar, case-sensitive, no implicit uppercasing or identity inference.
 export function customerCode(value: unknown, id?: string): string {
   if (
@@ -126,7 +129,7 @@ export function safeUser(u: User) {
   return {
     id: u.id,
     username: u.username,
-    role: u.role,
+    role: role(u.role),
     isActive: u.is_active,
     mustChangePassword: u.must_change_password,
     createdAt: u.created_at.toISOString(),

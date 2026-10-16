@@ -2446,15 +2446,23 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   [PDR-11 §21](docs/decisions/product/PDR-11-vardena-licensing-product-requirements.md#21-product-owner-decisions-and-traceability-update--2026-10-16),
   [ADR-0048](docs/adr/0048-owner-side-licensing-separation-boundary.md), and
   [decision traceability matrix](docs/tasks/licensing-po-decision-traceability-2026-10-16.md).
-- **Implemented scope:**
+- **Implemented scope (PR #166):**
   - Added forward-only migration
     `owner-licensing/backend/migrations/003-two-role-authorization.sql` that
-    fails closed if any superseded four-role user row exists and replaces
-    `users_role_check` on `owner.users` with
-    `CHECK (role IN ('OWNER_ADMIN', 'LICENSE_OPERATOR'))`, preserving the
-    immutable checksums of `001-foundation.sql` and `002-manual-operations.sql`.
-  - Updated `owner-licensing/backend/src/domain.ts`, `src/bootstrap.ts`,
-    `src/operations.ts`, and `src/app.ts` to enforce the two-role MVP model:
+    fails closed (`ERRCODE = '23514'`, reporting the distinct legacy roles
+    present) if any superseded four-role user row exists and replaces
+    `users_role_check` on `owner.users` (`DROP CONSTRAINT IF EXISTS
+    users_role_check`) with `CHECK (role IN ('OWNER_ADMIN',
+    'LICENSE_OPERATOR'))`, preserving the immutable checksums of
+    `001-foundation.sql` and `002-manual-operations.sql`. On a fresh or
+    unbootstrapped database, `001` → `002` → `003` applies directly; on a
+    populated pre-003 database containing legacy four-role rows, `migrate` rolls
+    back cleanly without altering `public.owner_migrations` or `users_role_check`
+    until an explicit, authorized pre-migration remediation transitions
+    `owner.users` to `OWNER_ADMIN` / `LICENSE_OPERATOR`.
+  - Updated `owner-licensing/backend/src/domain.ts`, `src/security.ts`,
+    `src/bootstrap.ts`, `src/operations.ts`, and `src/app.ts` to enforce the
+    two-role MVP model:
     - `OWNER_ADMIN`: `customers.view`, `customers.write`, `users.manage`,
       `audit.view`, `operations.view`, `operations.record`,
       `replacements.authorize`.
@@ -2462,18 +2470,21 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
       `operations.record`.
     - Superseded four-role values (`SYSTEM_ADMIN`, `LICENSE_ISSUANCE`,
       `READ_ONLY_OBSERVER`, `SUPPORT_SPECIALIST`) receive `[]` permissions and
-      are rejected at input validation and SQL boundaries.
+      are rejected at input validation, login/session authentication (`401
+      Unauthorized` even against an unmigrated `002` database), service-level
+      operation guards, user serialization (`safeUser`), and SQL boundaries.
     - Server-replacement authorization and emergency old-server-lost handling
       (`POST /api/v1/operational-records/server-replacements`) require
-      `replacements.authorize` (`OWNER_ADMIN` only); unauthorized attempts write
-      a durable `OPERATION_MUTATION_DENIED` audit event and return `403
-      PermissionDenied`.
+      `replacements.authorize` (`OWNER_ADMIN` only) at both the route and
+      service layers; unauthorized attempts write a durable
+      `OPERATION_MUTATION_DENIED` audit event and return `403 PermissionDenied`.
     - Bootstrap initial administrator provisioning (`src/bootstrap.ts`) creates
       `OWNER_ADMIN` with `must_change_password = true`, and last-active-admin
       protection in `PATCH /api/v1/users/:id` guards `OWNER_ADMIN`.
   - Updated `owner-licensing/frontend/` (`src/api/contracts.ts`,
     `src/lib/owner-i18n.ts`, `src/app/layouts/app-shell.tsx`,
     `src/features/users/users-page.tsx`,
+    `src/features/customers/customer-page.tsx`,
     `src/features/operations/operations-page.tsx`,
     `src/features/operations/operation-forms.tsx`) and backend/frontend test
     suites (`test/unit.test.ts`, `test/domain-operations.test.ts`,
@@ -2481,9 +2492,13 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
     `src/features/operations/operations-flow.test.tsx`,
     `src/features/audit/audit-page.test.tsx`,
     `src/features/auth/change-password-page.test.tsx`).
-- **Explicit non-goals and open Phase 2 boundaries:** no production signing key,
-  custody mechanism, or cryptographic artifact generation (`U-1`/OQ-74); no
-  new-server-first replacement sequence or 1h–7d pending confirmation timer
-  enforcement (OQ-82); no restricted-admin recovery or revocation artifact flow
-  (OQ-78); no changes to customer `backend/` or `frontend/` packages or
-  migrations. No OQ is closed by this implementation increment.
+- **Explicit non-goals, legacy-upgrade blocker, and open Phase 2 boundaries:**
+  no automatic remapping is invented for populated pre-003 databases holding
+  legacy four-role user rows (requiring explicit Product Owner disposition or
+  migration-owner remediation before `003` can apply on populated pre-003
+  databases); no production signing key, custody mechanism, or cryptographic
+  artifact generation (`U-1`/OQ-74); no new-server-first replacement sequence or
+  1h–7d pending confirmation timer enforcement (OQ-82); no restricted-admin
+  recovery or revocation artifact flow (OQ-78); no changes to customer
+  `backend/` or `frontend/` packages or migrations. No OQ is closed by this
+  implementation increment.

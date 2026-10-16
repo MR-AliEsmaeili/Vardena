@@ -151,7 +151,23 @@ emergency steps in one transaction. A forged prior, skipped step, reordered
 row, or extra transition is rejected. No cancellation state exists.
 `003-two-role-authorization.sql` enforces the two-role MVP policy on
 `owner.users.role` (`CHECK (role IN ('OWNER_ADMIN', 'LICENSE_OPERATOR'))`) after
-refusing to run if any superseded four-role user row exists.
+refusing to run (`ERRCODE = '23514'`, listing the distinct legacy roles found)
+if any superseded four-role user row exists. On a fresh database or an unbootstrapped
+`001`–`002` database with zero `owner.users` rows, `001` → `002` → `003` applies
+directly. On an existing populated `001`–`002` database that already contains
+legacy `SYSTEM_ADMIN`, `LICENSE_ISSUANCE`, `READ_ONLY_OBSERVER`, or
+`SUPPORT_SPECIALIST` rows, `npm run migrate` rolls back cleanly without altering
+`public.owner_migrations`, `users_role_check`, or existing rows. Because no
+canonical Product Owner decision authorizes an automatic mapping of legacy
+read-only/support accounts to a write-capable role, `003` does not silently
+remap, deactivate, or delete existing users; an explicit pre-migration
+remediation under migration-owner authority (dropping `users_role_check`,
+updating `owner.users` to approved `OWNER_ADMIN` / `LICENSE_OPERATOR` roles and
+`is_active` states, then re-running `npm run migrate`) is required before `003`
+can apply on populated pre-003 databases. Even if the Phase 1.3 API server is
+started against an unmigrated `002` database, `POST /auth/login` and session
+authentication (`authenticate`) fail closed (`401 Unauthorized`) for any user row
+holding a superseded role.
 
 ## Security
 

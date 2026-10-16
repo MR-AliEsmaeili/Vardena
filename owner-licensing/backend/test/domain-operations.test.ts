@@ -16,6 +16,13 @@ import {
   unfinishedReplacementCrossUse,
   roles,
 } from "../src/domain.js";
+import {
+  recordActivationObservation,
+  recordLicenseObservation,
+  recordOldServerObservation,
+  recordReplacementObservation,
+  recordServerReplacement,
+} from "../src/operations.js";
 
 function code(fn: () => unknown) {
   try {
@@ -239,5 +246,66 @@ describe("manual observation transitions", () => {
         },
       ),
     ).toBe(false);
+  });
+  it("enforces operations.record and replacements.authorize at the service layer before database access", async () => {
+    const fakeTx = {} as Parameters<typeof recordServerReplacement>[0];
+    await expect(
+      recordServerReplacement(
+        fakeTx,
+        "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        "LICENSE_OPERATOR",
+        {},
+      ),
+    ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+    for (const legacy of [
+      "SYSTEM_ADMIN",
+      "LICENSE_ISSUANCE",
+      "READ_ONLY_OBSERVER",
+      "SUPPORT_SPECIALIST",
+    ] as unknown as (typeof roles)[number][]) {
+      await expect(
+        recordLicenseObservation(
+          fakeTx,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          legacy,
+          {},
+        ),
+      ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+      await expect(
+        recordActivationObservation(
+          fakeTx,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          legacy,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          {},
+        ),
+      ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+      await expect(
+        recordServerReplacement(
+          fakeTx,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          legacy,
+          {},
+        ),
+      ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+      await expect(
+        recordOldServerObservation(
+          fakeTx,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          legacy,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          {},
+        ),
+      ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+      await expect(
+        recordReplacementObservation(
+          fakeTx,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          legacy,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          {},
+        ),
+      ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+    }
   });
 });

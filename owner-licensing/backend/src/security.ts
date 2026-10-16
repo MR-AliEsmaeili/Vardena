@@ -6,6 +6,7 @@ import { audit } from "./db.js";
 import {
   digest,
   fail,
+  isRole,
   permissions,
   safeUser,
   type User,
@@ -58,7 +59,7 @@ export async function authenticate(
     [digest(raw)],
   );
   const sessionId = sessions.rows[0]?.id;
-  if (!user?.is_active || !sessionId)
+  if (!user?.is_active || !isRole(user.role) || !sessionId)
     fail(401, "Unauthorized", "Authentication is required.");
   if (ordinary && user.must_change_password)
     fail(403, "PermissionDenied", "Password change is required.");

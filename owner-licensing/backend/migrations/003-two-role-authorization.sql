@@ -4,18 +4,21 @@
 -- Fails closed if any legacy role row exists rather than silently remapping or
 -- escalating read-only/support accounts.
 DO $$
+DECLARE
+  legacy_roles text;
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM owner.users
-    WHERE role NOT IN ('OWNER_ADMIN', 'LICENSE_OPERATOR')
-  ) THEN
-    RAISE EXCEPTION 'Refusing to apply two-role constraint while superseded four-role user rows exist'
+  SELECT string_agg(DISTINCT role, ', ' ORDER BY role)
+    INTO legacy_roles
+    FROM owner.users
+    WHERE role NOT IN ('OWNER_ADMIN', 'LICENSE_OPERATOR');
+  IF legacy_roles IS NOT NULL THEN
+    RAISE EXCEPTION 'Refusing to apply two-role constraint while superseded four-role user rows exist (%)', legacy_roles
       USING ERRCODE = '23514';
   END IF;
 END $$;
 
 ALTER TABLE owner.users
-  DROP CONSTRAINT users_role_check,
+  DROP CONSTRAINT IF EXISTS users_role_check,
   ADD CONSTRAINT users_role_check CHECK (
     role IN ('OWNER_ADMIN', 'LICENSE_OPERATOR')
   );

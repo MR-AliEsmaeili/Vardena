@@ -56,9 +56,18 @@ API (`domain.ts`, `app.ts`, `operations.ts`, `bootstrap.ts`), and Persian RTL UI
 | Server-replacement authorization and emergency old-server-lost handling (`replacements.authorize`, `POST /operational-records/server-replacements`) | yes | no (`403 PermissionDenied`, audited as `OPERATION_MUTATION_DENIED`) |
 
 Superseded four-role identifiers (`SYSTEM_ADMIN`, `LICENSE_ISSUANCE`,
-`READ_ONLY_OBSERVER`, `SUPPORT_SPECIALIST`) are rejected by API validation and
-database constraint. Operational access review and final Product Owner acceptance
-remain separate governance steps; there is no required second-person approval.
+`READ_ONLY_OBSERVER`, `SUPPORT_SPECIALIST`) are rejected by API validation,
+authentication/session revalidation (`401 Unauthorized` even against an
+unmigrated database), service-level operation guards, and database constraint.
+For existing populated pre-003 databases containing legacy four-role rows,
+`003-two-role-authorization.sql` fails closed (`ERRCODE = '23514'`) and rolls
+back cleanly rather than inventing an unapproved automatic mapping (which would
+risk escalating `READ_ONLY_OBSERVER` or `SUPPORT_SPECIALIST` to write-capable
+`LICENSE_OPERATOR`); upgrading a populated pre-003 database requires an explicit
+Product Owner disposition / migration-owner remediation of `owner.users` to
+`OWNER_ADMIN` / `LICENSE_OPERATOR` before `003` is applied. Operational access
+review and final Product Owner acceptance remain separate governance steps; there
+is no required second-person approval.
 
 ### Historical record — PR #160 four-role matrix (superseded 2026-10-16)
 

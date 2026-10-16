@@ -236,4 +236,29 @@ describe('Owner browser vertical slice (mocked API boundary, CI)', () => {
     ).not.toBeInTheDocument();
     expect(api.createCustomer).not.toHaveBeenCalled();
   });
+  it('offers only OWNER_ADMIN and LICENSE_OPERATOR in user administration and blocks License Operator from /app/users', async () => {
+    vi.mocked(api.users).mockResolvedValue({
+      items: [
+        admin,
+        {
+          ...admin,
+          id: '01K7OPERATOR00000000000000',
+          username: 'operator1',
+          role: 'LICENSE_OPERATOR',
+        },
+      ],
+      page: 1,
+      pageSize: 50,
+    });
+    mount('/app/users');
+    const roleSelect = await screen.findByLabelText(o.role);
+    const optionValues = Array.from(
+      roleSelect.querySelectorAll('option'),
+      (opt) => opt.value,
+    );
+    expect(optionValues).toEqual(['OWNER_ADMIN', 'LICENSE_OPERATOR']);
+    expect(
+      await screen.findByText(/operator1 — اپراتور مجوز/),
+    ).toBeInTheDocument();
+  });
 });

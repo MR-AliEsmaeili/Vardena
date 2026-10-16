@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   customerCode,
   customerResponse,
+  isRole,
   object,
   password,
   permissions,
   role,
   roles,
+  safeUser,
   text,
 } from "../src/domain.js";
 import { config } from "../src/config.js";
@@ -32,6 +34,21 @@ describe("Owner deny-by-default policy and input boundary", () => {
     ]);
     expect(role("OWNER_ADMIN")).toBe("OWNER_ADMIN");
     expect(role("LICENSE_OPERATOR")).toBe("LICENSE_OPERATOR");
+    expect(isRole("OWNER_ADMIN")).toBe(true);
+    expect(isRole("LICENSE_OPERATOR")).toBe(true);
+    for (const validRole of roles) {
+      expect(
+        safeUser({
+          id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          username: "u",
+          password_hash: "$argon2id$v=19$m=19456,t=2,p=1$x$y",
+          role: validRole,
+          is_active: true,
+          must_change_password: false,
+          created_at: new Date("2026-10-16T00:00:00.000Z"),
+        }).role,
+      ).toBe(validRole);
+    }
     for (const legacyOrUnknown of [
       "SYSTEM_ADMIN",
       "LICENSE_ISSUANCE",
@@ -45,7 +62,19 @@ describe("Owner deny-by-default policy and input boundary", () => {
       "customers.*",
     ]) {
       expect(permissions(legacyOrUnknown)).toEqual([]);
+      expect(isRole(legacyOrUnknown)).toBe(false);
       expect(() => role(legacyOrUnknown)).toThrow("Invalid role.");
+      expect(() =>
+        safeUser({
+          id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          username: "u",
+          password_hash: "$argon2id$v=19$m=19456,t=2,p=1$x$y",
+          role: legacyOrUnknown as (typeof roles)[number],
+          is_active: true,
+          must_change_password: false,
+          created_at: new Date("2026-10-16T00:00:00.000Z"),
+        }),
+      ).toThrow("Invalid role.");
     }
   });
   it("matches the case-sensitive PDR-14 code contract", () => {
@@ -136,9 +165,11 @@ describe("Customer field allowlist for the two-role model", () => {
       new URL("../migrations/003-two-role-authorization.sql", import.meta.url),
       "utf8",
     );
+    expect(sql).toContain("DROP CONSTRAINT IF EXISTS users_role_check");
     expect(sql).toContain("ADD CONSTRAINT users_role_check CHECK");
     expect(sql).toContain("role IN ('OWNER_ADMIN', 'LICENSE_OPERATOR')");
     expect(sql).toContain("NOT IN ('OWNER_ADMIN', 'LICENSE_OPERATOR')");
+    expect(sql).toContain("string_agg(DISTINCT role, ', ' ORDER BY role)");
     expect(sql).toContain("RAISE EXCEPTION");
   });
 });

@@ -18,6 +18,7 @@ import {
   fail,
   id,
   invalid,
+  isRole,
   object,
   page,
   password,
@@ -171,6 +172,7 @@ export async function createApp(db: Database, cfg: Config) {
       if (
         !verified ||
         !current?.is_active ||
+        !isRole(current.role) ||
         current.password_hash !== snapshot?.password_hash
       ) {
         await audit(tx, {
@@ -339,8 +341,9 @@ export async function createApp(db: Database, cfg: Config) {
         )
       ).rows[0];
       if (!target) fail(404, "EntityNotFound", "User not found.");
-      const nextRole =
-        input.role === undefined ? target.role : role(input.role);
+      const nextRole = role(
+        input.role === undefined ? target.role : input.role,
+      );
       if (input.isActive !== undefined && typeof input.isActive !== "boolean")
         invalid("isActive must be boolean.");
       const active =

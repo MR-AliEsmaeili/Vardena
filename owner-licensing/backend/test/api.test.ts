@@ -1,10 +1,13 @@
 // CI-only. Requires an explicit disposable Owner PostgreSQL database; never skips.
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import { ulid } from "ulid";
 import type { Express } from "express";
 import type { PoolClient } from "pg";
 import { Database } from "../src/db.js";
+import { digest, token } from "../src/domain.js";
 import { migrate } from "../src/migrate.js";
 import { bootstrap } from "../src/bootstrap.js";
 import { createApp } from "../src/app.js";
@@ -132,23 +135,283 @@ async function expectUnavailableOperations(cookie: string) {
     expect((await write("post", path, cookie).send({})).status).toBe(404);
 }
 
-beforeAll(async () => {
-  await migrate(db);
-  await migrate(db); // idempotent checksummed fresh deployment
-  expect(await bootstrap(db, "owner", initial)).toBe(true);
-  expect(await bootstrap(db, "owner", "Another_initial_44")).toBe(false);
+afterAll(async () => {
+  await db.close();
+});
+
+const migrationsFolder = fileURLToPath(
+  new URL("../migrations/", import.meta.url),
+);
+async function resetToMigration002() {
+  await db.pool.query(
+    "DROP SCHEMA IF EXISTS owner CASCADE; DROP TABLE IF EXISTS public.owner_migrations",
+  );
+  await db.transaction(async (tx) => {
+    await tx.query(
+      "CREATE TABLE public.owner_migrations(name text PRIMARY KEY, checksum char(64) NOT NULL, applied_at timestamptz NOT NULL DEFAULT clock_timestamp())",
+    );
+    for (const name of ["001-foundation.sql", "002-manual-operations.sql"]) {
+      const sql = await readFile(`${migrationsFolder}/${name}`, "utf8");
+      await tx.query(sql);
+      await tx.query(
+        "INSERT INTO public.owner_migrations(name,checksum) VALUES($1,$2)",
+        [name, digest(sql)],
+      );
+    }
+  });
   app = await createApp(db, {
     databaseUrl: url!,
     origin,
     production: false,
     port: 3001,
   });
-}, 30000);
-afterAll(async () => {
-  await db.close();
+}
+
+describe("Owner migration 003 existing-database compatibility, rollback, and retry", () => {
+  it("fails closed and rolls back cleanly for each populated legacy role while denying runtime login/session access", async () => {
+    const pw = "Disposable_legacy_45";
+    const hash = await hashPassword(pw);
+    for (const legacyRole of [
+      "SYSTEM_ADMIN",
+      "LICENSE_ISSUANCE",
+      "READ_ONLY_OBSERVER",
+      "SUPPORT_SPECIALIST",
+    ] as const) {
+      await resetToMigration002();
+      const uid = ulid();
+      const cid = ulid();
+      const rawSession = token();
+      await db.pool.query(
+        "INSERT INTO owner.users(id,username,password_hash,role,is_active,must_change_password) VALUES($1,$2,$3,$4,true,false)",
+        [uid, `legacy_${legacyRole.toLowerCase()}`, hash, legacyRole],
+      );
+      await db.pool.query(
+        "INSERT INTO owner.sessions(id,user_id,token_hash) VALUES($1,$2,$3)",
+        [ulid(), uid, digest(rawSession)],
+      );
+      await db.pool.query(
+        "INSERT INTO owner.customers(id,customer_code,display_name,status,contract_reference,created_by,updated_by) VALUES($1,$2,'مشتری میراث','ACTIVE','REF-1',$3,$3)",
+        [cid, `L-${ulid()}`, uid],
+      );
+      await insertAudit({
+        actor: uid,
+        type: "USER_BOOTSTRAPPED",
+        targetType: "User",
+        targetId: uid,
+        occurredAt: "2026-10-15T00:00:00.000Z",
+      });
+
+      await expect(migrate(db)).rejects.toThrow(
+        new RegExp(
+          `Refusing to apply two-role constraint while superseded four-role user rows exist \\(${legacyRole}\\)`,
+        ),
+      );
+
+      // Verify clean rollback of migration ledger, schema constraint, and existing rows.
+      const ledger = await db.pool.query<{ name: string }>(
+        "SELECT name FROM public.owner_migrations ORDER BY name",
+      );
+      expect(ledger.rows.map((r) => r.name)).toEqual([
+        "001-foundation.sql",
+        "002-manual-operations.sql",
+      ]);
+      const checkDef = await db.pool.query<{ def: string }>(
+        `SELECT pg_get_constraintdef(c.oid) AS def
+         FROM pg_constraint c
+         JOIN pg_class t ON t.oid = c.conrelid
+         JOIN pg_namespace n ON n.oid = t.relnamespace
+         WHERE n.nspname = 'owner' AND t.relname = 'users' AND c.conname = 'users_role_check'`,
+      );
+      expect(checkDef.rows[0]?.def).toContain("SYSTEM_ADMIN");
+      expect(checkDef.rows[0]?.def).not.toContain("OWNER_ADMIN");
+      expect(
+        (
+          await db.pool.query<{ role: string }>(
+            "SELECT role FROM owner.users WHERE id=$1",
+            [uid],
+          )
+        ).rows[0]?.role,
+      ).toBe(legacyRole);
+      expect(
+        (
+          await db.pool.query("SELECT id FROM owner.customers WHERE id=$1", [
+            cid,
+          ])
+        ).rowCount,
+      ).toBe(1);
+
+      // Runtime defense-in-depth: even against an unmigrated 002 database,
+      // superseded role rows cannot log in or use an existing session.
+      const loginAttempt = await login(
+        `legacy_${legacyRole.toLowerCase()}`,
+        pw,
+      );
+      expect(loginAttempt.r.status).toBe(401);
+      const legacyCookie = `owner_session=${rawSession}`;
+      expect(
+        (await request(app).get("/api/v1/auth/me").set("Cookie", legacyCookie))
+          .status,
+      ).toBe(401);
+      expect(
+        (
+          await request(app)
+            .get("/api/v1/permissions/effective")
+            .set("Cookie", legacyCookie)
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await request(app)
+            .get("/api/v1/customers")
+            .set("Cookie", legacyCookie)
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await write("post", "/auth/change-password", legacyCookie).send({
+            currentPassword: pw,
+            newPassword: "Disposable_new_46",
+          })
+        ).status,
+      ).toBe(401);
+    }
+  });
+
+  it("fails closed on mixed legacy roles, preserves prior state on rollback, and succeeds on retry once rows hold only two-role values", async () => {
+    await resetToMigration002();
+    const pw = "Disposable_mixed_45";
+    const hash = await hashPassword(pw);
+    const sysAdminId = ulid();
+    const issuanceId = ulid();
+    const observerId = ulid();
+    const supportId = ulid();
+    for (const [uid, username, legacyRole] of [
+      [sysAdminId, "mix_admin", "SYSTEM_ADMIN"],
+      [issuanceId, "mix_issuance", "LICENSE_ISSUANCE"],
+      [observerId, "mix_observer", "READ_ONLY_OBSERVER"],
+      [supportId, "mix_support", "SUPPORT_SPECIALIST"],
+    ] as const) {
+      await db.pool.query(
+        "INSERT INTO owner.users(id,username,password_hash,role,is_active,must_change_password) VALUES($1,$2,$3,$4,true,false)",
+        [uid, username, hash, legacyRole],
+      );
+    }
+    const custId = ulid();
+    const opId = ulid();
+    await db.pool.query(
+      "INSERT INTO owner.customers(id,customer_code,display_name,status,contract_reference,created_by,updated_by) VALUES($1,'MIX-01','مشتری ترکیبی','ACTIVE','CONTRACT-MIX',$2,$2)",
+      [custId, sysAdminId],
+    );
+    await db.transaction(async (tx) => {
+      await tx.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          installation_reference, created_by, updated_by)
+        VALUES ($1,$2,'LICENSE','ISSUED','EXTERNAL_ISSUANCE_OBSERVED','INST-MIX-1',$3,$3)`,
+        [opId, custId, issuanceId],
+      );
+      await insertTransition(
+        tx,
+        opId,
+        issuanceId,
+        "UNRECORDED",
+        "ISSUED",
+        "pre-003 issuance observation",
+      );
+    });
+
+    await expect(migrate(db)).rejects.toThrow(
+      "Refusing to apply two-role constraint while superseded four-role user rows exist (LICENSE_ISSUANCE, READ_ONLY_OBSERVER, SUPPORT_SPECIALIST, SYSTEM_ADMIN)",
+    );
+
+    // Rollback preserved the 001..002 ledger and all existing rows.
+    expect(
+      (
+        await db.pool.query<{ name: string }>(
+          "SELECT name FROM public.owner_migrations ORDER BY name",
+        )
+      ).rows.map((r) => r.name),
+    ).toEqual(["001-foundation.sql", "002-manual-operations.sql"]);
+    expect(
+      (await db.pool.query("SELECT count(*) FROM owner.users")).rows[0]?.count,
+    ).toBe("4");
+
+    // Explicit pre-migration remediation under DBA/migration-owner authority:
+    // transition SYSTEM_ADMIN -> OWNER_ADMIN, LICENSE_ISSUANCE -> LICENSE_OPERATOR,
+    // and deactivate READ_ONLY_OBSERVER / SUPPORT_SPECIALIST with LICENSE_OPERATOR
+    // so read-only/support accounts never silently gain active write privileges.
+    await db.transaction(async (tx) => {
+      await tx.query(
+        "ALTER TABLE owner.users DROP CONSTRAINT users_role_check",
+      );
+      await tx.query(
+        "UPDATE owner.users SET role='OWNER_ADMIN', updated_at=clock_timestamp() WHERE id=$1",
+        [sysAdminId],
+      );
+      await tx.query(
+        "UPDATE owner.users SET role='LICENSE_OPERATOR', updated_at=clock_timestamp() WHERE id=$1",
+        [issuanceId],
+      );
+      await tx.query(
+        "UPDATE owner.users SET role='LICENSE_OPERATOR', is_active=false, updated_at=clock_timestamp() WHERE id IN ($1,$2)",
+        [observerId, supportId],
+      );
+    });
+
+    // Retry migration 003 on a database containing only current two-role values.
+    await migrate(db);
+    await migrate(db); // idempotent after retry
+
+    expect(
+      (
+        await db.pool.query<{ name: string }>(
+          "SELECT name FROM public.owner_migrations ORDER BY name",
+        )
+      ).rows.map((r) => r.name),
+    ).toEqual([
+      "001-foundation.sql",
+      "002-manual-operations.sql",
+      "003-two-role-authorization.sql",
+    ]);
+    await expect(
+      db.pool.query("UPDATE owner.users SET role='SYSTEM_ADMIN' WHERE id=$1", [
+        sysAdminId,
+      ]),
+    ).rejects.toThrow();
+
+    // Verify remediated accounts and preserved customer/operational records.
+    const adminLogin = await login("mix_admin", pw);
+    expect(adminLogin.r.status).toBe(200);
+    expect(adminLogin.r.body.role).toBe("OWNER_ADMIN");
+    const operatorLogin = await login("mix_issuance", pw);
+    expect(operatorLogin.r.status).toBe(200);
+    expect(operatorLogin.r.body.role).toBe("LICENSE_OPERATOR");
+    expect((await login("mix_observer", pw)).r.status).toBe(401);
+    expect((await login("mix_support", pw)).r.status).toBe(401);
+    const preservedOp = await request(app)
+      .get(`/api/v1/operational-records/${opId}`)
+      .set("Cookie", operatorLogin.cookie);
+    expect(preservedOp.status).toBe(200);
+    expect(preservedOp.body.customerCode).toBe("MIX-01");
+  });
 });
 
 describe("Owner PostgreSQL HTTP vertical slice", () => {
+  beforeAll(async () => {
+    await db.pool.query(
+      "DROP SCHEMA IF EXISTS owner CASCADE; DROP TABLE IF EXISTS public.owner_migrations",
+    );
+    await migrate(db);
+    await migrate(db); // idempotent checksummed fresh deployment
+    expect(await bootstrap(db, "owner", initial)).toBe(true);
+    expect(await bootstrap(db, "owner", "Another_initial_44")).toBe(false);
+    app = await createApp(db, {
+      databaseUrl: url!,
+      origin,
+      production: false,
+      port: 3001,
+    });
+  }, 30000);
   it("requires authentication, JSON, custom anti-CSRF header and same origin", async () => {
     expect((await request(app).get("/api/v1/customers")).status).toBe(401);
     expect(

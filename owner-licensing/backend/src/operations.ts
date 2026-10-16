@@ -16,10 +16,12 @@ import {
   operationStatusFilter,
   optionalId,
   page,
+  permissions,
   queryText,
   reasonText,
   replacementCreate,
   replacementObservation,
+  type Permission,
   type Role,
 } from "./domain.js";
 
@@ -242,12 +244,24 @@ export async function getOperation(tx: PoolClient, role: Role, rawId: unknown) {
   return operationResponse(found.row, role, found.transitions);
 }
 
+function assertOperationPermission(
+  role: Role,
+  requiredPermission: Extract<
+    Permission,
+    "operations.record" | "replacements.authorize"
+  >,
+) {
+  if (!permissions(role).includes(requiredPermission))
+    fail(403, "PermissionDenied", "You do not have permission.");
+}
+
 export async function recordLicenseObservation(
   tx: PoolClient,
   actorId: string,
   role: Role,
   body: unknown,
 ) {
+  assertOperationPermission(role, "operations.record");
   const input = object(body, [
     "customerId",
     "installationReference",
@@ -318,6 +332,7 @@ export async function recordActivationObservation(
   rawId: unknown,
   body: unknown,
 ) {
+  assertOperationPermission(role, "operations.record");
   const input = object(body, ["reason", "evidenceReference"]);
   const reason = reasonText(input.reason);
   const evidence = evidenceReference(input.evidenceReference);
@@ -359,6 +374,7 @@ export async function recordServerReplacement(
   role: Role,
   body: unknown,
 ) {
+  assertOperationPermission(role, "replacements.authorize");
   const input = object(body, [
     "customerId",
     "oldInstallationReference",
@@ -456,6 +472,7 @@ export async function recordOldServerObservation(
   rawId: unknown,
   body: unknown,
 ) {
+  assertOperationPermission(role, "operations.record");
   const input = object(body, [
     "reason",
     "evidenceReference",
@@ -515,6 +532,7 @@ export async function recordReplacementObservation(
   rawId: unknown,
   body: unknown,
 ) {
+  assertOperationPermission(role, "operations.record");
   const input = object(body, [
     "reason",
     "evidenceReference",

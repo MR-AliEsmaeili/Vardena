@@ -179,6 +179,7 @@ function AccessForm({
       form.reset();
       await qc.invalidateQueries({ queryKey: ['owner', 'users'] });
       await qc.invalidateQueries({ queryKey: ['owner', 'session'] });
+      await qc.invalidateQueries({ queryKey: ['owner', 'permissions'] });
       onDone();
     },
   });
