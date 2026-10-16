@@ -32,7 +32,7 @@ split into **D-2(a)** and **D-2(b)**, and Phase 1 is gated on D-2(a) plus 0.5B.
 ratified, no signed format changed, and no OQ moved.
 **Baseline SHA:** `961a696fbff16893dc69f93d6409af5430790a6c`
 
-**D-2 recorded (2026-10-15):** D-2(a)=`VECTORS_ONLY`, D-2(b)=`APPROVE` (conditional on executable verification). Recorded as [PDR-16](../decisions/product/PDR-16-licensing-protocol-canonical-byte-contract-and-vectors.md). This does not approve D-1, D-3, D-4, D-5, D-6, D-7 or any other open question; OQ-83 and OQ-85 remain OPEN; ADR-0048 remains Proposed.
+**D-2 recorded (2026-10-15):** D-2(a)=`VECTORS_ONLY`, D-2(b)=`APPROVE` (conditional on executable verification), recorded in [PDR-16](../decisions/product/PDR-16-licensing-protocol-canonical-byte-contract-and-vectors.md). The associated OQ-83/OQ-85 status is historical; as of 2026-10-16, OQ-83's manual Owner Admin policy and OQ-85's Owner-controlled/offline/non-federated boundary are decided, with implementation/operational evidence still open. ADR-0048 remains Proposed.
 **Baseline verification:** `origin/main` fetched on 2026-10-15 resolves to
 exactly the expected SHA — **no drift**, so no re-baselining was needed. No open
 PR existed at task start; `main` CI was green (run `38704831986`, the merge of
@@ -132,16 +132,16 @@ recommendation, and whether explicit Product Owner approval is required.
 
 **Approving the Owner-side separation direction does not approve any item below.**
 
-### D-1 — Owner repository location, ownership and release boundary
+### D-1 — Historical Owner repository/location options (superseded policy status 2026-10-16)
 
-- **Recorded:** signing stays outside the product; no private key is stored,
-  accepted or served by the application; the dev CLI is the only issuer and
-  refuses `NODE_ENV=production` (ADR-0046 Decision 9). Guardrails G-2, G-3.
-  PDR-15 §3 explicitly does **not** decide OQ-85.
-- **OPEN:** whether the Owner system is part of Vardena or a separate
-  Owner-controlled tool; which repository; who owns the data; relation to
-  CRM/ticketing ownership (**OQ-85**, cross-referencing **OQ-61**). Also open:
-  how GAP-1 is remediated.
+- **Historical record (2026-10-15):** the then-existing boundary kept signing
+  outside the customer product and refused `NODE_ENV=production` for the dev CLI
+  (ADR-0046 Decision 9); PDR-15 §3 had not yet decided OQ-85.
+- **Current policy (2026-10-16, PDR-11 §21/PDR-17):** Owner-controlled
+  infrastructure and issuer trust; customers need no continuous Owner
+  connectivity; no federated issuer in MVP. Deployment, custody controls and
+  release evidence remain implementation/security work. OQ-61 CRM/ticketing
+  ownership remains separate. GAP-1 remediation remains an implementation item.
 - **Options:**
   - **A. Separate private repository.** Strongest boundary; customer repo
     physically cannot resolve Owner code; independent release and access control.
@@ -166,9 +166,9 @@ recommendation, and whether explicit Product Owner approval is required.
   eventually lives: add key-material ignore patterns and a secret-scan gate, and
   add a CI gate that fails when the built customer `dist/` or the `production`
   image contains the issuer.
-- **Product Owner approval required?** **YES** — OQ-85 is an OPEN product
-  decision and cannot be inferred. GAP-1/GAP-2 remediation is a defect fix in the
-  customer package and needs only normal implementation authorization.
+- **Historical approval gate:** OQ-85 was open when this Phase 0 option analysis
+  was written. Its current product boundary is decided as stated above; deployment
+  and GAP-1/GAP-2 remediation still require implementation evidence/authorization.
 
 ### D-2 — Shared protocol module vs vectors-only
 
@@ -319,18 +319,15 @@ recommendation, and whether explicit Product Owner approval is required.
 - **Product Owner approval required?** **YES — blocking.** U-1 is explicitly an
   Owner security decision that gates implementation.
 
-### D-6 — Expert roles and issuance/replacement approval policy
+### D-6 — Historical four-role policy and approval options (superseded 2026-10-16)
 
-- **Recorded:** PDR-11 §13 approves four role *categories* — Owner System
-  Administrator, License Issuance Specialist, Read-only Observer, Support
-  Specialist with limited access — and states the purpose column is descriptive
-  only and must be confirmed under U-5. §4.3 — second-person approval is **not**
-  mandatory; role-based authorization and auditability are. §13.1 — every
-  role-based action is attributable and audited.
-- **OPEN:** **U-5**, the exact operation-level permission for each role, and the
-  scope of "Support Specialist with limited access". Also open as a policy
-  choice: whether replacement issuance should nevertheless require dual control
-  even though §4.3 does not mandate it.
+- **Historical record (superseded by PDR-11 §21/PDR-17 on 2026-10-16):** the
+  prior four categories were Owner System Administrator, License Issuance
+  Specialist, Read-only Observer and Support Specialist. The current MVP has
+  exactly Owner Admin and License Operator. The earlier §4.3 no-mandatory-second-
+  approver direction remains; exact endpoint permissions and authorization
+  implementation remain open under OQ-75. This old proposal does not define or
+  authorize a third role or dual-control workflow.
 - **Options:**
   - **A. Single-operator issuance with full attribution.** *Pro:* matches §4.3
     exactly, operationally simple. *Con:* one compromised or careless specialist
@@ -455,19 +452,20 @@ recommendation, and whether explicit Product Owner approval is required.
 - **Product Owner approval required?** **YES** for B (new format, U-3/U-8).
   A is the status quo and needs no new approval.
 
-### D-10 — Gated items that Phase 0 must not design around
+### D-10 — Historical Phase 0 open-question snapshot (statuses superseded 2026-10-16)
 
-These are OPEN product questions whose answers change the Owner design
-materially. Each is recorded here so the dependency is explicit; **none is
-answered or narrowed by this work.**
+The table below preserves the Phase 0 status snapshot only. Current PO decisions
+are in PDR-11 §21 and the 2026-10-16 traceability matrix; old OPEN labels below
+must not be read as current product status. Implementation and technical gaps
+remain open as recorded in the central OQ registry.
 
 | OQ | Subject | Effect on Owner design | Status |
 | --- | --- | --- | --- |
-| **OQ-77** | Licensing audit retention periods and sensitive-data treatment (U-7) | Determines Owner ledger retention, purge behaviour and which fields must be redacted or hashed. The customer typed audit table already stores identifiers, outcome, bounded reason and hash only — never a raw document, signature or key — and implements **no** purge; that is a technical default, not a retention decision. | OPEN — do not guess |
+| **OQ-77** | Licensing audit retention periods and sensitive-data treatment (U-7) | Historical Phase 0 question about retention, archive, minimization and access. Current policy: append-only, at least three years, unresolved incidents never automatically deleted; the previously approved permanent separate archive remains. | Policy decided; archive/access implementation remains OPEN |
 | **OQ-78** | Full revocation, recovery and reactivation while login is blocked | No revocation state, file or import path exists anywhere. The Owner system's most consequential power — withdrawing a wrongly issued license — **does not exist yet**, which is why D-6 recommends dual control and why D-5 says U-1 must be answered before generating a production key. | OPEN — do not design around |
-| **OQ-82** | Server-installation replacement recovery detail | PDR-11 §4.1 requires the Owner system to manage server-installation replacement, but no request/response format, state machine or receipt exists. Device replacement (OQ-83) is **not** server replacement and must not be presented as covering it. | OPEN — separate slice |
-| **OQ-84** | Signed activation receipts beyond replacement | Determines whether the Owner ever receives proof that an issuance was applied. D-9's "issued, not confirmed applied" state is a direct consequence of this being OPEN. | OPEN |
-| **OQ-85** | Owner-side system ownership and location | Gates D-1, D-3 and D-4. The fixed part is only the negative boundary of ADR-0046 Decision 9. | OPEN — the central question of this phase |
+| **OQ-82** | Server-installation replacement recovery detail | Manual Owner-authorized sequence is decided: activate the new server before manual old-server decommission; pending until auditable confirmation; confirmation expires in configurable 1h–7d (24h default). Device replacement (OQ-83) is separate. | Policy decided; evidence/state/API/timeout recovery remain OPEN |
+| **OQ-84** | Signed activation receipts beyond replacement | Ordinary activation does not require a separate signed receipt; manual attributable records are not cryptographic proof. | Product question decided; operation-specific replacement evidence remains OQ-82 |
+| **OQ-85** | Owner-side system ownership and location | Owner-controlled infrastructure/trust, no continuous customer connection and no federated issuer in MVP are decided; OQ-61 CRM/ticketing remains separate. | Boundary decided; deployment/security evidence remains OPEN |
 | **OQ-61** | CRM/ticketing timing and ownership | Cross-referenced by OQ-85; determines whether customer/contract data belongs in the Owner licensing system or elsewhere. | OPEN |
 
 ## 4. Security risk matrix
@@ -479,7 +477,7 @@ answered or narrowed by this work.**
 | R-3 | Second implementation produces different canonical bytes → all signatures fail | **High** without vectors | High — total interop failure, discovered in the field | Normative escaping rule + published vectors + CI regeneration gate (GAP-3/4) | Low after vectors; **vectors not yet published** |
 | R-4 | Owner trusts request-supplied identity and issues to the wrong customer | Medium | **Critical** — identity/`customerCode` transfer between customers | Owner record is the sole source of truth; request fields are claims to be checked; customer independently refuses `customer-code-mismatch` and `license-binding-conflict` | Low |
 | R-5 | Duplicate issuance / double-signed response | Medium | High — two valid artifacts for one operation | Durable unique `operationId` / `responseOperationId` constraints at the database level; customer replay refusal already implemented and tested | Low |
-| R-6 | Stale Owner data drives a wrong approval | **High** | Medium | Owner ledger marks responses *issued, not confirmed applied*; D-9 warning; customer correlation and expiry checks are the real gate | Medium — inherent to offline, and OQ-84 is OPEN |
+| R-6 | Stale Owner data drives a wrong approval | **High** | Medium | Owner ledger marks responses *issued, not confirmed applied*; D-9 warning; customer correlation and expiry checks are the real gate | Medium — inherent to offline; OQ-84 was open in this historical Phase 0 analysis and is now product-closed for ordinary activation receipts |
 | R-7 | Wrongly issued perpetual license that cannot be withdrawn | Medium | **High** | Dual control for high-impact operations (D-6); explicit `validUntil` review before signing | **High until OQ-78 exists** — there is no revocation instrument |
 | R-8 | Signing-key compromise with no agreed response | Low | **Critical** | None available — **U-1 is OPEN** | **Unmitigated by design; blocked on Owner decision** |
 | R-9 | Device private key exportable, cloned, or lost with a browser profile | Medium | Medium | Platform keystore, non-exportable, key loss = replacement (D-7) | Medium until platform chosen |

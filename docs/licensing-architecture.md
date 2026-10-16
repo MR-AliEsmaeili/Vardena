@@ -59,9 +59,16 @@ Limits and perpetual validity use SQL/configuration null. Positive integers are 
 
 Finite limit allocation is concurrency-safe. Organization creation and active-user creation/re-enablement execute their count and mutation in one PostgreSQL transaction while holding a transaction-scoped advisory lock derived from the licensed `installationId` and resource (`organizations` or `active-users`). Contenders for the same installation/resource serialize; after the winner commits, the next contender re-counts and is rejected at the limit. Authorization, validation, and password hashing remain outside this narrow transaction.
 
-### Client-device quota and lifecycle (OQ-83 / PDR-15)
+### Existing client-device implementation snapshot (OQ-83 / PDR-15)
 
-The current OQ-83 slice adds retained device identities, Ed25519 proof-of-possession enrollment, explicit deactivation, typed history and one-for-one offline replacement inside the Licensing module. Only the effective signed LicenseVersion is authoritative: an omitted legacy `deviceLimit` is **UNSPECIFIED** and blocks new enrollment; signed `null` is unlimited; finite limits count active devices. Registration, deactivation, replacement and license-import reduction checks serialize on the same installation row and device-allocation lock. Replacement holds the old device active until a trusted correlated response completes in one transaction; no private key is stored or exposed and device rows are never deleted. See [the protocol and verification matrix](licensing/client-device-lifecycle.md) and [the operational implementation plan](tasks/licensing-oq-83-operational-plan.md). OQ-83 remains OPEN pending independent review and real client/issuer operational evidence; this is not Product Owner acceptance.
+The current code contains retained device identities, Ed25519 proof-of-possession
+enrollment, explicit deactivation, typed history and customer-side signed-response
+replacement. The key-custody and quota-safety constraints remain relevant, but the
+self-service replacement workflow is a prior implementation, not the current MVP
+policy. The 2026-10-16 Product Owner decision requires manual Owner Admin device
+replacement; reconcile that workflow before claiming OQ-83 conformance. The signed
+`deviceLimit` and transactional quota evidence remain as described in the
+implementation design. No code was changed by this decision-record update.
 
 ## Installation identity (L-02, ADR-0045)
 
@@ -432,20 +439,22 @@ change overlap/gap/post-gap or signed-byte contracts.
 
 CRM, billing, payments, remote validation, remote revocation, hardware
 fingerprinting, marketplace/subscriptions, and a server-license activation UI
-are not implemented. The customer-side device administration UI is part of the
-current OQ-83 slice and remains pending review/exact-head CI. Expiry
-**enforcement** (Grace/Read-Only above) is also not implemented. Future
+are not implemented. Existing customer-side device UI implements the prior
+self-service OQ-83 workflow; the new manual Owner Admin replacement policy is not
+yet evidenced as implemented and must be reconciled before conformance is claimed.
+Expiry **enforcement** (Grace/Read-Only above) is also not implemented. Future
 `CrmLicenseProvider`-like infrastructure can replace the provider token without
 changing consumers.
 
-The 2026-10-11 reconciliation's remaining deferred work is preserved except
-for the current OQ-83 device lifecycle slice, which is implemented on this
-working branch but still pending review and exact-head CI: full
-revocation/reactivation and login-blocking state (OQ-78), server replacement and
-its receipts (OQ-82), the installation identity key (blocked by PDR-11 U-2 and
-OQ-78/OQ-82), signed activation receipts (OQ-84), the Owner-side licensing
-system and its role matrix (OQ-75, OQ-85), clock-rollback detection (OQ-76),
-audit retention enforcement (OQ-77), and the PDR-11 §8.6 capacity-conflict
+The 2026-10-11 implementation snapshot remains useful evidence but is not a
+current policy-compliance claim. The existing customer-side OQ-83 device slice
+implements the prior signed-response workflow and remains pending independent
+review; the approved manual Owner Admin policy requires separate reconciliation.
+Other follow-ups include full revocation/recovery and login-blocking state (OQ-78),
+manual server replacement evidence/state/timeout recovery (OQ-82), installation
+identity key design (PDR-11 U-2 and OQ-78/OQ-82), exact Owner role mapping and
+operational trust evidence (OQ-75/OQ-85), clock-rollback detection (OQ-76), audit
+archive/retention implementation (OQ-77), and the PDR-11 §8.6 capacity-conflict
 detection/resolution UI (a separate slice that needs the owning modules' public
 count contracts).
 

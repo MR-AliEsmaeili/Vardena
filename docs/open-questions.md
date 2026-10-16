@@ -1,14 +1,21 @@
 # Vardena — Open Questions
 
-**Licensing product decisions (2026-10-15, documentation only):**
-[PDR-11 §§9–10, 12, 15 and 20](decisions/product/PDR-11-vardena-licensing-product-requirements.md)
-records the explicit Product Owner decisions. **OQ-84 is Decided
-(product question closed)**; OQ-45 expiry policy is decided, but its separate
-contract-termination trigger/strictness question remains OPEN. Implementation is not asserted. OQ-74/U-1,
-OQ-76/U-6, OQ-77/U-7, OQ-78/PQ-3, OQ-79/PQ-4 and OQ-81/PQ-8 now have approved
-product policy and remain OPEN only for the stated technical/security follow-ups.
-OQ-82/83/75/85 retain their separate outstanding scope. No identifier was renamed;
-older dated status entries below are historical, not current dispositions.
+**Current licensing decision reconciliation (2026-10-16, documentation only):**
+[PDR-11 §21](decisions/product/PDR-11-vardena-licensing-product-requirements.md#21-product-owner-decisions-and-traceability-update--2026-10-16)
+is the consolidated record for OQ-45 and OQ-74–OQ-85. Detailed records are
+[OQ-45](decisions/product/OQ-45-license-expiry-behavior.md),
+[PDR-15 §6](decisions/product/PDR-15-client-device-licensing-and-replacement.md),
+and [PDR-17](decisions/product/PDR-17-owner-web-application-phase-1.md);
+[the decision/readiness matrix](tasks/licensing-po-decision-traceability-2026-10-16.md)
+separates closed policy from remaining product/API questions, technical gaps and
+MVP blockers. OQ-45's natural-expiry boundary is decided (signed expiry + 14×24h
+UTC; `now >= boundary`); contract-termination strictness and implementation remain
+open. The current Owner MVP model is Owner Admin and License Operator; previous
+four-role wording is historical/superseded, while permission implementation is
+open. OQ-84 is product-closed. Other OQ rows remain open where the registry records
+specific technical, API, evidence or implementation follow-ups. The dated
+reconciliation history below is preserved and does not override this current
+status.
 
 **Licensing/F-12 source reconciliation (2026-10-14):** audited `main`
 `05933588fad3f1cb76475d48c3f9586ec32494df`. L-04/L-05/L-06 and the core F-12

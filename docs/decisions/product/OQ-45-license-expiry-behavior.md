@@ -1,4 +1,4 @@
-# OQ-45: License expiry — 14-calendar-day Grace then Read-Only
+# OQ-45: License expiry — 14-day UTC Grace then Read-Only
 
 - **Type:** OQ (product/business + operational policy)
 - **Status:** **Partially decided (2026-10-16); OQ remains OPEN** for separate contract-termination strictness and implementation/verification. Natural-expiry Grace boundary is decided; cancellation transition details remain under OQ-78.
@@ -67,16 +67,16 @@ strings as source facts.
 
 ## Implementation requirements and status
 
-PDR-11 §20.5 lists source-backed gaps and §20.6 supplies future acceptance criteria.
-Engineering must first obtain the PO deadline decision above, then specify
-API/worker enforcement and renewal restoration against existing time/security
-boundaries. Deadline arithmetic is not delegated as a free technical choice. This record implements
-none of them and claims no passing feature tests or module-wide compliance.
-The global Jalali-first display policy changes neither signed expiry Instants nor
-storage semantics. OQ-45's duration, outage distinction, override authority and
-Read-Only capability questions are answered; exact deadline semantics still need
-PO resolution before enforcement, and mechanisms require a separate PR. The
-separate termination-trigger/strictness question also still requires PO input.
+PDR-11 §20.5–§20.6 records source-backed gaps and future acceptance criteria.
+The Product Owner has decided the deadline: engineering must implement the
+recorded UTC boundary and specify API/worker enforcement and renewal restoration
+against existing time/security boundaries. This record implements none of those
+mechanisms and claims no passing feature tests or module-wide compliance. The
+global Jalali-first display policy changes neither signed expiry Instants nor
+storage semantics. OQ-45's duration, natural-expiry boundary, outage distinction,
+extension authority and Read-Only capabilities are decided; enforcement and
+verification require a separate change. The distinct contract-termination
+strictness question remains open.
 
 ## Historical record — superseded options and unresolved wording
 

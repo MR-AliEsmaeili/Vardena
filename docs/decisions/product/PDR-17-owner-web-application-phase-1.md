@@ -139,8 +139,9 @@ records both steps in one transaction. No cancellation, renewal, revocation,
 recovery or client-device state is defined, so none is implemented. An abandoned non-terminal
 replacement keeps its installation slot until a later decision defines withdrawal.
 A completed replacement of installation B may later be the old installation of
-another observation. Whether a replaced reference may be reused as a new
-replacement target is not decided here; OQ-82 remains OPEN for that choice.
+another observation. Reuse of a replaced reference, pending-request withdrawal
+and timeout recovery remain unspecified technical details under OQ-82. The
+2026-10-16 replacement order and confirmation requirements are authoritative.
 Evidence: [manual observation record](../../tasks/licensing-owner-side-manual-operations.md).
 
 **Implementation snapshot, not current replacement policy:** the code-backed

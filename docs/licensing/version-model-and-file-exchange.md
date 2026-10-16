@@ -1,6 +1,18 @@
 # Licensing version model, signed documents and file exchange — technical design
 
-> **Current product reconciliation (2026-10-15):**
+> **Current policy correction (2026-10-16):** PDR-11 §21, PDR-15 §6 and PDR-17
+> govern current licensing policy. The existing self-service device-replacement
+> slice is prior implementation evidence, not the current OQ-83 MVP workflow;
+> Owner Admin-managed replacement is not yet evidenced as implemented. OQ-82's
+> manual server sequence and confirmation window are decided, but exact evidence
+> and timeout recovery remain open. OQ-75 has exactly two MVP roles; OQ-77's
+> append-only minimum-three-year retention and permanent separate archive policy
+> are decided, while archive/access implementation remains open. OQ-45's natural
+> expiry boundary is signed expiry + 14×24h UTC (`now >= boundary`); enforcement
+> is not implemented. This document is technical design/code evidence, not proof
+> of policy implementation; no runtime or signed-protocol changes are made here.
+
+> **Historical product reconciliation (2026-10-15):**
 > [PDR-11 §§9–10, 12, 15 and 20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
 > supersedes earlier undecided product wording for Grace/Read-Only, emergency/
 > recovery, clock, archive, successful duplicate replay, key compromise and the
@@ -13,7 +25,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Active design record for signed-license versions and import; OQ-83 server-side slice merged and CI-verified, operational client/issuer evidence still open |
+| Status | Active design record and existing implementation snapshot; the prior customer self-service OQ-83 slice merged and CI-verified, but its conformance to current manual Owner Admin policy remains open alongside operational evidence |
 | Authority | [ADR-0046](../adr/0046-signed-license-documents-and-version-lifecycle.md) (decision) · [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) (product source) · [PDR-15](../decisions/product/PDR-15-client-device-licensing-and-replacement.md) (OQ-83 policy) |
 | Date | 2026-10-11; OQ-83 addendum updated 2026-10-15 |
 | Scope | Server license import: signed document format, retained versions, effective-version resolution, replay protection, audit, migration, API and frontend boundary; OQ-83 signed device quota and its import conflict rules |
@@ -702,8 +714,10 @@ and the stamp is a guarded update (`WHERE superseded_at IS NULL`).
   - storage and backup of the private part depend on the backup-encryption
     design (PDR-11 U-2; §6.1 requires it to be encrypted in the full backup and
     §6.2 forbids escrow);
-  - key loss must lead to the replacement workflow (PDR-11 §6.4), which is not
-    designed or approved (U-9, PQ-3 → OQ-78; replacement detail OQ-82).
+  - key loss must lead to the replacement workflow (PDR-11 §6.4). The manual
+    Owner-authorized server sequence is now policy (OQ-82); key-loss recovery,
+    evidence and exact API/timeout handling remain design and implementation gaps
+    (OQ-78/OQ-82).
 - Therefore: import **never creates, recreates or adopts** an installation row.
   A document for an unknown installation is rejected (`installation-mismatch`)
   and leaves the database without any installation row — an identity is only ever
@@ -731,9 +745,12 @@ and the stamp is a guarded update (`WHERE superseded_at IS NULL`).
   `license.version.superseded` (event type), outcome, `operation_id` (only when
   the signature verified), license/version ids, actor, transport source,
   `document_hash`, a bounded reason code and a bounded non-sensitive detail.
-  Retention periods and sensitive-data policy are open (PDR-11 U-7 → OQ-77); the
-  table stores **no** raw document, no signature, no key material and no customer
-  payload beyond an id and a display name.
+  Current policy (PDR-11 §21/PDR-17): append-only records, minimum three-year
+  retention, unresolved incidents never automatically deleted, with the previously
+  approved permanent separate archive retained. Archive/access/minimization
+  implementation remains open (OQ-77); this table stores **no** raw document,
+  no signature, no key material and no customer payload beyond an id and a display
+  name.
 - The `license.version.superseded` row is written inside the state-change
   transaction and names the version the transaction actually retired: the
   transaction refuses the import if that differs from the version the read-side
@@ -1017,7 +1034,7 @@ customer stays the explicit, authorized, audited
 
 ## 14. Client-device licensing (OQ-83)
 
-The Product Owner policy is recorded in [PDR-15 / OD-LIC-04](../decisions/product/PDR-15-client-device-licensing-and-replacement.md); the dedicated customer-side protocol, state machine, API, authorization, persistence and test design is [`client-device-lifecycle.md`](./client-device-lifecycle.md). The customer-server slice was merged by PR #154 and its merge SHA passed CI; OQ-83 remains OPEN because independent review and operational device-client/Owner-issuer evidence are still outstanding. This section does not promote or change ADR-0046's accepted decisions.
+The current manual Owner Admin policy is recorded in [PDR-15 / OD-LIC-04](../decisions/product/PDR-15-client-device-licensing-and-replacement.md); the detailed customer-side protocol, state machine, API, authorization, persistence and test design in [`client-device-lifecycle.md`](./client-device-lifecycle.md) documents the prior self-service implementation. The customer-server slice was merged by PR #154 and its merge SHA passed CI; that evidence does not establish conformance to current policy. OQ-83 remains open for implementation reconciliation, independent review and operational device-client/Owner evidence. This section does not promote or change ADR-0046's accepted decisions.
 
 The signed `LicenseVersion` owns device capacity. VLIC1 and already-issued VLIC2 payloads without a `deviceLimit` stay verifiable using their historical canonical form. Their device limit is **UNSPECIFIED** (neither zero nor unlimited), so they do not authorize new device registration until an explicit signed limit is imported. A signed `null` is unlimited; finite values are non-negative integers. The migration backfills pre-field rows as unspecified and never rewrites signed artifacts or their hashes.
 

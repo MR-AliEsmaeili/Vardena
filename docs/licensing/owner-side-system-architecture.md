@@ -20,7 +20,9 @@ non-automatic-invalidation of existing licenses solely on key compromise (U-1);
 no signed receipt for ordinary activation (OQ-84). Broader technical design and
 implementation remain follow-ups, not newly approved production custody/issuance.
 Manual Owner approval for each new customer-server installation/replacement,
-operator-observed evidence labels, four roles and separation boundaries remain.
+operator-observed evidence labels and separation boundaries remain. The former
+four-role model is historical/superseded; the current model is Owner Admin and
+License Operator, and current code is not represented as migrated.
 Owner dates must follow [the global Jalali-first date/time contract](../datetime.md)
 §0; raw-ISO views are an evidenced implementation gap (PDR-11 §20.5).
 
@@ -63,7 +65,8 @@ application writes, including both emergency steps before commit. Responses are
 labeled operator-observed and not cryptographically verified. No signed protocol, customer callback or customer
 schema change is involved. Server replacement is separate from OQ-83
 client-device replacement. An abandoned non-terminal replacement cannot be
-withdrawn: PDR-17 defines no cancellation transition and OQ-82 remains OPEN.
+withdrawn: timeout/cancellation details remain unspecified under OQ-82; the
+manual replacement order and bounded confirmation window are decided in PDR-17.
 U-1 technical incident-response/custody design remains deferred under the
 approved product policy; no production signer/key. No signed contract changes.
 OQ-77/78/82/83/85 remain open for their outstanding scope; OQ-84 is now
@@ -504,9 +507,9 @@ Ordered by whether they block Owner implementation.
 | GAP-5 | No signed refusal artifact; `VDRP1` supports `APPROVE` only | No — needs a decision | Item D-8; changes a signed contract, so not unilateral |
 | GAP-6 | `docs/licensing/version-model-and-file-exchange.md` §2.1 canonical example omits `deviceLimit` | No | Example shows the pre-OQ-83 shape; prose §11 covers the field. Documentation drift only — but it edits the same normative §2.1 block, so its correction travels with **Phase 0.5B** (D-2(b)), not with Phase 0.5A |
 | GAP-7 | No Owner intake bound / operator summary / export naming convention for offline exchange | Yes, for Phase 2 | §3.8 |
-| GAP-8 | Revocation, reactivation and server-installation replacement instruments do not exist in any form | Yes, but gated | OQ-78 and OQ-82 are OPEN; **must not** be designed around here |
-| GAP-9 | Owner audit retention and sensitive-data treatment undefined | Yes, but gated | OQ-77 / PDR-11 U-7 OPEN |
-| GAP-10 | Owner role permission matrix undefined | Yes, but gated | PDR-11 U-5 OPEN; only the four role *categories* are approved |
+| GAP-8 | Revocation/reactivation instruments and OQ-82 replacement evidence/state workflow are not implemented | Yes, but gated | OQ-78 protocol remains open; OQ-82's manual order and 1h–7d/24h confirmation policy are decided, while proof/API/timeout recovery remain open |
+| GAP-9 | Separate archive, retention execution and sensitive-data controls not implemented | Yes, but gated | OQ-77 policy decided: append-only, minimum three years, no automatic deletion of unresolved incidents; permanent separate archive remains |
+| GAP-10 | Exact Owner role-to-endpoint permission mapping is not implemented | Yes, but gated | OQ-75 policy decided: Owner Admin and License Operator only; code still has four roles, not migrated |
 
 GAP-8, GAP-9 and GAP-10 are **not** design work this phase may complete: each is
 an OPEN product question, and inventing an answer would violate PDR-11 §17.2
@@ -540,10 +543,11 @@ so that "separated" is a testable claim rather than an assertion.
 
 ## 7. What this document does not do
 
-It does not choose the Owner repository or its ownership (OQ-85), the Owner UI
-runtime, the Owner database product, the operator permission matrix (U-5), the
-production key custody model or compromise policy (U-1), the device-client
-platform, the revocation or reactivation design (OQ-78), the server-installation
-replacement design (OQ-82), or signed receipts for ordinary activation (OQ-84).
-It authorizes no implementation. The phased plan and the decision table are in
+At the time of this Phase 0 design, repository/ownership, roles, key custody,
+revocation, replacement and receipt questions were open. Product status was later
+updated by PDR-11 §21/PDR-15/PDR-17: OQ-85's Owner-controlled/offline boundary,
+OQ-75's two roles, OQ-82's manual sequence, and OQ-84's no-separate-ordinary-
+receipt policy are decided. Detailed permission/custody/recovery/evidence design
+and implementation remain open. This architecture note authorizes no runtime
+implementation. The phased plan and decision history are in
 [the Phase 0 readiness report](../tasks/licensing-owner-side-phase-0-readiness.md).

@@ -71,7 +71,7 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 | [PDR-13](./PDR-13-post-gap-recovery.md) | Post-gap recovery through a dedicated audited operation (**OD-LIC-02**, OQ-87 **Option B**) — a NEW license identity may cover a lapse for the same customer + installation ONLY via a dedicated, explicitly authorized, reasoned, audited recovery operation; ordinary import is never a recovery path; L-04 (§8.6 usage-aware reduction check + explicit resolution) implemented in the same change | PDR | **Decided — Final Owner Decision (2026-10-12)** | Answers **OQ-87** and unblocks/completes the L-04 slice it gated; OQ-79/OQ-82/OQ-83/OQ-84/OQ-77 untouched |
 | [PDR-14](./PDR-14-licensing-customer-code.md) | Stable customer code across the license lifecycle (**OD-LIC-03**, **L-06**) — every licensing customer has a stable, independent business `customerCode` (`licensing.customers.customer_code`) while `customerId` remains internal identity and `customerName` remains a non-identity display name never overwritten by ordinary import; signed license artifacts (`VLIC2` and `VLIC1`) carry `customerCode`, issuance/CLI require explicit valid `customerId` + `customerCode`, renewals and imports enforce customer/code consistency (`customer-code-mismatch`), and customer/installation rebinding requires the explicit audited transfer operation | PDR | **Decided — Final Owner Decision (2026-10-14)** | Resolves **L-06** across customer persistence, signed artifacts, issuance, renewal, import conflict evaluation, and transfer audit |
 | [PDR-15](./PDR-15-client-device-licensing-and-replacement.md) | Client-device licensing, quota and replacement (**OD-LIC-04**, OQ-83) — key-based identity, client-side private keys, retained history, atomic quota-neutral replacement; later MVP manual Owner Admin workflow | PDR | **Decided; superseding policy addendum 2026-10-16** | OQ-83 remains OPEN for implementation review/reconciliation; OQ-84 and OQ-78/OQ-82/OQ-85 remain separate
-| [PDR-16](./PDR-16-licensing-protocol-canonical-byte-contract-and-vectors.md) | Licensing protocol canonical byte contract and conformance vectors (D-2(a)=VECTORS_ONLY, D-2(b)=APPROVE) | PDR | **Decided (2026-10-15)** | Ratifies measured Node.js canonicalization as normative contract; publishes deterministic vector corpus; **OQ-83 and OQ-85 remain OPEN**; ADR-0048 remains Proposed; no Owner issuer or Phase 2
+| [PDR-16](./PDR-16-licensing-protocol-canonical-byte-contract-and-vectors.md) | Licensing protocol canonical byte contract and conformance vectors (D-2(a)=VECTORS_ONLY, D-2(b)=APPROVE) | PDR | **Decided (2026-10-15)** | Ratifies measured Node.js canonicalization as normative contract; publishes deterministic vector corpus; OQ-83 implementation review and OQ-85 operational evidence remain OPEN; ADR-0048 remains Proposed; no production Owner issuer or Phase 2
 
 > **Numbering note (2026-10-02).** `OQ-62`, `OQ-63` and `OQ-64` are accounting /
 > migration questions that live only in the central registry
@@ -101,7 +101,9 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 > (`reduction-requires-resolution` with a structured explain payload, 409,
 > nothing written) and the dedicated, reasoned, audited
 > `reduction-resolution` operation. PDR-12's term rule is untouched: an open
-> end is never operator-resolvable. OQ-79/OQ-82/OQ-83/OQ-84 stay Open.
+> end is never operator-resolvable. **Historical status note (2026-10-12):**
+> OQ-82/OQ-83/OQ-84 were then open; OQ-84 is now product-closed, while
+> OQ-82/OQ-83 retain implementation/evidence follow-ups under PDR-11 §21.
 >
 > **Registry-only licensing rows (2026-10-11).** `OQ-74`…`OQ-85` are licensing
 > product/security questions registered in the central registry

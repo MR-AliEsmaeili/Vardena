@@ -23,9 +23,9 @@ completion, and not closure of OQ-83.
 **Authority:** [PDR-15 / OD-LIC-04](../decisions/product/PDR-15-client-device-licensing-and-replacement.md),
 [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md),
 [PDR-14](../decisions/product/PDR-14-licensing-customer-code.md), and
-[the implemented protocol](../licensing/client-device-lifecycle.md). OQ-77,
-OQ-78, OQ-82, OQ-84, and OQ-85 remain separate and open as recorded in the
-registry.
+[the existing implementation protocol](../licensing/client-device-lifecycle.md).
+OQ-77/78/82/83/85 retain implementation/evidence follow-ups; OQ-84 is product-
+closed (no separate signed ordinary activation receipt). See the current registry.
 
 ## 1. Bounded migration-verification change
 
@@ -233,8 +233,10 @@ applicable choices are recorded:
 5. **Owner issuance lifecycle:** whether a request needs single or dual approval,
    denial/cancellation synchronization, response validity bounds, and recovery
    procedure after an interrupted issuance.
-6. **Audit retention:** retention/export requirements remain OQ-77 and are not
-   decided by OQ-83.
+6. **Audit retention:** policy is decided: append-only, minimum three years,
+   no automatic deletion of unresolved incidents; the previously approved permanent
+   separate archive remains. Archive/access/retention implementation is still OQ-77
+   and is not decided by OQ-83.
 
 ## 7. Phased implementation plan and acceptance criteria
 
