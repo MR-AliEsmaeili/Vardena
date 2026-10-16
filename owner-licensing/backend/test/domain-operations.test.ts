@@ -170,7 +170,7 @@ describe("manual observation transitions", () => {
       password_hash: "secret",
       signed_payload: "VLIC2",
     };
-    const body = operationResponse(row, "READ_ONLY_OBSERVER", [
+    const body = operationResponse(row, "LICENSE_OPERATOR", [
       {
         id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
         actor_id: "actor",
@@ -194,9 +194,15 @@ describe("manual observation transitions", () => {
     expect(JSON.stringify(body)).not.toContain("SECRET-CONTRACT");
     expect(JSON.stringify(body)).not.toContain("password_hash");
     expect(JSON.stringify(body)).not.toContain("VLIC2");
-    expect(code(() => operationResponse(row, "SUPPORT_SPECIALIST"))).toBe(
-      "PermissionDenied",
-    );
+    for (const denied of [
+      "SUPPORT_SPECIALIST",
+      "READ_ONLY_OBSERVER",
+      "SYSTEM_ADMIN",
+      "LICENSE_ISSUANCE",
+    ])
+      expect(
+        code(() => operationResponse(row, denied as (typeof roles)[number])),
+      ).toBe("PermissionDenied");
     for (const role of roles)
       if (!permissions(role).includes("operations.view"))
         expect(code(() => operationResponse(row, role))).toBe(

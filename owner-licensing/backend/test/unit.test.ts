@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   customerCode,
@@ -5,42 +6,47 @@ import {
   object,
   password,
   permissions,
+  role,
   roles,
   text,
 } from "../src/domain.js";
 import { config } from "../src/config.js";
 
 describe("Owner deny-by-default policy and input boundary", () => {
-  it("exercises all four categories with exact approved read and write permissions", () => {
-    expect(roles).toHaveLength(4);
-    expect(permissions("SYSTEM_ADMIN")).toEqual([
+  it("enforces the two-role MVP model (Owner Admin and License Operator) and rejects superseded roles", () => {
+    expect(roles).toEqual(["OWNER_ADMIN", "LICENSE_OPERATOR"]);
+    expect(permissions("OWNER_ADMIN")).toEqual([
       "customers.view",
       "customers.write",
       "users.manage",
       "audit.view",
       "operations.view",
       "operations.record",
+      "replacements.authorize",
     ]);
-    expect(permissions("LICENSE_ISSUANCE")).toEqual([
+    expect(permissions("LICENSE_OPERATOR")).toEqual([
       "customers.view",
       "audit.view",
       "operations.view",
       "operations.record",
     ]);
-    expect(permissions("READ_ONLY_OBSERVER")).toEqual([
-      "customers.view",
-      "audit.view",
-      "operations.view",
-    ]);
-    expect(permissions("SUPPORT_SPECIALIST")).toEqual(["customers.view"]);
-    expect(permissions("anything")).toEqual([]);
-    for (const unknown of [
-      "SYSTEM_ADMIN.*",
-      "SYSTEM_ADMIN.extra",
-      "system_admin",
+    expect(role("OWNER_ADMIN")).toBe("OWNER_ADMIN");
+    expect(role("LICENSE_OPERATOR")).toBe("LICENSE_OPERATOR");
+    for (const legacyOrUnknown of [
+      "SYSTEM_ADMIN",
+      "LICENSE_ISSUANCE",
+      "READ_ONLY_OBSERVER",
+      "SUPPORT_SPECIALIST",
+      "anything",
+      "OWNER_ADMIN.*",
+      "OWNER_ADMIN.extra",
+      "owner_admin",
+      "license_operator",
       "customers.*",
-    ])
-      expect(permissions(unknown)).toEqual([]);
+    ]) {
+      expect(permissions(legacyOrUnknown)).toEqual([]);
+      expect(() => role(legacyOrUnknown)).toThrow("Invalid role.");
+    }
   });
   it("matches the case-sensitive PDR-14 code contract", () => {
     expect(customerCode("a.b_C:9-")).toBe("a.b_C:9-");
@@ -88,8 +94,8 @@ describe("Owner deny-by-default policy and input boundary", () => {
   });
 });
 
-describe("Support customer field allowlist", () => {
-  it("returns only identity and operational status, including when new fields are added", () => {
+describe("Customer field allowlist for the two-role model", () => {
+  it("returns only allowlisted customer fields for Owner Admin and License Operator and denies unknown/superseded roles", () => {
     const row = {
       id: "id",
       customer_code: "A1",
@@ -97,33 +103,42 @@ describe("Support customer field allowlist", () => {
       status: "ACTIVE",
       contract_reference: "private",
       created_by: "actor",
+      updated_by: "actor",
       created_at: "time",
+      updated_at: "time",
       future_sensitive_column: "secret",
     };
-    expect(customerResponse(row, "SUPPORT_SPECIALIST")).toEqual({
-      id: "id",
-      customerCode: "A1",
-      displayName: "Name",
-      status: "ACTIVE",
-    });
-    expect(customerResponse(row, "LICENSE_ISSUANCE")).toHaveProperty(
+    expect(customerResponse(row, "OWNER_ADMIN")).toHaveProperty(
       "contractReference",
       "private",
     );
-    expect(customerResponse(row, "READ_ONLY_OBSERVER")).toHaveProperty(
+    expect(customerResponse(row, "LICENSE_OPERATOR")).toHaveProperty(
       "contractReference",
       "private",
     );
-    expect(customerResponse(row, "SYSTEM_ADMIN")).toHaveProperty(
-      "contractReference",
-      "private",
-    );
-    expect(() =>
-      customerResponse(row, "UNKNOWN" as (typeof roles)[number]),
-    ).toThrow("Customer read is not permitted.");
+    for (const denied of [
+      "UNKNOWN",
+      "SYSTEM_ADMIN",
+      "LICENSE_ISSUANCE",
+      "READ_ONLY_OBSERVER",
+      "SUPPORT_SPECIALIST",
+    ])
+      expect(() =>
+        customerResponse(row, denied as (typeof roles)[number]),
+      ).toThrow("Customer read is not permitted.");
     for (const r of roles)
       expect(customerResponse(row, r)).not.toHaveProperty(
         "future_sensitive_column",
       );
+  });
+  it("defines additive migration 003-two-role-authorization.sql that fails closed on legacy roles", () => {
+    const sql = readFileSync(
+      new URL("../migrations/003-two-role-authorization.sql", import.meta.url),
+      "utf8",
+    );
+    expect(sql).toContain("ADD CONSTRAINT users_role_check CHECK");
+    expect(sql).toContain("role IN ('OWNER_ADMIN', 'LICENSE_OPERATOR')");
+    expect(sql).toContain("NOT IN ('OWNER_ADMIN', 'LICENSE_OPERATOR')");
+    expect(sql).toContain("RAISE EXCEPTION");
   });
 });

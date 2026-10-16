@@ -1,14 +1,17 @@
 # Vardena Project State
 
-> **Owner Phase 1, 2026-10-15 (unmerged implementation for review):** starting
-> `main` = `c63fc2356f6d99ed18059594cda52e3db46d33cd`. Standalone Owner
-> application, separate PostgreSQL/SQL chain/auth/RBAC/customer/audit slice under
-> `owner-licensing/`; see [task/evidence](docs/tasks/licensing-owner-side-phase-1.md)
-> and [PDR-17](docs/decisions/product/PDR-17-owner-web-application-phase-1.md).
-> No signer, production key, protocol change or OQ closure. PR #160 Owner
-> correction confirms specialist customer/audit reads and Support identity/status
-> reads with server-side filtering. OQ-77 option C wording remains unresolved. Exact-head CI required;
-> no acceptance or merge is inferred. Historical state below is retained.
+> **Owner Phase 1.3, 2026-10-16 (unmerged implementation for review):** starting
+> `main` = `1a982323db7f4bde13038f6dfd757b762512676e` (merge of PR #165).
+> Aligns the standalone Owner application (`owner-licensing/`) with the
+> Product Owner's 2026-10-16 two-role MVP policy (`Owner Admin` / `OWNER_ADMIN`
+> and `License Operator` / `LICENSE_OPERATOR`, superseding the historical
+> four-role model) via additive SQL migration `003-two-role-authorization.sql`,
+> server-enforced API permissions (`replacements.authorize` gating
+> server-replacement and emergency old-server-lost authorization to `OWNER_ADMIN`),
+> and Persian RTL UI updates; see [PDR-17](docs/decisions/product/PDR-17-owner-web-application-phase-1.md),
+> [Phase 1 record](docs/tasks/licensing-owner-side-phase-1.md), and §45 below.
+> No production signer, signing key, protocol change or OQ closure. Exact-head CI
+> required; no acceptance or merge is inferred. Historical state below is retained.
 
 ## 1. Source of Truth
 
@@ -2433,3 +2436,54 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   client-device live PostgreSQL suites. This supplies migration and test
   evidence for review; it does not approve the proposed operational components
   or close OQ-83.
+
+## 45. Owner Phase 1.3 — Two-role MVP authorization alignment (`OWNER_ADMIN` and `LICENSE_OPERATOR`) (2026-10-16, proposed for review)
+
+- **Baseline:** `origin/main` = `1a982323db7f4bde13038f6dfd757b762512676e`
+  (merge of PR #165, `docs(licensing): record PO decisions and OQ-81 design`).
+  Session branch: `arena/1dfe2df3-vardena`.
+- **Canonical authority:** [PDR-17](docs/decisions/product/PDR-17-owner-web-application-phase-1.md),
+  [PDR-11 §21](docs/decisions/product/PDR-11-vardena-licensing-product-requirements.md#21-product-owner-decisions-and-traceability-update--2026-10-16),
+  [ADR-0048](docs/adr/0048-owner-side-licensing-separation-boundary.md), and
+  [decision traceability matrix](docs/tasks/licensing-po-decision-traceability-2026-10-16.md).
+- **Implemented scope:**
+  - Added forward-only migration
+    `owner-licensing/backend/migrations/003-two-role-authorization.sql` that
+    fails closed if any superseded four-role user row exists and replaces
+    `users_role_check` on `owner.users` with
+    `CHECK (role IN ('OWNER_ADMIN', 'LICENSE_OPERATOR'))`, preserving the
+    immutable checksums of `001-foundation.sql` and `002-manual-operations.sql`.
+  - Updated `owner-licensing/backend/src/domain.ts`, `src/bootstrap.ts`,
+    `src/operations.ts`, and `src/app.ts` to enforce the two-role MVP model:
+    - `OWNER_ADMIN`: `customers.view`, `customers.write`, `users.manage`,
+      `audit.view`, `operations.view`, `operations.record`,
+      `replacements.authorize`.
+    - `LICENSE_OPERATOR`: `customers.view`, `audit.view`, `operations.view`,
+      `operations.record`.
+    - Superseded four-role values (`SYSTEM_ADMIN`, `LICENSE_ISSUANCE`,
+      `READ_ONLY_OBSERVER`, `SUPPORT_SPECIALIST`) receive `[]` permissions and
+      are rejected at input validation and SQL boundaries.
+    - Server-replacement authorization and emergency old-server-lost handling
+      (`POST /api/v1/operational-records/server-replacements`) require
+      `replacements.authorize` (`OWNER_ADMIN` only); unauthorized attempts write
+      a durable `OPERATION_MUTATION_DENIED` audit event and return `403
+      PermissionDenied`.
+    - Bootstrap initial administrator provisioning (`src/bootstrap.ts`) creates
+      `OWNER_ADMIN` with `must_change_password = true`, and last-active-admin
+      protection in `PATCH /api/v1/users/:id` guards `OWNER_ADMIN`.
+  - Updated `owner-licensing/frontend/` (`src/api/contracts.ts`,
+    `src/lib/owner-i18n.ts`, `src/app/layouts/app-shell.tsx`,
+    `src/features/users/users-page.tsx`,
+    `src/features/operations/operations-page.tsx`,
+    `src/features/operations/operation-forms.tsx`) and backend/frontend test
+    suites (`test/unit.test.ts`, `test/domain-operations.test.ts`,
+    `test/api.test.ts`, `src/app/owner-flow.test.tsx`,
+    `src/features/operations/operations-flow.test.tsx`,
+    `src/features/audit/audit-page.test.tsx`,
+    `src/features/auth/change-password-page.test.tsx`).
+- **Explicit non-goals and open Phase 2 boundaries:** no production signing key,
+  custody mechanism, or cryptographic artifact generation (`U-1`/OQ-74); no
+  new-server-first replacement sequence or 1h–7d pending confirmation timer
+  enforcement (OQ-82); no restricted-admin recovery or revocation artifact flow
+  (OQ-78); no changes to customer `backend/` or `frontend/` packages or
+  migrations. No OQ is closed by this implementation increment.

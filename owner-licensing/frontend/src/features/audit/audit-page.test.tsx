@@ -33,7 +33,7 @@ const ulid = '01ARZ3NDEKTSV4RRFFQ69G5FAV';
 const admin = {
   id: ulid,
   username: 'owner',
-  role: 'SYSTEM_ADMIN' as const,
+  role: 'OWNER_ADMIN' as const,
   isActive: true,
   mustChangePassword: false,
   createdAt: '2026-10-15T00:00:00.000Z',

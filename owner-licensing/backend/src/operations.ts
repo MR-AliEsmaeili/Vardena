@@ -172,6 +172,8 @@ export async function denyOperationMutation(
   tx: PoolClient,
   actorId: string,
   targetId: string | null,
+  requiredPermission:
+    "operations.record" | "replacements.authorize" = "operations.record",
 ) {
   await audit(tx, {
     actor: actorId,
@@ -179,7 +181,7 @@ export async function denyOperationMutation(
     targetType: "OperationalRecord",
     targetId,
     outcome: "DENIED",
-    reason: "Missing operations.record",
+    reason: `Missing ${requiredPermission}`,
   });
 }
 

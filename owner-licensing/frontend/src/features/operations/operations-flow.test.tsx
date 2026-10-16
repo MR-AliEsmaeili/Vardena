@@ -38,7 +38,7 @@ vi.mock('@/api/owner.api', () => ({
 const admin = {
   id: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
   username: 'owner',
-  role: 'SYSTEM_ADMIN' as const,
+  role: 'OWNER_ADMIN' as const,
   isActive: true,
   mustChangePassword: false,
   createdAt: '2026-10-15T00:00:00.000Z',
@@ -79,6 +79,7 @@ beforeEach(() => {
       'audit.view',
       'operations.view',
       'operations.record',
+      'replacements.authorize',
     ],
   });
   vi.mocked(api.customers).mockResolvedValue({
@@ -121,18 +122,47 @@ beforeEach(() => {
 });
 
 describe('manual operations UI', () => {
-  it('hides mutation controls from an observer and still labels observations as manual', async () => {
+  it('allows License Operator routine license observation while hiding server-replacement authorization', async () => {
+    vi.mocked(identity.getCurrentUser).mockResolvedValue({
+      ...admin,
+      role: 'LICENSE_OPERATOR',
+    });
     vi.mocked(identity.getEffectivePermissions).mockResolvedValue({
-      permissions: ['customers.view', 'audit.view', 'operations.view'],
+      permissions: [
+        'customers.view',
+        'audit.view',
+        'operations.view',
+        'operations.record',
+      ],
     });
     mount('/app/operations');
     expect(await screen.findByText(o.emptyOperations)).toBeInTheDocument();
     expect(screen.getByText(o.manualBanner)).toBeInTheDocument();
     expect(screen.getByText(o.notReceipt)).toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: o.recordIssuance }),
+      screen.getByRole('link', { name: o.recordIssuance }),
+    ).toHaveAttribute('href', '/app/operations/activation/new');
+    expect(
+      screen.queryByRole('link', { name: o.recordReplacement }),
     ).not.toBeInTheDocument();
-    expect(api.recordLicenseObservation).not.toHaveBeenCalled();
+    expect(api.recordServerReplacement).not.toHaveBeenCalled();
+  });
+  it('denies License Operator direct navigation to server-replacement authorization form', async () => {
+    vi.mocked(identity.getCurrentUser).mockResolvedValue({
+      ...admin,
+      role: 'LICENSE_OPERATOR',
+    });
+    vi.mocked(identity.getEffectivePermissions).mockResolvedValue({
+      permissions: [
+        'customers.view',
+        'audit.view',
+        'operations.view',
+        'operations.record',
+      ],
+    });
+    mount('/app/operations/replacement/new');
+    expect(await screen.findByText(o.forbidden)).toBeInTheDocument();
+    expect(api.recordServerReplacement).not.toHaveBeenCalled();
   });
   it('renders manual license and replacement history Instants through the same Tehran formatter', async () => {
     const record = await api.recordLicenseObservation(
@@ -163,11 +193,7 @@ describe('manual operations UI', () => {
     ).toHaveLength(2);
     expect(api.recordLicenseObservation).not.toHaveBeenCalled();
   });
-  it('does not let Support open operational records', async () => {
-    vi.mocked(identity.getCurrentUser).mockResolvedValue({
-      ...admin,
-      role: 'SUPPORT_SPECIALIST',
-    });
+  it('denies operational records when operations.view is not granted', async () => {
     vi.mocked(identity.getEffectivePermissions).mockResolvedValue({
       permissions: ['customers.view'],
     });

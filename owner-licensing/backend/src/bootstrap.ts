@@ -23,7 +23,7 @@ export async function bootstrap(
       if (
         user.username !== name ||
         !user.is_active ||
-        user.role !== "SYSTEM_ADMIN"
+        user.role !== "OWNER_ADMIN"
       )
         throw new Error(
           "Bootstrap refuses to override an existing installation.",
@@ -34,7 +34,7 @@ export async function bootstrap(
       throw new Error("Bootstrap only creates an empty installation.");
     const uid = ulid();
     await tx.query(
-      `INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'SYSTEM_ADMIN',true)`,
+      `INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'OWNER_ADMIN',true)`,
       [uid, name, hash],
     );
     await audit(tx, {
@@ -43,7 +43,7 @@ export async function bootstrap(
       targetType: "User",
       targetId: uid,
       reason: "Explicit installation bootstrap",
-      after: { username: name, role: "SYSTEM_ADMIN", mustChangePassword: true },
+      after: { username: name, role: "OWNER_ADMIN", mustChangePassword: true },
     });
     return true;
   });

@@ -38,10 +38,27 @@ lifecycle operation not separately decided. Every operation remains explicitly
 permissioned and server-enforced; unknown operations deny. Define and test the
 exact endpoint/permission mapping before implementation.
 
-OQ-75's role-count/role-purpose decision is closed at product level. Exact
-permission enforcement, credential lifecycle, access review and acceptance
-remain implementation/security work; no claim of implemented RBAC follows from
-this record. There is no required second-person approval.
+OQ-75's role-count/role-purpose decision is closed at product level, and Phase 1.3
+implements the exact server-enforced two-role permission mapping (`OWNER_ADMIN`
+and `LICENSE_OPERATOR`) across the Owner database (`003-two-role-authorization.sql`),
+API (`domain.ts`, `app.ts`, `operations.ts`, `bootstrap.ts`), and Persian RTL UI:
+
+| Phase 1 operation | `OWNER_ADMIN` (Owner Admin) | `LICENSE_OPERATOR` (License Operator) |
+| --- | --- | --- |
+| Login, own identity (`GET /auth/me`), mandatory/voluntary own password change, logout | yes | yes |
+| Effective permissions (`GET /permissions/effective`) | `customers.view`, `customers.write`, `users.manage`, `audit.view`, `operations.view`, `operations.record`, `replacements.authorize` | `customers.view`, `audit.view`, `operations.view`, `operations.record` |
+| Customer list/detail (`customers.view`) | full allowlisted DTO | full allowlisted DTO |
+| Customer create/edit (`customers.write`) | yes | no (`403 PermissionDenied`) |
+| User and role administration, password reset (`users.manage`) | yes (retains last active `OWNER_ADMIN`) | no (`403 PermissionDenied`) |
+| Audit explorer (`audit.view`) | yes | yes |
+| Manual operational record list/detail (`operations.view`) | yes | yes |
+| Routine license observation and follow-up activation/old-server/replacement-installation observations (`operations.record`) | yes | yes |
+| Server-replacement authorization and emergency old-server-lost handling (`replacements.authorize`, `POST /operational-records/server-replacements`) | yes | no (`403 PermissionDenied`, audited as `OPERATION_MUTATION_DENIED`) |
+
+Superseded four-role identifiers (`SYSTEM_ADMIN`, `LICENSE_ISSUANCE`,
+`READ_ONLY_OBSERVER`, `SUPPORT_SPECIALIST`) are rejected by API validation and
+database constraint. Operational access review and final Product Owner acceptance
+remain separate governance steps; there is no required second-person approval.
 
 ### Historical record — PR #160 four-role matrix (superseded 2026-10-16)
 
@@ -192,12 +209,15 @@ Evidence: [manual observation record](../../tasks/licensing-owner-side-manual-op
 
 **Implementation snapshot, not current replacement policy:** the code-backed
 manual-observation slice records operator assertions and does not verify that a
-customer server was decommissioned. Its historical state names, skipped emergency
-path, unbounded observations and four-role authorization are not proof of the
-2026-10-16 OQ-82/OQ-75 policy. The approved OQ-82 sequence and bounded
-confirmation expiry are in the dated addendum below. The manual device policy is
-separately in PDR-15 §6; prior customer self-service device replacement is not
-conformant evidence for that decision.
+customer server was decommissioned. While Phase 1.3 enforces the two-role
+authorization model (`OWNER_ADMIN` for `replacements.authorize`, and both
+`OWNER_ADMIN` and `LICENSE_OPERATOR` for `operations.record`), the observation
+slice's historical state names, skipped emergency path, and unbounded
+observations are not proof of the 2026-10-16 OQ-82 replacement sequence or
+configurable 1h–7d pending confirmation expiry. The approved OQ-82 sequence and
+bounded confirmation expiry are in the dated addendum below. The manual device
+policy is separately in PDR-15 §6; prior customer self-service device
+replacement is not conformant evidence for that decision.
 
 ## Product decision update — OQ-82/OQ-85 (2026-10-16)
 

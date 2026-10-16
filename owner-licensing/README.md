@@ -6,10 +6,13 @@ Persian RTL login, mandatory password change, customer list/search/detail/create
 edit, user administration/role assignment, durable attributable audit viewing with
 a filterable audit explorer (Phase 1.1), and operator-observed records.
 The lifecycle navigation keeps cryptographic issuance, signed receipts, device
-replacement, revocation and recovery unavailable. Administrator and Issuance
-Specialist can record operator-observed activation facts and same-customer
-server-replacement observations. There is **no signer, signing key, signed
-receipt, or claim of cryptographic confirmation**.
+replacement, revocation and recovery unavailable. Under the approved two-role
+MVP model (`Owner Admin` / `OWNER_ADMIN` and `License Operator` /
+`LICENSE_OPERATOR`, superseding the historical four-role model), both roles can
+record operator-observed activation facts and follow-up replacement observations,
+while only `Owner Admin` (`replacements.authorize`) can authorize a server
+replacement or emergency old-server loss. There is **no signer, signing key,
+signed receipt, or claim of cryptographic confirmation**.
 
 ## Boundaries and dependencies
 
@@ -68,8 +71,10 @@ No production connection string or usable bootstrap password is supplied.
    static assets behind the documented production server/ingress. API proxying
    remains `/api` → the Owner API; never put secrets in any `VITE_*` variable.
 6. Sign in and change the initial password. Until then, ordinary API operations
-   and the UI workspace are blocked. Issuance Specialists can read customers and
-   audit history; Support can read only customer identity/status fields.
+   and the UI workspace are blocked. `Owner Admin` holds user/role administration,
+   customer creation/editing, and server-replacement/emergency authorization;
+   `License Operator` holds routine license observations and read access to
+   customers, operational records, and audit history.
 
 ## Production/deployment
 
@@ -144,6 +149,9 @@ append-only. Direct SQL must keep a continuous history that starts at
 `UNRECORDED` and matches the legal path to the current state, including both
 emergency steps in one transaction. A forged prior, skipped step, reordered
 row, or extra transition is rejected. No cancellation state exists.
+`003-two-role-authorization.sql` enforces the two-role MVP policy on
+`owner.users.role` (`CHECK (role IN ('OWNER_ADMIN', 'LICENSE_OPERATOR'))`) after
+refusing to run if any superseded four-role user row exists.
 
 ## Security
 
@@ -174,15 +182,21 @@ row, or extra transition is rejected. No cancellation state exists.
   intentionally shares the bucket. Plan ingress rate limits/worker capacity for
   your operators; expired bucket housekeeping is infrastructure data, **not an
   audit retention rule**. No raw IP/username retained in failed-login audit.
-- Role policy: PDR-17 / Product Owner correction to PR #160, plus the
-  observation grants in that record. Administrator and Issuance Specialist may
-  inspect and record manual observations. Observer may inspect them. Support
-  customer reads serialize only id/code/display name/status and receive neither
-  operational grant. Unknown operations deny; no wildcard expansion and no dual
-  control. Audit is durable and append-only to application operations,
-  **not tamper-proof against database owners**. No general audit deletion API.
-- OQ-77 option C's wording is absent from current sources: no retention duration,
-  purge schedule or inferred deletion behavior. OQ-77 remains OPEN.
+- Role policy: PDR-17 / OQ-75 two-role MVP model (`Owner Admin` and `License
+  Operator`, superseding the historical four-role model). `Owner Admin` holds
+  `customers.view`, `customers.write`, `users.manage`, `audit.view`,
+  `operations.view`, `operations.record`, and `replacements.authorize`. `License
+  Operator` holds `customers.view`, `audit.view`, `operations.view`, and
+  `operations.record`. Server-replacement authorization and emergency
+  old-server-lost handling require `replacements.authorize` (`Owner Admin` only).
+  Unknown operations and superseded four-role identifiers deny; no wildcard
+  expansion and no dual control. Audit is durable and append-only to application
+  operations, **not tamper-proof against database owners**. No general audit
+  deletion API.
+- OQ-77 retention policy (decided 2026-10-16): append-only retention for at least
+  three years from each event's occurrence, unresolved security incidents
+  excluded from automatic deletion, and permanent retention in a separate archive.
+  No automatic purge or archival job is executed in Phase 1 runtime.
 
 ## API summary
 
@@ -195,7 +209,8 @@ accepts name/status/reference plus required reason; identity/code/actor/time and
 unknown fields reject. Lists: page size 50, `page`, literal `search` up to 100 chars.
 `users` GET/POST; `users/:id` PATCH role/isActive/reason;
 `users/:id/reset-password` POST password/reason. New/reset accounts must change
-password. `audit-events` GET (`audit.view`; Support gets 403): exact-match
+password. `audit-events` GET (`audit.view`; granted to `Owner Admin` and
+`License Operator`): exact-match
 `eventType`, `actorId`, `targetType`, `targetId`, `outcome`, and UTC
 `occurredFrom`/`occurredBefore` (half-open); AND semantics; 50-row pages with
 `hasNext`; unknown, repeated, malformed or wildcard input is 400. Full contract:
@@ -207,11 +222,13 @@ POST `operational-records/license-observations` records an externally observed
 issuance. POST `operational-records/:id/activation-observations` records
 issued → activated. POST `operational-records/server-replacements` records
 authorization, or emergency old-server loss when `emergencyOldServerLost` is
-true. POST `operational-records/:id/old-server-observations` and
-`replacement-observations` continue that sequence. Mutation routes require
-`operations.record`; a missing grant audits `OPERATION_MUTATION_DENIED` and
-returns 403. Stable codes include `InvalidTransition`, `DuplicateOperation`,
-`PermissionDenied` and `EntityNotFound`. Responses say `OPERATOR_OBSERVED` and
+true, and requires `replacements.authorize` (`Owner Admin`). POST
+`operational-records/:id/old-server-observations` and
+`replacement-observations` continue that sequence and require `operations.record`.
+Missing `operations.record` or `replacements.authorize` on a mutation route
+audits `OPERATION_MUTATION_DENIED` and returns 403. Stable codes include
+`InvalidTransition`, `DuplicateOperation`, `PermissionDenied` and
+`EntityNotFound`. Responses say `OPERATOR_OBSERVED` and
 `cryptographicVerification=NOT_IMPLEMENTED`. Signed protocol routes stay 404.
 No DELETE endpoint exists.
 Errors have `code`, bounded safe `message`, `correlationId`; no raw DB errors.
@@ -224,13 +241,14 @@ checks run in GitHub Actions. No heavy E2E/live-DB test was executed locally
 unless explicitly authorized (none was authorized for this task).
 
 CI backend steps: Owner lint/format/typecheck/unit/build; fresh dedicated
-`owner_test` PostgreSQL database; migration idempotence, HTTP authentication,
-password-change concurrency/rollback, disabled users, all four roles, direct API
-forbidden access, customer uniqueness/identity, audit rollback/retention/secrecy,
-logout and login throttle. Frontend steps: Owner lint/format/typecheck, schema
-and observable React flow tests, production build. Existing customer checks and
-published protocol vectors remain untouched. See the
-[Phase 1 task record](../docs/tasks/licensing-owner-side-phase-1.md).
+`owner_test` PostgreSQL database; migration idempotence (`001`–`003`), HTTP
+authentication, password-change concurrency/rollback, disabled users, both MVP
+roles (`OWNER_ADMIN` and `LICENSE_OPERATOR`) plus rejection of superseded
+four-role values, direct API forbidden access, customer uniqueness/identity,
+audit rollback/retention/secrecy, logout and login throttle. Frontend steps:
+Owner lint/format/typecheck, schema and observable React flow tests, production
+build. Existing customer checks and published protocol vectors remain untouched.
+See the [Phase 1 task record](../docs/tasks/licensing-owner-side-phase-1.md).
 
 ### PR #160 correction verification
 

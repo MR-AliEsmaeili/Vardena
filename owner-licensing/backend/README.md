@@ -6,9 +6,9 @@ customer database, runtime modules, migrations or credentials.
 
 ## Audit explorer contract
 
-`GET /api/v1/audit-events` requires `audit.view` (Administrator, Issuance
-Specialist and Observer; Support receives 403 `PermissionDenied`). It is
-read-only; no edit, delete or purge route exists.
+`GET /api/v1/audit-events` requires `audit.view` (granted to `Owner Admin` and
+`License Operator`; denied without `audit.view` or while `mustChangePassword` is
+true). It is read-only; no edit, delete or purge route exists.
 
 Query parameters. Each filter is optional, and an empty filter value means "not
 supplied". `page` is strict: when present it must match the table, so `page=` is

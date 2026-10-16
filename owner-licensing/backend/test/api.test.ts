@@ -381,119 +381,121 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       );
     }
   });
-  it.each(["READ_ONLY_OBSERVER", "LICENSE_ISSUANCE", "SUPPORT_SPECIALIST"])(
-    "enforces %s on direct API requests",
-    async (role) => {
-      const uid = ulid(),
-        pw = "Disposable_role_45";
-      await db.pool.query(
-        "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,$4,false)",
-        [uid, uid, await hashPassword(pw), role],
-      );
-      const { cookie } = await login(uid, pw);
-      expect((await customer(cookie)).status).toBe(403);
-      const code = `Support-${ulid()}`;
-      const created = await write("post", "/customers", adminCookie).send({
-        customerCode: code,
-        displayName: "Support-safe name",
-        contractReference: "CONFIDENTIAL-CONTRACT-REFERENCE",
-      });
-      expect(created.status).toBe(201);
-      const cid = created.body.id;
+  it("enforces LICENSE_OPERATOR boundaries and rejects superseded four-role values in API and SQL", async () => {
+    for (const legacyRole of [
+      "SYSTEM_ADMIN",
+      "LICENSE_ISSUANCE",
+      "READ_ONLY_OBSERVER",
+      "SUPPORT_SPECIALIST",
+    ]) {
       expect(
         (
-          await write("patch", `/customers/${cid}`, cookie).send({
-            displayName: "attack",
-            reason: "test",
+          await write("post", "/users", adminCookie).send({
+            username: `legacy-${legacyRole}`,
+            password: initial,
+            role: legacyRole,
           })
         ).status,
-      ).toBe(403);
-      const effective = await request(app)
-        .get("/api/v1/permissions/effective")
-        .set("Cookie", cookie);
-      expect(effective.status).toBe(200);
-      expect(effective.body.permissions).toEqual(
-        role === "SUPPORT_SPECIALIST"
-          ? ["customers.view"]
-          : role === "READ_ONLY_OBSERVER"
-            ? ["customers.view", "audit.view", "operations.view"]
-            : [
-                "customers.view",
-                "audit.view",
-                "operations.view",
-                "operations.record",
-              ],
-      );
-      const list = await request(app)
-        .get("/api/v1/customers")
-        .query({ search: code })
-        .set("Cookie", cookie);
-      const detail = await request(app)
-        .get(`/api/v1/customers/${cid}`)
-        .set("Cookie", cookie);
-      expect(list.status).toBe(200);
-      expect(detail.status).toBe(200);
-      expect(list.body.items).toHaveLength(1);
-      for (const record of [list.body.items[0], detail.body]) {
-        expect(record.id).toBe(cid);
-        expect(record.customerCode).toBe(code);
-        if (role === "SUPPORT_SPECIALIST") {
-          expect(Object.keys(record).sort()).toEqual(
-            ["id", "customerCode", "displayName", "status"].sort(),
-          );
-          expect(JSON.stringify(record)).not.toContain(
-            "CONFIDENTIAL-CONTRACT-REFERENCE",
-          );
-        } else
-          expect(record.contractReference).toBe(
-            "CONFIDENTIAL-CONTRACT-REFERENCE",
-          );
-      }
-      if (role === "SUPPORT_SPECIALIST") {
-        const byContract = await request(app)
-          .get("/api/v1/customers")
-          .query({ search: "CONFIDENTIAL-CONTRACT-REFERENCE" })
-          .set("Cookie", cookie);
-        expect(byContract.status).toBe(200);
-        expect(byContract.body.items).toEqual([]);
-      }
-      expect(
-        (await request(app).get("/api/v1/audit-events").set("Cookie", cookie))
-          .status,
-      ).toBe(role === "SUPPORT_SPECIALIST" ? 403 : 200);
-      await expectUnavailableOperations(cookie);
-      expect(
-        (await request(app).get("/api/v1/users").set("Cookie", cookie)).status,
-      ).toBe(403);
-      expect(
-        (
-          await write("post", "/users", cookie).send({
-            username: "attack",
-            password: pw,
-            role: "SYSTEM_ADMIN",
-          })
-        ).status,
-      ).toBe(403);
-      expect(
-        (
-          await write("patch", `/users/${adminId}`, cookie).send({
-            role: "SUPPORT_SPECIALIST",
-            reason: "attack",
-          })
-        ).status,
-      ).toBe(403);
-      expect(
-        (await write("delete", "/audit-events", cookie).send({})).status,
-      ).toBe(404);
-      expect(
-        (await write("post", "/auth/logout", cookie).send({})).status,
-      ).toBe(204);
-      expect(
-        (await request(app).get("/api/v1/auth/me").set("Cookie", cookie))
-          .status,
-      ).toBe(401);
-    },
-  );
+      ).toBe(400);
+      await expect(
+        db.pool.query(
+          "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,$4,false)",
+          [ulid(), ulid(), await hashPassword(initial), legacyRole],
+        ),
+      ).rejects.toThrow();
+    }
+    const uid = ulid(),
+      pw = "Disposable_role_45";
+    await db.pool.query(
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'LICENSE_OPERATOR',false)",
+      [uid, uid, await hashPassword(pw)],
+    );
+    const { cookie } = await login(uid, pw);
+    expect((await customer(cookie)).status).toBe(403);
+    const code = `Operator-${ulid()}`;
+    const created = await write("post", "/customers", adminCookie).send({
+      customerCode: code,
+      displayName: "Operator-visible customer",
+      contractReference: "OPERATIONAL-CONTRACT-REFERENCE",
+    });
+    expect(created.status).toBe(201);
+    const cid = created.body.id;
+    expect(
+      (
+        await write("patch", `/customers/${cid}`, cookie).send({
+          displayName: "attack",
+          reason: "test",
+        })
+      ).status,
+    ).toBe(403);
+    const effective = await request(app)
+      .get("/api/v1/permissions/effective")
+      .set("Cookie", cookie);
+    expect(effective.status).toBe(200);
+    expect(effective.body.permissions).toEqual([
+      "customers.view",
+      "audit.view",
+      "operations.view",
+      "operations.record",
+    ]);
+    const list = await request(app)
+      .get("/api/v1/customers")
+      .query({ search: code })
+      .set("Cookie", cookie);
+    const detail = await request(app)
+      .get(`/api/v1/customers/${cid}`)
+      .set("Cookie", cookie);
+    expect(list.status).toBe(200);
+    expect(detail.status).toBe(200);
+    expect(list.body.items).toHaveLength(1);
+    for (const record of [list.body.items[0], detail.body]) {
+      expect(record.id).toBe(cid);
+      expect(record.customerCode).toBe(code);
+      expect(record.contractReference).toBe("OPERATIONAL-CONTRACT-REFERENCE");
+    }
+    expect(
+      (await request(app).get("/api/v1/audit-events").set("Cookie", cookie))
+        .status,
+    ).toBe(200);
+    await expectUnavailableOperations(cookie);
+    expect(
+      (await request(app).get("/api/v1/users").set("Cookie", cookie)).status,
+    ).toBe(403);
+    expect(
+      (
+        await write("post", "/users", cookie).send({
+          username: "attack",
+          password: pw,
+          role: "OWNER_ADMIN",
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await write("patch", `/users/${adminId}`, cookie).send({
+          role: "LICENSE_OPERATOR",
+          reason: "attack",
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await write("post", `/users/${adminId}/reset-password`, cookie).send({
+          password: changed,
+          reason: "attack",
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (await write("delete", "/audit-events", cookie).send({})).status,
+    ).toBe(404);
+    expect((await write("post", "/auth/logout", cookie).send({})).status).toBe(
+      204,
+    );
+    expect(
+      (await request(app).get("/api/v1/auth/me").set("Cookie", cookie)).status,
+    ).toBe(401);
+  });
   it("keeps audit/lifecycle mutations unavailable even to Administrators", async () => {
     await expectUnavailableOperations(adminCookie);
   });
@@ -501,7 +503,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     const created = await write("post", "/users", adminCookie).send({
       username: "managed",
       password: initial,
-      role: "READ_ONLY_OBSERVER",
+      role: "LICENSE_OPERATOR",
     });
     expect(created.status).toBe(201);
     expect(created.body.mustChangePassword).toBe(true);
@@ -523,7 +525,16 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       (
         await write("patch", `/users/${uid}`, adminCookie).send({
           isActive: true,
-          role: "SUPPORT_SPECIALIST",
+          role: "OWNER_ADMIN",
+          reason: "Scope elevation",
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await write("patch", `/users/${uid}`, adminCookie).send({
+          isActive: true,
+          role: "LICENSE_OPERATOR",
           reason: "Scope correction",
         })
       ).status,
@@ -545,6 +556,14 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
         await write("patch", `/users/${adminId}`, adminCookie).send({
           isActive: false,
           reason: "test",
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await write("patch", `/users/${adminId}`, adminCookie).send({
+          role: "LICENSE_OPERATOR",
+          reason: "cannot demote last active Owner Admin",
         })
       ).status,
     ).toBe(409);
@@ -580,7 +599,11 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       (
         await db.pool.query("SELECT name FROM public.owner_migrations")
       ).rows.map((r) => r.name),
-    ).toEqual(["001-foundation.sql", "002-manual-operations.sql"]);
+    ).toEqual([
+      "001-foundation.sql",
+      "002-manual-operations.sql",
+      "003-two-role-authorization.sql",
+    ]);
     await db.pool.query("TRUNCATE owner.login_limits");
     for (let n = 0; n < 10; n++)
       expect(
@@ -972,7 +995,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     expect(chained.body.observedStatus).toBe("REPLACEMENT_AUTHORIZED");
     const other = ulid();
     await db.pool.query(
-      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'READ_ONLY_OBSERVER',false)",
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'LICENSE_OPERATOR',false)",
       [other, other, await hashPassword("Disposable_chain_45")],
     );
     await expect(
@@ -1005,7 +1028,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     const customerId = created.body.id as string;
     const historian = ulid();
     await db.pool.query(
-      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'READ_ONLY_OBSERVER',false)",
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'LICENSE_OPERATOR',false)",
       [historian, historian, await hashPassword("Disposable_hist_45")],
     );
     const insertLicense = (tx: PoolClient, id: string, reference: string) =>
@@ -1459,7 +1482,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       );
     }
   });
-  it("authorizes manual operations for all four roles on the direct API", async () => {
+  it("authorizes manual operations for Owner Admin and License Operator on the direct API", async () => {
     const created = await customer(adminCookie, `Role-op-${ulid()}`);
     const installation = `ROLE-${ulid()}`;
     const issued = await write(
@@ -1472,12 +1495,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       reason: "role matrix observation",
     });
     expect(issued.status).toBe(201);
-    for (const role of [
-      "SYSTEM_ADMIN",
-      "LICENSE_ISSUANCE",
-      "READ_ONLY_OBSERVER",
-      "SUPPORT_SPECIALIST",
-    ] as const) {
+    for (const role of ["OWNER_ADMIN", "LICENSE_OPERATOR"] as const) {
       const uid = ulid();
       const pw = "Disposable_role_45";
       await db.pool.query(
@@ -1501,33 +1519,98 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
         installationReference: `MUT-${ulid()}`,
         reason: "direct mutation attempt",
       });
-      if (role === "SUPPORT_SPECIALIST") {
-        expect(list.status).toBe(403);
-        expect(detail.status).toBe(403);
-        expect(mutation.status).toBe(403);
-        expect(JSON.stringify(list.body)).not.toContain(installation);
-        expect(JSON.stringify(detail.body)).not.toContain("CASE");
-      } else if (role === "READ_ONLY_OBSERVER") {
-        expect(list.status).toBe(200);
-        expect(detail.status).toBe(200);
-        expect(detail.body.customerCode).toBe(created.body.customerCode);
-        expect(detail.body).not.toHaveProperty("contractReference");
-        expect(mutation.status).toBe(403);
-        expect(mutation.body.code).toBe("PermissionDenied");
+      expect(list.status).toBe(200);
+      expect(detail.status).toBe(200);
+      expect(detail.body.customerCode).toBe(created.body.customerCode);
+      expect(detail.body).not.toHaveProperty("contractReference");
+      expect(mutation.status).toBe(201);
+      expect(mutation.body.signedArtifactProduced).toBe(false);
+
+      const activatedByRole = await write(
+        "post",
+        `/operational-records/${mutation.body.id}/activation-observations`,
+        cookie,
+      ).send({
+        reason: "activation confirmation observed by authorized role",
+      });
+      expect(activatedByRole.status).toBe(200);
+      expect(activatedByRole.body.observedStatus).toBe("ACTIVATED");
+
+      const replacementAttempt = await write(
+        "post",
+        "/operational-records/server-replacements",
+        cookie,
+      ).send({
+        customerId: created.body.id,
+        oldInstallationReference: `OLD-ROLE-${ulid()}`,
+        replacementInstallationReference: `NEW-ROLE-${ulid()}`,
+        emergencyOldServerLost: false,
+        reason: "replacement authorization attempt",
+      });
+      if (role === "OWNER_ADMIN") {
+        expect(replacementAttempt.status).toBe(201);
+        expect(replacementAttempt.body.observedStatus).toBe(
+          "REPLACEMENT_AUTHORIZED",
+        );
       } else {
-        expect(list.status).toBe(200);
-        expect(detail.status).toBe(200);
-        expect(mutation.status).toBe(201);
-        expect(mutation.body.signedArtifactProduced).toBe(false);
-      }
-      if (role !== "SYSTEM_ADMIN" && role !== "LICENSE_ISSUANCE") {
+        expect(replacementAttempt.status).toBe(403);
+        expect(replacementAttempt.body.code).toBe("PermissionDenied");
+        const emergencyAttempt = await write(
+          "post",
+          "/operational-records/server-replacements",
+          cookie,
+        ).send({
+          customerId: created.body.id,
+          oldInstallationReference: `OLD-EMG-${ulid()}`,
+          replacementInstallationReference: `NEW-EMG-${ulid()}`,
+          emergencyOldServerLost: true,
+          reason: "emergency replacement authorization attempt",
+        });
+        expect(emergencyAttempt.status).toBe(403);
+        expect(emergencyAttempt.body.code).toBe("PermissionDenied");
         const denied = await db.pool.query(
-          "SELECT outcome, reason FROM owner.audit_events WHERE actor_id=$1 AND event_type='OPERATION_MUTATION_DENIED'",
+          "SELECT outcome, reason FROM owner.audit_events WHERE actor_id=$1 AND event_type='OPERATION_MUTATION_DENIED' ORDER BY sequence",
           [uid],
         );
-        expect(denied.rowCount).toBe(1);
-        expect(denied.rows[0].outcome).toBe("DENIED");
-        expect(JSON.stringify(denied.rows[0])).not.toContain("direct mutation");
+        expect(denied.rowCount).toBe(2);
+        expect(denied.rows[0]!.outcome).toBe("DENIED");
+        expect(denied.rows[0]!.reason).toBe("Missing replacements.authorize");
+        expect(JSON.stringify(denied.rows[0])).not.toContain(
+          "replacement authorization attempt",
+        );
+
+        // Once Owner Admin authorizes a replacement, License Operator may record the observed states.
+        const adminAuthorized = await write(
+          "post",
+          "/operational-records/server-replacements",
+          adminCookie,
+        ).send({
+          customerId: created.body.id,
+          oldInstallationReference: `OLD-OP-${ulid()}`,
+          replacementInstallationReference: `NEW-OP-${ulid()}`,
+          emergencyOldServerLost: false,
+          reason: "Owner Admin authorized replacement",
+        });
+        expect(adminAuthorized.status).toBe(201);
+        const opOld = await write(
+          "post",
+          `/operational-records/${adminAuthorized.body.id}/old-server-observations`,
+          cookie,
+        ).send({
+          reason: "Operator observed old-server deactivation",
+          oldServerObservedState: "DEACTIVATION_OBSERVED",
+        });
+        expect(opOld.status).toBe(200);
+        const opNew = await write(
+          "post",
+          `/operational-records/${adminAuthorized.body.id}/replacement-observations`,
+          cookie,
+        ).send({
+          reason: "Operator observed replacement installation",
+          replacementObservedState: "INSTALLATION_OBSERVED",
+        });
+        expect(opNew.status).toBe(200);
+        expect(opNew.body.observedStatus).toBe("REPLACEMENT_RECORDED");
       }
       await expectUnavailableOperations(cookie);
     }
@@ -1541,6 +1624,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       "audit.view",
       "operations.view",
       "operations.record",
+      "replacements.authorize",
     ]);
   });
   it("filters audit events in PostgreSQL with exact AND semantics, half-open UTC windows and stable bounded pages", async () => {
@@ -1717,11 +1801,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       occurredFrom: "2001-08-01T00:00:00Z",
       occurredBefore: "2001-08-02T00:00:00Z",
     };
-    for (const role of [
-      "LICENSE_ISSUANCE",
-      "READ_ONLY_OBSERVER",
-      "SUPPORT_SPECIALIST",
-    ] as const) {
+    for (const role of ["OWNER_ADMIN", "LICENSE_OPERATOR"] as const) {
       const uid = ulid(),
         pw = "Disposable_role_45";
       await db.pool.query(
@@ -1729,22 +1809,14 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
         [uid, uid, await hashPassword(pw), role],
       );
       const { cookie } = await login(uid, pw);
-      const allowed = role !== "SUPPORT_SPECIALIST";
       const res = await explorer(cookie, filters);
-      if (allowed) {
-        expect(res.status).toBe(200);
-        expect(res.body.items.map((i: { id: string }) => i.id)).toEqual([
-          eventId,
-        ]);
-      } else {
-        expect(res.status).toBe(403);
-        expect(res.body.items).toBeUndefined();
-        expect(JSON.stringify(res.body)).not.toContain(eventType);
-      }
-      // Authorization is decided before query validation: Support gets 403, not a validation detail.
+      expect(res.status).toBe(200);
+      expect(res.body.items.map((i: { id: string }) => i.id)).toEqual([
+        eventId,
+      ]);
       expect(
         (await explorer(cookie, { eventType: "bad%", actor: "x" })).status,
-      ).toBe(allowed ? 400 : 403);
+      ).toBe(400);
       // No identifier lookup exists for any role.
       expect(
         (
@@ -1754,24 +1826,22 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
         ).status,
       ).toBe(404);
     }
-    // The client-supplied actorId is only a filter; it never becomes the caller's identity.
-    const support = ulid(),
-      supportPw = "Disposable_role_45";
-    await db.pool.query(
-      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,$4,false)",
-      [support, support, await hashPassword(supportPw), "SUPPORT_SPECIALIST"],
-    );
-    const supportLogin = await login(support, supportPw);
+    // Unauthenticated callers are denied before query validation.
     expect(
-      (await explorer(supportLogin.cookie, { actorId: adminId })).status,
-    ).toBe(403);
+      (
+        await request(app)
+          .get("/api/v1/audit-events")
+          .query({ actorId: adminId })
+      ).status,
+    ).toBe(401);
     // A password-change-pending credential is denied even though the query is valid.
-    const pending = ulid();
+    const pending = ulid(),
+      pendingPw = "Disposable_role_45";
     await db.pool.query(
       "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,$4,true)",
-      [pending, pending, await hashPassword(supportPw), "SYSTEM_ADMIN"],
+      [pending, pending, await hashPassword(pendingPw), "OWNER_ADMIN"],
     );
-    const pendingLogin = await login(pending, supportPw);
+    const pendingLogin = await login(pending, pendingPw);
     expect((await explorer(pendingLogin.cookie, filters)).status).toBe(403);
   });
   it("lets an operator reach the audit trail of an operational record and of a customer", async () => {

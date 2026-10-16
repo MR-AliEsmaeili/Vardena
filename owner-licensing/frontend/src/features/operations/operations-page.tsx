@@ -32,18 +32,23 @@ export function OperationsPage() {
     <section className="space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold">{o.operations}</h1>
-        {permissions.has('operations.record') && (
+        {(permissions.has('operations.record') ||
+          permissions.has('replacements.authorize')) && (
           <div className="flex flex-wrap gap-2">
-            <Button asChild>
-              <Link to="/app/operations/activation/new">
-                {o.recordIssuance}
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link to="/app/operations/replacement/new">
-                {o.recordReplacement}
-              </Link>
-            </Button>
+            {permissions.has('operations.record') && (
+              <Button asChild>
+                <Link to="/app/operations/activation/new">
+                  {o.recordIssuance}
+                </Link>
+              </Button>
+            )}
+            {permissions.has('replacements.authorize') && (
+              <Button asChild variant="outline">
+                <Link to="/app/operations/replacement/new">
+                  {o.recordReplacement}
+                </Link>
+              </Button>
+            )}
           </div>
         )}
       </header>

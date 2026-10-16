@@ -13,15 +13,20 @@ export const o = {
   unavailable:
     'هنوز پیاده‌سازی نشده — هیچ مجوز، فایل امضاشده یا تغییر وضعیتی ایجاد نمی‌شود.',
   slices: [
-    { label: 'ایجاد مجوز و تخصیص به مشتری', href: '' },
+    { label: 'ایجاد مجوز و تخصیص به مشتری', href: '', permission: null },
     {
       label: 'ثبت مشاهده صدور خارجی و تأیید مشاهده‌شده فعال‌سازی',
       href: '/app/operations/activation/new',
+      permission: 'operations.record',
     },
-    { label: 'غیرفعال‌سازی', href: '' },
-    { label: 'تعویض دستگاه مشتری', href: '' },
-    { label: 'ثبت تعویض دستی سرور', href: '/app/operations/replacement/new' },
-    { label: 'ابطال آفلاین و بازیابی', href: '' },
+    { label: 'غیرفعال‌سازی', href: '', permission: null },
+    { label: 'تعویض دستگاه مشتری', href: '', permission: null },
+    {
+      label: 'ثبت تعویض دستی سرور',
+      href: '/app/operations/replacement/new',
+      permission: 'replacements.authorize',
+    },
+    { label: 'ابطال آفلاین و بازیابی', href: '', permission: null },
   ],
   manual:
     'ثبت فعال‌سازی و تعویض سرور فقط مشاهده دستی اپراتور است. رسید رمزنگاری‌شده، تماس با سرور مشتری، یا فایل امضاشده تولید نمی‌شود. کلید و امضاکننده تولیدی وجود ندارد.',
@@ -138,10 +143,8 @@ export const o = {
   enabled: 'حساب فعال',
   mustChange: 'تغییر گذرواژه در اولین ورود الزامی است.',
   roles: {
-    SYSTEM_ADMIN: 'مدیر سیستم مالک',
-    LICENSE_ISSUANCE: 'کارشناس صدور مجوز',
-    READ_ONLY_OBSERVER: 'ناظر فقط خواندنی',
-    SUPPORT_SPECIALIST: 'کارشناس پشتیبانی محدود',
+    OWNER_ADMIN: 'مدیر سیستم مالک',
+    LICENSE_OPERATOR: 'اپراتور مجوز',
   },
   passwordRule: 'گذرواژه باید ۸ تا ۱۲۸ نویسه و غیرخالی باشد.',
   confirmDirty: 'تغییرات ذخیره نشده کنار گذاشته شود؟',

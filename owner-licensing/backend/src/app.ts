@@ -348,12 +348,12 @@ export async function createApp(db: Database, cfg: Config) {
           ? target.is_active
           : (input.isActive as boolean);
       if (
-        target.role === "SYSTEM_ADMIN" &&
+        target.role === "OWNER_ADMIN" &&
         target.is_active &&
-        (nextRole !== "SYSTEM_ADMIN" || !active)
+        (nextRole !== "OWNER_ADMIN" || !active)
       ) {
         const count = await tx.query<{ count: string }>(
-          "SELECT count(*) FROM owner.users WHERE role='SYSTEM_ADMIN' AND is_active",
+          "SELECT count(*) FROM owner.users WHERE role='OWNER_ADMIN' AND is_active",
         );
         if (Number(count.rows[0]!.count) <= 1)
           fail(409, "Conflict", "Cannot remove the last active administrator.");
@@ -572,9 +572,16 @@ export async function createApp(db: Database, cfg: Config) {
     actor: Principal,
     res: Response,
     targetId: string | null,
+    requiredPermission:
+      "operations.record" | "replacements.authorize" = "operations.record",
   ) => {
-    if (permissions(actor.user.role).includes("operations.record")) return true;
-    await denyOperationMutation(tx, actor.user.id, targetId);
+    if (permissions(actor.user.role).includes(requiredPermission)) return true;
+    await denyOperationMutation(
+      tx,
+      actor.user.id,
+      targetId,
+      requiredPermission,
+    );
     res.locals.status = 403;
     res.locals.body = {
       code: "PermissionDenied",
@@ -643,7 +650,7 @@ export async function createApp(db: Database, cfg: Config) {
     undefined,
     true,
     async (tx, a, req, res) => {
-      if (!(await recorded(tx, a, res, null))) return;
+      if (!(await recorded(tx, a, res, null, "replacements.authorize"))) return;
       res.locals.status = 201;
       res.locals.body = await recordServerReplacement(
         tx,
