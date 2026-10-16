@@ -8,7 +8,7 @@ import {
   type CalendarSystem,
 } from './calendar';
 import { dayjs } from './dayjs';
-import { toLatinDigits } from './numerals';
+import { toLatinDigits, toPersianDigits } from './numerals';
 
 /**
  * Business dates (C-63 §9, ADR-0042 §D2; persistence split by OQ-73).
@@ -51,7 +51,7 @@ export function formatBusinessDay(
   if (!isBusinessDay(day)) return day;
   if (calendar === 'GREGORIAN') return day;
   const jalali = convertDay(day, 'GREGORIAN', 'JALALI');
-  return jalali === null ? day : jalali.replace(/-/g, '/');
+  return jalali === null ? day : toPersianDigits(jalali.replace(/-/g, '/'));
 }
 
 /**
@@ -69,7 +69,7 @@ export function formatBusinessDayWithCanonical(
   const jalali = jalaliDayOf(day);
   // An unrenderable historical date remains visible as its canonical day; do
   // not duplicate it or turn a presentation limitation into a missing fact.
-  return jalali === null ? day : `${jalali.replace(/-/g, '/')} (${day})`;
+  return jalali === null ? day : `${formatBusinessDay(day, calendar)} (${day})`;
 }
 
 /**

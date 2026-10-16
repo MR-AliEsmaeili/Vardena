@@ -5,6 +5,39 @@ Date: 2026-10-10
 Builds on: ADR-0042, OQ-73
 Supersedes: ADR-0043; calendar-selection/transition portions of ADR-0042
 
+> **Project-wide product clarification (2026-10-15):** the existing
+> Jalali-first rule applies to all Vardena user-visible dates for Iranian users,
+> including the independent Owner Licensing application, licensing/recovery,
+> audit/history, reports and filters — not ERP UI alone. The normative scope,
+> Persian date/time digits (PO-approved 2026-10-16; broader OQ-02 open), Asia/Tehran/default versus
+> organization IANA-zone handling, and historical fallback are in
+> [docs/datetime.md §0](../datetime.md). This changes no BusinessDate/Instant
+> persistence, wire contract, signed bytes or separation boundary, and is not
+> a claim that every module is already compliant.
+
+## 2026-10-16 implementation clarification (same contract, not a new ADR)
+
+The Product Owner requires Persian digits for ordinary Iranian date/time
+presentation. Canonical/API/protocol values stay ASCII; input still accepts
+Latin/Persian/Arabic-Indic digits. Broader localization remains OQ-02. The
+approved independent Owner compatibility path projects an explicit allowlist of
+byte-identical framework-free frontend date sources as regenerated ignored build inputs.
+Final corrective-review PO approval explicitly names the seven files and the
+bounded Day.js initialization (not pure); no custom declaration is copied and
+Owner resolves types from its independently installed locked packages. See
+[ADR-0048's exact boundary](0048-owner-side-licensing-separation-boundary.md).
+Requirements remain:
+fail closed on missing/unapproved dependencies, no stale fallback, runtime
+coupling, application imports or independently maintained implementation.
+Owner owns its form context, dependencies and artifact. Root Docker context is
+allowlisted, not permission to copy the customer application into Owner.
+
+Policy, implemented bounded fixes, evidence and unverified surfaces are separated
+in [the audit matrix](../tasks/global-date-contract-audit.md). No schema, stored
+fact, API encoding, historical interpretation, license evaluator or signed bytes
+change. Existing UTC audit day links retain their original meaning; new Tehran
+links explicitly mark their day zone. No unreviewed timezone reinterpretation.
+
 ## Context
 
 The MVP has one product-owned display policy: Jalali-first. A selector and

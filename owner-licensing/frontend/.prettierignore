@@ -3,3 +3,6 @@ dist
 coverage
 package-lock.json
 src/api/generated
+
+# Regenerated exact-source date foundation (never maintained here)
+src/lib/.date-foundation/

@@ -1,3 +1,4 @@
+import { formatOwnerInstant } from '@/lib/date-time';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -56,14 +57,14 @@ export function CustomerPage({ mode }: { mode: 'new' | 'detail' | 'edit' }) {
           ...('contractReference' in c
             ? [
                 [o.reference, c.contractReference],
-                [o.created, c.createdAt],
-                [o.updated, c.updatedAt],
+                [o.created, formatOwnerInstant(c.createdAt), c.createdAt],
+                [o.updated, formatOwnerInstant(c.updatedAt), c.updatedAt],
               ]
             : []),
-        ].map(([label, value]) => (
+        ].map(([label, value, canonical]) => (
           <div key={label}>
             <dt className="text-sm text-slate-500">{label}</dt>
-            <dd className="break-all" dir="auto">
+            <dd title={canonical ?? undefined} className="break-all" dir="auto">
               {value || '—'}
             </dd>
           </div>

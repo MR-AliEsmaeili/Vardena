@@ -556,6 +556,11 @@ describe('license import', () => {
       await screen.findByText(t.license.statusScheduled),
     ).toBeInTheDocument();
     expect(screen.getByText(t.license.statusScheduledHint)).toBeInTheDocument();
+    // Presentation only: the backend's signed validity Instants stay unchanged.
+    expect(await screen.findByText(/۱۴۰۴\/۱۰\/۱۱ ۰۰:۰۰/)).toBeInTheDocument();
+    expect(testScheduledLicenseState.validFrom).toBe(
+      '2026-01-01T00:00:00.000Z',
+    );
 
     const submitButton = screen.getByRole('button', {
       name: t.license.importSubmit,

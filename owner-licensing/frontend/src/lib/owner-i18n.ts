@@ -170,10 +170,13 @@ export const o = {
   auditTargetType: 'نوع رکورد هدف',
   auditTargetId: 'شناسه رکورد هدف',
   auditOutcome: 'نتیجه رویداد',
-  auditFrom: 'از تاریخ (UTC)',
-  auditTo: 'تا تاریخ (UTC)',
+  auditFrom: 'از تاریخ',
+  auditTo: 'تا تاریخ (شامل)',
   auditRangeHint:
-    'هر دو روز ابتدا و انتها در بازه قرار می‌گیرند. تاریخ‌ها بر اساس روز تقویمی UTC تفسیر می‌شوند.',
+    'ورودی تاریخ شمسی است. هر دو روز ابتدا و انتها بر اساس زمان تهران در بازه قرار می‌گیرند.',
+  auditLegacyRangeHint:
+    'این پیوند قدیمی، بازه روزهای UTC را حفظ می‌کند. نمایش تاریخ شمسی است؛ برای بازه زمان تهران فیلترها را پاک‌سازی کنید.',
+  jalaliDatePlaceholder: '۱۴۰۵/۰۱/۰۱',
   auditDateInvalid: 'تاریخ معتبر نیست.',
   auditDateYearTooEarly: 'سال تاریخ باید ۱۰۰۰ یا بعد از آن باشد.',
   auditDateUpperBoundUnsupported:

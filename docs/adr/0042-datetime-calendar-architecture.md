@@ -85,8 +85,8 @@ its facts and rules.
 12. **The frontend uses Day.js through the shared date-time layer** (ADR-0002),
     with plugins registered once, one calendar-aware date input, shared
     formatters and API adapters. Calendar conversion and numeral rendering are
-    separate; OQ-02 remains open for Persian-numeral and broader localization
-    policy, not for the BusinessDate/Instant distinction or the fixed Jalali-first
+    separate; Persian date/time digits were approved on 2026-10-16 under
+    ADR-0044 / docs/datetime.md §0; broader localization stays OQ-02, not for the BusinessDate/Instant distinction or the fixed Jalali-first
     MVP presentation decided by ADR-0044.
 
 ## Consequences

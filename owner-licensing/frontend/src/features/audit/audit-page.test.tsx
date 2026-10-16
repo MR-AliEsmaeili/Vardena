@@ -109,6 +109,58 @@ describe('audit explorer access', () => {
   });
 });
 
+describe('Jalali audit display and filter entry', () => {
+  it('shows Tehran/Persian Instant display, accepts a Jalali range and sends UTC API bounds', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.auditEvents).mockResolvedValue(
+      page([event({ occurredAt: '2026-10-08T21:00:00.000Z' })]),
+    );
+    mount('/app/audit');
+    expect(
+      await screen.findByText('۱۴۰۵/۰۷/۱۷ ۰۰:۳۰:۰۰ Asia/Tehran (UTC+03:30)'),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText(o.auditFrom), '۱۴۰۵/۰۷/۱۷');
+    await user.type(screen.getByLabelText(o.auditTo), '۱۴۰۵/۰۷/۱۷');
+    await user.click(screen.getByRole('button', { name: o.auditApply }));
+    await waitFor(() =>
+      expect(lastQuery()).toEqual({
+        page: 1,
+        occurredFrom: '2026-10-08T20:30:00.000Z',
+        occurredBefore: '2026-10-09T20:30:00.000Z',
+      }),
+    );
+    expect(search()).toContain('dayZone=Asia%2FTehran');
+  });
+
+  it.each(['', '?from=2026-10-09&dayZone=Asia%2FTehran'])(
+    'rejects an invalid Jalali draft without querying/widening prior bounds (%s)',
+    async (initial) => {
+      const user = userEvent.setup();
+      mount(`/app/audit${initial}`);
+      await screen.findByText('ویرایش مشتری');
+      const calls = vi.mocked(api.auditEvents).mock.calls.length;
+      await user.clear(screen.getByLabelText(o.auditFrom));
+      await user.type(screen.getByLabelText(o.auditFrom), '۱۴۰۵/۱۲/۳۰');
+      await user.click(screen.getByRole('button', { name: o.auditApply }));
+      expect(await screen.findByText(o.auditDateInvalid)).toBeInTheDocument();
+      expect(api.auditEvents).toHaveBeenCalledTimes(calls);
+      expect(search()).toBe(initial);
+    },
+  );
+
+  it('preserves the meaning of an old UTC deep link and labels its compatibility basis', async () => {
+    mount('/app/audit?from=2026-10-09&to=2026-10-09');
+    await screen.findByText('ویرایش مشتری');
+    expect(screen.getByLabelText(o.auditFrom)).toHaveValue('۱۴۰۵/۰۷/۱۷');
+    expect(screen.getByText(o.auditLegacyRangeHint)).toBeInTheDocument();
+    expect(lastQuery()).toEqual({
+      page: 1,
+      occurredFrom: '2026-10-09T00:00:00.000Z',
+      occurredBefore: '2026-10-10T00:00:00.000Z',
+    });
+  });
+});
+
 describe('audit explorer filters', () => {
   it('sends the URL filters and page to the backend, not client-side filtering', async () => {
     mount('/app/audit?eventType=CUSTOMER_UPDATED&targetType=Customer&page=3');
@@ -165,10 +217,11 @@ describe('audit explorer filters', () => {
     expect(screen.getByLabelText(o.auditActorId)).toHaveValue(ulid);
   });
 
-  it('explains that 9999-12-31 cannot be an upper bound and sends no bound', async () => {
+  it('rejects an overflowing historical upper day without dropping the accepted bound', async () => {
     const user = userEvent.setup();
-    mount('/app/audit');
+    mount('/app/audit?to=9999-12-30');
     await screen.findByText('ویرایش مشتری');
+    const calls = vi.mocked(api.auditEvents).mock.calls.length;
     fireEvent.change(screen.getByLabelText(o.auditTo), {
       target: { value: '9999-12-31' },
     });
@@ -177,12 +230,11 @@ describe('audit explorer filters', () => {
     expect(
       await screen.findByText(o.auditDateUpperBoundUnsupported),
     ).toBeInTheDocument();
-    expect(search()).toBe('');
-    expect(
-      vi
-        .mocked(api.auditEvents)
-        .mock.calls.every(([q]) => q.occurredBefore === undefined),
-    ).toBe(true);
+    expect(search()).toBe('?to=9999-12-30');
+    expect(api.auditEvents).toHaveBeenCalledTimes(calls);
+    expect(lastQuery()).toMatchObject({
+      occurredBefore: '9999-12-31T00:00:00.000Z',
+    });
   });
 
   it('does not query while a draft is typed, only when applied', async () => {
@@ -259,6 +311,14 @@ describe('audit explorer filters', () => {
     ['a padded actor id', `/app/audit?actorId=%20${ulid}`],
     ['a plus-encoded padded target id', `/app/audit?targetId=${ulid}+`],
     ['an upper bound of 9999-12-31', '/app/audit?to=9999-12-31'],
+    [
+      'a skipped Tehran start midnight',
+      '/app/audit?from=2022-03-22&dayZone=Asia%2FTehran',
+    ],
+    [
+      'a skipped Tehran exclusive-end midnight',
+      '/app/audit?to=2022-03-21&dayZone=Asia%2FTehran',
+    ],
   ])(
     'refuses %s in the URL instead of showing silently different results',
     async (_label, path) => {
@@ -356,6 +416,9 @@ describe('customer trail link', () => {
     vi.mocked(api.customer).mockResolvedValue(customer);
     mount(`/app/customers/${ulid}`);
     const link = await screen.findByRole('link', { name: o.auditCustomerLink });
+    expect(
+      screen.getAllByText('۱۴۰۵/۰۷/۲۳ ۰۳:۳۰:۰۰ Asia/Tehran (UTC+03:30)'),
+    ).toHaveLength(2);
     expect(link).toHaveAttribute(
       'href',
       `/app/audit?targetType=Customer&targetId=${ulid}`,

@@ -1,5 +1,13 @@
 # PDR-15: Client-device licensing, quota and replacement (OD-LIC-04 / OQ-83)
 
+> **Later cross-reference (2026-10-15, no device-policy change):**
+> [PDR-11 §20](PDR-11-vardena-licensing-product-requirements.md) now records
+> OQ-84 as Decided: no signed receipt for ordinary activation. Earlier OQ-84
+> OPEN wording below describes this record's original scope, not current status.
+> Operation-specific device replacement evidence, quota/identity/transaction
+> rules and OQ-83's remaining review/dependencies are unchanged.
+
+
 - **Type:** PDR (Product Decision Record) · decision id **OD-LIC-04**
 - **Status:** **Decided — Final Owner Decision** (2026-10-15)
 - **Decided by:** Product Owner (Ali Esmaeili)

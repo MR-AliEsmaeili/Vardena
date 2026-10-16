@@ -134,6 +134,35 @@ describe('manual operations UI', () => {
     ).not.toBeInTheDocument();
     expect(api.recordLicenseObservation).not.toHaveBeenCalled();
   });
+  it('renders manual license and replacement history Instants through the same Tehran formatter', async () => {
+    const record = await api.recordLicenseObservation(
+      {} as Parameters<typeof api.recordLicenseObservation>[0],
+    );
+    vi.mocked(api.operationalRecord).mockResolvedValue({
+      ...record,
+      transitions: [
+        {
+          id: admin.id,
+          actorId: admin.id,
+          occurredAt: '2026-10-08T21:00:00.000Z',
+          priorStatus: 'UNRECORDED',
+          newStatus: 'ISSUED',
+          reason: 'observed',
+          evidenceReference: null,
+          confirmationKind: 'OPERATOR_OBSERVED',
+        },
+      ],
+    });
+    vi.mocked(api.recordLicenseObservation).mockClear();
+    mount(`/app/operations/${record.id}`);
+    expect(
+      await screen.findByText('۱۴۰۵/۰۷/۱۷ ۰۰:۳۰:۰۰ Asia/Tehran (UTC+03:30)'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText('۱۴۰۵/۰۷/۲۳ ۰۳:۳۰:۰۰ Asia/Tehran (UTC+03:30)'),
+    ).toHaveLength(2);
+    expect(api.recordLicenseObservation).not.toHaveBeenCalled();
+  });
   it('does not let Support open operational records', async () => {
     vi.mocked(identity.getCurrentUser).mockResolvedValue({
       ...admin,

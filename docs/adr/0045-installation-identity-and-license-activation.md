@@ -1,5 +1,20 @@
 # ADR-0045: Persistent installation identity and local license activation
 
+> **Product reconciliation (2026-10-15, documentation only):**
+> [PDR-11 §§9–10, 12, 15 and 20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
+> now governs Grace/Read-Only, distinct emergency reasons and independent
+> authenticated recovery, clock rollback, permanent separate audit archive,
+> successful-request replay, key-compromise policy and conceptual removal of
+> `SUSPENDED`. Older open-question wording below describes the original slice.
+> The runtime/enum/API and signed bytes remain unchanged in this PR. In
+> particular, current v2 duplicate rejection is an implementation gap against
+> the approved prior-result replay rule, and the legacy `SUSPENDED` consumers
+> require the staged compatibility/data plan in PDR-11 §20.3. Already-imported
+> versions staying effective is not protection from forged new inputs after key
+> compromise (§20.4). Follow-up enforcement/session/recovery architecture still
+> requires engineering design/ADR review, not approval inferred from this note.
+
+
 - **Status:** Accepted for L-02 (extends ADR-0030; does not replace its model). Decisions 2, 5, 6 and 7 are extended by **ADR-0046** (signed license documents, retained versions and effective-version resolution); the identity decision below still stands and is unchanged.
 - **Renumbering note (2026-10-11):** This record was filed as `0036-installation-identity-and-license-activation.md` while `0036-legal-reporting-architecture.md` already held number 0036 and was the registered one. PDR-11 §19 recorded the collision as CF-14. It is renumbered to **ADR-0045** (the next free identifier; ADR-0027 stays unused, per the ADR index rule). **The decision text below is unchanged** — only the number, this note and the cross-reference note were added. The former path keeps a pointer file so historical links do not break. Historical task reports and acceptance records that cite "ADR-0036" for licensing are **not** rewritten; they are read through this note.
 - **Reconciliation note (2026-10-11):** The Owner-approved licensing product requirements are recorded in [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md). Several of them conflict with this ADR (for example: future-dated renewals, refusal of not-yet-valid licenses, text code vs. signed file as delivery, identity after reinstallation or restore, and session behavior under full revocation). See PDR-11 §19 (CF-1 to CF-12). PDR-11 §19.4 and `docs/tasks/pdr-11-conflict-reconciliation.md` record how each was handled; the conflicts resolved by design are settled in **ADR-0046**.

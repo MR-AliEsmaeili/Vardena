@@ -16,8 +16,15 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "npm run dates:verify && vitest run",
+    "test:watch": "vitest",
+    "dates:stage": "node scripts/stage-date-foundation.mjs",
+    "predev": "npm run dates:stage",
+    "prebuild": "npm run dates:stage",
+    "pretypecheck": "npm run dates:stage",
+    "pretest": "npm run dates:stage",
+    "pretest:watch": "npm run dates:stage",
+    "dates:verify": "node --test scripts/stage-date-foundation.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

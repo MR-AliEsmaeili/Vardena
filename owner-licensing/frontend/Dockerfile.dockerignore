@@ -1,0 +1,21 @@
+# Root context is required only for canonical date sources; exclude everything else.
+**
+!owner-licensing/
+!owner-licensing/frontend/
+!owner-licensing/frontend/**
+owner-licensing/frontend/node_modules
+owner-licensing/frontend/dist
+owner-licensing/frontend/coverage
+owner-licensing/frontend/.env*
+owner-licensing/frontend/src/lib/.date-foundation
+!frontend/
+!frontend/src/
+!frontend/src/lib/
+!frontend/src/lib/datetime/
+!frontend/src/lib/datetime/calendar.ts
+!frontend/src/lib/datetime/dayjs.ts
+!frontend/src/lib/datetime/numerals.ts
+!frontend/src/lib/datetime/business-date.ts
+!frontend/src/lib/datetime/time-zone.ts
+!frontend/src/lib/datetime/instant.ts
+!frontend/src/lib/datetime/instant-range.ts

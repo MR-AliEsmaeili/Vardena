@@ -1,5 +1,15 @@
 # Licensing architecture (L-01, L-02, L-03; OQ-83 device lifecycle)
 
+> **Current product policy (2026-10-15):**
+> [PDR-11 §§9–10, 12 and 20](decisions/product/PDR-11-vardena-licensing-product-requirements.md)
+> records the newly approved behaviors and source-backed implementation gaps.
+> Existing foundation descriptions below describe runtime, not proof of the
+> approved Grace/Read-Only/emergency/recovery/clock/archive/replay behavior.
+> `SUSPENDED` is removed conceptually, but legacy values/consumers remain until
+> a safe staged compatibility/mapping design; signed bytes remain unchanged.
+> Owner and customer dates follow [the global date/time contract](datetime.md) §0.
+
+
 > **Status note (2026-10-15, updated).** This document describes the
 > **implemented** licensing foundation: L-01 (enforcement chain), L-02
 > (installation identity and local activation from a signed code) and **L-03**
@@ -127,8 +137,8 @@ imported without interrupting the license that is valid today. When nothing
 covers the instant, an ended version reports `expired` and a future version
 reports `not-yet-valid`; `UNLICENSED` remains the absence of any version. Status
 vocabulary (`ACTIVE|EXPIRED|SUSPENDED`, `UNLICENSED`) is unchanged; the
-`SUSPENDED` mapping question stays open (OQ-79) and no migration rewrites a
-status value.
+`SUSPENDED` conceptual removal is decided, but its compatibility/mapping
+follow-up stays open (OQ-79; PDR-11 §20.3); no migration rewrites a status value.
 
 ### Overlap, gaps and supersession — current status
 
@@ -168,7 +178,10 @@ nothing. A document whose `licenseId` is bound to another customer, or belongs t
 another installation, is refused with 409 (`license-binding-conflict`, nothing
 written; see `docs/licensing/version-model-and-file-exchange.md` §3.5). A repeated legacy `VLIC1` code keeps its documented idempotent no-op
 (`changed: false`) — the documented per-operation-type behaviour that PDR-11
-PQ-8 asks about (OQ-81). Concurrency details and evidence: design §3.4,
+PQ-8/OQ-81 now supersedes at product level: exact successful repeats must
+return the persisted previous result, conflicts must fail, and effects must not
+repeat. Result persistence/retrieval and conflict protocol remain implementation
+gaps (PDR-11 §10.8/§20). Concurrency details and existing runtime evidence: design §3.4,
 ADR-0046 Decision 11, `test/licensing-persistence-live.e2e-spec.ts`.
 
 Outcomes are recorded in the typed, append-only `licensing.license_audit_events`
@@ -365,27 +378,34 @@ a session, never logs anyone out and never forces a login; an expired session
 never changes license evaluation. Platform permissions (`Licensing.*`) survive
 license filtering precisely so an unlicensed installation can still be
 licensed by its administrator. Session behaviour itself is `docs/security.md`
-§2. PDR-11 §10.1 (full revocation stops System Administrator login) is **not
-implemented**; it conflicts with this invariant and is registered with its
-recovery path as OQ-78, together with the constraint that any such recovery must
-not depend on an ordinary licensed session and that **restore is never blocked
-by license state** (OQ-53, `docs/operations/backup-and-restore.md` §3, G-9).
+§2. The current product policy (PDR-11 §10/OQ-78) blocks normal commercial
+access for applicable emergency restrictions while preserving independent,
+approved administrator authentication to restricted license/recovery functions.
+The older blanket administrator-login block is superseded. This requires a
+separate security/session/recovery design; it is not implemented by the current
+import exemption. Restore stays license-unblocked under OQ-53/G-9.
 
-## Expiry policy (product decision — not implemented)
+## Expiry policy (product decision — enforcement not implemented)
 
-**Owner decision (2026-10-05, OQ-45):** after license expiration / the
-applicable Grace period, user access policy enters **Grace**; after Grace,
-**Read-Only mode** applies according to the final license policy. Read-Only
-must not allow mutation — creating or editing operational documents,
-Accounting Post, inventory-changing operations, or prohibited administration
-changes; read-only visibility/report/export behavior should remain available
-according to the final implementation. **Grace duration and enforcement
-details remain OPEN (OQ-45) and no enforcement is implemented** — ADR-0030's
-enforcement-off posture is unchanged. License entering Grace/Read-Only must be
-surfaceable through the future administrative alert model (OQ-54 / OD-54-11).
-Frontend contract: `docs/frontend/ux/document-editing-and-system-alerts.md` §4.
-L-03 changes none of this: it selects _which version_ governs, not what happens
-after a version ends.
+**Product Owner decision (2026-10-15, OQ-45/PDR-11 §9):**
+Active → Grace (**14 calendar days**, existing license-time semantics) → Read-Only.
+Show actual reason/status. Extension requires Owner authorization plus a valid
+Owner-issued signed artifact; no local database/settings/restart/clock bypass.
+All existing users may log in under normal auth and retain existing authorized
+document/report views, print and Excel export; approved backup, license status
+and renewal remain available. Backend/API and relevant async paths block business
+creation/modification and inventory/accounting effects. Preserve data/history/
+permissions; valid renewal plus revalidation restores prior authorized operation,
+not an unrelated emergency restriction. Outages alone do not suspend; emergency
+stops are immediate on valid applicable authority, not expiry Grace.
+
+**Exact Grace deadline arithmetic/zone/day-count requires PO resolution in OQ-45
+before deadline enforcement; signed half-open expiry alone does not decide it.**
+Mechanism/worker/session/recovery tests remain implementation follow-ups
+(PDR-11 §20.5–§20.6), not claims of completed enforcement. Frontend contract:
+`docs/frontend/ux/document-editing-and-system-alerts.md` §4. The retained-version
+resolver still determines **which version** governs; these decisions do not
+change overlap/gap/post-gap or signed-byte contracts.
 
 ## Deferred / not implemented
 

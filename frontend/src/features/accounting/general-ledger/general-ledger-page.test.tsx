@@ -155,9 +155,9 @@ describe('General Ledger page', () => {
     // The row carries the same exact value in `debit` and `net`.
     expect(within(table).getAllByText('1,500,000.00')).toHaveLength(2);
     expect(within(table).getByText('1010')).toBeInTheDocument();
-    expect(within(table).getByText('1405/01/12')).toBeInTheDocument();
+    expect(within(table).getByText('۱۴۰۵/۰۱/۱۲')).toBeInTheDocument();
     expect(
-      within(table).getByText('1405/01/12 10:15:00 UTC (UTC+00:00)'),
+      within(table).getByText('۱۴۰۵/۰۱/۱۲ ۱۰:۱۵:۰۰ UTC (UTC+00:00)'),
     ).toHaveAttribute('title', generalLedgerRow.postingTimestamp);
   });
 

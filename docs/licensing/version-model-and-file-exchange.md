@@ -1,5 +1,16 @@
 # Licensing version model, signed documents and file exchange — technical design
 
+> **Current product reconciliation (2026-10-15):**
+> [PDR-11 §§9–10, 12, 15 and 20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
+> supersedes earlier undecided product wording for Grace/Read-Only, emergency/
+> recovery, clock, archive, successful duplicate replay, key compromise and the
+> `SUSPENDED` concept. This document still describes the existing technical
+> implementation, including known deviations. No canonical bytes, vector
+> contract, signature verification or version/gap/reduction rule changes here.
+> Global Jalali-first presentation applies to licensing and Owner surfaces
+> ([date/time policy §0](../datetime.md)), without reclassifying signed Instants.
+
+
 | Field | Value |
 | --- | --- |
 | Status | Active design record for signed-license versions and import; OQ-83 server-side slice merged and CI-verified, operational client/issuer evidence still open |
@@ -36,12 +47,15 @@ PDR-11 §14 conceptual entities → implemented tables (CF-17):
 | ServerInstallation | `licensing.installations` | Unchanged from L-02 (ADR-0045 Decision 1). |
 | ReplacementRecord | `licensing.client_device_replacement_requests` | Durable, installation-scoped offline request/response lifecycle, signed request hash, correlation and terminal state; the Owner-side issuer remains out of scope. |
 | ClientDevice | `licensing.client_devices`; `licensing.device_enrollment_challenges` | Retained device identity/state and one-use signed enrollment challenges. Only public key material and fingerprints are retained; the external client owns key generation and private-key storage. |
-| AuditEvent | `licensing.license_audit_events` | Typed import and device-lifecycle events, append-only. Retention periods are open (PDR-11 U-7 → OQ-77). |
+| AuditEvent | `licensing.license_audit_events` | Typed import and device-lifecycle events, append-only application paths; permanent separate archive policy decided (PDR-11 §12.8), archive/security implementation outstanding (U-7/OQ-77). |
 
 Status vocabulary is **unchanged** from ADR-0030/ADR-0045 —
 `ACTIVE | EXPIRED | SUSPENDED` on a version, `UNLICENSED` as the absence of any
-version. PDR-11 §3.5's *revoked* and the mapping of `SUSPENDED` (PQ-4) are open
-(OQ-79); nothing here re-labels them, and no migration rewrites a status value.
+version. PDR-11 §3.5 now removes `SUSPENDED` as a separate concept; safe
+legacy compatibility/mapping remains engineering follow-up (PQ-4/OQ-79). The
+original slice's state model below describes runtime, not new product policy.
+PDR-11 §20.3 requires an evidence-based compatibility/removal plan; nothing here
+re-labels historical values, and no migration rewrites a status value.
 
 ## 2. The signed document
 
@@ -582,17 +596,20 @@ limit. Unavailable counts and prohibited term changes remain unresolvable.
   installation lock (§3.4); the unique index `(installation_id, operation_id)` —
   and the one on `(installation_id, document_hash)` — are the database backstop,
   so a double-apply cannot create two versions even if the check were bypassed.
-- A duplicate v2 operation is **rejected** (409, `duplicate-operation`) and
-  changes nothing (PDR-11 §10.8, G-6). Retry after an ambiguous failure is safe:
+- **Current implementation (not approved final replay behavior):** a duplicate
+  v2 operation is rejected (409, `duplicate-operation`) and changes nothing. Retry after an ambiguous failure is safe:
   the state is already correct and the second attempt is refused with a message
   that says so.
 - A legacy `VLIC1` code has no operation id; its identity is its SHA-256 hash.
   Re-importing the same code keeps the documented L-02 behaviour: an idempotent
   no-op (`changed: false`, `outcome: unchanged`). Re-importing a *different*
   valid legacy code keeps the documented replacement semantics for the version
-  that currently governs. PDR-11 PQ-8 asks whether the strict rule should apply
-  to every operation type — that is **open** (OQ-81) and this asymmetry is the
-  documented interim behaviour, not a product decision.
+  that currently governs. **Product decision now recorded:** exact successful
+  repeats must return the persisted previous result, conflicting reuse must
+  fail, and effects/quota/transitions must not repeat (PDR-11 §10.8). OQ-81
+  remains open only for operation/content identity, result persistence and
+  safe retrieval protocol. The current v2 rejection/legacy no-op is a gap, not
+  a permanent product exception; no signed format changes are made here.
 - A rejected operation is recorded in the audit trail with its outcome; it does
   **not** consume the operation id, so an operator may re-issue a corrected
   document with a new operation id at any time.
@@ -954,15 +971,15 @@ customer stays the explicit, authorized, audited
 
 | Not implemented | Blocker |
 | --- | --- |
-| Full revocation, reactivation file, login-blocking state | PDR-11 §10 needs the external recovery process (PQ-3 → OQ-78) and the `SUSPENDED`/revoked mapping (PQ-4 → OQ-79) |
-| Grace / Read-Only enforcement | OQ-45 shape decided, duration and override authority open |
+| Full revocation, reactivation artifact and independent restricted administrator recovery | Product behavior decided (PDR-11 §10/§20); security/session/incident/protocol design and implementation remain OQ-78, with legacy compatibility work OQ-79. |
+| Grace / Read-Only enforcement | OQ-45 expiry policy decided: 14 calendar days, Owner-authorized signed extensions, defined reversible Read-Only; exact deadline arithmetic/zone/day-count requires PO resolution under OQ-45 before enforcement/worker implementation (PDR-11 §9/§20). The distinct termination product question stays independently open. |
 | Installation identity key | PDR-11 U-2 + U-9/PQ-3 (see §7) |
-| Server replacement workflow and receipts | PDR-11 §5.5, U-9; product choice open |
+| Signed server replacement/failure recovery | Manual Owner approval/observations approved (PDR-17); failed activation/cancellation/protocol handling remains OQ-82/U-9. Ordinary activation needs no signed receipt (OQ-84 decided). |
 | Client-device licensing | OQ-83 policy decided by PDR-15 / OD-LIC-04; customer-server slice merged and CI-verified, while the external device client and Owner-side VDRP1 issuer remain operational dependencies. See [`client-device-lifecycle.md`](./client-device-lifecycle.md) and the [operational plan](../tasks/licensing-oq-83-operational-plan.md). |
 | Owner-side issuance system and role matrix | PDR-11 §4, U-5 → OQ-75; CRM/billing and OQ-61 out of scope |
-| Clock-rollback enforcement | PDR-11 §12.6 thresholds open (U-6 → OQ-76) |
+| Clock-rollback enforcement | PDR-11 §12.6 behavior decided: immediate restriction, trusted-time revalidation and automatic rollback-only clearance; detection/persistence/recovery mechanism and tests remain OQ-76/U-6. |
 | §8.6 capacity-conflict detection and resolution UI | needs the owning modules' public count contracts; separate slice (L-04). Until it exists, a version that reduces the retired version's capacity or entitlements is refused on every path — the interim fail-closed behaviour, not the flow. The **term** dimension of this section is decided: [PDR-12](../decisions/product/PDR-12-license-term-supersession.md) allows an explicit signed supersession to convert a perpetual grant into a time-limited one under the non-reduction invariants |
-| Audit read API and retention | retention open (U-7 → OQ-77) |
+| Customer audit read API / permanent separate archive | Retention/access policy decided (PDR-11 §12.8); archive/schema/minimization/access-control design and implementation remain OQ-77/U-7. Owner audit viewing is a separate existing slice, not a permanent archive. |
 
 ## 14. Client-device licensing (OQ-83)
 

@@ -41,7 +41,7 @@ describe('dashboard documents table', () => {
     expect(screen.getByText('1,250,000.00')).toBeInTheDocument();
     expect(screen.getByText(t.dashboard.stateFinal)).toBeInTheDocument();
     expect(screen.getByText('1001')).toBeInTheDocument();
-    expect(screen.getByText('1405/01/16')).toBeInTheDocument();
+    expect(screen.getByText('۱۴۰۵/۰۱/۱۶')).toBeInTheDocument();
   });
 
   it('delegates pagination to the callback instead of slicing local data', () => {

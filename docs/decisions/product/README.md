@@ -24,13 +24,21 @@ one-row registry entry pointing here.
 Statuses: `Open` · `Decided` · `Deferred` · `Superseded`.
 Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 
+> **Licensing decision reconciliation (2026-10-15):** PDR-11 §§9–10, 12, 15
+> and 20 record explicit current Product Owner policy; OQ-84 is product-closed.
+> OQ-45 duration/capabilities are decided, but exact Grace deadline arithmetic/zone/day-count and its separate termination question stay open. OQ-74/76/77/78/79/81 retain only documented technical/
+> security follow-ups; OQ-82/83/75/85 retain their separate outstanding scope.
+> PDR-17 now records permanent separate audit archive policy without inventing
+> historical option C. No new PDR number, implementation or merge is authorized.
+> Earlier dated notes below keep their historical scope, not current OQ status.
+
 ## Records
 
 | ID | Title | Type | Status | Blocks MVP |
 |---|---|---|---|---|
-| [PDR-17](./PDR-17-owner-web-application-phase-1.md) | Owner web app, separate PostgreSQL, RBAC subset, audit and manual observations | PDR | Decided directions; observation slice recorded; retention wording still missing | Owner first slice |
+| [PDR-17](./PDR-17-owner-web-application-phase-1.md) | Owner web app, separate PostgreSQL, RBAC subset, audit and manual observations | PDR | Decided directions; observation slice recorded; permanent separate audit archive policy decided, archive implementation outstanding | Owner first slice |
 | [OQ-44](./OQ-44-multi-device-offline-sync.md) | Multi-device offline sync: scope and timing | OQ | Open | No (excluded from MVP) |
-| [OQ-45](./OQ-45-license-expiry-behavior.md) | License expiry behavior (incl. internet outage, post-termination mode) | OQ | Open — **Grace → Read-Only decided (2026-10-05)**; durations/override open | Foundation only |
+| [OQ-45](./OQ-45-license-expiry-behavior.md) | License expiry behavior (incl. internet outage, post-termination mode) | OQ | **Open — narrowed (2026-10-15)**: expiry policy decided (14-calendar-day Grace → Read-Only, signed Owner extension); exact deadline arithmetic/zone/day-count and distinct termination trigger/strictness still open | Deadline enforcement blocked pending PO decision; not implemented |
 | [OQ-46](./OQ-46-customer-data-export-format.md) | Customer data export format and completeness | OQ | Open — **Excel = Business Export ≠ full technical backup decided (2026-10-05)**; contract-end boundary open | No (Excel confirmed) |
 | [OQ-47](./OQ-47-exchange-rate-and-multicurrency-rules.md) | Exchange-rate and multi-currency accounting rules | OQ | Open — **deferred by Owner ("do nothing for now", 2026-10-05)** | No (single-currency MVP) |
 | [OQ-48](./OQ-48-revaluation-and-fx-gain-loss.md) | Revaluation and foreign-exchange gain/loss | OQ | Open | No (single-currency MVP) |
@@ -57,7 +65,7 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 | [PDR-07](./PDR-07-inventory-pricing-sources-and-periodic-pricing-operation.md) | Inventory pricing sources, the periodic Pricing Operation, and the Accounting eligibility gate (OD-PRC-01…12, OD-VH-01, OD-DOC-01/02) | PDR | Decided (2026-10-06) | OQ-24 stays Open; opens OQ-70 / OQ-71 |
 | [PDR-08](./PDR-08-transfer-return-reversal-and-reverse-pricing-valuation.md) | Transfer / Purchase Return / Sales Return / Reversal / Reverse Pricing valuation (OD-TRF-01…09, OD-RET-01…07, OD-REV-01…08, OD-RVP-01…08, OD-PDP-01…05) | PDR | Decided (2026-10-06) | **Resolves OQ-67 and OQ-68**; OQ-70 / OQ-71 stay Open for their Accounting-side counterpart |
 | [PDR-09](./PDR-09-inventory-accounting-posting-boundary.md) | Inventory → Accounting posting boundary and Owner decisions (PO-01…PO-12; C-61) | PDR | Decided (2026-10-07) | Records approved boundaries; OQ-24/25/39/42/69/70/71/72 remain Open; no implementation authorized |
-| [PDR-11](./PDR-11-vardena-licensing-product-requirements.md) | Vardena licensing product requirements — canonical source of truth (server and client-device licensing, Owner-side administration, replacement, expiry, revocation, offline signed-file exchange) | PDR | Decided — approved product-requirements reference (2026-10-11); documentation only, not an implementation specification | Licensing design + first import slice (2026-10-11) OQ-45 and OQ-53 stay Open; open items in PDR-11 §15; conflicts with ADR-0030/ADR-0036 in PDR-11 §19 |
+| [PDR-11](./PDR-11-vardena-licensing-product-requirements.md) | Vardena licensing product requirements — canonical source of truth (server and client-device licensing, Owner-side administration, replacement, expiry, revocation, offline signed-file exchange) | PDR | Decided — approved product-requirements reference (2026-10-11); documentation only, not an implementation specification | Current licensing decisions/dispositions in §20; OQ-84 product-closed; OQ-45 narrowed; technical follow-ups in registry; §19 retains original reconciliation history |
 | [PDR-10](./PDR-10-c62-inventory-accounting-posting-modes.md) | C-62 Inventory → Accounting posting modes (Owner-approved C62-OD-01…06; PDR-09 boundaries; no implementation authorized) | PDR | Decided (2026-10-08) — Owner-approved decision package recorded in the file; OQ-39/OQ-42/OQ-72 remain Open | Records approved C-62 decisions; index row added 2026-10-11 (PDR-11 §19, CF-15) |
 | [PDR-12](./PDR-12-license-term-supersession.md) | License term change through explicit signed supersession (**OD-LIC-01**) — a perpetual grant may be replaced by a time-limited one by an explicit valid signed supersession, subject to non-reduction of `organizationLimit`, `userLimit` and entitlements | PDR | **Decided — Final Owner Decision (2026-10-12)** | Binds the licensing import path; **OQ-87 stays Open**; L-04 (§8.6 capacity-conflict detection + resolution flow) remains outstanding and is **not** completed by it |
 | [PDR-13](./PDR-13-post-gap-recovery.md) | Post-gap recovery through a dedicated audited operation (**OD-LIC-02**, OQ-87 **Option B**) — a NEW license identity may cover a lapse for the same customer + installation ONLY via a dedicated, explicitly authorized, reasoned, audited recovery operation; ordinary import is never a recovery path; L-04 (§8.6 usage-aware reduction check + explicit resolution) implemented in the same change | PDR | **Decided — Final Owner Decision (2026-10-12)** | Answers **OQ-87** and unblocks/completes the L-04 slice it gated; OQ-79/OQ-82/OQ-83/OQ-84/OQ-77 untouched |

@@ -21,3 +21,6 @@ npm-debug.log*
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+
+# Regenerated exact-source date foundation (never maintained here)
+src/lib/.date-foundation/

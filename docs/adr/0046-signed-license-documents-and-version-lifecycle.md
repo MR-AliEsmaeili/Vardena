@@ -1,5 +1,20 @@
 # ADR-0046: Signed license documents, retained license versions and deterministic effective-version resolution
 
+> **Product reconciliation (2026-10-15, documentation only):**
+> [PDR-11 §§9–10, 12, 15 and 20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
+> now governs Grace/Read-Only, distinct emergency reasons and independent
+> authenticated recovery, clock rollback, permanent separate audit archive,
+> successful-request replay, key-compromise policy and conceptual removal of
+> `SUSPENDED`. Older open-question wording below describes the original slice.
+> The runtime/enum/API and signed bytes remain unchanged in this PR. In
+> particular, current v2 duplicate rejection is an implementation gap against
+> the approved prior-result replay rule, and the legacy `SUSPENDED` consumers
+> require the staged compatibility/data plan in PDR-11 §20.3. Already-imported
+> versions staying effective is not protection from forged new inputs after key
+> compromise (§20.4). Follow-up enforcement/session/recovery architecture still
+> requires engineering design/ADR review, not approval inferred from this note.
+
+
 - **Status:** Accepted for the first licensing implementation slice (extends ADR-0030 and ADR-0045; does not replace the enforcement chain). Corrected 2026-10-11 (Product-Owner review of PR #137): Decisions 4, 5 and 11 now state the supersession timeline and the import-serialization rule the code and tests implement.
 - **Date:** 2026-10-11
 - **Product source:** [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) §§3, 5–6, 10–12, 17.2 (guardrails G-3, G-4, G-6, G-9); conflicts resolved or deferred in [PDR-11 §19.4](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) and `docs/tasks/pdr-11-conflict-reconciliation.md`.

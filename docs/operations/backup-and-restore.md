@@ -52,11 +52,20 @@ restore: there is no in-product restore surface, no licensing check on any
 backup/restore path, and the signed-file import pipeline adds none. Licensing
 never blocks, delays, logs out or requires network for a restore.
 
-The licensing reconciliation of 2026-10-11 confirmed this and left the
-interaction with **full revocation** undecided, because full revocation is not
-implemented: its recovery path (PDR-11 §10.3) and the way a signed reactivation
-is imported while System Administrator login is stopped are registered as
-**OQ-78**. The installation identity key that PDR-11 §6.1–§6.5 requires in the
+**Product clarification (2026-10-15):**
+[PDR-11 §10.3/§20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
+now requires a restricted administrator license/recovery interface independent of
+ordinary commercial login during full restriction. Approved identity/authentication,
+license/reason viewing, applicable Owner-signed import and essential backup/recovery
+remain available without commercial access or Owner/customer boundary bypass.
+This resolves the product-level restore/login conflict; authentication/session/
+signed recovery protocol and implementation remain **OQ-78** follow-ups. It is
+not an in-product Restore grant to normal users or an implemented emergency path.
+PQ-3 is decided at product level; G-9 no longer defers this policy pending PQ-3.
+Ordinary Restore stays on the already-approved authorized IT/server-administrator
+Runbook path. OQ-53 topology/authority/runbook/drill questions and U-2/OQ-78/OQ-82
+identity-key, encryption, authentication and recovery-design gates are preserved.
+The installation identity key that PDR-11 §6.1–§6.5 requires in the
 encrypted full backup is **designed but not implemented** (blocked by the
 backup-encryption design, PDR-11 U-2, and by the replacement workflow, OQ-82).
 
