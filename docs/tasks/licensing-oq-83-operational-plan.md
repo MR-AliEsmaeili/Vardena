@@ -1,4 +1,12 @@
-# OQ-83 populated-migration evidence and operational implementation plan
+# OQ-83 historical customer-side implementation and populated-migration plan
+
+> **Current MVP policy correction (2026-10-16):** PDR-15 §6 supersedes the prior
+> automated customer self-service/signed-response replacement workflow: device
+> replacement is manually managed by Owner Admin; keep the old device active
+> until new-device activation, then atomically swap one-for-one without extra
+> quota. This plan's VDRP1 issuer/companion requirements are not authorization
+> for that old workflow to ship as MVP. Reconcile the existing code and evidence;
+> do not invent a new signed artifact or claim policy compliance here.
 
 > **Phase 1 Owner update (2026-10-15):**
 > [PDR-17](../decisions/product/PDR-17-owner-web-application-phase-1.md) now
@@ -8,16 +16,18 @@
 > signing is still disabled pending U-1; no additional signed format is created.
 
 
-**Status:** READY FOR REVIEW — not Product Owner acceptance, not operational
-completion, and not closure of OQ-83.  
+**Historical status (2026-10-15):** READY FOR REVIEW for the prior customer-side
+signed-response implementation plan only — not Product Owner acceptance, not
+operational completion, and not closure of OQ-83 or approval of the current
+manual Owner Admin workflow.
 **Baseline:** `main` at `a58fd19df0bcff76e594749d825ac8b37f95ba4f`
 (verified against `origin/main` on 2026-10-15).  
 **Authority:** [PDR-15 / OD-LIC-04](../decisions/product/PDR-15-client-device-licensing-and-replacement.md),
 [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md),
 [PDR-14](../decisions/product/PDR-14-licensing-customer-code.md), and
-[the implemented protocol](../licensing/client-device-lifecycle.md). OQ-77,
-OQ-78, OQ-82, OQ-84, and OQ-85 remain separate and open as recorded in the
-registry.
+[the existing implementation protocol](../licensing/client-device-lifecycle.md).
+OQ-77/78/82/83/85 retain implementation/evidence follow-ups; OQ-84 is product-
+closed (no separate signed ordinary activation receipt). See the current registry.
 
 ## 1. Bounded migration-verification change
 
@@ -225,8 +235,11 @@ applicable choices are recorded:
 5. **Owner issuance lifecycle:** whether a request needs single or dual approval,
    denial/cancellation synchronization, response validity bounds, and recovery
    procedure after an interrupted issuance.
-6. **Audit retention:** retention/export requirements remain OQ-77 and are not
-   decided by OQ-83.
+6. **Audit retention:** policy is decided: append-only; retain each event at least
+   three years from its occurrence; unresolved security incidents are excluded from
+   automatic deletion; the previously approved permanent separate archive remains.
+   Three years is not a purge deadline. Archive/access/retention implementation is
+   still OQ-77 and is not decided by OQ-83.
 
 ## 7. Phased implementation plan and acceptance criteria
 

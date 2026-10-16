@@ -1,6 +1,20 @@
 # Licensing version model, signed documents and file exchange — technical design
 
-> **Current product reconciliation (2026-10-15):**
+> **Current policy correction (2026-10-16):** PDR-11 §21, PDR-15 §6 and PDR-17
+> govern current licensing policy. The existing self-service device-replacement
+> slice is prior implementation evidence, not the current OQ-83 MVP workflow;
+> Owner Admin-managed replacement is not yet evidenced as implemented. OQ-82's
+> manual server sequence and confirmation window are decided, but new-server
+> activation under the one-active-installation binding, pending/finalization
+> consistency, exact evidence and timeout recovery remain open. OQ-75 has exactly two MVP roles; OQ-77's
+> append-only minimum-three-year-from-occurrence retention and permanent separate
+> archive policy are decided, while archive/access implementation remains open.
+> OQ-45's natural-subscription-expiry boundary is signed expiry + 14×24h UTC
+> (`now >= boundary`); enforcement
+> is not implemented. This document is technical design/code evidence, not proof
+> of policy implementation; no runtime or signed-protocol changes are made here.
+
+> **Historical product reconciliation (2026-10-15):**
 > [PDR-11 §§9–10, 12, 15 and 20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
 > supersedes earlier undecided product wording for Grace/Read-Only, emergency/
 > recovery, clock, archive, successful duplicate replay, key compromise and the
@@ -13,9 +27,9 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Active design record for signed-license versions and import; OQ-83 server-side slice merged and CI-verified, operational client/issuer evidence still open |
+| Status | Active design record and existing implementation snapshot; the prior customer self-service OQ-83 slice merged and CI-verified, but its conformance to current manual Owner Admin policy remains open alongside operational evidence |
 | Authority | [ADR-0046](../adr/0046-signed-license-documents-and-version-lifecycle.md) (decision) · [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) (product source) · [PDR-15](../decisions/product/PDR-15-client-device-licensing-and-replacement.md) (OQ-83 policy) |
-| Date | 2026-10-11; OQ-83 addendum updated 2026-10-15 |
+| Date | 2026-10-11; licensing policy reconciliation updated 2026-10-16 |
 | Scope | Server license import: signed document format, retained versions, effective-version resolution, replay protection, audit, migration, API and frontend boundary; OQ-83 signed device quota and its import conflict rules |
 | Out of scope (unchanged, gated) | Owner-side licensing system and client-device issuer, CRM/billing, server replacement, full revocation/reactivation, Grace/Read-Only enforcement, installation identity key, clock-rollback enforcement, test/training entitlements |
 
@@ -49,13 +63,13 @@ PDR-11 §14 conceptual entities → implemented tables (CF-17):
 | ClientDevice | `licensing.client_devices`; `licensing.device_enrollment_challenges` | Retained device identity/state and one-use signed enrollment challenges. Only public key material and fingerprints are retained; the external client owns key generation and private-key storage. |
 | AuditEvent | `licensing.license_audit_events` | Typed import and device-lifecycle events, append-only application paths; permanent separate archive policy decided (PDR-11 §12.8), archive/security implementation outstanding (U-7/OQ-77). |
 
-Status vocabulary is **unchanged** from ADR-0030/ADR-0045 —
-`ACTIVE | EXPIRED | SUSPENDED` on a version, `UNLICENSED` as the absence of any
-version. PDR-11 §3.5 now removes `SUSPENDED` as a separate concept; safe
-legacy compatibility/mapping remains engineering follow-up (PQ-4/OQ-79). The
-original slice's state model below describes runtime, not new product policy.
-PDR-11 §20.3 requires an evidence-based compatibility/removal plan; nothing here
-re-labels historical values, and no migration rewrites a status value.
+The existing runtime status vocabulary remains `ACTIVE | EXPIRED | SUSPENDED`
+on a version and `UNLICENSED` as absence of any version. Current OQ-79/PDR-11
+§3.5 policy forbids blanket-mapping legacy `SUSPENDED` to any status: classify
+only from attributable historical cause, with ambiguous records restricted and
+reviewable. The original slice's state model below describes runtime, not new
+product policy. PDR-11 §20.3 requires an evidence-based compatibility plan;
+nothing here relabels historical values, and no migration rewrites a status.
 
 ## 2. The signed document
 
@@ -560,22 +574,35 @@ explicit-retirement arm — is refused by the same rule, corrective slice
 
 ## 4. Import pipeline (strict order, nothing written until every stage passes)
 
+The ordering below records the **OQ-81 target** and labels the current-code
+variation explicitly: current `runImport` checks import-time status/expiry and
+other candidate semantics before its duplicate guard, so an old retry may not
+reach duplicate handling. Target replay dispatch moves ahead of these
+state/time-dependent new-import checks, but only after common authentication,
+canonical/signature/trust and installation/customer scope checks.
+
 | # | Stage | Rejection code |
 | --- | --- | --- |
 | 1 | Authorization: session + `Licensing.License.Activate` (route guard and application service, AR-21) | 401 / 403 |
 | 2 | Transport parse: envelope or bare artifact (legacy `VLIC1` supported) | `malformed` |
 | 3 | Payload version supported (`v: 1 | 2`, `fileVersion: 1`) | `unsupported-version` |
-| 4 | Signature verified against trusted keys; unknown key hint rejected | `signature`, `unknown-key` |
-| 5 | Canonical form / typed payload validation | `payload` |
+| 4 | Canonical form / typed payload validation | `payload` |
+| 5 | Signature verified against trusted keys; unknown key hint rejected | `signature`, `unknown-key` |
 | 6 | Installation binding: `installationId` is this installation's identity | `installation-mismatch` |
-| 7 | Document semantics: interval, limits, entitlements, status `ACTIVE`, document not already expired at `now` | `validity`, `limits`, `entitlements`, `not-active`, `expired-document` |
-| 8 | Replay: `operationId` (and artifact hash) already applied on this installation | `duplicate-operation` (409, no state change) |
-| 9 | Version conflicts: overlap without explicit supersession, an overlap the named supersession does not retire, unknown/already-retired supersession target, supersession that would hand over before the import instant, a reduction of the retired version's capacity or entitlements (explicit supersession included), closing an open end where the version is not named, a license identifier already bound to another customer (§3.5) | `overlapping-range`, `unknown-supersession`, `license-binding-conflict`, `reduction-requires-resolution`, `renewal-gap` (409, no state change); `backdated-supersession` (422, no state change; OQ-86) |
-| 10 | Persist: ONE transaction that **first locks the installation row and re-runs stages 8–9 under the lock** (§3.4), refuses a license identifier that belongs to another installation or customer (§3.5), then customer upsert, license upsert, version + entitlements insert, supersession stamps, audit event | `duplicate-operation`, `overlapping-range`, `unknown-supersession`, `license-binding-conflict` (409, no state change); `backdated-supersession` (422, no state change) |
+| 7 | Identity dispatch after authentication, payload/canonical form, signature/trust and installation/customer scope checks. Current code rejects an applied operation/hash; target branches on committed installation-scoped identity. | Current: `duplicate-operation` (409); target matching identity: fingerprint comparison; no receipt: safe legacy refusal; not implemented |
+| 8 | Matching committed identity: compare fingerprint and use read-only receipt path. New identity: perform admission semantics at attempted import instant (validity window, limits, entitlements, `ACTIVE` status, not expired). A committed retry does not rerun time/state-dependent admission merely because time or retained state changed after success. | Retry mismatch: non-disclosing conflict; match: receipt; new op errors: `validity`, `limits`, `entitlements`, `not-active`, `expired-document` |
+| 9 | **New-operation branch only:** authoritative business-conflict evaluation, including windows, explicit/stale-chain target eligibility, retained history, reductions/current usage, customer/license binding, recovery/transfer/resolution intent. | `overlapping-range`, `unknown-supersession`, `license-binding-conflict`, `reduction-requires-resolution`, `renewal-gap` (409); `backdated-supersession` (422); no mutation on refusal |
+| 10 | New operation: one transaction first locks installation, repeats identity/conflict decision under lock, and writes customer/license/version/entitlements/supersession/audit plus receipt atomically. Matching replay: read-only receipt retrieval; no state transition or success audit. | New op: existing conflict errors; replay: stored receipt or non-disclosing fingerprint conflict; target replay persistence not implemented |
 
-Stages 8 and 9 share one implementation between the read-side pass and the
-in-transaction pass, so the two cannot drift apart: the pre-check is an early,
-informative rejection and the transaction's verdict is the one that decides.
+**Current implementation:** duplicate and conflict checks run in the shared
+import path and authoritative state evaluation is repeated inside the import
+transaction. **OQ-81 target:** after the common authentication, artifact,
+trusted-key and scope checks, dispatch by committed operation identity. A
+matching committed identity takes the fingerprint-checked read-only receipt
+path; a mismatch is refused without disclosure. Only an identity not previously
+committed proceeds through time-dependent new-import admission and the full
+read-side plus under-lock business-conflict evaluation. The new-operation
+precheck may be informative, but the locked transaction verdict decides.
 
 Capacity validation includes both **shape** checks (positive-or-null limits,
 known entitlements) and the PDR-11 §8.6 usage-aware conflict check. The import
@@ -596,20 +623,41 @@ limit. Unavailable counts and prohibited term changes remain unresolvable.
   installation lock (§3.4); the unique index `(installation_id, operation_id)` —
   and the one on `(installation_id, document_hash)` — are the database backstop,
   so a double-apply cannot create two versions even if the check were bypassed.
-- **Current implementation (not approved final replay behavior):** a duplicate
-  v2 operation is rejected (409, `duplicate-operation`) and changes nothing. Retry after an ambiguous failure is safe:
-  the state is already correct and the second attempt is refused with a message
-  that says so.
+- **Current implementation (not final replay behavior):** a duplicate
+  v2 operation is rejected (409, `duplicate-operation`) and changes nothing.
+  The installation transaction lock and unique indexes serialize/prevent a
+  second apply, but the loser does not receive the original result.
 - A legacy `VLIC1` code has no operation id; its identity is its SHA-256 hash.
-  Re-importing the same code keeps the documented L-02 behaviour: an idempotent
-  no-op (`changed: false`, `outcome: unchanged`). Re-importing a *different*
-  valid legacy code keeps the documented replacement semantics for the version
-  that currently governs. **Product decision now recorded:** exact successful
-  repeats must return the persisted previous result, conflicting reuse must
-  fail, and effects/quota/transitions must not repeat (PDR-11 §10.8). OQ-81
-  remains open only for operation/content identity, result persistence and
-  safe retrieval protocol. The current v2 rejection/legacy no-op is a gap, not
-  a permanent product exception; no signed format changes are made here.
+  Re-importing the same already-governing code keeps the documented L-02
+  behaviour: `changed: false`, `outcome: UNCHANGED`. This is not replay of a
+  stored original receipt. Historical rows without receipts must not be
+  reconstructed from current state. Different valid legacy codes keep their
+  documented replacement rules.
+- **Product policy and technical-design update (Owner decisions A–J, 2026-10-16):**
+  exact successful retry of the same identity and matching versioned semantic
+  request fingerprint must return that operation's receipt; same identity with
+  mismatching fingerprint is rejected. A different `operationId` is a new
+  operation even when the effective grant is semantically equivalent; semantic
+  equality alone must NOT reject it or return another receipt. The existing
+  artifact-hash guard still prevents identical bytes from being re-applied
+  (VLIC2 signs `operationId`). Fingerprint excludes `customerName` and
+  `issuedAt`, includes `supersedesOperationId`, and includes operation kind and
+  audited normalized reason for dedicated operations. **New operation:** run
+  signature/trusted-key, binding, validity/lifecycle, version-window,
+  supersession, entitlement and capacity checks before mutation; authoritative
+  conflicts are repeated under the installation lock. **Committed retry:**
+  authenticate/authorize and validate signed canonical form, signature/trust,
+  scope and fingerprint before read-only receipt lookup; do not rerun
+  state-dependent admission checks that would fail solely because the committed
+  operation's predecessor has since been superseded. Replacement commits are
+  serialized under the installation lock; competing already-retired
+  predecessors are rejected. A narrow, unique contiguous stale
+  chain may be resolved only under the conditions in the linked design; no
+  guessing or overlapping branch selection. VLIC1 no-receipt retry remains
+  `UNCHANGED`, not receipt replay. Replay DTO after a later replacement remains
+  open for explicit Owner approval. See [OQ-81 technical design](../tasks/oq-81-idempotent-replay-technical-design.md).
+  Replay persistence and stale-pointer resolution are not implemented; signed
+  formats and vectors do not change.
 - A rejected operation is recorded in the audit trail with its outcome; it does
   **not** consume the operation id, so an operator may re-issue a corrected
   document with a new operation id at any time.
@@ -668,8 +716,10 @@ and the stamp is a guarded update (`WHERE superseded_at IS NULL`).
   - storage and backup of the private part depend on the backup-encryption
     design (PDR-11 U-2; §6.1 requires it to be encrypted in the full backup and
     §6.2 forbids escrow);
-  - key loss must lead to the replacement workflow (PDR-11 §6.4), which is not
-    designed or approved (U-9, PQ-3 → OQ-78; replacement detail OQ-82).
+  - key loss must lead to the replacement workflow (PDR-11 §6.4). The manual
+    Owner-authorized server sequence is now policy (OQ-82); key-loss recovery,
+    evidence and exact API/timeout handling remain design and implementation gaps
+    (OQ-78/OQ-82).
 - Therefore: import **never creates, recreates or adopts** an installation row.
   A document for an unknown installation is rejected (`installation-mismatch`)
   and leaves the database without any installation row — an identity is only ever
@@ -697,9 +747,12 @@ and the stamp is a guarded update (`WHERE superseded_at IS NULL`).
   `license.version.superseded` (event type), outcome, `operation_id` (only when
   the signature verified), license/version ids, actor, transport source,
   `document_hash`, a bounded reason code and a bounded non-sensitive detail.
-  Retention periods and sensitive-data policy are open (PDR-11 U-7 → OQ-77); the
-  table stores **no** raw document, no signature, no key material and no customer
-  payload beyond an id and a display name.
+  Current policy (PDR-11 §21/PDR-17): append-only records, minimum three-year
+  retention, unresolved incidents never automatically deleted, with the previously
+  approved permanent separate archive retained. Archive/access/minimization
+  implementation remains open (OQ-77); this table stores **no** raw document,
+  no signature, no key material and no customer payload beyond an id and a display
+  name.
 - The `license.version.superseded` row is written inside the state-change
   transaction and names the version the transaction actually retired: the
   transaction refuses the import if that differs from the version the read-side
@@ -972,18 +1025,18 @@ customer stays the explicit, authorized, audited
 | Not implemented | Blocker |
 | --- | --- |
 | Full revocation, reactivation artifact and independent restricted administrator recovery | Product behavior decided (PDR-11 §10/§20); security/session/incident/protocol design and implementation remain OQ-78, with legacy compatibility work OQ-79. |
-| Grace / Read-Only enforcement | OQ-45 expiry policy decided: 14 calendar days, Owner-authorized signed extensions, defined reversible Read-Only; exact deadline arithmetic/zone/day-count requires PO resolution under OQ-45 before enforcement/worker implementation (PDR-11 §9/§20). The distinct termination product question stays independently open. |
+| Grace / Read-Only enforcement | Natural subscription expiry only: signed expiry + 14×24h UTC; Grace ends at `now >= boundary`. Intentional subscription cancellation gets no automatic Grace. Contract-termination strictness remains open; enforcement/restoration and tests are unimplemented (PDR-11 §21). |
 | Installation identity key | PDR-11 U-2 + U-9/PQ-3 (see §7) |
-| Signed server replacement/failure recovery | Manual Owner approval/observations approved (PDR-17); failed activation/cancellation/protocol handling remains OQ-82/U-9. Ordinary activation needs no signed receipt (OQ-84 decided). |
-| Client-device licensing | OQ-83 policy decided by PDR-15 / OD-LIC-04; customer-server slice merged and CI-verified, while the external device client and Owner-side VDRP1 issuer remain operational dependencies. See [`client-device-lifecycle.md`](./client-device-lifecycle.md) and the [operational plan](../tasks/licensing-oq-83-operational-plan.md). |
+| Signed server replacement/failure recovery | Manual Owner-authorized replacement policy: activate new before manual old-server decommission; pending until auditable confirmation; configurable expiry 1h–7d, default 24h. No remote shutdown. Evidence/recovery implementation remains OQ-82. Ordinary activation needs no separate signed receipt (OQ-84 decided). |
+| Client-device licensing | Existing customer-server implementation described in §14 is a prior customer self-service/signed-response slice. The 2026-10-16 MVP policy instead requires manual Owner Admin-managed replacement, old device active until activation, then atomic quota-neutral swap; implementation reconciliation remains open (PDR-15 §6). |
 | Owner-side issuance system and role matrix | PDR-11 §4, U-5 → OQ-75; CRM/billing and OQ-61 out of scope |
-| Clock-rollback enforcement | PDR-11 §12.6 behavior decided: immediate restriction, trusted-time revalidation and automatic rollback-only clearance; detection/persistence/recovery mechanism and tests remain OQ-76/U-6. |
+| Clock-rollback enforcement | Restrict only on reliable evidence of meaningful rollback; a small backward change alone does not restrict. After correction, trusted-time/license evidence must be revalidated; resolution permits only controlled attributable audited rollback-only unlock, not automatic clearance. Failed/uncertain validation requires secure authorized recovery; mechanisms/tests remain OQ-76/U-6. |
 | §8.6 capacity-conflict detection and resolution UI | needs the owning modules' public count contracts; separate slice (L-04). Until it exists, a version that reduces the retired version's capacity or entitlements is refused on every path — the interim fail-closed behaviour, not the flow. The **term** dimension of this section is decided: [PDR-12](../decisions/product/PDR-12-license-term-supersession.md) allows an explicit signed supersession to convert a perpetual grant into a time-limited one under the non-reduction invariants |
 | Customer audit read API / permanent separate archive | Retention/access policy decided (PDR-11 §12.8); archive/schema/minimization/access-control design and implementation remain OQ-77/U-7. Owner audit viewing is a separate existing slice, not a permanent archive. |
 
 ## 14. Client-device licensing (OQ-83)
 
-The Product Owner policy is recorded in [PDR-15 / OD-LIC-04](../decisions/product/PDR-15-client-device-licensing-and-replacement.md); the dedicated customer-side protocol, state machine, API, authorization, persistence and test design is [`client-device-lifecycle.md`](./client-device-lifecycle.md). The customer-server slice was merged by PR #154 and its merge SHA passed CI; OQ-83 remains OPEN because independent review and operational device-client/Owner-issuer evidence are still outstanding. This section does not promote or change ADR-0046's accepted decisions.
+The current manual Owner Admin policy is recorded in [PDR-15 / OD-LIC-04](../decisions/product/PDR-15-client-device-licensing-and-replacement.md); the detailed customer-side protocol, state machine, API, authorization, persistence and test design in [`client-device-lifecycle.md`](./client-device-lifecycle.md) documents the prior self-service implementation. The customer-server slice was merged by PR #154 and its merge SHA passed CI; that evidence does not establish conformance to current policy. OQ-83 remains open for implementation reconciliation, independent review and operational device-client/Owner evidence. This section does not promote or change ADR-0046's accepted decisions.
 
 The signed `LicenseVersion` owns device capacity. VLIC1 and already-issued VLIC2 payloads without a `deviceLimit` stay verifiable using their historical canonical form. Their device limit is **UNSPECIFIED** (neither zero nor unlimited), so they do not authorize new device registration until an explicit signed limit is imported. A signed `null` is unlimited; finite values are non-negative integers. The migration backfills pre-field rows as unspecified and never rewrites signed artifacts or their hashes.
 

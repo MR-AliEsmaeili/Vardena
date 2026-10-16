@@ -1,6 +1,15 @@
 # Owner-side licensing system — architecture and release boundary (Phase 0 design)
 
-## Current product-policy reconciliation — 2026-10-15
+> **Later PO policy update (2026-10-16):** see PDR-11 §21 and PDR-17's dated
+> OQ-82/OQ-85 update. Owner roles are Owner Admin and License Operator; the
+> former four-role text below is historical. Server replacement remains manual,
+> pending auditable old-server decommission confirmation with 1h–7d configurable
+> expiry (24h default), not remote shutdown. Owner controls infrastructure/trust;
+> customers need no continuous Owner connection and MVP has no federated issuer.
+> Existing observation/API descriptions below are implementation/design evidence,
+> not proof the new sequence or expiry is implemented.
+
+## Historical product-policy reconciliation — 2026-10-15 (superseded where updated above)
 
 [PDR-11 §§4.4, 9–10, 12, 15 and 20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
 and [PDR-17](../decisions/product/PDR-17-owner-web-application-phase-1.md)
@@ -11,11 +20,13 @@ non-automatic-invalidation of existing licenses solely on key compromise (U-1);
 no signed receipt for ordinary activation (OQ-84). Broader technical design and
 implementation remain follow-ups, not newly approved production custody/issuance.
 Manual Owner approval for each new customer-server installation/replacement,
-operator-observed evidence labels, four roles and separation boundaries remain.
+operator-observed evidence labels and separation boundaries remain. The former
+four-role model is historical/superseded; the current model is Owner Admin and
+License Operator, and current code is not represented as migrated.
 Owner dates must follow [the global Jalali-first date/time contract](../datetime.md)
 §0; raw-ISO views are an evidenced implementation gap (PDR-11 §20.5).
 
-## Current Phase 1 addendum — 2026-10-15 (supersedes historical proposals below)
+## Phase 1 implementation snapshot — 2026-10-15 (policy overlays above control)
 
 Authority: [PDR-17](../decisions/product/PDR-17-owner-web-application-phase-1.md),
 [implementation record](../tasks/licensing-owner-side-phase-1.md),
@@ -34,15 +45,34 @@ Runtime: one small modular Node/Express/pg API and independent React/Vite UI.
 Own numbered SQL/checksum-ledger migrations, not the customer Prisma chain.
 Password hashes/first-login restriction and session revocation commit atomically
 with durable audit. Permissions are checked using the authenticated current
-user/session, never a client actor or hidden button. The Product Owner correction to PR #160 confirms Issuance Specialist customer/
-audit reads and Support customer identity/status reads with a server-side field
-allowlist; see the current PDR-17 matrix. Observer remains read-only and Admin
-retains administrative operations. No audit purge exists; the explicit permanent-archive policy now supersedes
-the former retention deferral without reconstructing historical option C. Cryptographic lifecycle operations remain unavailable.
+user/session, never a client actor or hidden button. **Historical PR #160 role
+snapshot, superseded as MVP policy on 2026-10-16:** System Administrator, Issuance
+Specialist, Observer and Support grants describe prior code/evidence only; they
+are not current roles or approved permissions. Current policy is Owner Admin and
+License Operator, with exact endpoint grants open and no runtime migration claimed.
+No audit purge exists; the explicit permanent-archive policy now supersedes the
+former retention deferral without reconstructing historical option C.
+Cryptographic lifecycle operations remain unavailable.
 
 Manual activation is an explicit authorized operator confirmation of issued →
 activated, retaining actor, server time, reason and available evidence reference,
-not a cryptographic customer receipt. Manual server replacement: specialist
+not a cryptographic customer receipt.
+
+> **Historical implementation snapshot only (2026-10-15):** the next paragraph
+> describes the existing/manual-observation implementation, not the current
+> approved server-replacement workflow. “Administrator” and “Issuance Specialist”
+> are historical implementation role names, not current MVP roles. Current policy
+> is governed by PDR-11 §21 and PDR-17: activate the replacement server before
+> manually decommissioning the old server; keep the record pending until an
+> authorized operator records auditable confirmation of decommission. The
+> confirmation period is Owner Admin-configurable from 1 hour to 7 days (24-hour
+> default). Operator observations are not cryptographic proof, do not prove remote
+> shutdown and do not themselves execute a transition on the customer server.
+> Under OQ-82, activation/binding under the one-active-installation rule and
+> pending/finalization consistency remain an open specification gap. Do not infer
+> a workaround or implementation completion.
+
+Manual server replacement: specialist
 manually deactivates/revokes the old lock; Administrator or Issuance Specialist
 authorizes replacement for the same customer; specialist installs; authorized
 Owner user records observed prior/new status with actor/time/reason. Emergency
@@ -54,7 +84,8 @@ application writes, including both emergency steps before commit. Responses are
 labeled operator-observed and not cryptographically verified. No signed protocol, customer callback or customer
 schema change is involved. Server replacement is separate from OQ-83
 client-device replacement. An abandoned non-terminal replacement cannot be
-withdrawn: PDR-17 defines no cancellation transition and OQ-82 remains OPEN.
+withdrawn: timeout/cancellation details remain unspecified under OQ-82; the
+manual replacement order and bounded confirmation window are decided in PDR-17.
 U-1 technical incident-response/custody design remains deferred under the
 approved product policy; no production signer/key. No signed contract changes.
 OQ-77/78/82/83/85 remain open for their outstanding scope; OQ-84 is now
@@ -495,13 +526,18 @@ Ordered by whether they block Owner implementation.
 | GAP-5 | No signed refusal artifact; `VDRP1` supports `APPROVE` only | No — needs a decision | Item D-8; changes a signed contract, so not unilateral |
 | GAP-6 | `docs/licensing/version-model-and-file-exchange.md` §2.1 canonical example omits `deviceLimit` | No | Example shows the pre-OQ-83 shape; prose §11 covers the field. Documentation drift only — but it edits the same normative §2.1 block, so its correction travels with **Phase 0.5B** (D-2(b)), not with Phase 0.5A |
 | GAP-7 | No Owner intake bound / operator summary / export naming convention for offline exchange | Yes, for Phase 2 | §3.8 |
-| GAP-8 | Revocation, reactivation and server-installation replacement instruments do not exist in any form | Yes, but gated | OQ-78 and OQ-82 are OPEN; **must not** be designed around here |
-| GAP-9 | Owner audit retention and sensitive-data treatment undefined | Yes, but gated | OQ-77 / PDR-11 U-7 OPEN |
-| GAP-10 | Owner role permission matrix undefined | Yes, but gated | PDR-11 U-5 OPEN; only the four role *categories* are approved |
+| GAP-8 | Revocation/reactivation instruments and OQ-82 replacement evidence/state workflow are not implemented | Yes, but gated | OQ-78 protocol remains open; OQ-82's manual order and 1h–7d/24h confirmation policy are decided, while proof/API/timeout recovery remain open |
+| GAP-9 | Separate archive, retention execution and sensitive-data controls not implemented | Yes, but gated | OQ-77 policy decided: append-only, minimum three years from event occurrence, unresolved security incidents excluded from automatic deletion; permanent separate archive remains |
+| GAP-10 | Exact Owner role-to-endpoint permission mapping is not implemented | Yes, but gated | OQ-75 policy decided: Owner Admin and License Operator only; code still has four roles, not migrated |
 
-GAP-8, GAP-9 and GAP-10 are **not** design work this phase may complete: each is
-an OPEN product question, and inventing an answer would violate PDR-11 §17.2
-G-10 and the task's prohibition on closing OQs by inference.
+The product-policy decisions relevant to GAP-8 through GAP-10 are recorded in
+the current canonical records, PDR-11 §21 and PDR-17: OQ-82's replacement order
+and confirmation window, OQ-77's retention/archive policy, and OQ-75's two-role
+model. The technical, specification, implementation, security and evidence gaps
+identified in these rows remain open and gated; deciding policy does not resolve
+those gaps. This historical Phase 0 design document does not authorize resolving
+them unilaterally or claiming implementation is complete. Do not infer a change
+to any OQ status.
 
 ## 6. Acceptance criteria for the boundary
 
@@ -531,10 +567,11 @@ so that "separated" is a testable claim rather than an assertion.
 
 ## 7. What this document does not do
 
-It does not choose the Owner repository or its ownership (OQ-85), the Owner UI
-runtime, the Owner database product, the operator permission matrix (U-5), the
-production key custody model or compromise policy (U-1), the device-client
-platform, the revocation or reactivation design (OQ-78), the server-installation
-replacement design (OQ-82), or signed receipts for ordinary activation (OQ-84).
-It authorizes no implementation. The phased plan and the decision table are in
+At the time of this Phase 0 design, repository/ownership, roles, key custody,
+revocation, replacement and receipt questions were open. Product status was later
+updated by PDR-11 §21/PDR-15/PDR-17: OQ-85's Owner-controlled/offline boundary,
+OQ-75's two roles, OQ-82's manual sequence, and OQ-84's no-separate-ordinary-
+receipt policy are decided. Detailed permission/custody/recovery/evidence design
+and implementation remain open. This architecture note authorizes no runtime
+implementation. The phased plan and decision history are in
 [the Phase 0 readiness report](../tasks/licensing-owner-side-phase-0-readiness.md).

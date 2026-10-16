@@ -1,13 +1,24 @@
 # Licensing architecture (L-01, L-02, L-03; OQ-83 device lifecycle)
 
-> **Current product policy (2026-10-15):**
+> **Product policy update (2026-10-16):** for current Owner policies use PDR-11
+> §21 and [`licensing-po-decision-traceability-2026-10-16.md`](tasks/licensing-po-decision-traceability-2026-10-16.md).
+> The device self-service/signed-response implementation description below is a
+> snapshot of existing code and is not conformant evidence for the later manual
+> Owner Admin OQ-83 policy. Natural-subscription-expiry Grace ends at the
+> recorded UTC expiry + 14×24h; intentional subscription cancellation gets no
+> automatic Grace. No remote server shutdown, continuous Owner connectivity or
+> federated issuer is authorized. No runtime changes are made by this update.
+
+> **Historical reconciliation snapshot (2026-10-15; superseded by the 2026-10-16 policy update above):**
 > [PDR-11 §§9–10, 12 and 20](decisions/product/PDR-11-vardena-licensing-product-requirements.md)
-> records the newly approved behaviors and source-backed implementation gaps.
+> recorded the then-current behaviors and source-backed implementation gaps.
 > Existing foundation descriptions below describe runtime, not proof of the
 > approved Grace/Read-Only/emergency/recovery/clock/archive/replay behavior.
-> `SUSPENDED` is removed conceptually, but legacy values/consumers remain until
-> a safe staged compatibility/mapping design; signed bytes remain unchanged.
-> Owner and customer dates follow [the global date/time contract](datetime.md) §0.
+> Its earlier statement that `SUSPENDED` was "removed conceptually" is historical
+> and superseded by OQ-79: do not blanket-map it to any status; classify only from
+> attributable historical cause, and keep ambiguous records restricted/reviewable.
+> Signed bytes remain unchanged. Owner and customer dates follow [the global
+> date/time contract](datetime.md) §0.
 
 
 > **Status note (2026-10-15, updated).** This document describes the
@@ -51,9 +62,16 @@ Limits and perpetual validity use SQL/configuration null. Positive integers are 
 
 Finite limit allocation is concurrency-safe. Organization creation and active-user creation/re-enablement execute their count and mutation in one PostgreSQL transaction while holding a transaction-scoped advisory lock derived from the licensed `installationId` and resource (`organizations` or `active-users`). Contenders for the same installation/resource serialize; after the winner commits, the next contender re-counts and is rejected at the limit. Authorization, validation, and password hashing remain outside this narrow transaction.
 
-### Client-device quota and lifecycle (OQ-83 / PDR-15)
+### Existing client-device implementation snapshot (OQ-83 / PDR-15)
 
-The current OQ-83 slice adds retained device identities, Ed25519 proof-of-possession enrollment, explicit deactivation, typed history and one-for-one offline replacement inside the Licensing module. Only the effective signed LicenseVersion is authoritative: an omitted legacy `deviceLimit` is **UNSPECIFIED** and blocks new enrollment; signed `null` is unlimited; finite limits count active devices. Registration, deactivation, replacement and license-import reduction checks serialize on the same installation row and device-allocation lock. Replacement holds the old device active until a trusted correlated response completes in one transaction; no private key is stored or exposed and device rows are never deleted. See [the protocol and verification matrix](licensing/client-device-lifecycle.md) and [the operational implementation plan](tasks/licensing-oq-83-operational-plan.md). OQ-83 remains OPEN pending independent review and real client/issuer operational evidence; this is not Product Owner acceptance.
+The current code contains retained device identities, Ed25519 proof-of-possession
+enrollment, explicit deactivation, typed history and customer-side signed-response
+replacement. The key-custody and quota-safety constraints remain relevant, but the
+self-service replacement workflow is a prior implementation, not the current MVP
+policy. The 2026-10-16 Product Owner decision requires manual Owner Admin device
+replacement; reconcile that workflow before claiming OQ-83 conformance. The signed
+`deviceLimit` and transactional quota evidence remain as described in the
+implementation design. No code was changed by this decision-record update.
 
 ## Installation identity (L-02, ADR-0045)
 
@@ -135,10 +153,12 @@ windows. A version therefore hands over exactly at its successor's `validFrom`,
 which is what lets a future-dated renewal (or a future-dated supersession) be
 imported without interrupting the license that is valid today. When nothing
 covers the instant, an ended version reports `expired` and a future version
-reports `not-yet-valid`; `UNLICENSED` remains the absence of any version. Status
-vocabulary (`ACTIVE|EXPIRED|SUSPENDED`, `UNLICENSED`) is unchanged; the
-`SUSPENDED` conceptual removal is decided, but its compatibility/mapping
-follow-up stays open (OQ-79; PDR-11 §20.3); no migration rewrites a status value.
+reports `not-yet-valid`; `UNLICENSED` remains the absence of any version. The existing runtime status vocabulary (`ACTIVE|EXPIRED|SUSPENDED`,
+`UNLICENSED`) is unchanged. **Current OQ-79 policy:** do not blanket-map legacy
+`SUSPENDED` to any status. Classify only from attributable historical cause;
+ambiguous records remain restricted and reviewable. The earlier "conceptual
+removal" wording is not a migration rule. Compatibility, audit and migration
+work remain open; no migration is claimed.
 
 ### Overlap, gaps and supersession — current status
 
@@ -177,12 +197,24 @@ windows conflict — the loser of such a race gets the documented 409 and writes
 nothing. A document whose `licenseId` is bound to another customer, or belongs to
 another installation, is refused with 409 (`license-binding-conflict`, nothing
 written; see `docs/licensing/version-model-and-file-exchange.md` §3.5). A repeated legacy `VLIC1` code keeps its documented idempotent no-op
-(`changed: false`) — the documented per-operation-type behaviour that PDR-11
-PQ-8/OQ-81 now supersedes at product level: exact successful repeats must
-return the persisted previous result, conflicts must fail, and effects must not
-repeat. Result persistence/retrieval and conflict protocol remain implementation
-gaps (PDR-11 §10.8/§20). Concurrency details and existing runtime evidence: design §3.4,
-ADR-0046 Decision 11, `test/licensing-persistence-live.e2e-spec.ts`.
+(`changed: false`) when the existing legacy case applies; without a stored
+original receipt this is `UNCHANGED`, not a replay. Under the 2026-10-16 Owner
+decisions, same-identity matching-fingerprint retries must return a persisted
+receipt, but a new operation ID is a new operation even when grant content is
+equivalent; fingerprint excludes `customerName`/`issuedAt` and includes
+`supersedesOperationId`. New operations undergo full validity and current
+chain/business evaluation before mutation. For a committed retry, current
+authorization, canonical/signature/trust, scope and fingerprint checks precede a
+read-only receipt lookup; state-dependent admission checks are not rerun merely
+because the operation's predecessor has since been superseded. Replacement
+transactions serialize under the installation row lock, and an already-retired
+competing predecessor is refused. The narrow stale
+chain continuation proposal, atomic receipt behavior and unresolved historical
+replay DTO are recorded in
+[`docs/tasks/oq-81-idempotent-replay-technical-design.md`](tasks/oq-81-idempotent-replay-technical-design.md).
+These replay and stale-predecessor behaviors are not implemented. Concurrency
+evidence: design §3.4, ADR-0046 Decision 11,
+`test/licensing-persistence-live.e2e-spec.ts`.
 
 Outcomes are recorded in the typed, append-only `licensing.license_audit_events`
 table (`license.import.applied`, `license.import.rejected`,
@@ -387,20 +419,23 @@ import exemption. Restore stays license-unblocked under OQ-53/G-9.
 
 ## Expiry policy (product decision — enforcement not implemented)
 
-**Product Owner decision (2026-10-15, OQ-45/PDR-11 §9):**
-Active → Grace (**14 calendar days**, existing license-time semantics) → Read-Only.
-Show actual reason/status. Extension requires Owner authorization plus a valid
-Owner-issued signed artifact; no local database/settings/restart/clock bypass.
-All existing users may log in under normal auth and retain existing authorized
-document/report views, print and Excel export; approved backup, license status
-and renewal remain available. Backend/API and relevant async paths block business
-creation/modification and inventory/accounting effects. Preserve data/history/
-permissions; valid renewal plus revalidation restores prior authorized operation,
-not an unrelated emergency restriction. Outages alone do not suspend; emergency
-stops are immediate on valid applicable authority, not expiry Grace.
+**Current Product Owner decision (2026-10-16, OQ-45/PDR-11 §21):** for natural
+subscription expiry only, **Active → Grace (14×24 hours in UTC) → Read-Only**.
+Grace ends at `now >= recorded expiry Instant + 14×24h`. Intentional subscription
+cancellation gets no automatic Grace; contract-termination strictness remains
+open. Show actual reason/status. Extension requires Owner authorization plus a
+valid Owner-issued signed artifact; no local database/settings/restart/clock
+bypass. All existing users may log in under normal auth and retain existing
+authorized document/report views, print and Excel export; approved backup, license
+status and renewal remain available. Backend/API and relevant async paths block
+business creation/modification and inventory/accounting effects. Preserve
+data/history/permissions; valid renewal plus revalidation restores prior authorized
+operation, not an unrelated emergency restriction. Outages alone do not suspend;
+emergency stops are immediate on valid applicable authority, not expiry Grace.
 
-**Exact Grace deadline arithmetic/zone/day-count requires PO resolution in OQ-45
-before deadline enforcement; signed half-open expiry alone does not decide it.**
+**The exact Grace boundary is now decided:** recorded signed expiry + 14×24 hours
+in UTC; Grace ends at `now >= boundary` (OQ-45/PDR-11 §21). Implementation and
+verification remain outstanding.
 Mechanism/worker/session/recovery tests remain implementation follow-ups
 (PDR-11 §20.5–§20.6), not claims of completed enforcement. Frontend contract:
 `docs/frontend/ux/document-editing-and-system-alerts.md` §4. The retained-version
@@ -411,20 +446,22 @@ change overlap/gap/post-gap or signed-byte contracts.
 
 CRM, billing, payments, remote validation, remote revocation, hardware
 fingerprinting, marketplace/subscriptions, and a server-license activation UI
-are not implemented. The customer-side device administration UI is part of the
-current OQ-83 slice and remains pending review/exact-head CI. Expiry
-**enforcement** (Grace/Read-Only above) is also not implemented. Future
+are not implemented. Existing customer-side device UI implements the prior
+self-service OQ-83 workflow; the new manual Owner Admin replacement policy is not
+yet evidenced as implemented and must be reconciled before conformance is claimed.
+Expiry **enforcement** (Grace/Read-Only above) is also not implemented. Future
 `CrmLicenseProvider`-like infrastructure can replace the provider token without
 changing consumers.
 
-The 2026-10-11 reconciliation's remaining deferred work is preserved except
-for the current OQ-83 device lifecycle slice, which is implemented on this
-working branch but still pending review and exact-head CI: full
-revocation/reactivation and login-blocking state (OQ-78), server replacement and
-its receipts (OQ-82), the installation identity key (blocked by PDR-11 U-2 and
-OQ-78/OQ-82), signed activation receipts (OQ-84), the Owner-side licensing
-system and its role matrix (OQ-75, OQ-85), clock-rollback detection (OQ-76),
-audit retention enforcement (OQ-77), and the PDR-11 §8.6 capacity-conflict
+The 2026-10-11 implementation snapshot remains useful evidence but is not a
+current policy-compliance claim. The existing customer-side OQ-83 device slice
+implements the prior signed-response workflow and remains pending independent
+review; the approved manual Owner Admin policy requires separate reconciliation.
+Other follow-ups include full revocation/recovery and login-blocking state (OQ-78),
+manual server replacement evidence/state/timeout recovery (OQ-82), installation
+identity key design (PDR-11 U-2 and OQ-78/OQ-82), exact Owner role mapping and
+operational trust evidence (OQ-75/OQ-85), clock-rollback detection (OQ-76), audit
+archive/retention implementation (OQ-77), and the PDR-11 §8.6 capacity-conflict
 detection/resolution UI (a separate slice that needs the owning modules' public
 count contracts).
 
@@ -438,7 +475,7 @@ and the open-decision table (D-1…D-10), risk matrix and phased plan in
 [`docs/tasks/licensing-owner-side-phase-0-readiness.md`](./tasks/licensing-owner-side-phase-0-readiness.md).
 [ADR-0048](./adr/0048-owner-side-licensing-separation-boundary.md) records the
 separation boundary as **Proposed — awaiting explicit Product Owner approval**.
-That work decides nothing: **OQ-85 stays OPEN**, and OQ-75/OQ-77/OQ-78/OQ-82,
+That work decides nothing: **OQ-85's operational evidence remains OPEN** (its Owner-controlled/offline/non-federated policy is recorded in PDR-11 §21), and OQ-75/OQ-77/OQ-78/OQ-82,
 OQ-84, PDR-11 U-1 and U-5 are unchanged. It also records a customer-package
 defect that exists independently of those questions — the development license
 issuer in `backend/src/tools/development-license-authority.ts` and

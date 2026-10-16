@@ -1,8 +1,23 @@
 # Owner manual licensing observations
 
+> **Policy correction (2026-10-16):** this is evidence of the existing operator-
+> observation slice only. PDR-17 now requires the replacement server be activated
+> before manual old-server decommission, pending auditable confirmation, with
+> configurable 1h–7d confirmation expiry (24h default); the row/API here does not
+> prove decommission or implement that expiry. OQ-75's two roles supersede the
+> role table below; OQ-77 requires append-only retention for at least three years
+> from each event's occurrence (not an automatic purge deadline), excludes unresolved
+> security incidents from automatic deletion, and retains the previously approved
+> permanent separate archive. These policies supersede the historical
+> no-retention-decision text. See PDR-11 §21 and the current OQ registry. No remote customer-server contact or shutdown is implied.
+
 Date: 2026-10-15. Status: implementation submitted for exact-head CI and review.
 This is not Product Owner acceptance, operational rollout, or permission to merge.
-It does not close OQ-75, OQ-77, OQ-78, OQ-82, OQ-83, OQ-84, OQ-85 or U-1.
+This code snapshot does not implement the OQ-75 two-role authorization, OQ-77
+retention/archive policy, OQ-82 sequence/confirmation window, or OQ-83 manual
+Owner Admin device policy. OQ-84 is product-closed; ordinary activation has no
+mandatory separate signed receipt. OQ-78/OQ-85 protocol/deployment evidence and
+OQ-74 key security remain separate open implementation/design follow-ups.
 
 ## What this slice is
 
@@ -25,11 +40,13 @@ not cryptographic proof, and not client-device replacement.
 No production signing key or signer. No VLIC1, VLIC2, VDEA1, VDRQ1 or VDRP1
 artifact. No signed receipt or signed refusal. No customer contact, callback,
 synchronization, database change or runtime change. No client-device
-replacement. No offline revocation or recovery artifact. No second-person
-approval. No audit purge or invented retention period. No cancellation,
-renewal, revocation or recovery state: those transitions are not defined, so
-they are not invented. An abandoned non-terminal replacement therefore keeps
-its installation slot.
+replacement. No offline revocation or recovery artifact. This code snapshot has
+no second-person approval mechanism; that is implementation evidence, not a
+current role-policy decision. This code snapshot has no audit purge/retention enforcement; current OQ-77
+retention policy is stated above. No cancellation, renewal, revocation or recovery
+state is implemented in this observation slice; those transitions are not
+specified here, so none is invented. An abandoned non-terminal replacement
+therefore keeps its installation slot in this implementation snapshot.
 
 ## Authorization
 
