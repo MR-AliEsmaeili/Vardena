@@ -1,5 +1,13 @@
 # OQ-83 populated-migration evidence and operational implementation plan
 
+> **Current MVP policy correction (2026-10-16):** PDR-15 §6 supersedes the prior
+> automated customer self-service/signed-response replacement workflow: device
+> replacement is manually managed by Owner Admin; keep the old device active
+> until new-device activation, then atomically swap one-for-one without extra
+> quota. This plan's VDRP1 issuer/companion requirements are not authorization
+> for that old workflow to ship as MVP. Reconcile the existing code and evidence;
+> do not invent a new signed artifact or claim policy compliance here.
+
 > **Phase 1 Owner update (2026-10-15):**
 > [PDR-17](../decisions/product/PDR-17-owner-web-application-phase-1.md) now
 > selects the independent Owner web/PostgreSQL boundary. This does not implement

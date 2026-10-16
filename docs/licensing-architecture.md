@@ -1,5 +1,13 @@
 # Licensing architecture (L-01, L-02, L-03; OQ-83 device lifecycle)
 
+> **Product policy update (2026-10-16):** for current Owner policies use PDR-11
+> §21 and [`licensing-po-decision-traceability-2026-10-16.md`](tasks/licensing-po-decision-traceability-2026-10-16.md).
+> The device self-service/signed-response implementation description below is a
+> snapshot of existing code and is not conformant evidence for the later manual
+> Owner Admin OQ-83 policy. Exact expiry boundary is UTC expiry + 14×24h; no
+> remote server shutdown, continuous Owner connectivity or federated issuer is
+> authorized. No runtime changes are made by this documentation update.
+
 > **Current product policy (2026-10-15):**
 > [PDR-11 §§9–10, 12 and 20](decisions/product/PDR-11-vardena-licensing-product-requirements.md)
 > records the newly approved behaviors and source-backed implementation gaps.
@@ -411,8 +419,9 @@ permissions; valid renewal plus revalidation restores prior authorized operation
 not an unrelated emergency restriction. Outages alone do not suspend; emergency
 stops are immediate on valid applicable authority, not expiry Grace.
 
-**Exact Grace deadline arithmetic/zone/day-count requires PO resolution in OQ-45
-before deadline enforcement; signed half-open expiry alone does not decide it.**
+**The exact Grace boundary is now decided:** recorded signed expiry + 14×24 hours
+in UTC; Grace ends at `now >= boundary` (OQ-45/PDR-11 §21). Implementation and
+verification remain outstanding.
 Mechanism/worker/session/recovery tests remain implementation follow-ups
 (PDR-11 §20.5–§20.6), not claims of completed enforcement. Frontend contract:
 `docs/frontend/ux/document-editing-and-system-alerts.md` §4. The retained-version
@@ -450,7 +459,7 @@ and the open-decision table (D-1…D-10), risk matrix and phased plan in
 [`docs/tasks/licensing-owner-side-phase-0-readiness.md`](./tasks/licensing-owner-side-phase-0-readiness.md).
 [ADR-0048](./adr/0048-owner-side-licensing-separation-boundary.md) records the
 separation boundary as **Proposed — awaiting explicit Product Owner approval**.
-That work decides nothing: **OQ-85 stays OPEN**, and OQ-75/OQ-77/OQ-78/OQ-82,
+That work decides nothing: **OQ-85's operational evidence remains OPEN** (its Owner-controlled/offline/non-federated policy is recorded in PDR-11 §21), and OQ-75/OQ-77/OQ-78/OQ-82,
 OQ-84, PDR-11 U-1 and U-5 are unchanged. It also records a customer-package
 defect that exists independently of those questions — the development license
 issuer in `backend/src/tools/development-license-authority.ts` and

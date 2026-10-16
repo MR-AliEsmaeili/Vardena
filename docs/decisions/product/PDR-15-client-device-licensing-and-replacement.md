@@ -1,24 +1,24 @@
 # PDR-15: Client-device licensing, quota and replacement (OD-LIC-04 / OQ-83)
 
-> **Later cross-reference (2026-10-15, no device-policy change):**
-> [PDR-11 §20](PDR-11-vardena-licensing-product-requirements.md) now records
-> OQ-84 as Decided: no signed receipt for ordinary activation. Earlier OQ-84
-> OPEN wording below describes this record's original scope, not current status.
-> Operation-specific device replacement evidence, quota/identity/transaction
-> rules and OQ-83's remaining review/dependencies are unchanged.
+> **Later cross-reconciliation (2026-10-16):** OQ-84 is product-closed: no
+> separate signed receipt is required for ordinary activation. The current MVP
+> replacement operating model is the dated §6 addendum below, which supersedes
+> conflicting workflow/self-service wording in this earlier decision. Device
+> identity, private-key custody and quota-safety decisions remain unless expressly
+> superseded.
 
 
 - **Type:** PDR (Product Decision Record) · decision id **OD-LIC-04**
-- **Status:** **Decided — Final Owner Decision** (2026-10-15)
+- **Status:** **Decided — final policy, with superseding MVP replacement addendum (2026-10-16)**
 - **Decided by:** Product Owner (Ali Esmaeili)
-- **Registry row:** [`docs/open-questions.md`](../../open-questions.md) — **OQ-83 remains OPEN for implementation tracking**; this decision records the approved policy and does not close the row before implementation is reviewed. OQ-84 remains OPEN for ordinary activation/import receipts.
+- **Registry row:** [`docs/open-questions.md`](../../open-questions.md) — **OQ-83 remains OPEN for implementation tracking/reconciliation**. OQ-84 is product-closed; no separate signed receipt is required for ordinary activation.
 - **Recording baseline:** `main` @ `dd1203ca6c1651785811928f2a69d5d32a15739d` (verified against `origin/main` on 2026-10-15)
 - **Related records:** [PDR-11](./PDR-11-vardena-licensing-product-requirements.md) §§7–8, 12, 14–16 · [PDR-14](./PDR-14-licensing-customer-code.md) · [ADR-0046](../../adr/0046-signed-license-documents-and-version-lifecycle.md) · [`docs/licensing-architecture.md`](../../licensing-architecture.md) · [`docs/licensing/version-model-and-file-exchange.md`](../../licensing/version-model-and-file-exchange.md) · OQ-78, OQ-82, OQ-84 and OQ-85 remain separate and out of scope.
 
-> This record transcribes the Product Owner decisions for client-device
-> registration, quota accounting and replacement. The implementation is being
-> delivered in the same focused change; decision recording is not implementation
-> completion, Product Owner acceptance, or permission to merge.
+> This record transcribes the original device identity/quota decisions. The
+> 2026-10-16 addendum below supersedes the former customer self-service replacement
+> operating model for MVP. Decision recording is not implementation completion,
+> Product Owner acceptance, or permission to merge.
 
 ## 1. Context
 
@@ -29,9 +29,10 @@ versions, installation/customer binding and typed audit trail. It did not yet ow
 client-device model, device quota, device-key enrollment, replacement requests, or a
 customer-side administration surface.
 
-The Product Owner has now explicitly approved the following policy. It is scoped to
-the customer-side client-device lifecycle only; it does not establish a server
-installation replacement or Owner-side issuance system.
+The original policy approved the device identity, quota and lifecycle constraints
+below. Its automated customer-side replacement workflow is superseded for MVP by
+§6's manually managed Owner Admin process; it does not establish the server
+installation replacement workflow.
 
 ## 2. Decision (OD-LIC-04) — binding
 
@@ -135,3 +136,28 @@ The protocol/state-machine detail and stable API contracts are maintained in
 The decision is recorded. Implementation, tests, CI, Owner acceptance and merge are
 separate statuses. OQ-83 stays OPEN until implementation review and exact-head CI
 are complete. No other OQ is closed, reopened, or reinterpreted by this record.
+
+
+## 6. Product Owner update — MVP replacement operating model (2026-10-16)
+
+This dated decision supersedes conflicting parts of §§2, 3 and 5 about the
+**MVP replacement workflow** only. Device identity remains key-based, private
+keys remain on the client, device history is retained, and quota accounting
+remains one-for-one.
+
+1. Client-device replacement in the MVP is **manually managed by Owner Admin**.
+   It is not an automated customer self-service replacement workflow.
+2. The existing device remains active and consumes its quota until the new
+   device is activated. Successful completion then replaces the old device in
+   an atomic, quota-neutral one-for-one swap; failed activation must not leave a
+   partial swap or strand the existing active device.
+3. The Owner Admin workflow, evidence capture, customer-side activation/import
+   mechanics, and exact API/state contract require separate technical
+   specification. No new signed artifact, VDRP1 behavior, receipt, protocol or
+   implementation is authorized by this documentation record. Ordinary
+   activation still requires no separate signed receipt (OQ-84).
+
+OQ-83's policy is decided, but the row remains open for implementation review
+and exact evidence. Existing customer self-service/signed-response code, if
+present, is not evidence that the new manual Owner Admin policy is implemented;
+reconcile it in an authorized implementation change.

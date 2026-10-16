@@ -1,5 +1,14 @@
 # Owner manual licensing observations
 
+> **Policy correction (2026-10-16):** this is evidence of the existing operator-
+> observation slice only. PDR-17 now requires the replacement server be activated
+> before manual old-server decommission, pending auditable confirmation, with
+> configurable 1h–7d confirmation expiry (24h default); the row/API here does not
+> prove decommission or implement that expiry. OQ-75's two roles supersede the
+> role table below; OQ-77's minimum three-year append-only retention supplements
+> the historical no-retention-decision text. See PDR-11 §21 and the current OQ
+> registry. No remote customer-server contact or shutdown is implied.
+
 Date: 2026-10-15. Status: implementation submitted for exact-head CI and review.
 This is not Product Owner acceptance, operational rollout, or permission to merge.
 It does not close OQ-75, OQ-77, OQ-78, OQ-82, OQ-83, OQ-84, OQ-85 or U-1.

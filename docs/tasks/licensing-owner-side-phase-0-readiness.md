@@ -1,5 +1,13 @@
 # Owner-side licensing system — Phase 0 readiness report and open-decision table
 
+> **Current policy correction (2026-10-16):** this is a historical Phase 0
+> snapshot. PDR-11 §21/PDR-17 now decide the two-role Owner Admin/License Operator
+> model and Owner-controlled offline/non-federated boundary (OQ-75/OQ-85), plus
+> the manual server replacement order and confirmation expiry (OQ-82). Earlier
+> D-6/D-7 and open-decision wording remains dated history only; implementation,
+> evidence and remaining technical questions are tracked in the current OQ
+> registry and [`licensing-po-decision-traceability-2026-10-16.md`](licensing-po-decision-traceability-2026-10-16.md).
+
 > **2026-10-15 Phase 1 update:** this file is the historical Phase 0 snapshot.
 > New Owner decisions and implementation are recorded in
 > [PDR-17](../decisions/product/PDR-17-owner-web-application-phase-1.md) and

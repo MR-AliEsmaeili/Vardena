@@ -335,20 +335,22 @@ The atomic application algorithm is a design item (§16).
 
 ## 9. Subscription expiry and restricted mode
 
-**9.1 Product Owner decision — OQ-45/PQ-1/PQ-2 (2026-10-15).**
-The expiry path is **Active → Grace (14 calendar days) → Read-Only**.
-At subscription expiry enter Grace, clearly displaying the actual reason and
-current license status; normal authorized operation continues during Grace.
-At its end enter Read-Only. Existing validity bounds remain half-open Instants,
-not UI date strings; `validUntil` is the expiry instant and Jalali presentation
-never changes it. **Exact Grace deadline remains a Product Owner question in
-OQ-45**: the accepted date/time contract defines signed validity and display, not
-whether 14 calendar days means elapsed duration, preserving local wall-clock time
-across 14 days, or ending at a calendar boundary, nor the applicable zone/day count.
-Engineering must not choose or round that rule. Grace/Read-Only deadline enforcement
-is blocked until the Product Owner resolves the concrete alternatives in
-[OQ-45's deadline question](OQ-45-license-expiry-behavior.md#exact-grace-deadline--product-owner-question-open).
-The approved duration, permissions and signed extension authority are unchanged.
+**9.1 Product Owner decision — natural expiry (OQ-45, updated 2026-10-16).**
+For **natural license expiry only**, the path is **Active → Grace (14 days) →
+Read-Only**. The exact boundary is the recorded signed expiry Instant plus
+14×24 hours in UTC; Grace ends at `now >= boundary`. This is not calculated in
+the display timezone and is not rounded to a local date. See the canonical
+[OQ-45 record](OQ-45-license-expiry-behavior.md).
+At natural expiry, display the actual reason/status; normal authorized operation
+continues during Grace and the existing Read-Only capabilities apply afterwards.
+
+Intentional subscription cancellation is not natural expiry and receives no
+automatic 14-day Grace. Subscription cancellation, license cancellation, expiry,
+replacement and reissuance remain distinct lifecycle events. The resulting
+cancellation/restriction transition is not inferred here; see OQ-78. The separate
+contract-termination strictness question remains open. Signed half-open validity,
+`validUntil`, display-zone formatting and Owner-authorized signed extensions are
+unchanged. Grace/Read-Only enforcement and verification remain unimplemented.
 
 Grace beyond 14 calendar days requires Owner authorization and a valid
 Owner-issued signed artifact through approved validation. Local settings,
@@ -380,10 +382,9 @@ an independent emergency or integrity restriction. Future-dated versions and
 post-gap recovery still follow their existing decisions, not a new bypass (§20.1).
 
 **9.4 Delegated technical design and status.** Engineering owns the enforcement
-mechanism, module/worker operation classification and acceptance tests **after the
-OQ-45 deadline decision**, without
-weakening §9.2. Grace/Read-Only enforcement is not implemented or verified by this
-PR. Follow-ups and acceptance criteria are in §20.5–§20.6.
+mechanism, module/worker operation classification and acceptance tests, applying
+the PO-selected UTC boundary in OQ-45/PDR-11 §21 without weakening §9.2.
+Grace/Read-Only enforcement is not implemented or verified by this PR. Follow-ups and acceptance criteria are in §20.5–§20.6.
 
 **9.5 Dates.** License/expiry/Grace screens, reports and filters follow the
 project-wide Persian/Jalali-first policy in [docs/datetime.md](../../datetime.md)
@@ -496,9 +497,10 @@ reasons so renewal, clock repair or restart never clears an unrelated one.
   **immediately** enter the prescribed restricted state; record a security/audit
   event. Do not introduce an arbitrary tolerance that delays restriction.
 - After clock correction, revalidate trustworthy current time against the stored
-  time-integrity state. If valid again, **automatically** remove only the
-  restriction attributable solely to rollback; no manual clear is required for
-  that case. This supersedes the former administrator-cleared requirement.
+  time-integrity evidence. If validation succeeds, **automatically** remove only
+  the rollback-only restriction; no manual clear is required for that case. This
+  supersedes the former administrator-cleared requirement. If validation fails,
+  use a secure, attributable, auditable approved recovery procedure.
 - If integrity cannot be re-established, require the approved recovery procedure;
   do not invent an unsigned local reset, watermark erasure or universal
   Owner-signature waiver. The exact recovery mechanism requires engineering design.
@@ -537,14 +539,14 @@ observations, not cryptographically verified operations (PDR-17).
 
 ## 13. Owner-side roles and responsibilities
 
-The four approved role categories below are unchanged. Their original purpose/status descriptions are retained; [PDR-17](PDR-17-owner-web-application-phase-1.md) supplies the current approved operation matrix for the Owner slice. Broader operation authority remains OQ-75/U-5; no signing or recovery permission is inferred from a role name.
-
-| Role category | Purpose (product level) | Status |
-|---|---|---|
-| Owner System Administrator | Administers the Owner-side system and its users and roles. | Approved category; operation-level permissions OPEN (U-5) |
-| License Issuance Specialist | Carries out license issuance, versions, signed updates, renewals, revocations, reactivations, and replacement issuance, within the authorized issuance process. | Approved category; operation-level permissions OPEN (U-5) |
-| Read-only Observer | Views Owner-side records without changing them. | Approved category; operation-level permissions OPEN (U-5) |
-| Support Specialist with limited access | Performs support activities within a limited scope. Its scope is not defined here. | Approved category; scope and permissions OPEN (U-5) |
+The Owner MVP has exactly two roles: **Owner Admin** and **License Operator**.
+This supersedes the earlier four-role categories below and the former PDR-17
+matrix. Owner Admin administers Owner users/access/configuration and carries
+Owner-admin decision authority. License Operator performs approved routine
+customer/license operations. Exact endpoint grants and security controls are not
+yet fully specified or implemented; role names alone do not grant signing-key
+custody, unrestricted recovery, or an otherwise undecided lifecycle operation.
+See [PDR-17](PDR-17-owner-web-application-phase-1.md) and OQ-75.
 
 **13.1 Cross-cutting (Must).** Every role-based action is attributable to an actor and recorded in the audit history (§12.7). Role-based authorization is required even though second-person approval is not (§4.3).
 
@@ -582,22 +584,22 @@ central registry give current dispositions; older dated status notes are histori
 | U-2 | **Exact backup cryptographic design.** Algorithms, encryption-key handling, backup access controls, and recovery boundaries. | Technical design item (§6.6). Any loss-of-capability consequence stays as §6.3–§6.5. |
 | U-3 | **Exact file formats and protocols** for signed licenses, renewals, revocations, reactivations, replacement requests and responses, and activation receipts. | Technical design item (§16). |
 | U-4 | **Precise state machines** for license versions, server replacement, client-device replacement, pending requests, cancellation, and replay prevention. Including the Owner-side "unconfirmed" status. | Technical design item (§16). |
-| U-5 | **Detailed Owner role permissions** for the four approved role categories (§13). | PDR-17 current approved matrix is preserved; OQ-75 remains open only for broader future operation/acceptance scope. No inferred signing or recovery grants. |
+| U-5 | Owner role permissions and authentication. | The two-role model (Owner Admin, License Operator) is decided in §13/PDR-17; exact permission mapping, security review and implementation remain OQ-75. No inferred signing or recovery grants. |
 | U-6 | Clock rollback (OQ-76). | **Product behavior decided:** immediate restriction and automatic rollback-only clearance after trusted-time revalidation (§12.6). Exact detection, validation, persistence and recovery remain engineering work; no invented tolerance. |
 | U-7 | Audit (OQ-77). | **Retention/access policy decided:** permanent separate archive, authorized sensitive access, minimization, no contradictory purge (§12.8). Schema/archive/security controls remain design and implementation follow-ups. |
 | U-8 | **Backward compatibility**: versioning and migration rules for future signed-file formats. | Technical design item (§16). |
-| U-9 | **Offline replacement failure recovery**: a detailed protocol that ensures a failed activation does not strand the customer, while canceled requests cannot be reused (§5.5 steps 13–14, §7.10). | Technical design item, with the explicit pre-completion revocation timing question in §5.5 still requiring PO resolution (OQ-82). If the protocol needs another business trade-off, document alternatives and return them to the Owner. |
+| U-9 | **Server replacement failure recovery/evidence** (§5.5; OQ-82). | The Owner-approved manual order and bounded confirmation expiry are in §21/PDR-17. Exact old-server decommission evidence, pending expiry/failure recovery, and workflow/API remain technical gaps; do not claim remote decommission or infer proof. |
 
 ### 15.2 Product clarifications found during reconciliation
 
 | ID | Open question | Why it matters | Handling |
 |---|---|---|---|
-| PQ-1 | Grace at expiry (OQ-45). | Expiry timing and signed extension authority. | **Decided:** 14 calendar days, then Read-Only; Owner authorization + valid signed artifact for extension (§9). **Exact deadline arithmetic/zone/day-count remains OPEN under OQ-45; enforcement blocked pending PO decision.** |
+| PQ-1 | Natural-expiry Grace (OQ-45). | Grace boundary, extension authority and cancellation distinction. | **Decided:** natural expiry gets 14×24h UTC Grace; ends at `now >= expiry + 14 days`; Owner-authorized valid signed extension only. Intentional subscription cancellation gets no automatic Grace. Contract-termination strictness remains open; enforcement is unimplemented (§9/§21). |
 | PQ-2 | Read-Only meaning (OQ-45). | One observable contract. | **Decided:** all existing users under normal auth, existing read/report/print/Excel rights, backup/status/renewal; no business mutation; backend/async enforcement and reversible restoration (§9). |
 | PQ-3 | Full revocation/recovery (OQ-78). | Recovery must not depend on commercial login. | **Product behavior decided:** restricted authenticated administrator recovery interface and backup path (§10.3), valid signed restoration (§10.6). Authentication/session/state/protocol design remains open. |
 | PQ-4 | Legacy `SUSPENDED` (OQ-79). | Compatibility and historical meaning. | **Product decision:** remove separate concept; explicit actual condition/reason. Stage safe consumer/data compatibility work (§20.3), no enum/schema/signed-byte change here. |
 | PQ-5 | Overlapping/gapped subscription versions (OQ-80/OQ-86). | Retained effective history and renewal. | **Previously decided, unchanged:** Option B overlap, G2 renewal gaps and full retained-history checks; PDR-12/PDR-13 and later Q3 clarification remain authoritative (§20.1). |
-| PQ-6 | **Quota effect of device replacement.** The approved text implies that replacing a device does not increase quota consumption. This should be confirmed explicitly. | Affects whether a replacement can exceed quota. | **Decided 2026-10-15 by the Product Owner:** replacement exchanges one active device for one and does not increase consumed quota; pending requests keep the old device active. PDR-15 §2.15 also confirms that an over-quota device reduction may be resolved either by explicitly deactivating devices or through the existing authorized, audited licensing reduction flow; that flow never auto-deactivates, and new enrollment remains blocked while usage is at or above the finite limit. See [PDR-15 / OD-LIC-04](./PDR-15-client-device-licensing-and-replacement.md) and §7.13. OQ-83 remains OPEN for implementation review and exact-head CI. |
+| PQ-6 | Device replacement quota effect and offline workflow (OQ-83). | Prevent excess quota and customer lockout. | **Quota-neutral one-for-one swap is decided.** The 2026-10-16 MVP workflow is manually managed by Owner Admin, not customer self-service; keep the old device active until replacement activation, then atomically swap. Exact workflow/evidence and reconciliation of existing implementation remain OPEN. Existing device key-custody and quota-reduction rules remain. See PDR-15 §6 and §7.13. |
 | PQ-7 | **Owner-side system ownership and location.** Is the Owner-side licensing system part of Vardena or a separate tool? Existing records defer CRM and commercial providers (ADR-0030; `docs/licensing-architecture.md`), and OQ-61 is Open on CRM ownership and timing. | Determines where Owner-side requirements are built and who owns the data. | Owner decision. Linked to OQ-61. |
 | PQ-8 | Duplicate operations (OQ-81). | Safe retries and conflicts. | **Product behavior decided:** exact successful repeat returns persisted previous result, conflicting reuse rejected, no repeated side effects (§10.8). Technical identity/result retrieval remains open. |
 | PQ-9 | Ordinary activation receipts (OQ-84). | Evidence is not a signature. | **Decided:** no signed receipt required for ordinary activation; manual attributable activation history suffices for approved scope (PDR-17). Does not remove operation-specific replacement evidence or decide OQ-82 protocols. |
@@ -1075,3 +1077,99 @@ These are **requirements to test**, not passing tests in this documentation PR:
   manual-versus-verified evidence labels, staged legacy-state compatibility,
   continued license validity after key compromise under the approved policy,
   and Jalali-first Owner/customer presentation without storage/protocol drift.
+
+
+## 21. Product Owner decisions and traceability update — 2026-10-16
+
+**Authority and scope.** This is a documentation-only record of the explicit
+Product Owner decisions for OQ-45 and OQ-74–OQ-85. It supersedes conflicting
+older product wording only where stated below. It does not authorize application
+code, protocol/schema changes, keys, or claim implementation. The concise status
+matrix is [`docs/tasks/licensing-po-decision-traceability-2026-10-16.md`](../../tasks/licensing-po-decision-traceability-2026-10-16.md);
+central OQ statuses remain in [`docs/open-questions.md`](../../open-questions.md).
+Earlier dated notes in §§19–20 remain historical unless explicitly superseded
+here. Decisions already recorded in PDR-11, PDR-15 and PDR-17 are preserved
+except for explicit conflicts below.
+
+### 21.1 Closed product decisions (implementation remains separate)
+
+- **OQ-45 natural expiry:** exact UTC boundary is recorded in
+  [OQ-45](OQ-45-license-expiry-behavior.md): signed expiry Instant + 14×24
+  hours; Grace ends at `now >= boundary`. Only natural expiry receives the
+  automatic Grace. Intentional subscription cancellation does not; event types
+  remain distinct and cancellation/restriction transition details stay under
+  OQ-78. The independent contract-termination strictness question remains open.
+- **OQ-74 key incident policy:** signing keys remain under Owner custody/control;
+  existing issued licenses are not automatically invalidated solely because a
+  signing key is compromised. Key containment, controlled rotation, future-import
+  trust, provenance and offline recovery remain security-design gaps. Custody is
+  an Owner responsibility; no particular vault/HSM, operator procedure or safe
+  rotation implementation is selected or claimed.
+- **OQ-75 Owner roles:** the MVP has Owner Admin and License Operator only;
+  PDR-17 records the boundary. Exact permission/API mapping and security review
+  are not implemented by this decision.
+- **OQ-76 rollback:** apply a restriction only when time-integrity evidence
+  indicates rollback; do not invent a tolerance/threshold. Successful trusted-time
+  revalidation automatically clears only the rollback-only restriction; failed
+  validation requires secure, attributable, auditable approved recovery. Do not
+  clear unrelated restrictions. Detector, evidence model and recovery mechanism
+  remain open.
+- **OQ-77 audit:** audit history is append-only with a minimum three-year
+  retention. No automatic deletion of unresolved incidents. PDR-17's previously
+  approved permanent separate archive remains in force; no purge after year
+  three is implied. Archive implementation, access/minimization and incident
+  resolution evidence remain open.
+- **OQ-78 lifecycle/recovery:** subscription cancellation, license cancellation,
+  expiry, replacement and reissuance are distinct events, not interchangeable
+  statuses or implicit transitions. Restricted-admin recovery is a separate,
+  controlled path and does not restore ordinary authorization by itself.
+  Session, authorization, evidence and API/state-machine details remain open.
+- **OQ-79 legacy `SUSPENDED`:** use attributable evidence to classify history.
+  Unclassifiable records remain restricted and reviewable; never auto-map them
+  to active, expired or revoked. Data inventory and compatibility/migration are
+  still open.
+- **OQ-81 replay:** preserve the recorded operation-identity, fingerprint,
+  authorization, current-versus-historical-result, legacy compatibility,
+  concurrency and no-repeat-effect decisions in the existing OQ-81 technical
+  record and registry. Keep the replay response DTO question open. Key
+  compromise/replay interaction is not decided here and needs an explicit
+  security design; no format/vector changes.
+- **OQ-82 server replacement:** manual Owner-authorized process only. Set up and
+  activate the replacement server before manually decommissioning the old one;
+  retain a pending state until auditable manual decommission confirmation.
+  Confirmation expiry is configurable 1 hour–7 days, default 24 hours. No
+  remote shutdown/control is claimed. Exact decommission evidence and expiry /
+  failure recovery remain technical gaps (PDR-17).
+- **OQ-83 device replacement:** manual Owner Admin-managed MVP workflow, not
+  customer self-service. Keep the old device active until the replacement
+  activates; complete an atomic, quota-neutral one-for-one swap. PDR-15 records
+  this superseding policy. Existing runtime behavior requires separate
+  reconciliation; this decision is not an implementation claim.
+- **OQ-84 ordinary activation:** no mandatory separate signed activation
+  receipt; preserve the existing manual attributable history policy. Operation-
+  specific replacement evidence is not generalized into an ordinary receipt.
+- **OQ-85 trust boundary:** infrastructure and issuer trust are Owner-controlled;
+  ordinary customer operation needs no continuous connection to the Owner, and
+  the MVP does not use a federated issuer. Deployment/security evidence remains
+  open.
+
+### 21.2 Traceability and remaining gates
+
+| Topic | Product decision status | Remaining product/API question | Specification / evidence gap | MVP implementation status from inspected repository |
+|---|---|---|---|---|
+| OQ-45 | Natural expiry boundary decided | Contract termination; cancellation outcome beyond no automatic Grace | UTC enforcement/restoration acceptance | Not implemented; exact target and code evidence in matrix |
+| OQ-74 | No automatic invalidation of already-issued licenses | None without a new explicit trade-off | Key custody, compromise/rotation trust transition, key-compromise/replay interaction | No production rotation/custody mechanism established |
+| OQ-75 | Two roles decided | None for role count/purpose | Permission mapping, authentication and review | Existing four-role implementation/docs mismatch; no runtime change here |
+| OQ-76 | Evidence-based rollback restriction/recovery | No threshold decided | Trusted-time evidence and secure audited recovery criteria | Detector/watermark not implemented |
+| OQ-77 | Append-only; minimum three years; unresolved incidents never auto-deleted; permanent archive retained | None to the minimum | Archive, access/minimization, retention execution | Current tables are not proof of separate archive |
+| OQ-78 | Lifecycle events distinct; restricted-admin recovery separate | No additional policy chosen | Session/auth/API/state protocol and evidence | No full cancellation/revocation/recovery lifecycle established |
+| OQ-79 | Evidence-only classification; ambiguous history restricted/reviewable | None | Historical data audit, compatibility and migration plan | Existing `SUSPENDED` consumers remain |
+| OQ-81 | Prior decisions preserved | Replay DTO after supersession remains open | Receipt persistence/retrieval; key compromise/replay interaction | Current duplicate rejection/no receipt; see design |
+| OQ-82 | Manual replacement sequence and expiry range/default decided | No remote shutdown authority | Evidence for old-server decommission, pending-expiry/failure recovery | Current operator observations do not prove actual server decommission |
+| OQ-83 | Manual Owner Admin, quota-safe atomic swap decided | No new product question | Manual workflow/API/evidence and conflict reconciliation | Existing implementation requires review against new policy |
+| OQ-84 | No separate signed ordinary activation receipt | Closed | Manual audit evidence remains non-cryptographic | Existing Owner manual record is not a signed receipt |
+| OQ-85 | Owner-controlled, offline-capable, non-federated boundary decided | None for this boundary | Deployment/key/trust operational controls | No production Owner issuer or continuous-connectivity claim |
+
+This matrix distinguishes decided policy from implementation; entries naming a
+code gap are not feature tests. Separate product questions not answered above
+remain open and must not be guessed.

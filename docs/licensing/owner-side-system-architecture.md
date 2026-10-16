@@ -1,5 +1,14 @@
 # Owner-side licensing system — architecture and release boundary (Phase 0 design)
 
+> **Later PO policy update (2026-10-16):** see PDR-11 §21 and PDR-17's dated
+> OQ-82/OQ-85 update. Owner roles are Owner Admin and License Operator; the
+> former four-role text below is historical. Server replacement remains manual,
+> pending auditable old-server decommission confirmation with 1h–7d configurable
+> expiry (24h default), not remote shutdown. Owner controls infrastructure/trust;
+> customers need no continuous Owner connection and MVP has no federated issuer.
+> Existing observation/API descriptions below are implementation/design evidence,
+> not proof the new sequence or expiry is implemented.
+
 ## Current product-policy reconciliation — 2026-10-15
 
 [PDR-11 §§4.4, 9–10, 12, 15 and 20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
