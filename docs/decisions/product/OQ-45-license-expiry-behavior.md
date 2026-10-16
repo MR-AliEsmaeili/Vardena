@@ -1,15 +1,16 @@
 # OQ-45: License expiry — 14-day UTC Grace then Read-Only
 
 - **Type:** OQ (product/business + operational policy)
-- **Status:** **Partially decided (2026-10-16); OQ remains OPEN** for separate contract-termination strictness and implementation/verification. Natural-expiry Grace boundary is decided; cancellation transition details remain under OQ-78.
+- **Status:** **Partially decided (2026-10-16); OQ remains OPEN** for separate contract-termination strictness and implementation/verification. Natural-subscription-expiry Grace boundary is decided; cancellation transition details remain under OQ-78.
 - **Owner / authority:** Product Owner Ali Esmaeili, explicit licensing decision instructions (2026-10-15 and 2026-10-16).
 - **Created:** 2026-09-22 · Shape decided: 2026-10-05 · Current decisions: 2026-10-16.
 - **Canonical requirements:** [PDR-11 §§9–10 and §21](PDR-11-vardena-licensing-product-requirements.md), [registry](../../open-questions.md), [date/time foundation](../../datetime.md) §0.
 
 ## Current Product Owner decision
 
-**Active → Grace (14 calendar days) → Read-Only**, under existing authoritative
-license-time semantics. Display the actual reason/status at expiry. Any extension
+For **natural subscription expiry only**: **Active → Grace (14×24 hours in UTC) →
+Read-Only**, under existing authoritative license-time semantics. Display the
+actual reason/status at expiry. Any extension
 beyond the approved period requires Owner authorization and a valid Owner-issued
 signed artifact through approved validation. No local-setting/database/restart/
 clock bypass or silent extension. Temporary infrastructure/internet failure alone
@@ -27,7 +28,7 @@ reconstruction; unrelated emergency/integrity restrictions remain in force.
 
 Expiry is not emergency termination/revocation: a validated Owner stop or explicitly
 defined security policy applies the immediate appropriate restriction without
-14-day expiry Grace. PDR-11 §10 requires actual reason, independent authenticated
+the automatic 14-day natural-subscription-expiry Grace. PDR-11 §10 requires actual reason, independent authenticated
 administrator recovery, approved backup access, and valid applicable Owner-signed
 restoration; ordinary renewal, restart or clock repair never bypasses it. Remaining
 security/session/protocol details stay tracked under OQ-78, not fabricated here.
@@ -39,19 +40,19 @@ are why the OQ-45 registry row remains open.
 
 ## Exact Grace deadline — final Product Owner decision (2026-10-16)
 
-For **natural license expiry only**, the Grace boundary is the recorded signed
+For **natural subscription expiry only**, the Grace boundary is the recorded signed
 expiry instant plus **14 days in UTC**. Treat the signed expiry as an exact UTC
 Instant; add 14 × 24 hours without using the display timezone, local calendar,
 partial-day rounding, or DST arithmetic. At `now >= boundary`, Grace has ended
 and the approved Read-Only state applies. Before that instant, the approved
-natural-expiry Grace behavior applies. For example, expiry
+natural-subscription-expiry Grace behavior applies. For example, expiry
 `2026-10-08T08:30:00Z` ends Grace at `2026-10-22T08:30:00Z`.
 
 This rule does not change the half-open signed-validity interval, the signed
 `validUntil`, display formatting, or Owner-authorized signed extensions. Internet
 or infrastructure outages do not extend either license validity or Grace.
 
-Intentional subscription cancellation is **not natural expiry** and grants no
+Intentional subscription cancellation is **not natural subscription expiry** and grants no
 automatic 14-day Grace. Subscription cancellation, license cancellation,
 expiration, replacement, and reissuance remain distinct lifecycle events; the
 appropriate cancellation/restriction transition and its authorization/evidence
@@ -73,7 +74,7 @@ recorded UTC boundary and specify API/worker enforcement and renewal restoration
 against existing time/security boundaries. This record implements none of those
 mechanisms and claims no passing feature tests or module-wide compliance. The
 global Jalali-first display policy changes neither signed expiry Instants nor
-storage semantics. OQ-45's duration, natural-expiry boundary, outage distinction,
+storage semantics. OQ-45's duration, natural-subscription-expiry boundary, outage distinction,
 extension authority and Read-Only capabilities are decided; enforcement and
 verification require a separate change. The distinct contract-termination
 strictness question remains open.

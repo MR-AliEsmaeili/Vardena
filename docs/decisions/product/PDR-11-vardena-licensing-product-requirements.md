@@ -328,16 +328,16 @@ The atomic application algorithm is a design item (§16).
 
 ## 9. Subscription expiry and restricted mode
 
-**9.1 Product Owner decision — natural expiry (OQ-45, updated 2026-10-16).**
-For **natural license expiry only**, the path is **Active → Grace (14 days) →
+**9.1 Product Owner decision — natural subscription expiry (OQ-45, updated 2026-10-16).**
+For **natural subscription expiry only**, the path is **Active → Grace (14×24 hours in UTC) →
 Read-Only**. The exact boundary is the recorded signed expiry Instant plus
 14×24 hours in UTC; Grace ends at `now >= boundary`. This is not calculated in
 the display timezone and is not rounded to a local date. See the canonical
 [OQ-45 record](OQ-45-license-expiry-behavior.md).
-At natural expiry, display the actual reason/status; normal authorized operation
+At natural subscription expiry, display the actual reason/status; normal authorized operation
 continues during Grace and the existing Read-Only capabilities apply afterwards.
 
-Intentional subscription cancellation is not natural expiry and receives no
+Intentional subscription cancellation is not natural subscription expiry and receives no
 automatic 14-day Grace. Subscription cancellation, license cancellation, expiry,
 replacement and reissuance remain distinct lifecycle events. The resulting
 cancellation/restriction transition is not inferred here; see OQ-78. The separate
@@ -345,8 +345,9 @@ contract-termination strictness question remains open. Signed half-open validity
 `validUntil`, display-zone formatting and Owner-authorized signed extensions are
 unchanged. Grace/Read-Only enforcement and verification remain unimplemented.
 
-Grace beyond 14 calendar days requires Owner authorization and a valid
-Owner-issued signed artifact through approved validation. Local settings,
+Any Grace beyond the natural-subscription-expiry period of 14×24 hours in UTC
+requires Owner authorization and a valid Owner-issued signed artifact through
+approved validation. Local settings,
 database edits, restarts or clock changes must not extend Grace. This is an
 observable anti-bypass requirement, not a claim of absolute protection against
 an OS administrator (§1.5). Expiry is neither technical failure nor emergency
@@ -445,7 +446,7 @@ be rejected merely because it resembles an older operation.
 | Condition | Required behavior |
 |---|---|
 | Ordinary temporary technical/service/infrastructure failure | Not, by itself, a commercial suspension. Preserve offline boundaries; report the technical failure honestly. |
-| Contract expiry | §9: 14-calendar-day Grace then defined Read-Only; renewal path. |
+| Natural subscription expiry | §9: 14×24 hours in UTC Grace then defined Read-Only; renewal path. |
 | Validated Owner-directed emergency restriction | Immediate applicable restriction with valid authorization and a specific recorded reason; §10.3 recovery and §10.6 restoration, not expiry Grace. |
 | Security-integrity verification failure | Follow existing signed-artifact verification/security boundaries; reject invalid artifacts without accepting their claimed authority. Genuine incidents need explicit, deterministic, testable responses. Unresolved incident-to-restriction policy remains technical/security follow-up, not invented business policy. |
 
@@ -587,7 +588,7 @@ central registry give current dispositions; older dated status notes are histori
 
 | ID | Open question | Why it matters | Handling |
 |---|---|---|---|
-| PQ-1 | Natural-expiry Grace (OQ-45). | Grace boundary, extension authority and cancellation distinction. | **Decided:** natural expiry gets 14×24h UTC Grace; ends at `now >= expiry + 14 days`; Owner-authorized valid signed extension only. Intentional subscription cancellation gets no automatic Grace. Contract-termination strictness remains open; enforcement is unimplemented (§9/§21). |
+| PQ-1 | Natural-subscription-expiry Grace (OQ-45). | Grace boundary, extension authority and cancellation distinction. | **Decided:** natural subscription expiry gets 14×24h UTC Grace; ends at `now >= expiry + 14 days`; Owner-authorized valid signed extension only. Intentional subscription cancellation gets no automatic Grace. Contract-termination strictness remains open; enforcement is unimplemented (§9/§21). |
 | PQ-2 | Read-Only meaning (OQ-45). | One observable contract. | **Decided:** all existing users under normal auth, existing read/report/print/Excel rights, backup/status/renewal; no business mutation; backend/async enforcement and reversible restoration (§9). |
 | PQ-3 | Full revocation/recovery (OQ-78). | Recovery must not depend on commercial login. | **Product behavior decided:** restricted authenticated administrator recovery interface and backup path (§10.3), valid signed restoration (§10.6). Authentication/session/state/protocol design remains open. |
 | PQ-4 | Legacy `SUSPENDED` (OQ-79). | Compatibility and historical meaning. | **Product decision:** remove separate concept; explicit actual condition/reason. Stage safe consumer/data compatibility work (§20.3), no enum/schema/signed-byte change here. |
@@ -1087,9 +1088,9 @@ except for explicit conflicts below.
 
 ### 21.1 Closed product decisions (implementation remains separate)
 
-- **OQ-45 natural expiry:** exact UTC boundary is recorded in
+- **OQ-45 natural subscription expiry:** exact UTC boundary is recorded in
   [OQ-45](OQ-45-license-expiry-behavior.md): signed expiry Instant + 14×24
-  hours; Grace ends at `now >= boundary`. Only natural expiry receives the
+  hours; Grace ends at `now >= boundary`. Only natural subscription expiry receives the
   automatic Grace. Intentional subscription cancellation does not; event types
   remain distinct and cancellation/restriction transition details stay under
   OQ-78. The independent contract-termination strictness question remains open.
@@ -1151,7 +1152,7 @@ except for explicit conflicts below.
 
 | Topic | Product decision status | Remaining product/API question | Specification / evidence gap | MVP implementation status from inspected repository |
 |---|---|---|---|---|
-| OQ-45 | Natural expiry boundary decided | Contract termination; cancellation outcome beyond no automatic Grace | UTC enforcement/restoration acceptance | Not implemented; exact target and code evidence in matrix |
+| OQ-45 | Natural subscription expiry boundary decided | Contract termination; cancellation outcome beyond no automatic Grace | UTC enforcement/restoration acceptance | Not implemented; exact target and code evidence in matrix |
 | OQ-74 | No automatic invalidation of already-issued licenses | None without a new explicit trade-off | Key custody, compromise/rotation trust transition, key-compromise/replay interaction | No production rotation/custody mechanism established |
 | OQ-75 | Two roles decided | None for role count/purpose | Permission mapping, authentication and review | Existing four-role implementation/docs mismatch; no runtime change here |
 | OQ-76 | Evidence-based rollback restriction/recovery | No threshold decided | Trusted-time evidence and secure audited recovery criteria | Detector/watermark not implemented |

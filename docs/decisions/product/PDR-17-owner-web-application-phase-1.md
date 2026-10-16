@@ -58,9 +58,13 @@ attributable facts, not cryptographically verified operations.
 
 ## Licensing restrictions, recovery and dates — product cross-reference
 
-PDR-11 §§9–10, 12 and 20 now record 14-calendar-day Grace → Read-Only, immediate
-validated emergency restriction with explicit reason, independent authenticated
-customer-administrator recovery, signed applicable restoration, rollback-only
+PDR-11 §§9–10, 12 and 20 record 14-day Grace → Read-Only after natural
+subscription expiry only; intentional subscription cancellation gets no automatic
+Grace. License cancellation, replacement, reissuance and contract termination
+remain distinct events; contract-termination strictness remains open. The records
+also cover immediate validated emergency restriction with explicit reason,
+independent authenticated customer-administrator recovery, signed applicable
+restoration, rollback-only
 automatic clearance after trustworthy-time validation, and exact-successful-repeat
 result replay. These are required behaviors, **not implemented Owner/customer
 lifecycle operations**. They do not grant additional Owner roles/permissions or
@@ -69,7 +73,7 @@ follow-ups. PQ-3 is decided at product-policy level, not pending: ordinary
 Restore remains the authorized IT/server-administrator Runbook path (OQ-53);
 limited authenticated recovery grants no normal-user in-product Restore and is
 not implemented. Identity/backup-encryption and recovery design gates remain.
-OQ-45's natural-expiry deadline is decided as UTC expiry + 14×24 hours,
+OQ-45's natural-subscription-expiry deadline is decided as UTC expiry + 14×24 hours,
 ending at `now >= boundary`. Contract-termination strictness remains separately
 open; see PDR-11 §21 and the OQ-45 record.
 
