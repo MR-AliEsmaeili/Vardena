@@ -177,12 +177,15 @@ windows conflict — the loser of such a race gets the documented 409 and writes
 nothing. A document whose `licenseId` is bound to another customer, or belongs to
 another installation, is refused with 409 (`license-binding-conflict`, nothing
 written; see `docs/licensing/version-model-and-file-exchange.md` §3.5). A repeated legacy `VLIC1` code keeps its documented idempotent no-op
-(`changed: false`) — the documented per-operation-type behaviour that PDR-11
-PQ-8/OQ-81 now supersedes at product level: exact successful repeats must
-return the persisted previous result, conflicts must fail, and effects must not
-repeat. Result persistence/retrieval and conflict protocol remain implementation
-gaps (PDR-11 §10.8/§20). Concurrency details and existing runtime evidence: design §3.4,
-ADR-0046 Decision 11, `test/licensing-persistence-live.e2e-spec.ts`.
+(`changed: false`) when the existing legacy case applies; without a stored
+original receipt this is `UNCHANGED`, not a replay. Product policy requires exact
+successful replay, conflicting reuse rejection, and no repeated effects. The
+proposed semantic-content comparison (needed because VLIC2 signs `operationId`),
+fingerprint and receipt design is recorded in
+[`docs/tasks/oq-81-idempotent-replay-technical-design.md`](tasks/oq-81-idempotent-replay-technical-design.md);
+implementation remains outstanding. Concurrency details and existing runtime
+evidence: design §3.4, ADR-0046 Decision 11,
+`test/licensing-persistence-live.e2e-spec.ts`.
 
 Outcomes are recorded in the typed, append-only `licensing.license_audit_events`
 table (`license.import.applied`, `license.import.rejected`,

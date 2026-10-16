@@ -596,20 +596,30 @@ limit. Unavailable counts and prohibited term changes remain unresolvable.
   installation lock (§3.4); the unique index `(installation_id, operation_id)` —
   and the one on `(installation_id, document_hash)` — are the database backstop,
   so a double-apply cannot create two versions even if the check were bypassed.
-- **Current implementation (not approved final replay behavior):** a duplicate
-  v2 operation is rejected (409, `duplicate-operation`) and changes nothing. Retry after an ambiguous failure is safe:
-  the state is already correct and the second attempt is refused with a message
-  that says so.
+- **Current implementation (not final replay behavior):** a duplicate
+  v2 operation is rejected (409, `duplicate-operation`) and changes nothing.
+  The installation transaction lock and unique indexes serialize/prevent a
+  second apply, but the loser does not receive the original result.
 - A legacy `VLIC1` code has no operation id; its identity is its SHA-256 hash.
-  Re-importing the same code keeps the documented L-02 behaviour: an idempotent
-  no-op (`changed: false`, `outcome: unchanged`). Re-importing a *different*
-  valid legacy code keeps the documented replacement semantics for the version
-  that currently governs. **Product decision now recorded:** exact successful
-  repeats must return the persisted previous result, conflicting reuse must
-  fail, and effects/quota/transitions must not repeat (PDR-11 §10.8). OQ-81
-  remains open only for operation/content identity, result persistence and
-  safe retrieval protocol. The current v2 rejection/legacy no-op is a gap, not
-  a permanent product exception; no signed format changes are made here.
+  Re-importing the same already-governing code keeps the documented L-02
+  behaviour: `changed: false`, `outcome: UNCHANGED`. This is not replay of a
+  stored original receipt. Historical rows without receipts must not be
+  reconstructed from current state. Different valid legacy codes keep their
+  documented replacement rules.
+- **Product policy and technical-design update:** exact successful retries
+  return the previously persisted result; same identity with conflicting
+  semantic request content is rejected; a semantically equivalent re-signed
+  artifact with a different operation identity is not replay and must be
+  rejected by a separate content-equivalence check. The artifact-hash guard
+  alone only detects identical artifact bytes (VLIC2 signs `operationId`). The
+  proposed versioned request fingerprint is limited to identity- or
+  result-defining inputs (operation kind and applicable normalized dedicated
+  operation reason), not arbitrary transport fields. Replay remains subject to
+  authentication, authorization, signature, scope, and applicable validity
+  checks. See [OQ-81 technical design](../tasks/oq-81-idempotent-replay-technical-design.md)
+  for the proposed receipt, atomicity, concurrency, legacy, and unresolved DTO
+  details. Implementation remains outstanding; formats and vectors do not
+  change.
 - A rejected operation is recorded in the audit trail with its outcome; it does
   **not** consume the operation id, so an operator may re-issue a corrected
   document with a new operation id at any time.
