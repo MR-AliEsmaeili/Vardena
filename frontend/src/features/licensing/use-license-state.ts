@@ -70,7 +70,9 @@ export function useLicenseState(): LicenseStateQuery {
     ? 'error'
     : query.data === undefined
       ? 'loading'
-      : query.data.active
+      : query.data.accessMode === 'ACTIVE' ||
+          query.data.accessMode === 'GRACE' ||
+          query.data.accessMode === 'READ_ONLY'
         ? 'active'
         : 'inactive';
 

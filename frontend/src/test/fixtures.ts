@@ -117,6 +117,8 @@ export const testActiveLicenseState: LicenseState = {
   status: 'ACTIVE',
   active: true,
   inactiveReason: null,
+  accessMode: 'ACTIVE',
+  graceEndsAt: null,
   installationId: '01K7INSTALLATIONAAAAAAAAAA',
   customerId: '01K7CUSTOMERAAAAAAAAAAAAAA',
   customerCode: 'CUST-ACME-01',
@@ -137,6 +139,8 @@ export const testActiveLicenseState: LicenseState = {
 /** An installation that has never activated a license (L-02). */
 export const testUnlicensedLicenseState: LicenseState = {
   ...testActiveLicenseState,
+  accessMode: 'BLOCKED',
+  graceEndsAt: null,
   licensed: false,
   status: 'UNLICENSED',
   active: false,
@@ -158,6 +162,22 @@ export const testInactiveLicenseState: LicenseState = {
   status: 'SUSPENDED',
   active: false,
   inactiveReason: 'status',
+  accessMode: 'BLOCKED',
+};
+
+export const testGraceLicenseState: LicenseState = {
+  ...testActiveLicenseState,
+  status: 'ACTIVE',
+  active: false,
+  inactiveReason: 'expired',
+  accessMode: 'GRACE',
+  validUntil: '2026-10-08T08:30:00.000Z',
+  graceEndsAt: '2026-10-22T08:30:00.000Z',
+};
+
+export const testReadOnlyLicenseState: LicenseState = {
+  ...testGraceLicenseState,
+  accessMode: 'READ_ONLY',
 };
 
 /** An active installation that already retained a future-dated renewal. */

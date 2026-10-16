@@ -88,9 +88,13 @@ export function LicenseStatusCard(): ReactElement | null {
             >
               {!state.licensed
                 ? t.license.statusUnlicensed
-                : state.active
-                  ? t.license.statusActive
-                  : t.license.statusInactive}
+                : state.accessMode === 'GRACE'
+                  ? t.license.statusGrace
+                  : state.accessMode === 'READ_ONLY'
+                    ? t.license.statusReadOnly
+                    : state.active
+                      ? t.license.statusActive
+                      : t.license.statusInactive}
             </Badge>
           )}
         </CardTitle>
@@ -113,6 +117,15 @@ export function LicenseStatusCard(): ReactElement | null {
           <p className="text-xs text-slate-500">{t.license.checking}</p>
         ) : (
           <>
+            {state.graceEndsAt !== null && (
+              <p className="text-xs text-slate-600">
+                {t.license.graceEndsAtLabel}:{' '}
+                <span className="num" dir="ltr">
+                  {formatDateTime(state.graceEndsAt)}
+                </span>
+              </p>
+            )}
+
             {state.licensed && state.validFrom !== null && (
               <p className="text-xs text-slate-600">
                 {t.license.statusWindow}:{' '}

@@ -9,6 +9,10 @@ import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { UserRolesRepository } from '../data/user-roles.repository.js';
 import { LicensingService } from '../../licensing/application/licensing.service.js';
 import {
+  isPlatformPermission,
+  isReadPermissionCode,
+} from '../../licensing/domain/license.js';
+import {
   checkServiceAuthorityStructure,
   serviceAuthorityRejectionMessage,
   type ExpectedServiceAuthority,
@@ -89,8 +93,19 @@ export class AuthorizationService {
     if (codes.length === 0) return;
     const context = getRequestContext();
     if (context === undefined) {
-      // System/internal context (no HTTP request in flight): authorization is
-      // the caller's concern (bootstrap, worker, direct service use in tests).
+      // System/internal context: historically trusted (bootstrap/worker).
+      // OQ-45 exception: a job queued during Grace must not execute a
+      // prohibited mutation after the deadline, so mutation permissions are
+      // refused in READ_ONLY even without an HTTP principal. Reads and
+      // bootstrap in other modes keep the trusted-system semantics.
+      if (
+        codes.some(
+          (c) => !isPlatformPermission(c) && !isReadPermissionCode(c),
+        ) &&
+        (await this.licensing.current()).accessMode === 'READ_ONLY'
+      ) {
+        await this.licensing.assertBusinessMutationAllowed();
+      }
       return;
     }
     const principal = getPrincipal();

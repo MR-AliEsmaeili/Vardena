@@ -11,6 +11,30 @@ export type EvaluatedStatus = LicenseStatus | 'UNLICENSED';
 export type InactiveReason =
   'unlicensed' | 'status' | 'not-yet-valid' | 'expired';
 
+/** OQ-45: exactly 14×24h in UTC milliseconds from the signed expiry instant. */
+export const LICENSE_GRACE_DURATION_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * Evaluated runtime access policy (OQ-45, ADR-0049). Distinct from signed
+ * validity: `GRACE`/`READ_ONLY` never mutate `validUntil`.
+ * - ACTIVE: within signed validity; GRACE: natural expiry before deadline;
+ * - READ_ONLY: natural expiry at/after `graceEndsAt`; BLOCKED: every other
+ *   inactive state (unlicensed, status, not-yet-valid) — no Grace is granted.
+ */
+export type LicenseAccessMode = 'ACTIVE' | 'GRACE' | 'READ_ONLY' | 'BLOCKED';
+
+/** Reads are the existing final-segment `View`/`Export` permission codes. */
+export function isReadPermissionCode(permissionCode: string): boolean {
+  const segment = permissionCode.split('.').at(-1);
+  return segment === 'View' || segment === 'Export';
+}
+
+export function graceEndsAtFor(validUntil: Date | null): Date | null {
+  return validUntil === null
+    ? null
+    : new Date(validUntil.getTime() + LICENSE_GRACE_DURATION_MS);
+}
+
 /** null is the only representation of an unlimited licensed quantity. */
 export type LicenseLimit = number | null;
 
@@ -67,6 +91,9 @@ export interface EvaluatedLicense {
   provider: string;
   active: boolean;
   inactiveReason: InactiveReason | null;
+  /** Signed expiry + 14x24h (UTC ms arithmetic); null when perpetual/absent. */
+  graceEndsAt: Date | null;
+  accessMode: LicenseAccessMode;
 }
 
 export function evaluateLicense(
@@ -82,11 +109,23 @@ export function evaluateLicense(
     at.getTime() >= license.validUntil.getTime()
   )
     inactiveReason = 'expired';
+  const graceEndsAt = graceEndsAtFor(license.validUntil);
+  let accessMode: LicenseAccessMode = 'BLOCKED';
+  if (inactiveReason === null) accessMode = 'ACTIVE';
+  else if (
+    inactiveReason === 'expired' &&
+    graceEndsAt !== null &&
+    at.getTime() < graceEndsAt.getTime()
+  )
+    accessMode = 'GRACE';
+  else if (inactiveReason === 'expired') accessMode = 'READ_ONLY';
   return {
     ...license,
     licensed: true,
     active: inactiveReason === null,
     inactiveReason,
+    graceEndsAt,
+    accessMode,
   };
 }
 
@@ -112,6 +151,8 @@ export function unlicensedEvaluation(context: {
     provider: context.provider,
     active: false,
     inactiveReason: 'unlicensed',
+    graceEndsAt: null,
+    accessMode: 'BLOCKED',
   };
 }
 
