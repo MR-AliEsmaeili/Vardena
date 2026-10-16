@@ -3799,6 +3799,16 @@ export interface components {
             active: boolean;
             /** @description Why the license is not active. */
             inactiveReason: string | null;
+            /**
+             * @description Evaluated runtime access policy (OQ-45): ACTIVE, GRACE, READ_ONLY or BLOCKED. GRACE/READ_ONLY derive from natural expiry only and never extend signed validity.
+             * @enum {string}
+             */
+            accessMode: "ACTIVE" | "GRACE" | "READ_ONLY" | "BLOCKED";
+            /**
+             * Format: date-time
+             * @description Signed validUntil plus exactly 14x24 hours in UTC; null for perpetual or unlicensed installations.
+             */
+            graceEndsAt: string | null;
             installationId: string | null;
             customerId: string | null;
             /** @description Stable business customer code (L-06, PDR-14). */
@@ -3855,6 +3865,16 @@ export interface components {
             active: boolean;
             /** @description Why the license is not active. */
             inactiveReason: string | null;
+            /**
+             * @description Evaluated runtime access policy (OQ-45): ACTIVE, GRACE, READ_ONLY or BLOCKED. GRACE/READ_ONLY derive from natural expiry only and never extend signed validity.
+             * @enum {string}
+             */
+            accessMode: "ACTIVE" | "GRACE" | "READ_ONLY" | "BLOCKED";
+            /**
+             * Format: date-time
+             * @description Signed validUntil plus exactly 14x24 hours in UTC; null for perpetual or unlicensed installations.
+             */
+            graceEndsAt: string | null;
             installationId: string | null;
             customerId: string | null;
             /** @description Stable business customer code (L-06, PDR-14). */
@@ -3914,6 +3934,16 @@ export interface components {
             active: boolean;
             /** @description Why the license is not active. */
             inactiveReason: string | null;
+            /**
+             * @description Evaluated runtime access policy (OQ-45): ACTIVE, GRACE, READ_ONLY or BLOCKED. GRACE/READ_ONLY derive from natural expiry only and never extend signed validity.
+             * @enum {string}
+             */
+            accessMode: "ACTIVE" | "GRACE" | "READ_ONLY" | "BLOCKED";
+            /**
+             * Format: date-time
+             * @description Signed validUntil plus exactly 14x24 hours in UTC; null for perpetual or unlicensed installations.
+             */
+            graceEndsAt: string | null;
             installationId: string | null;
             customerId: string | null;
             /** @description Stable business customer code (L-06, PDR-14). */
@@ -3991,6 +4021,16 @@ export interface components {
             active: boolean;
             /** @description Why the license is not active. */
             inactiveReason: string | null;
+            /**
+             * @description Evaluated runtime access policy (OQ-45): ACTIVE, GRACE, READ_ONLY or BLOCKED. GRACE/READ_ONLY derive from natural expiry only and never extend signed validity.
+             * @enum {string}
+             */
+            accessMode: "ACTIVE" | "GRACE" | "READ_ONLY" | "BLOCKED";
+            /**
+             * Format: date-time
+             * @description Signed validUntil plus exactly 14x24 hours in UTC; null for perpetual or unlicensed installations.
+             */
+            graceEndsAt: string | null;
             installationId: string | null;
             customerId: string | null;
             /** @description Stable business customer code (L-06, PDR-14). */

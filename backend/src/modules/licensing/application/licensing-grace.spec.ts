@@ -134,10 +134,7 @@ describe('OQ-45 LicensingService Grace/Read-Only filtering', () => {
   });
   it('suspended licenses get no Grace and keep previous platform-only filtering', async () => {
     await expect(
-      service({ status: 'SUSPENDED' }).filterLicensedPermissions(
-        PERMS,
-        EXPIRY,
-      ),
+      service({ status: 'SUSPENDED' }).filterLicensedPermissions(PERMS, EXPIRY),
     ).resolves.toEqual(['Licensing.License.Activate']);
   });
 });

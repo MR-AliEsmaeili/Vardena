@@ -99,9 +99,7 @@ export class AuthorizationService {
       // refused in READ_ONLY even without an HTTP principal. Reads and
       // bootstrap in other modes keep the trusted-system semantics.
       if (
-        codes.some(
-          (c) => !isPlatformPermission(c) && !isReadPermissionCode(c),
-        )
+        codes.some((c) => !isPlatformPermission(c) && !isReadPermissionCode(c))
       ) {
         await this.licensing.assertBusinessMutationAllowed();
       }

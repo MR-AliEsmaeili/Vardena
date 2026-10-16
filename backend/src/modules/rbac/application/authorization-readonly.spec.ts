@@ -11,11 +11,7 @@ function svc(validUntil: Date | null) {
     error: () => {},
   } as unknown as JsonLogger;
   // userRoles is unused on the system-context path exercised here.
-  return new AuthorizationService(
-    undefined as never,
-    logger,
-    licensing,
-  );
+  return new AuthorizationService(undefined as never, logger, licensing);
 }
 
 describe('OQ-45 system-context (worker/queued) enforcement', () => {
