@@ -15,12 +15,7 @@ import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { EmptyState, LoadingState } from '@/ui/patterns/states';
 import { Pagination, useDirtyGuard } from '@/ui/patterns/owner-states';
 
-const roleSchema = z.enum([
-  'SYSTEM_ADMIN',
-  'LICENSE_ISSUANCE',
-  'READ_ONLY_OBSERVER',
-  'SUPPORT_SPECIALIST',
-]);
+const roleSchema = z.enum(['OWNER_ADMIN', 'LICENSE_OPERATOR']);
 const createSchema = z.object({
   username: z.string().trim().min(1, o.required).max(64),
   password: z
@@ -119,7 +114,7 @@ function CreateUser() {
   const qc = useQueryClient();
   const form = useForm<z.infer<typeof createSchema>>({
     resolver: zodResolver(createSchema),
-    defaultValues: { username: '', password: '', role: 'READ_ONLY_OBSERVER' },
+    defaultValues: { username: '', password: '', role: 'LICENSE_OPERATOR' },
   });
   useDirtyGuard(form.formState.isDirty);
   const mutation = useMutation({
@@ -184,6 +179,7 @@ function AccessForm({
       form.reset();
       await qc.invalidateQueries({ queryKey: ['owner', 'users'] });
       await qc.invalidateQueries({ queryKey: ['owner', 'session'] });
+      await qc.invalidateQueries({ queryKey: ['owner', 'permissions'] });
       onDone();
     },
   });

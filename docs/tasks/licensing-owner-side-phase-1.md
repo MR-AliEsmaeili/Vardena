@@ -5,8 +5,22 @@ not Product Owner acceptance, operational rollout, or permission to merge.
 
 The statements below that lifecycle write APIs are unavailable describe the
 initial Phase 1 slice. The later observation-only slice is recorded in
-[manual operations](./licensing-owner-side-manual-operations.md). It does not
-rewrite this historical record and does not close its open questions.
+[manual operations](./licensing-owner-side-manual-operations.md). Phase 1.3
+(2026-10-16, PR #166) aligns the Owner database
+(`003-two-role-authorization.sql`), API, and Persian RTL UI with the Product
+Owner's two-role MVP decision (`Owner Admin` / `OWNER_ADMIN` and `License
+Operator` / `LICENSE_OPERATOR`, with `replacements.authorize` gating
+server-replacement and emergency old-server-lost authorization to `Owner Admin`).
+Fresh installations migrate `001` → `002` → `003` directly (`npm run migrate`);
+populated pre-003 databases containing legacy four-role user rows fail closed on
+automatic `migrate` and upgrade via the explicit preflight and transactional
+remediation workflow (`npm run migrate:preflight` followed by `npm run
+migrate:remediate-roles -- <dispositions.json>`), which validates every legacy
+account disposition, prevents unapproved privilege elevation, preserves account
+IDs and referential integrity, records `USER_LEGACY_ROLE_REMEDIATED` audit
+events, and applies `003` atomically. It does not rewrite the historical PR #160
+records below and does not close remaining Phase 2 open questions (`U-1`/OQ-74,
+OQ-78, OQ-80, OQ-81, OQ-82).
 
 ## PR #160 Product Owner correction
 

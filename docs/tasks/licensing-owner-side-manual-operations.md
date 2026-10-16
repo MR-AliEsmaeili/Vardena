@@ -1,23 +1,30 @@
 # Owner manual licensing observations
 
-> **Policy correction (2026-10-16):** this is evidence of the existing operator-
-> observation slice only. PDR-17 now requires the replacement server be activated
-> before manual old-server decommission, pending auditable confirmation, with
-> configurable 1h–7d confirmation expiry (24h default); the row/API here does not
-> prove decommission or implement that expiry. OQ-75's two roles supersede the
-> role table below; OQ-77 requires append-only retention for at least three years
-> from each event's occurrence (not an automatic purge deadline), excludes unresolved
-> security incidents from automatic deletion, and retains the previously approved
+> **Policy correction and Phase 1.3 RBAC update (2026-10-16):** this is evidence
+> of the operator-observation slice only. PDR-17 now requires the replacement
+> server be activated before manual old-server decommission, pending auditable
+> confirmation, with configurable 1h–7d confirmation expiry (24h default); the
+> row/API here does not prove decommission or implement that expiry. OQ-75's two
+> roles (`OWNER_ADMIN` and `LICENSE_OPERATOR`) supersede the historical four-role
+> table and are now enforced in `003-two-role-authorization.sql`, API, and UI;
+> OQ-77 requires append-only retention for at least three years from each event's
+> occurrence (not an automatic purge deadline), excludes unresolved security
+> incidents from automatic deletion, and retains the previously approved
 > permanent separate archive. These policies supersede the historical
-> no-retention-decision text. See PDR-11 §21 and the current OQ registry. No remote customer-server contact or shutdown is implied.
+> no-retention-decision text. See PDR-11 §21 and the current OQ registry. No
+> remote customer-server contact or shutdown is implied.
 
-Date: 2026-10-15. Status: implementation submitted for exact-head CI and review.
+Date: 2026-10-15 (updated 2026-10-16 for Phase 1.3 two-role authorization).
+Status: implementation submitted for exact-head CI and review.
 This is not Product Owner acceptance, operational rollout, or permission to merge.
-This code snapshot does not implement the OQ-75 two-role authorization, OQ-77
-retention/archive policy, OQ-82 sequence/confirmation window, or OQ-83 manual
-Owner Admin device policy. OQ-84 is product-closed; ordinary activation has no
-mandatory separate signed receipt. OQ-78/OQ-85 protocol/deployment evidence and
-OQ-74 key security remain separate open implementation/design follow-ups.
+Phase 1.3 implements the OQ-75 two-role authorization (`OWNER_ADMIN` and
+`LICENSE_OPERATOR`, with `replacements.authorize` restricting server-replacement
+and emergency old-server-lost authorization to `OWNER_ADMIN`). This code
+snapshot does not implement automatic OQ-77 archive/purge execution, the OQ-82
+new-server-first sequence/confirmation window, or the OQ-83 manual Owner Admin
+device workflow. OQ-84 is product-closed; ordinary activation has no mandatory
+separate signed receipt. OQ-78/OQ-85 protocol/deployment evidence and OQ-74 key
+security remain separate open implementation/design follow-ups.
 
 ## What this slice is
 
@@ -50,24 +57,36 @@ therefore keeps its installation slot in this implementation snapshot.
 
 ## Authorization
 
-Deny by default. No wildcard.
+Deny by default. No wildcard. Enforced under the two-role MVP model (`OWNER_ADMIN`
+and `LICENSE_OPERATOR`, superseding the historical four-role table):
 
-| Action | Administrator | Issuance Specialist | Observer | Support |
-| --- | --- | --- | --- | --- |
-| Inspect records and history | yes | yes | yes | no |
-| Record an observation | yes | yes | no | no |
+| Action | `OWNER_ADMIN` (Owner Admin) | `LICENSE_OPERATOR` (License Operator) |
+| --- | --- | --- |
+| Inspect records and history (`operations.view`) | yes | yes |
+| Record a license observation or follow-up observation (`operations.record`) | yes | yes |
+| Authorize a server replacement or emergency old-server loss (`replacements.authorize`) | yes | no (`403 PermissionDenied`, audited as `OPERATION_MUTATION_DENIED`) |
 
-Missing `operations.record` on a mutation route writes
+Missing `operations.record` or `replacements.authorize` on a mutation route writes
 `OPERATION_MUTATION_DENIED` and commits 403. Hiding a button is not
 authorization. First-login restriction still blocks ordinary work before that
-check. Support keeps identity/status customer reads only.
+check. Superseded four-role identifiers are rejected in API and SQL.
 
 ## Persistence
 
-`owner-licensing/backend/migrations/002-manual-operations.sql` is additive and
-unreleased, so the history correction edits that file in place. No `003` is
-added. `001-foundation.sql` is unchanged. The migration refuses to extend a
-table that already contains rows. Runtime needs SELECT/INSERT/UPDATE on
+`owner-licensing/backend/migrations/002-manual-operations.sql` extends the
+foundation tables when empty, and `003-two-role-authorization.sql` replaces the
+historical `users_role_check` constraint with `CHECK (role IN ('OWNER_ADMIN',
+'LICENSE_OPERATOR'))` after failing closed (`ERRCODE = '23514'`, listing the
+legacy roles present) if any superseded role row exists. On a populated pre-003
+database, automatic `npm run migrate` rolls back cleanly without modifying
+`public.owner_migrations` or `users_role_check`; operators inspect affected
+accounts with `npm run migrate:preflight` and apply an explicitly authorized
+disposition plan with `npm run migrate:remediate-roles -- <dispositions.json>`,
+which updates `owner.users`, revokes pre-upgrade sessions, appends
+`USER_LEGACY_ROLE_REMEDIATED` audit rows, and applies `003` in one PostgreSQL
+transaction. `001-foundation.sql` and `002-manual-operations.sql` are
+unchanged to preserve applied migration checksums. Runtime needs
+SELECT/INSERT/UPDATE on
 `owner.operational_records` and SELECT/INSERT on
 `owner.operational_transitions`. It must not receive DELETE, TRUNCATE, or
 transition UPDATE/DELETE. No SQL role name is invented.

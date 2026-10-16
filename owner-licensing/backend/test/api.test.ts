@@ -1,11 +1,20 @@
 // CI-only. Requires an explicit disposable Owner PostgreSQL database; never skips.
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import { ulid } from "ulid";
 import type { Express } from "express";
 import type { PoolClient } from "pg";
 import { Database } from "../src/db.js";
-import { migrate } from "../src/migrate.js";
+import { digest, token } from "../src/domain.js";
+import {
+  RoleUpgradeError,
+  migrate,
+  preflightRoleUpgrade,
+  remediateLegacyRolesAndMigrate,
+  runMigrateCli,
+} from "../src/migrate.js";
 import { bootstrap } from "../src/bootstrap.js";
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/security.js";
@@ -132,23 +141,520 @@ async function expectUnavailableOperations(cookie: string) {
     expect((await write("post", path, cookie).send({})).status).toBe(404);
 }
 
-beforeAll(async () => {
-  await migrate(db);
-  await migrate(db); // idempotent checksummed fresh deployment
-  expect(await bootstrap(db, "owner", initial)).toBe(true);
-  expect(await bootstrap(db, "owner", "Another_initial_44")).toBe(false);
+afterAll(async () => {
+  await db.close();
+});
+
+const migrationsFolder = fileURLToPath(
+  new URL("../migrations/", import.meta.url),
+);
+async function resetToMigration002() {
+  await db.pool.query(
+    "DROP SCHEMA IF EXISTS owner CASCADE; DROP TABLE IF EXISTS public.owner_migrations",
+  );
+  await db.transaction(async (tx) => {
+    await tx.query(
+      "CREATE TABLE public.owner_migrations(name text PRIMARY KEY, checksum char(64) NOT NULL, applied_at timestamptz NOT NULL DEFAULT clock_timestamp())",
+    );
+    for (const name of ["001-foundation.sql", "002-manual-operations.sql"]) {
+      const sql = await readFile(`${migrationsFolder}/${name}`, "utf8");
+      await tx.query(sql);
+      await tx.query(
+        "INSERT INTO public.owner_migrations(name,checksum) VALUES($1,$2)",
+        [name, digest(sql)],
+      );
+    }
+  });
   app = await createApp(db, {
     databaseUrl: url!,
     origin,
     production: false,
     port: 3001,
   });
-}, 30000);
-afterAll(async () => {
-  await db.close();
+}
+
+describe("Owner migration 003 existing-database compatibility, rollback, and retry", () => {
+  it("fails closed and rolls back cleanly for each populated legacy role while denying runtime login/session access", async () => {
+    const pw = "Disposable_legacy_45";
+    const hash = await hashPassword(pw);
+    for (const legacyRole of [
+      "SYSTEM_ADMIN",
+      "LICENSE_ISSUANCE",
+      "READ_ONLY_OBSERVER",
+      "SUPPORT_SPECIALIST",
+    ] as const) {
+      await resetToMigration002();
+      const uid = ulid();
+      const cid = ulid();
+      const rawSession = token();
+      await db.pool.query(
+        "INSERT INTO owner.users(id,username,password_hash,role,is_active,must_change_password) VALUES($1,$2,$3,$4,true,false)",
+        [uid, `legacy_${legacyRole.toLowerCase()}`, hash, legacyRole],
+      );
+      await db.pool.query(
+        "INSERT INTO owner.sessions(id,user_id,token_hash) VALUES($1,$2,$3)",
+        [ulid(), uid, digest(rawSession)],
+      );
+      await db.pool.query(
+        "INSERT INTO owner.customers(id,customer_code,display_name,status,contract_reference,created_by,updated_by) VALUES($1,$2,'مشتری میراث','ACTIVE','REF-1',$3,$3)",
+        [cid, `L-${ulid()}`, uid],
+      );
+      await insertAudit({
+        actor: uid,
+        type: "USER_BOOTSTRAPPED",
+        targetType: "User",
+        targetId: uid,
+        occurredAt: "2026-10-15T00:00:00.000Z",
+      });
+
+      await expect(migrate(db)).rejects.toThrow(
+        new RegExp(
+          `Refusing to apply two-role constraint while superseded four-role user rows exist \\(${legacyRole}\\)`,
+        ),
+      );
+
+      // Verify clean rollback of migration ledger, schema constraint, and existing rows.
+      const ledger = await db.pool.query<{ name: string }>(
+        "SELECT name FROM public.owner_migrations ORDER BY name",
+      );
+      expect(ledger.rows.map((r) => r.name)).toEqual([
+        "001-foundation.sql",
+        "002-manual-operations.sql",
+      ]);
+      const checkDef = await db.pool.query<{ def: string }>(
+        `SELECT pg_get_constraintdef(c.oid) AS def
+         FROM pg_constraint c
+         JOIN pg_class t ON t.oid = c.conrelid
+         JOIN pg_namespace n ON n.oid = t.relnamespace
+         WHERE n.nspname = 'owner' AND t.relname = 'users' AND c.conname = 'users_role_check'`,
+      );
+      expect(checkDef.rows[0]?.def).toContain("SYSTEM_ADMIN");
+      expect(checkDef.rows[0]?.def).not.toContain("OWNER_ADMIN");
+      expect(
+        (
+          await db.pool.query<{ role: string }>(
+            "SELECT role FROM owner.users WHERE id=$1",
+            [uid],
+          )
+        ).rows[0]?.role,
+      ).toBe(legacyRole);
+      expect(
+        (
+          await db.pool.query("SELECT id FROM owner.customers WHERE id=$1", [
+            cid,
+          ])
+        ).rowCount,
+      ).toBe(1);
+
+      // Runtime defense-in-depth: even against an unmigrated 002 database,
+      // superseded role rows cannot log in or use an existing session.
+      const loginAttempt = await login(
+        `legacy_${legacyRole.toLowerCase()}`,
+        pw,
+      );
+      expect(loginAttempt.r.status).toBe(401);
+      const legacyCookie = `owner_session=${rawSession}`;
+      expect(
+        (await request(app).get("/api/v1/auth/me").set("Cookie", legacyCookie))
+          .status,
+      ).toBe(401);
+      expect(
+        (
+          await request(app)
+            .get("/api/v1/permissions/effective")
+            .set("Cookie", legacyCookie)
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await request(app)
+            .get("/api/v1/customers")
+            .set("Cookie", legacyCookie)
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await write("post", "/auth/change-password", legacyCookie).send({
+            currentPassword: pw,
+            newPassword: "Disposable_new_46",
+          })
+        ).status,
+      ).toBe(401);
+    }
+  });
+
+  it("verifies preflight, missing/invalid/elevation rejections, mid-operation rollback, transactional remediation, and safe idempotent re-run on mixed legacy and current-role data", async () => {
+    await resetToMigration002();
+    const pw = "Disposable_mixed_45";
+    const hash = await hashPassword(pw);
+    const sysAdminId = ulid();
+    const issuanceId = ulid();
+    const observerId = ulid();
+    const supportId = ulid();
+    const existingOperatorId = ulid();
+    const preUpgradeSession = token();
+    for (const [uid, username, legacyRole] of [
+      [sysAdminId, "mix_admin", "SYSTEM_ADMIN"],
+      [issuanceId, "mix_issuance", "LICENSE_ISSUANCE"],
+      [observerId, "mix_observer", "READ_ONLY_OBSERVER"],
+      [supportId, "mix_support", "SUPPORT_SPECIALIST"],
+    ] as const) {
+      await db.pool.query(
+        "INSERT INTO owner.users(id,username,password_hash,role,is_active,must_change_password) VALUES($1,$2,$3,$4,true,false)",
+        [uid, username, hash, legacyRole],
+      );
+    }
+    await db.pool.query(
+      "INSERT INTO owner.sessions(id,user_id,token_hash) VALUES($1,$2,$3)",
+      [ulid(), issuanceId, digest(preUpgradeSession)],
+    );
+    // Widen constraint temporarily to seed a mixed database with both legacy and current-role rows, then restore 001's check on legacy rows.
+    await db.pool.query(
+      `ALTER TABLE owner.users DROP CONSTRAINT users_role_check,
+       ADD CONSTRAINT users_role_check CHECK (role IN ('SYSTEM_ADMIN','LICENSE_ISSUANCE','READ_ONLY_OBSERVER','SUPPORT_SPECIALIST','OWNER_ADMIN','LICENSE_OPERATOR'))`,
+    );
+    await db.pool.query(
+      "INSERT INTO owner.users(id,username,password_hash,role,is_active,must_change_password) VALUES($1,'mix_current_op',$2,'LICENSE_OPERATOR',true,false)",
+      [existingOperatorId, hash],
+    );
+    const custId = ulid();
+    const opId = ulid();
+    await db.pool.query(
+      "INSERT INTO owner.customers(id,customer_code,display_name,status,contract_reference,created_by,updated_by) VALUES($1,'MIX-01','مشتری ترکیبی','ACTIVE','CONTRACT-MIX',$2,$2)",
+      [custId, sysAdminId],
+    );
+    await db.transaction(async (tx) => {
+      await tx.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          installation_reference, created_by, updated_by)
+        VALUES ($1,$2,'LICENSE','ISSUED','EXTERNAL_ISSUANCE_OBSERVED','INST-MIX-1',$3,$3)`,
+        [opId, custId, issuanceId],
+      );
+      await insertTransition(
+        tx,
+        opId,
+        issuanceId,
+        "UNRECORDED",
+        "ISSUED",
+        "pre-003 issuance observation",
+      );
+    });
+
+    // Automatic migrate fails closed without modifying the ledger or existing rows.
+    await expect(migrate(db)).rejects.toThrow(
+      "Refusing to apply two-role constraint while superseded four-role user rows exist (LICENSE_ISSUANCE, READ_ONLY_OBSERVER, SUPPORT_SPECIALIST, SYSTEM_ADMIN)",
+    );
+    expect(
+      (
+        await db.pool.query<{ name: string }>(
+          "SELECT name FROM public.owner_migrations ORDER BY name",
+        )
+      ).rows.map((r) => r.name),
+    ).toEqual(["001-foundation.sql", "002-manual-operations.sql"]);
+
+    // Preflight report identifies affected legacy accounts and existing current-role accounts without leaking secrets.
+    const preflight = await preflightRoleUpgrade(db);
+    const cliPreflightJson = await runMigrateCli(db, ["--preflight"]);
+    expect(cliPreflightJson).not.toContain(hash);
+    expect(cliPreflightJson).not.toContain(preUpgradeSession);
+    expect(cliPreflightJson).not.toContain(digest(preUpgradeSession));
+    expect(preflight.migration003Applied).toBe(false);
+    expect(preflight.requiresRemediation).toBe(true);
+    expect(preflight.canRunAutomaticMigrate).toBe(false);
+    expect(preflight.currentRoleAccounts.map((u) => u.username)).toEqual([
+      "mix_current_op",
+    ]);
+    expect(
+      preflight.legacyAccounts
+        .map((u) => `${u.username}:${u.legacyRole}`)
+        .sort(),
+    ).toEqual([
+      "mix_admin:SYSTEM_ADMIN",
+      "mix_issuance:LICENSE_ISSUANCE",
+      "mix_observer:READ_ONLY_OBSERVER",
+      "mix_support:SUPPORT_SPECIALIST",
+    ]);
+
+    // Missing disposition, targeting current-role user, or unauthorized privilege elevation fails closed.
+    await expect(
+      remediateLegacyRolesAndMigrate(db, {
+        authorizedByUserId: sysAdminId,
+        reason: "Incomplete and unapproved elevation attempt",
+        dispositions: [
+          {
+            userId: sysAdminId,
+            username: "mix_admin",
+            fromRole: "SYSTEM_ADMIN",
+            disposition: "MAP_EQUIVALENT",
+            targetRole: "OWNER_ADMIN",
+            isActive: true,
+            reason: "ok",
+          },
+          {
+            userId: observerId,
+            username: "mix_observer",
+            fromRole: "READ_ONLY_OBSERVER",
+            disposition: "RETAIN_REDUCED",
+            targetRole: "LICENSE_OPERATOR",
+            isActive: true,
+            reason: "unauthorized write elevation",
+          },
+          {
+            userId: existingOperatorId,
+            username: "mix_current_op",
+            fromRole: "LICENSE_ISSUANCE",
+            disposition: "RETAIN_REDUCED",
+            targetRole: "LICENSE_OPERATOR",
+            isActive: true,
+            reason: "already current role",
+          },
+        ],
+      }),
+    ).rejects.toThrow(RoleUpgradeError);
+
+    const approvedPlan = {
+      authorizedByUserId: sysAdminId,
+      reason: "Deployment-owner approved Phase 1.3 legacy role dispositions",
+      dispositions: [
+        {
+          userId: sysAdminId,
+          username: "mix_admin",
+          fromRole: "SYSTEM_ADMIN" as const,
+          disposition: "MAP_EQUIVALENT" as const,
+          targetRole: "OWNER_ADMIN" as const,
+          isActive: true,
+          reason: "Preserve SYSTEM_ADMIN as active OWNER_ADMIN",
+        },
+        {
+          userId: issuanceId,
+          username: "mix_issuance",
+          fromRole: "LICENSE_ISSUANCE" as const,
+          disposition: "RETAIN_REDUCED" as const,
+          targetRole: "LICENSE_OPERATOR" as const,
+          isActive: true,
+          reason:
+            "Retain issuance specialist as LICENSE_OPERATOR without replacement authority",
+        },
+        {
+          userId: observerId,
+          username: "mix_observer",
+          fromRole: "READ_ONLY_OBSERVER" as const,
+          disposition: "DEACTIVATE" as const,
+          targetRole: "LICENSE_OPERATOR" as const,
+          isActive: false,
+          reason: "Deactivate read-only observer to preserve least privilege",
+        },
+        {
+          userId: supportId,
+          username: "mix_support",
+          fromRole: "SUPPORT_SPECIALIST" as const,
+          disposition: "ELEVATE_PRIVILEGE" as const,
+          targetRole: "LICENSE_OPERATOR" as const,
+          isActive: true,
+          allowPrivilegeElevation: true,
+          reason:
+            "Explicitly approved transition of support specialist to active LICENSE_OPERATOR",
+        },
+      ],
+    };
+
+    // Failure halfway through the operation (after user updates and audit writes, before migration 003 commits)
+    // rolls back the entire transaction cleanly.
+    await expect(
+      remediateLegacyRolesAndMigrate(db, approvedPlan, {
+        beforeMigration003Hook: () => {
+          throw new Error("Injected failure halfway through remediation");
+        },
+      }),
+    ).rejects.toThrow("Injected failure halfway through remediation");
+
+    expect(
+      (
+        await db.pool.query<{ name: string }>(
+          "SELECT name FROM public.owner_migrations ORDER BY name",
+        )
+      ).rows.map((r) => r.name),
+    ).toEqual(["001-foundation.sql", "002-manual-operations.sql"]);
+    expect(
+      (
+        await db.pool.query<{ role: string }>(
+          "SELECT role FROM owner.users WHERE id=$1",
+          [sysAdminId],
+        )
+      ).rows[0]?.role,
+    ).toBe("SYSTEM_ADMIN");
+    expect(
+      (
+        await db.pool.query(
+          "SELECT 1 FROM owner.audit_events WHERE event_type='USER_LEGACY_ROLE_REMEDIATED'",
+        )
+      ).rowCount,
+    ).toBe(0);
+    expect(
+      (
+        await db.pool.query<{ revoked_at: Date | null }>(
+          "SELECT revoked_at FROM owner.sessions WHERE token_hash=$1",
+          [digest(preUpgradeSession)],
+        )
+      ).rows[0]?.revoked_at,
+    ).toBeNull();
+
+    // Retry with the approved disposition plan succeeds transactionally.
+    // Missing or non-admin authorizedByUserId is rejected before any changes apply.
+    await expect(
+      remediateLegacyRolesAndMigrate(db, {
+        reason: approvedPlan.reason,
+        dispositions: approvedPlan.dispositions,
+      }),
+    ).rejects.toThrow(/authorizedByUserId is required/);
+    await expect(
+      remediateLegacyRolesAndMigrate(db, {
+        ...approvedPlan,
+        authorizedByUserId: issuanceId,
+      }),
+    ).rejects.toThrow(/is not an active administrator/);
+
+    const applied = await remediateLegacyRolesAndMigrate(db, approvedPlan);
+    expect(applied).toEqual({
+      status: "APPLIED",
+      remediatedCount: 4,
+      migrationApplied: true,
+    });
+
+    // Re-running the remediation procedure with the exact same valid plan is a safe idempotent no-op,
+    // while incomplete plans, plans with unknown fields, or contradictory plans are rejected.
+    const rerun = await remediateLegacyRolesAndMigrate(db, approvedPlan);
+    expect(rerun).toEqual({
+      status: "ALREADY_APPLIED",
+      remediatedCount: 0,
+      migrationApplied: false,
+    });
+    // Incomplete plan (missing one of the remediated accounts) is rejected on repeated run.
+    await expect(
+      remediateLegacyRolesAndMigrate(db, {
+        ...approvedPlan,
+        dispositions: approvedPlan.dispositions.slice(0, 3),
+      }),
+    ).rejects.toThrow(/Missing disposition for legacy account/);
+    // Unknown field is rejected on repeated run.
+    await expect(
+      remediateLegacyRolesAndMigrate(db, {
+        ...approvedPlan,
+        extraUnknownField: true,
+      }),
+    ).rejects.toThrow(/Unknown top-level field/);
+    // Contradictory target state or mismatched authorizedByUserId is rejected on repeated run.
+    await expect(
+      remediateLegacyRolesAndMigrate(db, {
+        ...approvedPlan,
+        dispositions: approvedPlan.dispositions.map((d) =>
+          d.userId === observerId ? { ...d, isActive: true } : d,
+        ),
+      }),
+    ).rejects.toThrow(RoleUpgradeError);
+    await expect(
+      remediateLegacyRolesAndMigrate(db, {
+        ...approvedPlan,
+        authorizedByUserId: issuanceId,
+      }),
+    ).rejects.toThrow(RoleUpgradeError);
+    await migrate(db);
+
+    expect(
+      (
+        await db.pool.query<{ name: string }>(
+          "SELECT name FROM public.owner_migrations ORDER BY name",
+        )
+      ).rows.map((r) => r.name),
+    ).toEqual([
+      "001-foundation.sql",
+      "002-manual-operations.sql",
+      "003-two-role-authorization.sql",
+    ]);
+    await expect(
+      db.pool.query("UPDATE owner.users SET role='SYSTEM_ADMIN' WHERE id=$1", [
+        sysAdminId,
+      ]),
+    ).rejects.toThrow();
+
+    // Pre-existing session of remediated user was revoked during remediation.
+    expect(
+      (
+        await db.pool.query<{ revoked_at: Date | null }>(
+          "SELECT revoked_at FROM owner.sessions WHERE token_hash=$1",
+          [digest(preUpgradeSession)],
+        )
+      ).rows[0]?.revoked_at,
+    ).not.toBeNull();
+
+    // Verify remediated accounts, preserved existing current-role account, customer/operational records, and audit trail.
+    const adminLogin = await login("mix_admin", pw);
+    expect(adminLogin.r.status).toBe(200);
+    expect(adminLogin.r.body.id).toBe(sysAdminId);
+    expect(adminLogin.r.body.role).toBe("OWNER_ADMIN");
+    const operatorLogin = await login("mix_issuance", pw);
+    expect(operatorLogin.r.status).toBe(200);
+    expect(operatorLogin.r.body.id).toBe(issuanceId);
+    expect(operatorLogin.r.body.role).toBe("LICENSE_OPERATOR");
+    const elevatedSupportLogin = await login("mix_support", pw);
+    expect(elevatedSupportLogin.r.status).toBe(200);
+    expect(elevatedSupportLogin.r.body.id).toBe(supportId);
+    expect(elevatedSupportLogin.r.body.role).toBe("LICENSE_OPERATOR");
+    const existingOpLogin = await login("mix_current_op", pw);
+    expect(existingOpLogin.r.status).toBe(200);
+    expect(existingOpLogin.r.body.id).toBe(existingOperatorId);
+    expect((await login("mix_observer", pw)).r.status).toBe(401);
+
+    const preservedOp = await request(app)
+      .get(`/api/v1/operational-records/${opId}`)
+      .set("Cookie", operatorLogin.cookie);
+    expect(preservedOp.status).toBe(200);
+    expect(preservedOp.body.customerCode).toBe("MIX-01");
+
+    const remediationAudits = await explorer(adminLogin.cookie, {
+      eventType: "USER_LEGACY_ROLE_REMEDIATED",
+    });
+    expect(remediationAudits.status).toBe(200);
+    expect(remediationAudits.body.items).toHaveLength(4);
+    for (const item of remediationAudits.body.items as { actorId: string }[]) {
+      expect(item.actorId).toBe(sysAdminId);
+    }
+    expect(
+      remediationAudits.body.items
+        .map(
+          (item: {
+            beforeState: { role: string };
+            afterState: { role: string; isActive: boolean };
+          }) =>
+            `${item.beforeState.role}->${item.afterState.role}:${String(item.afterState.isActive)}`,
+        )
+        .sort(),
+    ).toEqual([
+      "LICENSE_ISSUANCE->LICENSE_OPERATOR:true",
+      "READ_ONLY_OBSERVER->LICENSE_OPERATOR:false",
+      "SUPPORT_SPECIALIST->LICENSE_OPERATOR:true",
+      "SYSTEM_ADMIN->OWNER_ADMIN:true",
+    ]);
+  });
 });
 
 describe("Owner PostgreSQL HTTP vertical slice", () => {
+  beforeAll(async () => {
+    await db.pool.query(
+      "DROP SCHEMA IF EXISTS owner CASCADE; DROP TABLE IF EXISTS public.owner_migrations",
+    );
+    await migrate(db);
+    await migrate(db); // idempotent checksummed fresh deployment
+    expect(await bootstrap(db, "owner", initial)).toBe(true);
+    expect(await bootstrap(db, "owner", "Another_initial_44")).toBe(false);
+    app = await createApp(db, {
+      databaseUrl: url!,
+      origin,
+      production: false,
+      port: 3001,
+    });
+  }, 30000);
   it("requires authentication, JSON, custom anti-CSRF header and same origin", async () => {
     expect((await request(app).get("/api/v1/customers")).status).toBe(401);
     expect(
@@ -381,119 +887,121 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       );
     }
   });
-  it.each(["READ_ONLY_OBSERVER", "LICENSE_ISSUANCE", "SUPPORT_SPECIALIST"])(
-    "enforces %s on direct API requests",
-    async (role) => {
-      const uid = ulid(),
-        pw = "Disposable_role_45";
-      await db.pool.query(
-        "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,$4,false)",
-        [uid, uid, await hashPassword(pw), role],
-      );
-      const { cookie } = await login(uid, pw);
-      expect((await customer(cookie)).status).toBe(403);
-      const code = `Support-${ulid()}`;
-      const created = await write("post", "/customers", adminCookie).send({
-        customerCode: code,
-        displayName: "Support-safe name",
-        contractReference: "CONFIDENTIAL-CONTRACT-REFERENCE",
-      });
-      expect(created.status).toBe(201);
-      const cid = created.body.id;
+  it("enforces LICENSE_OPERATOR boundaries and rejects superseded four-role values in API and SQL", async () => {
+    for (const legacyRole of [
+      "SYSTEM_ADMIN",
+      "LICENSE_ISSUANCE",
+      "READ_ONLY_OBSERVER",
+      "SUPPORT_SPECIALIST",
+    ]) {
       expect(
         (
-          await write("patch", `/customers/${cid}`, cookie).send({
-            displayName: "attack",
-            reason: "test",
+          await write("post", "/users", adminCookie).send({
+            username: `legacy-${legacyRole}`,
+            password: initial,
+            role: legacyRole,
           })
         ).status,
-      ).toBe(403);
-      const effective = await request(app)
-        .get("/api/v1/permissions/effective")
-        .set("Cookie", cookie);
-      expect(effective.status).toBe(200);
-      expect(effective.body.permissions).toEqual(
-        role === "SUPPORT_SPECIALIST"
-          ? ["customers.view"]
-          : role === "READ_ONLY_OBSERVER"
-            ? ["customers.view", "audit.view", "operations.view"]
-            : [
-                "customers.view",
-                "audit.view",
-                "operations.view",
-                "operations.record",
-              ],
-      );
-      const list = await request(app)
-        .get("/api/v1/customers")
-        .query({ search: code })
-        .set("Cookie", cookie);
-      const detail = await request(app)
-        .get(`/api/v1/customers/${cid}`)
-        .set("Cookie", cookie);
-      expect(list.status).toBe(200);
-      expect(detail.status).toBe(200);
-      expect(list.body.items).toHaveLength(1);
-      for (const record of [list.body.items[0], detail.body]) {
-        expect(record.id).toBe(cid);
-        expect(record.customerCode).toBe(code);
-        if (role === "SUPPORT_SPECIALIST") {
-          expect(Object.keys(record).sort()).toEqual(
-            ["id", "customerCode", "displayName", "status"].sort(),
-          );
-          expect(JSON.stringify(record)).not.toContain(
-            "CONFIDENTIAL-CONTRACT-REFERENCE",
-          );
-        } else
-          expect(record.contractReference).toBe(
-            "CONFIDENTIAL-CONTRACT-REFERENCE",
-          );
-      }
-      if (role === "SUPPORT_SPECIALIST") {
-        const byContract = await request(app)
-          .get("/api/v1/customers")
-          .query({ search: "CONFIDENTIAL-CONTRACT-REFERENCE" })
-          .set("Cookie", cookie);
-        expect(byContract.status).toBe(200);
-        expect(byContract.body.items).toEqual([]);
-      }
-      expect(
-        (await request(app).get("/api/v1/audit-events").set("Cookie", cookie))
-          .status,
-      ).toBe(role === "SUPPORT_SPECIALIST" ? 403 : 200);
-      await expectUnavailableOperations(cookie);
-      expect(
-        (await request(app).get("/api/v1/users").set("Cookie", cookie)).status,
-      ).toBe(403);
-      expect(
-        (
-          await write("post", "/users", cookie).send({
-            username: "attack",
-            password: pw,
-            role: "SYSTEM_ADMIN",
-          })
-        ).status,
-      ).toBe(403);
-      expect(
-        (
-          await write("patch", `/users/${adminId}`, cookie).send({
-            role: "SUPPORT_SPECIALIST",
-            reason: "attack",
-          })
-        ).status,
-      ).toBe(403);
-      expect(
-        (await write("delete", "/audit-events", cookie).send({})).status,
-      ).toBe(404);
-      expect(
-        (await write("post", "/auth/logout", cookie).send({})).status,
-      ).toBe(204);
-      expect(
-        (await request(app).get("/api/v1/auth/me").set("Cookie", cookie))
-          .status,
-      ).toBe(401);
-    },
-  );
+      ).toBe(400);
+      await expect(
+        db.pool.query(
+          "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,$4,false)",
+          [ulid(), ulid(), await hashPassword(initial), legacyRole],
+        ),
+      ).rejects.toThrow();
+    }
+    const uid = ulid(),
+      pw = "Disposable_role_45";
+    await db.pool.query(
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'LICENSE_OPERATOR',false)",
+      [uid, uid, await hashPassword(pw)],
+    );
+    const { cookie } = await login(uid, pw);
+    expect((await customer(cookie)).status).toBe(403);
+    const code = `Operator-${ulid()}`;
+    const created = await write("post", "/customers", adminCookie).send({
+      customerCode: code,
+      displayName: "Operator-visible customer",
+      contractReference: "OPERATIONAL-CONTRACT-REFERENCE",
+    });
+    expect(created.status).toBe(201);
+    const cid = created.body.id;
+    expect(
+      (
+        await write("patch", `/customers/${cid}`, cookie).send({
+          displayName: "attack",
+          reason: "test",
+        })
+      ).status,
+    ).toBe(403);
+    const effective = await request(app)
+      .get("/api/v1/permissions/effective")
+      .set("Cookie", cookie);
+    expect(effective.status).toBe(200);
+    expect(effective.body.permissions).toEqual([
+      "customers.view",
+      "audit.view",
+      "operations.view",
+      "operations.record",
+    ]);
+    const list = await request(app)
+      .get("/api/v1/customers")
+      .query({ search: code })
+      .set("Cookie", cookie);
+    const detail = await request(app)
+      .get(`/api/v1/customers/${cid}`)
+      .set("Cookie", cookie);
+    expect(list.status).toBe(200);
+    expect(detail.status).toBe(200);
+    expect(list.body.items).toHaveLength(1);
+    for (const record of [list.body.items[0], detail.body]) {
+      expect(record.id).toBe(cid);
+      expect(record.customerCode).toBe(code);
+      expect(record.contractReference).toBe("OPERATIONAL-CONTRACT-REFERENCE");
+    }
+    expect(
+      (await request(app).get("/api/v1/audit-events").set("Cookie", cookie))
+        .status,
+    ).toBe(200);
+    await expectUnavailableOperations(cookie);
+    expect(
+      (await request(app).get("/api/v1/users").set("Cookie", cookie)).status,
+    ).toBe(403);
+    expect(
+      (
+        await write("post", "/users", cookie).send({
+          username: "attack",
+          password: pw,
+          role: "OWNER_ADMIN",
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await write("patch", `/users/${adminId}`, cookie).send({
+          role: "LICENSE_OPERATOR",
+          reason: "attack",
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await write("post", `/users/${adminId}/reset-password`, cookie).send({
+          password: changed,
+          reason: "attack",
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (await write("delete", "/audit-events", cookie).send({})).status,
+    ).toBe(404);
+    expect((await write("post", "/auth/logout", cookie).send({})).status).toBe(
+      204,
+    );
+    expect(
+      (await request(app).get("/api/v1/auth/me").set("Cookie", cookie)).status,
+    ).toBe(401);
+  });
   it("keeps audit/lifecycle mutations unavailable even to Administrators", async () => {
     await expectUnavailableOperations(adminCookie);
   });
@@ -501,7 +1009,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     const created = await write("post", "/users", adminCookie).send({
       username: "managed",
       password: initial,
-      role: "READ_ONLY_OBSERVER",
+      role: "LICENSE_OPERATOR",
     });
     expect(created.status).toBe(201);
     expect(created.body.mustChangePassword).toBe(true);
@@ -523,7 +1031,16 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       (
         await write("patch", `/users/${uid}`, adminCookie).send({
           isActive: true,
-          role: "SUPPORT_SPECIALIST",
+          role: "OWNER_ADMIN",
+          reason: "Scope elevation",
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await write("patch", `/users/${uid}`, adminCookie).send({
+          isActive: true,
+          role: "LICENSE_OPERATOR",
           reason: "Scope correction",
         })
       ).status,
@@ -545,6 +1062,14 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
         await write("patch", `/users/${adminId}`, adminCookie).send({
           isActive: false,
           reason: "test",
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await write("patch", `/users/${adminId}`, adminCookie).send({
+          role: "LICENSE_OPERATOR",
+          reason: "cannot demote last active Owner Admin",
         })
       ).status,
     ).toBe(409);
@@ -580,7 +1105,11 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       (
         await db.pool.query("SELECT name FROM public.owner_migrations")
       ).rows.map((r) => r.name),
-    ).toEqual(["001-foundation.sql", "002-manual-operations.sql"]);
+    ).toEqual([
+      "001-foundation.sql",
+      "002-manual-operations.sql",
+      "003-two-role-authorization.sql",
+    ]);
     await db.pool.query("TRUNCATE owner.login_limits");
     for (let n = 0; n < 10; n++)
       expect(
@@ -972,7 +1501,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     expect(chained.body.observedStatus).toBe("REPLACEMENT_AUTHORIZED");
     const other = ulid();
     await db.pool.query(
-      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'READ_ONLY_OBSERVER',false)",
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'LICENSE_OPERATOR',false)",
       [other, other, await hashPassword("Disposable_chain_45")],
     );
     await expect(
@@ -1005,7 +1534,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     const customerId = created.body.id as string;
     const historian = ulid();
     await db.pool.query(
-      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'READ_ONLY_OBSERVER',false)",
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'LICENSE_OPERATOR',false)",
       [historian, historian, await hashPassword("Disposable_hist_45")],
     );
     const insertLicense = (tx: PoolClient, id: string, reference: string) =>
@@ -1459,7 +1988,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       );
     }
   });
-  it("authorizes manual operations for all four roles on the direct API", async () => {
+  it("authorizes manual operations for Owner Admin and License Operator on the direct API", async () => {
     const created = await customer(adminCookie, `Role-op-${ulid()}`);
     const installation = `ROLE-${ulid()}`;
     const issued = await write(
@@ -1472,12 +2001,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       reason: "role matrix observation",
     });
     expect(issued.status).toBe(201);
-    for (const role of [
-      "SYSTEM_ADMIN",
-      "LICENSE_ISSUANCE",
-      "READ_ONLY_OBSERVER",
-      "SUPPORT_SPECIALIST",
-    ] as const) {
+    for (const role of ["OWNER_ADMIN", "LICENSE_OPERATOR"] as const) {
       const uid = ulid();
       const pw = "Disposable_role_45";
       await db.pool.query(
@@ -1501,33 +2025,98 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
         installationReference: `MUT-${ulid()}`,
         reason: "direct mutation attempt",
       });
-      if (role === "SUPPORT_SPECIALIST") {
-        expect(list.status).toBe(403);
-        expect(detail.status).toBe(403);
-        expect(mutation.status).toBe(403);
-        expect(JSON.stringify(list.body)).not.toContain(installation);
-        expect(JSON.stringify(detail.body)).not.toContain("CASE");
-      } else if (role === "READ_ONLY_OBSERVER") {
-        expect(list.status).toBe(200);
-        expect(detail.status).toBe(200);
-        expect(detail.body.customerCode).toBe(created.body.customerCode);
-        expect(detail.body).not.toHaveProperty("contractReference");
-        expect(mutation.status).toBe(403);
-        expect(mutation.body.code).toBe("PermissionDenied");
+      expect(list.status).toBe(200);
+      expect(detail.status).toBe(200);
+      expect(detail.body.customerCode).toBe(created.body.customerCode);
+      expect(detail.body).not.toHaveProperty("contractReference");
+      expect(mutation.status).toBe(201);
+      expect(mutation.body.signedArtifactProduced).toBe(false);
+
+      const activatedByRole = await write(
+        "post",
+        `/operational-records/${mutation.body.id}/activation-observations`,
+        cookie,
+      ).send({
+        reason: "activation confirmation observed by authorized role",
+      });
+      expect(activatedByRole.status).toBe(200);
+      expect(activatedByRole.body.observedStatus).toBe("ACTIVATED");
+
+      const replacementAttempt = await write(
+        "post",
+        "/operational-records/server-replacements",
+        cookie,
+      ).send({
+        customerId: created.body.id,
+        oldInstallationReference: `OLD-ROLE-${ulid()}`,
+        replacementInstallationReference: `NEW-ROLE-${ulid()}`,
+        emergencyOldServerLost: false,
+        reason: "replacement authorization attempt",
+      });
+      if (role === "OWNER_ADMIN") {
+        expect(replacementAttempt.status).toBe(201);
+        expect(replacementAttempt.body.observedStatus).toBe(
+          "REPLACEMENT_AUTHORIZED",
+        );
       } else {
-        expect(list.status).toBe(200);
-        expect(detail.status).toBe(200);
-        expect(mutation.status).toBe(201);
-        expect(mutation.body.signedArtifactProduced).toBe(false);
-      }
-      if (role !== "SYSTEM_ADMIN" && role !== "LICENSE_ISSUANCE") {
+        expect(replacementAttempt.status).toBe(403);
+        expect(replacementAttempt.body.code).toBe("PermissionDenied");
+        const emergencyAttempt = await write(
+          "post",
+          "/operational-records/server-replacements",
+          cookie,
+        ).send({
+          customerId: created.body.id,
+          oldInstallationReference: `OLD-EMG-${ulid()}`,
+          replacementInstallationReference: `NEW-EMG-${ulid()}`,
+          emergencyOldServerLost: true,
+          reason: "emergency replacement authorization attempt",
+        });
+        expect(emergencyAttempt.status).toBe(403);
+        expect(emergencyAttempt.body.code).toBe("PermissionDenied");
         const denied = await db.pool.query(
-          "SELECT outcome, reason FROM owner.audit_events WHERE actor_id=$1 AND event_type='OPERATION_MUTATION_DENIED'",
+          "SELECT outcome, reason FROM owner.audit_events WHERE actor_id=$1 AND event_type='OPERATION_MUTATION_DENIED' ORDER BY sequence",
           [uid],
         );
-        expect(denied.rowCount).toBe(1);
-        expect(denied.rows[0].outcome).toBe("DENIED");
-        expect(JSON.stringify(denied.rows[0])).not.toContain("direct mutation");
+        expect(denied.rowCount).toBe(2);
+        expect(denied.rows[0]!.outcome).toBe("DENIED");
+        expect(denied.rows[0]!.reason).toBe("Missing replacements.authorize");
+        expect(JSON.stringify(denied.rows[0])).not.toContain(
+          "replacement authorization attempt",
+        );
+
+        // Once Owner Admin authorizes a replacement, License Operator may record the observed states.
+        const adminAuthorized = await write(
+          "post",
+          "/operational-records/server-replacements",
+          adminCookie,
+        ).send({
+          customerId: created.body.id,
+          oldInstallationReference: `OLD-OP-${ulid()}`,
+          replacementInstallationReference: `NEW-OP-${ulid()}`,
+          emergencyOldServerLost: false,
+          reason: "Owner Admin authorized replacement",
+        });
+        expect(adminAuthorized.status).toBe(201);
+        const opOld = await write(
+          "post",
+          `/operational-records/${adminAuthorized.body.id}/old-server-observations`,
+          cookie,
+        ).send({
+          reason: "Operator observed old-server deactivation",
+          oldServerObservedState: "DEACTIVATION_OBSERVED",
+        });
+        expect(opOld.status).toBe(200);
+        const opNew = await write(
+          "post",
+          `/operational-records/${adminAuthorized.body.id}/replacement-observations`,
+          cookie,
+        ).send({
+          reason: "Operator observed replacement installation",
+          replacementObservedState: "INSTALLATION_OBSERVED",
+        });
+        expect(opNew.status).toBe(200);
+        expect(opNew.body.observedStatus).toBe("REPLACEMENT_RECORDED");
       }
       await expectUnavailableOperations(cookie);
     }
@@ -1541,6 +2130,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       "audit.view",
       "operations.view",
       "operations.record",
+      "replacements.authorize",
     ]);
   });
   it("filters audit events in PostgreSQL with exact AND semantics, half-open UTC windows and stable bounded pages", async () => {
@@ -1717,11 +2307,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       occurredFrom: "2001-08-01T00:00:00Z",
       occurredBefore: "2001-08-02T00:00:00Z",
     };
-    for (const role of [
-      "LICENSE_ISSUANCE",
-      "READ_ONLY_OBSERVER",
-      "SUPPORT_SPECIALIST",
-    ] as const) {
+    for (const role of ["OWNER_ADMIN", "LICENSE_OPERATOR"] as const) {
       const uid = ulid(),
         pw = "Disposable_role_45";
       await db.pool.query(
@@ -1729,22 +2315,14 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
         [uid, uid, await hashPassword(pw), role],
       );
       const { cookie } = await login(uid, pw);
-      const allowed = role !== "SUPPORT_SPECIALIST";
       const res = await explorer(cookie, filters);
-      if (allowed) {
-        expect(res.status).toBe(200);
-        expect(res.body.items.map((i: { id: string }) => i.id)).toEqual([
-          eventId,
-        ]);
-      } else {
-        expect(res.status).toBe(403);
-        expect(res.body.items).toBeUndefined();
-        expect(JSON.stringify(res.body)).not.toContain(eventType);
-      }
-      // Authorization is decided before query validation: Support gets 403, not a validation detail.
+      expect(res.status).toBe(200);
+      expect(res.body.items.map((i: { id: string }) => i.id)).toEqual([
+        eventId,
+      ]);
       expect(
         (await explorer(cookie, { eventType: "bad%", actor: "x" })).status,
-      ).toBe(allowed ? 400 : 403);
+      ).toBe(400);
       // No identifier lookup exists for any role.
       expect(
         (
@@ -1754,24 +2332,22 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
         ).status,
       ).toBe(404);
     }
-    // The client-supplied actorId is only a filter; it never becomes the caller's identity.
-    const support = ulid(),
-      supportPw = "Disposable_role_45";
-    await db.pool.query(
-      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,$4,false)",
-      [support, support, await hashPassword(supportPw), "SUPPORT_SPECIALIST"],
-    );
-    const supportLogin = await login(support, supportPw);
+    // Unauthenticated callers are denied before query validation.
     expect(
-      (await explorer(supportLogin.cookie, { actorId: adminId })).status,
-    ).toBe(403);
+      (
+        await request(app)
+          .get("/api/v1/audit-events")
+          .query({ actorId: adminId })
+      ).status,
+    ).toBe(401);
     // A password-change-pending credential is denied even though the query is valid.
-    const pending = ulid();
+    const pending = ulid(),
+      pendingPw = "Disposable_role_45";
     await db.pool.query(
       "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,$4,true)",
-      [pending, pending, await hashPassword(supportPw), "SYSTEM_ADMIN"],
+      [pending, pending, await hashPassword(pendingPw), "OWNER_ADMIN"],
     );
-    const pendingLogin = await login(pending, supportPw);
+    const pendingLogin = await login(pending, pendingPw);
     expect((await explorer(pendingLogin.cookie, filters)).status).toBe(403);
   });
   it("lets an operator reach the audit trail of an operational record and of a customer", async () => {

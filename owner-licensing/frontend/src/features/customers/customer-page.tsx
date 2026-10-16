@@ -71,7 +71,6 @@ export function CustomerPage({ mode }: { mode: 'new' | 'detail' | 'edit' }) {
         ))}
       </dl>
       <p className="text-sm text-slate-500">{o.immutable}</p>
-      {!('contractReference' in c) && <p>{o.supportScope}</p>}
       <div className="flex gap-3">
         {permissions.has('customers.write') && (
           <Button asChild>

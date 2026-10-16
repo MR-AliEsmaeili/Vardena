@@ -1,13 +1,15 @@
 # Owner-side licensing system — architecture and release boundary (Phase 0 design)
 
-> **Later PO policy update (2026-10-16):** see PDR-11 §21 and PDR-17's dated
-> OQ-82/OQ-85 update. Owner roles are Owner Admin and License Operator; the
-> former four-role text below is historical. Server replacement remains manual,
+> **Later PO policy update (2026-10-16) and Phase 1.3 RBAC implementation:** see
+> PDR-11 §21 and PDR-17's dated OQ-75/OQ-82/OQ-85 updates. Owner roles are Owner
+> Admin (`OWNER_ADMIN`) and License Operator (`LICENSE_OPERATOR`), enforced in
+> runtime and SQL migration `003-two-role-authorization.sql`; the former
+> four-role text below is historical. Server replacement remains manual,
 > pending auditable old-server decommission confirmation with 1h–7d configurable
 > expiry (24h default), not remote shutdown. Owner controls infrastructure/trust;
 > customers need no continuous Owner connection and MVP has no federated issuer.
 > Existing observation/API descriptions below are implementation/design evidence,
-> not proof the new sequence or expiry is implemented.
+> not proof the new OQ-82 sequence or expiry is implemented.
 
 ## Historical product-policy reconciliation — 2026-10-15 (superseded where updated above)
 
@@ -22,7 +24,8 @@ implementation remain follow-ups, not newly approved production custody/issuance
 Manual Owner approval for each new customer-server installation/replacement,
 operator-observed evidence labels and separation boundaries remain. The former
 four-role model is historical/superseded; the current model is Owner Admin and
-License Operator, and current code is not represented as migrated.
+License Operator (`OWNER_ADMIN` and `LICENSE_OPERATOR`), enforced across Owner
+schema, API, and UI in Phase 1.3.
 Owner dates must follow [the global Jalali-first date/time contract](../datetime.md)
 §0; raw-ISO views are an evidenced implementation gap (PDR-11 §20.5).
 

@@ -2,6 +2,7 @@ import { ulid } from "ulid";
 import type { PoolClient } from "pg";
 import { audit } from "./db.js";
 import {
+  assertPermission,
   evidenceReference,
   fail,
   flag,
@@ -20,6 +21,7 @@ import {
   reasonText,
   replacementCreate,
   replacementObservation,
+  type Permission,
   type Role,
 } from "./domain.js";
 
@@ -172,6 +174,8 @@ export async function denyOperationMutation(
   tx: PoolClient,
   actorId: string,
   targetId: string | null,
+  requiredPermission:
+    "operations.record" | "replacements.authorize" = "operations.record",
 ) {
   await audit(tx, {
     actor: actorId,
@@ -179,7 +183,7 @@ export async function denyOperationMutation(
     targetType: "OperationalRecord",
     targetId,
     outcome: "DENIED",
-    reason: "Missing operations.record",
+    reason: `Missing ${requiredPermission}`,
   });
 }
 
@@ -188,6 +192,7 @@ export async function listOperations(
   role: Role,
   query: Record<string, unknown>,
 ) {
+  assertOperationPermission(role, "operations.view");
   const currentPage = page(query.page);
   const search = queryText(query.search, "search") ?? "";
   const kind = operationKindFilter(query.kind);
@@ -236,8 +241,19 @@ export async function listOperations(
   };
 }
 export async function getOperation(tx: PoolClient, role: Role, rawId: unknown) {
+  assertOperationPermission(role, "operations.view");
   const found = await readOperation(tx, id(rawId));
   return operationResponse(found.row, role, found.transitions);
+}
+
+function assertOperationPermission(
+  role: Role,
+  requiredPermission: Extract<
+    Permission,
+    "operations.view" | "operations.record" | "replacements.authorize"
+  >,
+) {
+  assertPermission(role, requiredPermission);
 }
 
 export async function recordLicenseObservation(
@@ -246,6 +262,7 @@ export async function recordLicenseObservation(
   role: Role,
   body: unknown,
 ) {
+  assertOperationPermission(role, "operations.record");
   const input = object(body, [
     "customerId",
     "installationReference",
@@ -316,6 +333,7 @@ export async function recordActivationObservation(
   rawId: unknown,
   body: unknown,
 ) {
+  assertOperationPermission(role, "operations.record");
   const input = object(body, ["reason", "evidenceReference"]);
   const reason = reasonText(input.reason);
   const evidence = evidenceReference(input.evidenceReference);
@@ -357,6 +375,7 @@ export async function recordServerReplacement(
   role: Role,
   body: unknown,
 ) {
+  assertOperationPermission(role, "replacements.authorize");
   const input = object(body, [
     "customerId",
     "oldInstallationReference",
@@ -454,6 +473,7 @@ export async function recordOldServerObservation(
   rawId: unknown,
   body: unknown,
 ) {
+  assertOperationPermission(role, "operations.record");
   const input = object(body, [
     "reason",
     "evidenceReference",
@@ -513,6 +533,7 @@ export async function recordReplacementObservation(
   rawId: unknown,
   body: unknown,
 ) {
+  assertOperationPermission(role, "operations.record");
   const input = object(body, [
     "reason",
     "evidenceReference",

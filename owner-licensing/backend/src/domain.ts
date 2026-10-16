@@ -1,11 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-export const roles = [
-  "SYSTEM_ADMIN",
-  "LICENSE_ISSUANCE",
-  "READ_ONLY_OBSERVER",
-  "SUPPORT_SPECIALIST",
-] as const;
+export const roles = ["OWNER_ADMIN", "LICENSE_OPERATOR"] as const;
 export type Role = (typeof roles)[number];
 export type Permission =
   | "customers.view"
@@ -13,11 +8,15 @@ export type Permission =
   | "users.manage"
   | "audit.view"
   | "operations.view"
-  | "operations.record";
-// PDR-17 plus the Phase 1.1 instruction: exact grants, no wildcards or prefix expansion.
-// Support is not granted operational records. Observer may inspect, not mutate.
+  | "operations.record"
+  | "replacements.authorize";
+// PDR-17 / PDR-11 §21 (2026-10-16 OQ-75 two-role MVP model): exact grants,
+// no wildcards or prefix expansion. Superseded four-role names receive [].
+// License Operator may view customers/operations/audit and record routine
+// observations, but cannot manage users, mutate customers, or authorize
+// server replacements / emergency old-server loss decisions.
 export function permissions(role: string): Permission[] {
-  if (role === "SYSTEM_ADMIN")
+  if (role === "OWNER_ADMIN")
     return [
       "customers.view",
       "customers.write",
@@ -25,17 +24,15 @@ export function permissions(role: string): Permission[] {
       "audit.view",
       "operations.view",
       "operations.record",
+      "replacements.authorize",
     ];
-  if (role === "LICENSE_ISSUANCE")
+  if (role === "LICENSE_OPERATOR")
     return [
       "customers.view",
       "audit.view",
       "operations.view",
       "operations.record",
     ];
-  if (role === "READ_ONLY_OBSERVER")
-    return ["customers.view", "audit.view", "operations.view"];
-  if (role === "SUPPORT_SPECIALIST") return ["customers.view"];
   return [];
 }
 export class ApiError extends Error {
@@ -84,6 +81,37 @@ export function role(value: unknown): Role {
   if (!roles.includes(value as Role)) invalid("Invalid role.");
   return value as Role;
 }
+export function isRole(value: unknown): value is Role {
+  return roles.includes(value as Role);
+}
+export function assertPermission(
+  actorRole: unknown,
+  requiredPermission: Permission,
+): Role {
+  if (
+    !isRole(actorRole) ||
+    !permissions(actorRole).includes(requiredPermission)
+  )
+    fail(403, "PermissionDenied", "You do not have permission.");
+  return actorRole;
+}
+export function assertActiveAuthorizedActor(
+  actor:
+    | Pick<User, "id" | "role" | "is_active" | "must_change_password">
+    | null
+    | undefined,
+  requiredPermission: Permission,
+): Role {
+  if (!actor || !actor.is_active || !isRole(actor.role))
+    fail(401, "Unauthorized", "Authentication is required.");
+  if (actor.must_change_password)
+    fail(
+      403,
+      "PasswordChangeRequired",
+      "Initial password must be changed first.",
+    );
+  return assertPermission(actor.role, requiredPermission);
+}
 // PDR-14 grammar, case-sensitive, no implicit uppercasing or identity inference.
 export function customerCode(value: unknown, id?: string): string {
   if (
@@ -129,7 +157,7 @@ export function safeUser(u: User) {
   return {
     id: u.id,
     username: u.username,
-    role: u.role,
+    role: role(u.role),
     isActive: u.is_active,
     mustChangePassword: u.must_change_password,
     createdAt: u.created_at.toISOString(),
@@ -140,15 +168,11 @@ export function safeUser(u: User) {
 export function customerResponse(c: Record<string, unknown>, actorRole: Role) {
   if (!permissions(actorRole).includes("customers.view"))
     fail(403, "Forbidden", "Customer read is not permitted.");
-  const identity = {
+  return {
     id: c.id,
     customerCode: c.customer_code,
     displayName: c.display_name,
     status: c.status,
-  };
-  if (actorRole === "SUPPORT_SPECIALIST") return identity;
-  return {
-    ...identity,
     contractReference: c.contract_reference,
     createdAt: c.created_at,
     updatedAt: c.updated_at,

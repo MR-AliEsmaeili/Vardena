@@ -6,10 +6,13 @@ Persian RTL login, mandatory password change, customer list/search/detail/create
 edit, user administration/role assignment, durable attributable audit viewing with
 a filterable audit explorer (Phase 1.1), and operator-observed records.
 The lifecycle navigation keeps cryptographic issuance, signed receipts, device
-replacement, revocation and recovery unavailable. Administrator and Issuance
-Specialist can record operator-observed activation facts and same-customer
-server-replacement observations. There is **no signer, signing key, signed
-receipt, or claim of cryptographic confirmation**.
+replacement, revocation and recovery unavailable. Under the approved two-role
+MVP model (`Owner Admin` / `OWNER_ADMIN` and `License Operator` /
+`LICENSE_OPERATOR`, superseding the historical four-role model), both roles can
+record operator-observed activation facts and follow-up replacement observations,
+while only `Owner Admin` (`replacements.authorize`) can authorize a server
+replacement or emergency old-server loss. There is **no signer, signing key,
+signed receipt, or claim of cryptographic confirmation**.
 
 ## Boundaries and dependencies
 
@@ -68,8 +71,10 @@ No production connection string or usable bootstrap password is supplied.
    static assets behind the documented production server/ingress. API proxying
    remains `/api` → the Owner API; never put secrets in any `VITE_*` variable.
 6. Sign in and change the initial password. Until then, ordinary API operations
-   and the UI workspace are blocked. Issuance Specialists can read customers and
-   audit history; Support can read only customer identity/status fields.
+   and the UI workspace are blocked. `Owner Admin` holds user/role administration,
+   customer creation/editing, and server-replacement/emergency authorization;
+   `License Operator` holds routine license observations and read access to
+   customers, operational records, and audit history.
 
 ## Production/deployment
 
@@ -144,6 +149,39 @@ append-only. Direct SQL must keep a continuous history that starts at
 `UNRECORDED` and matches the legal path to the current state, including both
 emergency steps in one transaction. A forged prior, skipped step, reordered
 row, or extra transition is rejected. No cancellation state exists.
+`003-two-role-authorization.sql` enforces the two-role MVP policy on
+`owner.users.role` (`CHECK (role IN ('OWNER_ADMIN', 'LICENSE_OPERATOR'))`) after
+refusing to run (`ERRCODE = '23514'`, listing the distinct legacy roles found)
+if any superseded four-role user row exists.
+
+### Legacy-role compatibility matrix and upgrade runbook (`002` → `003`)
+
+| Legacy role (`001`–`002`) | Actual historical permissions (`1a982323db7f:src/domain.ts`) | Historical effective server-replacement authority (`1a982323db7f:src/app.ts` & `test/api.test.ts`) | Allowed dispositions (`migrate:remediate-roles`) | Privilege impact | Can automate without explicit disposition? | Deployment-owner decision required |
+| --- | --- | --- | --- | --- | --- | --- |
+| `SYSTEM_ADMIN` | `customers.view`, `customers.write`, `users.manage`, `audit.view`, `operations.view`, `operations.record` | Authorized for `POST /api/v1/operational-records/server-replacements` (both normal and `emergencyOldServerLost=true`) via `recorded()` checking `operations.record` (`src/app.ts` lines 576–647; verified for `SYSTEM_ADMIN` in `test/api.test.ts` lines 742–756, 814–830). Phase 1.3 splits that existing capability out of `operations.record` into `replacements.authorize` so `OWNER_ADMIN` retains the exact same route/action set as `SYSTEM_ADMIN` with zero new capabilities. | `MAP_EQUIVALENT` → `OWNER_ADMIN` (preserves `is_active`); `RETAIN_REDUCED` → `LICENSE_OPERATOR`; `DEACTIVATE` → `isActive: false` | `MAP_EQUIVALENT`: **Preserves** · `RETAIN_REDUCED` / `DEACTIVATE`: **Reduces** | No (explicit entry required; at least one active `OWNER_ADMIN` must remain) | Confirm whether each `SYSTEM_ADMIN` maps to active `OWNER_ADMIN`, is reduced to `LICENSE_OPERATOR`, or is deactivated. |
+| `LICENSE_ISSUANCE` | `customers.view`, `audit.view`, `operations.view`, `operations.record` | Historically permitted `POST /api/v1/operational-records/server-replacements` via `operations.record` (`src/app.ts` lines 576–647); removed in Phase 1.3 when `replacements.authorize` was restricted to `OWNER_ADMIN`. | `RETAIN_REDUCED` → `LICENSE_OPERATOR` (preserves `is_active`); `DEACTIVATE` → `isActive: false`, `LICENSE_OPERATOR`; `ELEVATE_PRIVILEGE` → `OWNER_ADMIN` (`allowPrivilegeElevation: true`) | `RETAIN_REDUCED` / `DEACTIVATE`: **Reduces** (removes server-replacement authorization `replacements.authorize`) · `ELEVATE_PRIVILEGE`: **Increases** | No | Confirm whether each `LICENSE_ISSUANCE` account is retained as `LICENSE_OPERATOR` (without `replacements.authorize`) or deactivated. Assigning `OWNER_ADMIN` requires explicit `ELEVATE_PRIVILEGE` + `allowPrivilegeElevation: true`. |
+| `READ_ONLY_OBSERVER` | `customers.view`, `audit.view`, `operations.view` (read-only; zero write permissions) | Denied (`403 PermissionDenied`) on all mutation endpoints. | `DEACTIVATE` → `isActive: false`, `LICENSE_OPERATOR`; `ELEVATE_PRIVILEGE` → active `LICENSE_OPERATOR` or `OWNER_ADMIN` (`allowPrivilegeElevation: true`) | `DEACTIVATE`: **Reduces** (zero active permissions; preserves user ID and audit history) · `ELEVATE_PRIVILEGE`: **Increases** (`+operations.record` write access) | No (neither MVP role is read-only) | Deactivate (`DEACTIVATE`, `isActive: false`) to preserve least privilege, or explicitly authorize write elevation (`ELEVATE_PRIVILEGE`, `allowPrivilegeElevation: true`). |
+| `SUPPORT_SPECIALIST` | `customers.view` (with `customerResponse()` in `1a982323db7f:src/domain.ts` lines 86–97 omitting `contractReference`, `createdBy`, `updatedBy`; no `audit.view`, `operations.view`, or writes) | Denied (`403 PermissionDenied`) on all operational and mutation endpoints. | `DEACTIVATE` → `isActive: false`, `LICENSE_OPERATOR`; `ELEVATE_PRIVILEGE` → active `LICENSE_OPERATOR` or `OWNER_ADMIN` (`allowPrivilegeElevation: true`) | `DEACTIVATE`: **Reduces** (zero active permissions; preserves user ID and audit history) · `ELEVATE_PRIVILEGE`: **Increases** (`+customers.view` full projection, `+audit.view`, `+operations.view`, `+operations.record`) | No | Deactivate (`DEACTIVATE`, `isActive: false`) to preserve least privilege, or explicitly authorize elevation (`ELEVATE_PRIVILEGE`, `allowPrivilegeElevation: true`). |
+
+- **Fresh installation (automatic schema migration + bootstrap):**
+  1. Run `npm --prefix owner-licensing/backend run migrate` (or `node dist/migrate.js` in the production container). On an empty database, `001-foundation.sql`, `002-manual-operations.sql`, and `003-two-role-authorization.sql` apply in one transaction.
+  2. Run `OWNER_BOOTSTRAP_USERNAME=<admin> OWNER_BOOTSTRAP_PASSWORD=<initial-secret> npm --prefix owner-licensing/backend run bootstrap` (or `node dist/bootstrap.js`) to create the initial `OWNER_ADMIN` account with `must_change_password = true`.
+- **Upgrading an existing populated database (`001`–`002` → `003`):**
+  1. **Backup (required before production upgrade):** create a logical backup of the dedicated Owner PostgreSQL database before running remediation or migration:
+     `pg_dump --format=custom --file=owner-pre-003.dump "$OWNER_DATABASE_URL"`
+  2. **Preflight inspection (read-only, secret-free):** run:
+     `npm --prefix owner-licensing/backend run migrate:preflight > owner-role-preflight.json` (or `node dist/migrate.js --preflight`).
+     The JSON report lists `migration003Applied`, `requiresRemediation`, `activeOwnerAdminCount`, `currentRoleAccounts`, `legacyAccounts` (`id`, `username`, `legacyRole`, `isActive`, `mustChangePassword`, `historicalPermissions`, `historicalEffectiveCapabilities`, `permissionDecompositionProof`, `allowedDispositions`), `compatibilityMatrix`, and a pre-populated `dispositionPlanTemplate`. Passwords, password hashes, and session tokens are never included.
+  3. **Review and authorize dispositions (human deployment-owner step):** if `requiresRemediation` is `false`, run `npm --prefix owner-licensing/backend run migrate` directly. If `requiresRemediation` is `true`, copy `dispositionPlanTemplate` from the preflight output to `dispositions.json` and review every entry:
+     - `authorizedByUserId` is **mandatory** (must be a valid 26-character ULID of an active `OWNER_ADMIN` account, or an active `SYSTEM_ADMIN` account mapped to active `OWNER_ADMIN` via `MAP_EQUIVALENT`, which is transitioned to `OWNER_ADMIN` first before any other user's remediation executes). Every `USER_LEGACY_ROLE_REMEDIATED` audit event is attributed strictly to `authorizedByUserId`, never to the target user being modified.
+     - `MAP_EQUIVALENT`, `RETAIN_REDUCED`, and `DEACTIVATE` never increase effective privileges.
+     - Any transition that increases effective privileges (such as keeping a `READ_ONLY_OBSERVER` or `SUPPORT_SPECIALIST` active as `LICENSE_OPERATOR`, promoting `LICENSE_ISSUANCE` to `OWNER_ADMIN`, or reactivating a previously inactive account) is rejected with `PrivilegeElevationDenied` unless `disposition` is `"ELEVATE_PRIVILEGE"` and `allowPrivilegeElevation` is explicitly set to `true` with an audited `reason`.
+     - Deleting user rows or hand-editing `owner.users` with ad-hoc SQL is prohibited; `owner.users.id` foreign keys on `owner.customers`, `owner.operational_records`, `owner.operational_transitions`, and append-only `owner.audit_events` must remain intact.
+  4. **Execute transactional remediation and migration:** run:
+     `npm --prefix owner-licensing/backend run migrate:remediate-roles -- /path/to/dispositions.json` (or `node dist/migrate.js --remediate-roles /path/to/dispositions.json`).
+     Inside one PostgreSQL transaction under advisory lock `78153214`, the command locks `owner.users`, validates the entire disposition set (rejecting missing `authorizedByUserId`, inactive/non-admin `authorizedByUserId`, missing/duplicate/unknown/current-role/contradictory/unauthorized-elevation entries, and enforcing `LastAdminProtected` so at least one active `OWNER_ADMIN` remains), updates each legacy user's `role` and `is_active` (upgrading `authorizedByUserId` to active `OWNER_ADMIN` first), revokes all active sessions for remediated users, records an append-only `USER_LEGACY_ROLE_REMEDIATED` audit event (`actor_id = authorizedByUserId`, `beforeState`, and `afterState`) per account, applies `003-two-role-authorization.sql`, and records `003-two-role-authorization.sql` in `public.owner_migrations`.
+  5. **Validation failure, rollback, and retry recovery:** if any validation check or SQL step fails, the single transaction rolls back completely—leaving `public.owner_migrations`, `users_role_check`, `owner.users`, `owner.sessions`, and `owner.audit_events` in their exact pre-attempt state. Correct `dispositions.json` and re-run `npm --prefix owner-licensing/backend run migrate:remediate-roles -- /path/to/dispositions.json`. Re-running after `003` is applied reconstructs the pre-remediation user state from `USER_LEGACY_ROLE_REMEDIATED` audit rows and runs full `validateRoleUpgradePlan` validation plus current-state and audit-record verification—rejecting incomplete plans, unknown fields, or mismatched dispositions while returning `{"status": "ALREADY_APPLIED", "remediatedCount": 0, "migrationApplied": false}` without duplicating audit rows when the plan is valid and matches.
+  6. **Post-upgrade verification and rollback boundary:** run `npm --prefix owner-licensing/backend run migrate:preflight` and verify `migration003Applied: true`, `requiresRemediation: false`, `legacyAccounts: []`, and `activeOwnerAdminCount >= 1`. Even if the Phase 1.3 API server is started against an unmigrated `002` database, `POST /api/v1/auth/login` and session authentication (`authenticate`) fail closed (`401 Unauthorized`) for any user row holding a superseded role. Because Owner migrations are forward-only and `owner.audit_events` is append-only, reverting a committed `003` upgrade requires restoring the pre-upgrade logical backup (`pg_restore --clean --if-exists --dbname="$OWNER_DATABASE_URL" owner-pre-003.dump`).
 
 ## Security
 
@@ -174,15 +212,21 @@ row, or extra transition is rejected. No cancellation state exists.
   intentionally shares the bucket. Plan ingress rate limits/worker capacity for
   your operators; expired bucket housekeeping is infrastructure data, **not an
   audit retention rule**. No raw IP/username retained in failed-login audit.
-- Role policy: PDR-17 / Product Owner correction to PR #160, plus the
-  observation grants in that record. Administrator and Issuance Specialist may
-  inspect and record manual observations. Observer may inspect them. Support
-  customer reads serialize only id/code/display name/status and receive neither
-  operational grant. Unknown operations deny; no wildcard expansion and no dual
-  control. Audit is durable and append-only to application operations,
-  **not tamper-proof against database owners**. No general audit deletion API.
-- OQ-77 option C's wording is absent from current sources: no retention duration,
-  purge schedule or inferred deletion behavior. OQ-77 remains OPEN.
+- Role policy: PDR-17 / OQ-75 two-role MVP model (`Owner Admin` and `License
+  Operator`, superseding the historical four-role model). `Owner Admin` holds
+  `customers.view`, `customers.write`, `users.manage`, `audit.view`,
+  `operations.view`, `operations.record`, and `replacements.authorize`. `License
+  Operator` holds `customers.view`, `audit.view`, `operations.view`, and
+  `operations.record`. Server-replacement authorization and emergency
+  old-server-lost handling require `replacements.authorize` (`Owner Admin` only).
+  Unknown operations and superseded four-role identifiers deny; no wildcard
+  expansion and no dual control. Audit is durable and append-only to application
+  operations, **not tamper-proof against database owners**. No general audit
+  deletion API.
+- OQ-77 retention policy (decided 2026-10-16): append-only retention for at least
+  three years from each event's occurrence, unresolved security incidents
+  excluded from automatic deletion, and permanent retention in a separate archive.
+  No automatic purge or archival job is executed in Phase 1 runtime.
 
 ## API summary
 
@@ -195,7 +239,8 @@ accepts name/status/reference plus required reason; identity/code/actor/time and
 unknown fields reject. Lists: page size 50, `page`, literal `search` up to 100 chars.
 `users` GET/POST; `users/:id` PATCH role/isActive/reason;
 `users/:id/reset-password` POST password/reason. New/reset accounts must change
-password. `audit-events` GET (`audit.view`; Support gets 403): exact-match
+password. `audit-events` GET (`audit.view`; granted to `Owner Admin` and
+`License Operator`): exact-match
 `eventType`, `actorId`, `targetType`, `targetId`, `outcome`, and UTC
 `occurredFrom`/`occurredBefore` (half-open); AND semantics; 50-row pages with
 `hasNext`; unknown, repeated, malformed or wildcard input is 400. Full contract:
@@ -207,11 +252,13 @@ POST `operational-records/license-observations` records an externally observed
 issuance. POST `operational-records/:id/activation-observations` records
 issued → activated. POST `operational-records/server-replacements` records
 authorization, or emergency old-server loss when `emergencyOldServerLost` is
-true. POST `operational-records/:id/old-server-observations` and
-`replacement-observations` continue that sequence. Mutation routes require
-`operations.record`; a missing grant audits `OPERATION_MUTATION_DENIED` and
-returns 403. Stable codes include `InvalidTransition`, `DuplicateOperation`,
-`PermissionDenied` and `EntityNotFound`. Responses say `OPERATOR_OBSERVED` and
+true, and requires `replacements.authorize` (`Owner Admin`). POST
+`operational-records/:id/old-server-observations` and
+`replacement-observations` continue that sequence and require `operations.record`.
+Missing `operations.record` or `replacements.authorize` on a mutation route
+audits `OPERATION_MUTATION_DENIED` and returns 403. Stable codes include
+`InvalidTransition`, `DuplicateOperation`, `PermissionDenied` and
+`EntityNotFound`. Responses say `OPERATOR_OBSERVED` and
 `cryptographicVerification=NOT_IMPLEMENTED`. Signed protocol routes stay 404.
 No DELETE endpoint exists.
 Errors have `code`, bounded safe `message`, `correlationId`; no raw DB errors.
@@ -224,13 +271,14 @@ checks run in GitHub Actions. No heavy E2E/live-DB test was executed locally
 unless explicitly authorized (none was authorized for this task).
 
 CI backend steps: Owner lint/format/typecheck/unit/build; fresh dedicated
-`owner_test` PostgreSQL database; migration idempotence, HTTP authentication,
-password-change concurrency/rollback, disabled users, all four roles, direct API
-forbidden access, customer uniqueness/identity, audit rollback/retention/secrecy,
-logout and login throttle. Frontend steps: Owner lint/format/typecheck, schema
-and observable React flow tests, production build. Existing customer checks and
-published protocol vectors remain untouched. See the
-[Phase 1 task record](../docs/tasks/licensing-owner-side-phase-1.md).
+`owner_test` PostgreSQL database; migration idempotence (`001`–`003`), HTTP
+authentication, password-change concurrency/rollback, disabled users, both MVP
+roles (`OWNER_ADMIN` and `LICENSE_OPERATOR`) plus rejection of superseded
+four-role values, direct API forbidden access, customer uniqueness/identity,
+audit rollback/retention/secrecy, logout and login throttle. Frontend steps:
+Owner lint/format/typecheck, schema and observable React flow tests, production
+build. Existing customer checks and published protocol vectors remain untouched.
+See the [Phase 1 task record](../docs/tasks/licensing-owner-side-phase-1.md).
 
 ### PR #160 correction verification
 

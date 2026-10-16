@@ -261,7 +261,7 @@ export function ReplacementFormPage() {
   });
   if (!permissions.loaded) return <LoadingState />;
   if (
-    !permissions.has('operations.record') ||
+    !permissions.has('replacements.authorize') ||
     !permissions.has('customers.view')
   )
     return <p>{o.forbidden}</p>;

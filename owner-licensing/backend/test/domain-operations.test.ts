@@ -16,6 +16,25 @@ import {
   unfinishedReplacementCrossUse,
   roles,
 } from "../src/domain.js";
+import {
+  getOperation,
+  listOperations,
+  recordActivationObservation,
+  recordLicenseObservation,
+  recordOldServerObservation,
+  recordReplacementObservation,
+  recordServerReplacement,
+} from "../src/operations.js";
+import {
+  createCustomerService,
+  createUserService,
+  getCustomerService,
+  listCustomersService,
+  listUsersService,
+  resetUserPasswordService,
+  updateCustomerService,
+  updateUserAccessService,
+} from "../src/app.js";
 
 function code(fn: () => unknown) {
   try {
@@ -170,7 +189,7 @@ describe("manual observation transitions", () => {
       password_hash: "secret",
       signed_payload: "VLIC2",
     };
-    const body = operationResponse(row, "READ_ONLY_OBSERVER", [
+    const body = operationResponse(row, "LICENSE_OPERATOR", [
       {
         id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
         actor_id: "actor",
@@ -194,9 +213,15 @@ describe("manual observation transitions", () => {
     expect(JSON.stringify(body)).not.toContain("SECRET-CONTRACT");
     expect(JSON.stringify(body)).not.toContain("password_hash");
     expect(JSON.stringify(body)).not.toContain("VLIC2");
-    expect(code(() => operationResponse(row, "SUPPORT_SPECIALIST"))).toBe(
-      "PermissionDenied",
-    );
+    for (const denied of [
+      "SUPPORT_SPECIALIST",
+      "READ_ONLY_OBSERVER",
+      "SYSTEM_ADMIN",
+      "LICENSE_ISSUANCE",
+    ])
+      expect(
+        code(() => operationResponse(row, denied as (typeof roles)[number])),
+      ).toBe("PermissionDenied");
     for (const role of roles)
       if (!permissions(role).includes("operations.view"))
         expect(code(() => operationResponse(row, role))).toBe(
@@ -233,5 +258,157 @@ describe("manual observation transitions", () => {
         },
       ),
     ).toBe(false);
+  });
+  it("enforces operations.record and replacements.authorize at the service layer before database access", async () => {
+    const fakeTx = {} as Parameters<typeof recordServerReplacement>[0];
+    await expect(
+      recordServerReplacement(
+        fakeTx,
+        "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        "LICENSE_OPERATOR",
+        {},
+      ),
+    ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+    for (const legacy of [
+      "SYSTEM_ADMIN",
+      "LICENSE_ISSUANCE",
+      "READ_ONLY_OBSERVER",
+      "SUPPORT_SPECIALIST",
+    ] as unknown as (typeof roles)[number][]) {
+      await expect(listOperations(fakeTx, legacy, {})).rejects.toMatchObject({
+        status: 403,
+        code: "PermissionDenied",
+      });
+      await expect(
+        getOperation(fakeTx, legacy, "01ARZ3NDEKTSV4RRFFQ69G5FAV"),
+      ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+      await expect(
+        recordLicenseObservation(
+          fakeTx,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          legacy,
+          {},
+        ),
+      ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+      await expect(
+        recordActivationObservation(
+          fakeTx,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          legacy,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          {},
+        ),
+      ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+      await expect(
+        recordServerReplacement(
+          fakeTx,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          legacy,
+          {},
+        ),
+      ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+      await expect(
+        recordOldServerObservation(
+          fakeTx,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          legacy,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          {},
+        ),
+      ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+      await expect(
+        recordReplacementObservation(
+          fakeTx,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          legacy,
+          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          {},
+        ),
+      ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+    }
+
+    // Direct user and customer service calls enforce role permissions, active state, and must_change_password
+    const operatorActor = {
+      id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      role: "LICENSE_OPERATOR" as const,
+      is_active: true,
+      must_change_password: false,
+    };
+    await expect(
+      listUsersService(fakeTx, operatorActor, "1"),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "PermissionDenied",
+    });
+    await expect(
+      createUserService(fakeTx, operatorActor, {}),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "PermissionDenied",
+    });
+    await expect(
+      updateUserAccessService(
+        fakeTx,
+        operatorActor,
+        "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        {},
+      ),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "PermissionDenied",
+    });
+    await expect(
+      resetUserPasswordService(
+        fakeTx,
+        operatorActor,
+        "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        {},
+      ),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "PermissionDenied",
+    });
+    await expect(
+      createCustomerService(fakeTx, operatorActor, {}),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "PermissionDenied",
+    });
+    await expect(
+      updateCustomerService(
+        fakeTx,
+        operatorActor,
+        "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        {},
+      ),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "PermissionDenied",
+    });
+
+    const inactiveAdmin = {
+      id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      role: "OWNER_ADMIN" as const,
+      is_active: false,
+      must_change_password: false,
+    };
+    await expect(
+      listUsersService(fakeTx, inactiveAdmin, "1"),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "Unauthorized",
+    });
+    await expect(
+      listCustomersService(fakeTx, inactiveAdmin, {}),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "Unauthorized",
+    });
+    await expect(
+      getCustomerService(fakeTx, inactiveAdmin, "01ARZ3NDEKTSV4RRFFQ69G5FAV"),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "Unauthorized",
+    });
   });
 });

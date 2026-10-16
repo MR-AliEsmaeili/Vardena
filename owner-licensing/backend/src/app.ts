@@ -11,6 +11,7 @@ import { listAuditEvents } from "./audit.js";
 import { Database, audit } from "./db.js";
 import {
   ApiError,
+  assertActiveAuthorizedActor,
   customerCode,
   customerResponse,
   digest,
@@ -18,6 +19,7 @@ import {
   fail,
   id,
   invalid,
+  isRole,
   object,
   page,
   password,
@@ -48,6 +50,291 @@ import {
   verifyPassword,
   type Principal,
 } from "./security.js";
+
+export type ServiceActor = Pick<
+  User,
+  "id" | "role" | "is_active" | "must_change_password"
+>;
+
+export async function listUsersService(
+  tx: PoolClient,
+  actor: ServiceActor,
+  rawPage: unknown,
+) {
+  assertActiveAuthorizedActor(actor, "users.manage");
+  const p = page(rawPage);
+  const rows = await tx.query<User>(
+    "SELECT * FROM owner.users ORDER BY id LIMIT 50 OFFSET $1",
+    [(p - 1) * 50],
+  );
+  return {
+    items: rows.rows.map(safeUser),
+    page: p,
+    pageSize: 50,
+  };
+}
+
+export async function createUserService(
+  tx: PoolClient,
+  actor: ServiceActor,
+  body: unknown,
+) {
+  assertActiveAuthorizedActor(actor, "users.manage");
+  const input = object(body, ["username", "password", "role"]);
+  const username = text(input.username, "username", 1, 64),
+    r = role(input.role);
+  const hash = await hashPassword(password(input.password)),
+    uid = ulid();
+  const user = (
+    await tx.query<User>(
+      "INSERT INTO owner.users(id,username,password_hash,role) VALUES($1,$2,$3,$4) RETURNING *",
+      [uid, username, hash, r],
+    )
+  ).rows[0]!;
+  await audit(tx, {
+    actor: actor.id,
+    type: "USER_CREATED",
+    targetType: "User",
+    targetId: uid,
+    after: { username, role: r, isActive: true, mustChangePassword: true },
+  });
+  return safeUser(user);
+}
+
+export async function updateUserAccessService(
+  tx: PoolClient,
+  actor: ServiceActor,
+  rawTargetId: unknown,
+  body: unknown,
+) {
+  assertActiveAuthorizedActor(actor, "users.manage");
+  const targetId = id(rawTargetId),
+    input = object(body, ["role", "isActive", "reason"]);
+  const reason = text(input.reason, "reason", 1, 500);
+  const target = (
+    await tx.query<User>("SELECT * FROM owner.users WHERE id=$1 FOR UPDATE", [
+      targetId,
+    ])
+  ).rows[0];
+  if (!target) fail(404, "EntityNotFound", "User not found.");
+  const nextRole = role(input.role === undefined ? target.role : input.role);
+  if (input.isActive !== undefined && typeof input.isActive !== "boolean")
+    invalid("isActive must be boolean.");
+  const active =
+    input.isActive === undefined
+      ? target.is_active
+      : (input.isActive as boolean);
+  if (
+    target.role === "OWNER_ADMIN" &&
+    target.is_active &&
+    (nextRole !== "OWNER_ADMIN" || !active)
+  ) {
+    const count = await tx.query<{ count: string }>(
+      "SELECT count(*) FROM owner.users WHERE role='OWNER_ADMIN' AND is_active",
+    );
+    if (Number(count.rows[0]!.count) <= 1)
+      fail(409, "Conflict", "Cannot remove the last active administrator.");
+  }
+  const updated = (
+    await tx.query<User>(
+      "UPDATE owner.users SET role=$1,is_active=$2,updated_at=clock_timestamp() WHERE id=$3 RETURNING *",
+      [nextRole, active, targetId],
+    )
+  ).rows[0]!;
+  await tx.query(
+    "UPDATE owner.sessions SET revoked_at=clock_timestamp() WHERE user_id=$1 AND revoked_at IS NULL",
+    [targetId],
+  );
+  await audit(tx, {
+    actor: actor.id,
+    type: "USER_ACCESS_CHANGED",
+    targetType: "User",
+    targetId,
+    reason,
+    before: { role: target.role, isActive: target.is_active },
+    after: { role: nextRole, isActive: active },
+  });
+  return safeUser(updated);
+}
+
+export async function resetUserPasswordService(
+  tx: PoolClient,
+  actor: ServiceActor,
+  rawTargetId: unknown,
+  body: unknown,
+) {
+  assertActiveAuthorizedActor(actor, "users.manage");
+  const targetId = id(rawTargetId),
+    input = object(body, ["password", "reason"]);
+  const reason = text(input.reason, "reason", 1, 500),
+    hash = await hashPassword(password(input.password));
+  await tx.query("SELECT id FROM owner.users WHERE id=$1 FOR UPDATE", [
+    targetId,
+  ]);
+  const updated = (
+    await tx.query<User>(
+      "UPDATE owner.users SET password_hash=$1,must_change_password=true,updated_at=clock_timestamp() WHERE id=$2 RETURNING *",
+      [hash, targetId],
+    )
+  ).rows[0];
+  if (!updated) fail(404, "EntityNotFound", "User not found.");
+  await tx.query(
+    "UPDATE owner.sessions SET revoked_at=clock_timestamp() WHERE user_id=$1 AND revoked_at IS NULL",
+    [targetId],
+  );
+  await audit(tx, {
+    actor: actor.id,
+    type: "PASSWORD_RESET",
+    targetType: "User",
+    targetId,
+    reason,
+    after: { mustChangePassword: true },
+  });
+  return safeUser(updated);
+}
+
+export async function listCustomersService(
+  tx: PoolClient,
+  actor: ServiceActor,
+  query: Record<string, unknown>,
+) {
+  const actorRole = assertActiveAuthorizedActor(actor, "customers.view");
+  const p = page(query.page);
+  const search =
+    query.search === undefined ? "" : text(query.search, "search", 0, 100);
+  // Escape LIKE wildcards: this is literal substring search.
+  const pattern = `%${search.replace(/[\\%_]/g, "\\$&")}%`;
+  const where = "customer_code ILIKE $1 OR display_name ILIKE $1";
+  const total = await tx.query<{ count: string }>(
+    `SELECT count(*) FROM owner.customers WHERE ${where}`,
+    [pattern],
+  );
+  const rows = await tx.query(
+    `SELECT * FROM owner.customers WHERE ${where} ORDER BY id DESC LIMIT 50 OFFSET $2`,
+    [pattern, (p - 1) * 50],
+  );
+  return {
+    items: rows.rows.map((c) => customerResponse(c, actorRole)),
+    total: Number(total.rows[0]!.count),
+    page: p,
+    pageSize: 50,
+  };
+}
+
+export async function getCustomerService(
+  tx: PoolClient,
+  actor: ServiceActor,
+  rawTargetId: unknown,
+) {
+  const actorRole = assertActiveAuthorizedActor(actor, "customers.view");
+  const row = (
+    await tx.query("SELECT * FROM owner.customers WHERE id=$1", [
+      id(rawTargetId),
+    ])
+  ).rows[0];
+  if (!row) fail(404, "EntityNotFound", "Customer not found.");
+  return customerResponse(row, actorRole);
+}
+
+export async function createCustomerService(
+  tx: PoolClient,
+  actor: ServiceActor,
+  body: unknown,
+) {
+  const actorRole = assertActiveAuthorizedActor(actor, "customers.write");
+  const input = object(body, [
+    "customerCode",
+    "displayName",
+    "status",
+    "contractReference",
+  ]);
+  const uid = ulid(),
+    code = customerCode(input.customerCode, uid),
+    name = text(input.displayName, "displayName", 1, 200);
+  const state = status(input.status ?? "ACTIVE");
+  const reference =
+    input.contractReference === undefined || input.contractReference === ""
+      ? ""
+      : text(input.contractReference, "contractReference", 1, 200);
+  const c = (
+    await tx.query(
+      `INSERT INTO owner.customers(id,customer_code,display_name,status,contract_reference,created_by,updated_by)
+      VALUES($1,$2,$3,$4,$5,$6,$6) RETURNING *`,
+      [uid, code, name, state, reference, actor.id],
+    )
+  ).rows[0];
+  await audit(tx, {
+    actor: actor.id,
+    type: "CUSTOMER_CREATED",
+    targetType: "Customer",
+    targetId: uid,
+    after: {
+      customerCode: code,
+      displayName: name,
+      status: state,
+      contractReference: reference,
+    },
+  });
+  return customerResponse(c, actorRole);
+}
+
+export async function updateCustomerService(
+  tx: PoolClient,
+  actor: ServiceActor,
+  rawTargetId: unknown,
+  body: unknown,
+) {
+  const actorRole = assertActiveAuthorizedActor(actor, "customers.write");
+  const uid = id(rawTargetId),
+    input = object(body, [
+      "displayName",
+      "status",
+      "contractReference",
+      "reason",
+    ]);
+  const reason = text(input.reason, "reason", 1, 500);
+  const c = (
+    await tx.query("SELECT * FROM owner.customers WHERE id=$1 FOR UPDATE", [
+      uid,
+    ])
+  ).rows[0];
+  if (!c) fail(404, "EntityNotFound", "Customer not found.");
+  const name =
+    input.displayName === undefined
+      ? c.display_name
+      : text(input.displayName, "displayName", 1, 200);
+  const state = input.status === undefined ? c.status : status(input.status);
+  const reference =
+    input.contractReference === undefined
+      ? c.contract_reference
+      : input.contractReference === ""
+        ? ""
+        : text(input.contractReference, "contractReference", 1, 200);
+  const updated = (
+    await tx.query(
+      "UPDATE owner.customers SET display_name=$1,status=$2,contract_reference=$3,updated_by=$4,updated_at=clock_timestamp() WHERE id=$5 RETURNING *",
+      [name, state, reference, actor.id, uid],
+    )
+  ).rows[0];
+  await audit(tx, {
+    actor: actor.id,
+    type: "CUSTOMER_UPDATED",
+    targetType: "Customer",
+    targetId: uid,
+    reason,
+    before: {
+      displayName: c.display_name,
+      status: c.status,
+      contractReference: c.contract_reference,
+    },
+    after: {
+      displayName: name,
+      status: state,
+      contractReference: reference,
+    },
+  });
+  return customerResponse(updated, actorRole);
+}
 
 export async function createApp(db: Database, cfg: Config) {
   const app = express();
@@ -171,6 +458,7 @@ export async function createApp(db: Database, cfg: Config) {
       if (
         !verified ||
         !current?.is_active ||
+        !isRole(current.role) ||
         current.password_hash !== snapshot?.password_hash
       ) {
         await audit(tx, {
@@ -280,17 +568,8 @@ export async function createApp(db: Database, cfg: Config) {
     "/users",
     "users.manage",
     true,
-    async (tx, _a, req, res) => {
-      const p = page(req.query.page);
-      const rows = await tx.query<User>(
-        "SELECT * FROM owner.users ORDER BY id LIMIT 50 OFFSET $1",
-        [(p - 1) * 50],
-      );
-      res.locals.body = {
-        items: rows.rows.map(safeUser),
-        page: p,
-        pageSize: 50,
-      };
+    async (tx, a, req, res) => {
+      res.locals.body = await listUsersService(tx, a.user, req.query.page);
     },
     true,
   );
@@ -300,26 +579,8 @@ export async function createApp(db: Database, cfg: Config) {
     "users.manage",
     true,
     async (tx, a, req, res) => {
-      const input = object(req.body, ["username", "password", "role"]);
-      const username = text(input.username, "username", 1, 64),
-        r = role(input.role);
-      const hash = await hashPassword(password(input.password)),
-        uid = ulid();
-      const user = (
-        await tx.query<User>(
-          "INSERT INTO owner.users(id,username,password_hash,role) VALUES($1,$2,$3,$4) RETURNING *",
-          [uid, username, hash, r],
-        )
-      ).rows[0]!;
-      await audit(tx, {
-        actor: a.user.id,
-        type: "USER_CREATED",
-        targetType: "User",
-        targetId: uid,
-        after: { username, role: r, isActive: true, mustChangePassword: true },
-      });
       res.locals.status = 201;
-      res.locals.body = safeUser(user);
+      res.locals.body = await createUserService(tx, a.user, req.body);
     },
     true,
   );
@@ -329,55 +590,12 @@ export async function createApp(db: Database, cfg: Config) {
     "users.manage",
     true,
     async (tx, a, req, res) => {
-      const targetId = id(req.params.id),
-        input = object(req.body, ["role", "isActive", "reason"]);
-      const reason = text(input.reason, "reason", 1, 500);
-      const target = (
-        await tx.query<User>(
-          "SELECT * FROM owner.users WHERE id=$1 FOR UPDATE",
-          [targetId],
-        )
-      ).rows[0];
-      if (!target) fail(404, "EntityNotFound", "User not found.");
-      const nextRole =
-        input.role === undefined ? target.role : role(input.role);
-      if (input.isActive !== undefined && typeof input.isActive !== "boolean")
-        invalid("isActive must be boolean.");
-      const active =
-        input.isActive === undefined
-          ? target.is_active
-          : (input.isActive as boolean);
-      if (
-        target.role === "SYSTEM_ADMIN" &&
-        target.is_active &&
-        (nextRole !== "SYSTEM_ADMIN" || !active)
-      ) {
-        const count = await tx.query<{ count: string }>(
-          "SELECT count(*) FROM owner.users WHERE role='SYSTEM_ADMIN' AND is_active",
-        );
-        if (Number(count.rows[0]!.count) <= 1)
-          fail(409, "Conflict", "Cannot remove the last active administrator.");
-      }
-      const updated = (
-        await tx.query<User>(
-          "UPDATE owner.users SET role=$1,is_active=$2,updated_at=clock_timestamp() WHERE id=$3 RETURNING *",
-          [nextRole, active, targetId],
-        )
-      ).rows[0]!;
-      await tx.query(
-        "UPDATE owner.sessions SET revoked_at=clock_timestamp() WHERE user_id=$1 AND revoked_at IS NULL",
-        [targetId],
+      res.locals.body = await updateUserAccessService(
+        tx,
+        a.user,
+        req.params.id,
+        req.body,
       );
-      await audit(tx, {
-        actor: a.user.id,
-        type: "USER_ACCESS_CHANGED",
-        targetType: "User",
-        targetId,
-        reason,
-        before: { role: target.role, isActive: target.is_active },
-        after: { role: nextRole, isActive: active },
-      });
-      res.locals.body = safeUser(updated);
     },
     true,
   );
@@ -387,33 +605,12 @@ export async function createApp(db: Database, cfg: Config) {
     "users.manage",
     true,
     async (tx, a, req, res) => {
-      const targetId = id(req.params.id),
-        input = object(req.body, ["password", "reason"]);
-      const reason = text(input.reason, "reason", 1, 500),
-        hash = await hashPassword(password(input.password));
-      await tx.query("SELECT id FROM owner.users WHERE id=$1 FOR UPDATE", [
-        targetId,
-      ]);
-      const updated = (
-        await tx.query<User>(
-          "UPDATE owner.users SET password_hash=$1,must_change_password=true,updated_at=clock_timestamp() WHERE id=$2 RETURNING *",
-          [hash, targetId],
-        )
-      ).rows[0];
-      if (!updated) fail(404, "EntityNotFound", "User not found.");
-      await tx.query(
-        "UPDATE owner.sessions SET revoked_at=clock_timestamp() WHERE user_id=$1 AND revoked_at IS NULL",
-        [targetId],
+      res.locals.body = await resetUserPasswordService(
+        tx,
+        a.user,
+        req.params.id,
+        req.body,
       );
-      await audit(tx, {
-        actor: a.user.id,
-        type: "PASSWORD_RESET",
-        targetType: "User",
-        targetId,
-        reason,
-        after: { mustChangePassword: true },
-      });
-      res.locals.body = safeUser(updated);
     },
     true,
   );
@@ -423,28 +620,11 @@ export async function createApp(db: Database, cfg: Config) {
     "customers.view",
     true,
     async (tx, a, req, res) => {
-      const p = page(req.query.page);
-      const search =
-        req.query.search === undefined
-          ? ""
-          : text(req.query.search, "search", 0, 100);
-      // Escape LIKE wildcards: this is literal substring search.
-      const pattern = `%${search.replace(/[\\%_]/g, "\\$&")}%`;
-      const where = "customer_code ILIKE $1 OR display_name ILIKE $1";
-      const total = await tx.query<{ count: string }>(
-        `SELECT count(*) FROM owner.customers WHERE ${where}`,
-        [pattern],
+      res.locals.body = await listCustomersService(
+        tx,
+        a.user,
+        req.query as Record<string, unknown>,
       );
-      const rows = await tx.query(
-        `SELECT * FROM owner.customers WHERE ${where} ORDER BY id DESC LIMIT 50 OFFSET $2`,
-        [pattern, (p - 1) * 50],
-      );
-      res.locals.body = {
-        items: rows.rows.map((c) => customerResponse(c, a.user.role)),
-        total: Number(total.rows[0]!.count),
-        page: p,
-        pageSize: 50,
-      };
     },
   );
   route(
@@ -453,13 +633,7 @@ export async function createApp(db: Database, cfg: Config) {
     "customers.view",
     true,
     async (tx, a, req, res) => {
-      const row = (
-        await tx.query("SELECT * FROM owner.customers WHERE id=$1", [
-          id(req.params.id),
-        ])
-      ).rows[0];
-      if (!row) fail(404, "EntityNotFound", "Customer not found.");
-      res.locals.body = customerResponse(row, a.user.role);
+      res.locals.body = await getCustomerService(tx, a.user, req.params.id);
     },
   );
   route(
@@ -468,41 +642,8 @@ export async function createApp(db: Database, cfg: Config) {
     "customers.write",
     true,
     async (tx, a, req, res) => {
-      const input = object(req.body, [
-        "customerCode",
-        "displayName",
-        "status",
-        "contractReference",
-      ]);
-      const uid = ulid(),
-        code = customerCode(input.customerCode, uid),
-        name = text(input.displayName, "displayName", 1, 200);
-      const state = status(input.status ?? "ACTIVE");
-      const reference =
-        input.contractReference === undefined || input.contractReference === ""
-          ? ""
-          : text(input.contractReference, "contractReference", 1, 200);
-      const c = (
-        await tx.query(
-          `INSERT INTO owner.customers(id,customer_code,display_name,status,contract_reference,created_by,updated_by)
-      VALUES($1,$2,$3,$4,$5,$6,$6) RETURNING *`,
-          [uid, code, name, state, reference, a.user.id],
-        )
-      ).rows[0];
-      await audit(tx, {
-        actor: a.user.id,
-        type: "CUSTOMER_CREATED",
-        targetType: "Customer",
-        targetId: uid,
-        after: {
-          customerCode: code,
-          displayName: name,
-          status: state,
-          contractReference: reference,
-        },
-      });
       res.locals.status = 201;
-      res.locals.body = customerResponse(c, a.user.role);
+      res.locals.body = await createCustomerService(tx, a.user, req.body);
     },
   );
   route(
@@ -511,56 +652,12 @@ export async function createApp(db: Database, cfg: Config) {
     "customers.write",
     true,
     async (tx, a, req, res) => {
-      const uid = id(req.params.id),
-        input = object(req.body, [
-          "displayName",
-          "status",
-          "contractReference",
-          "reason",
-        ]);
-      const reason = text(input.reason, "reason", 1, 500);
-      const c = (
-        await tx.query("SELECT * FROM owner.customers WHERE id=$1 FOR UPDATE", [
-          uid,
-        ])
-      ).rows[0];
-      if (!c) fail(404, "EntityNotFound", "Customer not found.");
-      const name =
-        input.displayName === undefined
-          ? c.display_name
-          : text(input.displayName, "displayName", 1, 200);
-      const state =
-        input.status === undefined ? c.status : status(input.status);
-      const reference =
-        input.contractReference === undefined
-          ? c.contract_reference
-          : input.contractReference === ""
-            ? ""
-            : text(input.contractReference, "contractReference", 1, 200);
-      const updated = (
-        await tx.query(
-          "UPDATE owner.customers SET display_name=$1,status=$2,contract_reference=$3,updated_by=$4,updated_at=clock_timestamp() WHERE id=$5 RETURNING *",
-          [name, state, reference, a.user.id, uid],
-        )
-      ).rows[0];
-      await audit(tx, {
-        actor: a.user.id,
-        type: "CUSTOMER_UPDATED",
-        targetType: "Customer",
-        targetId: uid,
-        reason,
-        before: {
-          displayName: c.display_name,
-          status: c.status,
-          contractReference: c.contract_reference,
-        },
-        after: {
-          displayName: name,
-          status: state,
-          contractReference: reference,
-        },
-      });
-      res.locals.body = customerResponse(updated, a.user.role);
+      res.locals.body = await updateCustomerService(
+        tx,
+        a.user,
+        req.params.id,
+        req.body,
+      );
     },
   );
   const pathTarget = (value: unknown) =>
@@ -572,9 +669,16 @@ export async function createApp(db: Database, cfg: Config) {
     actor: Principal,
     res: Response,
     targetId: string | null,
+    requiredPermission:
+      "operations.record" | "replacements.authorize" = "operations.record",
   ) => {
-    if (permissions(actor.user.role).includes("operations.record")) return true;
-    await denyOperationMutation(tx, actor.user.id, targetId);
+    if (permissions(actor.user.role).includes(requiredPermission)) return true;
+    await denyOperationMutation(
+      tx,
+      actor.user.id,
+      targetId,
+      requiredPermission,
+    );
     res.locals.status = 403;
     res.locals.body = {
       code: "PermissionDenied",
@@ -643,7 +747,7 @@ export async function createApp(db: Database, cfg: Config) {
     undefined,
     true,
     async (tx, a, req, res) => {
-      if (!(await recorded(tx, a, res, null))) return;
+      if (!(await recorded(tx, a, res, null, "replacements.authorize"))) return;
       res.locals.status = 201;
       res.locals.body = await recordServerReplacement(
         tx,

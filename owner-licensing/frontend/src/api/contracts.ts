@@ -1,9 +1,5 @@
 /** Owner-only wire contract. API integration tests exercise the matching response shapes. */
-export type Role =
-  | 'SYSTEM_ADMIN'
-  | 'LICENSE_ISSUANCE'
-  | 'READ_ONLY_OBSERVER'
-  | 'SUPPORT_SPECIALIST';
+export type Role = 'OWNER_ADMIN' | 'LICENSE_OPERATOR';
 export interface AuthenticatedUser {
   id: string;
   username: string;
@@ -29,7 +25,7 @@ export interface Paginated<T> {
   pageSize: number;
   total?: number;
 }
-/** The only customer fields available to Support, on both list and detail. */
+/** Base customer identity and lifecycle status fields. */
 export interface CustomerIdentity {
   id: string;
   customerCode: string;
