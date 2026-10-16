@@ -39,6 +39,8 @@ describe('unlicensed installation', () => {
       provider: 'persistent',
       active: false,
       inactiveReason: 'unlicensed',
+      graceEndsAt: null,
+      accessMode: 'BLOCKED',
     });
   });
 

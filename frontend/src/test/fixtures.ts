@@ -139,6 +139,8 @@ export const testActiveLicenseState: LicenseState = {
 /** An installation that has never activated a license (L-02). */
 export const testUnlicensedLicenseState: LicenseState = {
   ...testActiveLicenseState,
+  accessMode: 'BLOCKED',
+  graceEndsAt: null,
   licensed: false,
   status: 'UNLICENSED',
   active: false,

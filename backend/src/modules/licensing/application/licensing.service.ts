@@ -258,17 +258,9 @@ export class LicensingService {
 
   private async requireActive(): Promise<EvaluatedLicense> {
     const license = await this.current();
-    // Grace preserves normal operation (OQ-45); Read-Only/Blocked refuse.
+    // Grace preserves normal operation (OQ-45); Read-Only/Blocked refuse
+    // with the pre-existing allocation error semantics.
     if (license.accessMode !== 'ACTIVE' && license.accessMode !== 'GRACE') {
-      if (license.accessMode === 'READ_ONLY') {
-        throw AppException.forbidden(
-          'The installation license is in read-only mode after the grace period. Renew the license to make changes.',
-          {
-            reason: 'license_read_only',
-            graceEndsAt: license.graceEndsAt?.toISOString() ?? null,
-          },
-        );
-      }
       throw AppException.businessRule(
         'An active installation license is required for this capability.',
       );
