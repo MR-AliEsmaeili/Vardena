@@ -2822,3 +2822,41 @@ test, and no decision.**
   (activation-validity start on the signed artifact) stays blocked by OQ-88, and
   **L-18.8** (PDR-18 §4 termination/cancellation) stays blocked by OQ-78. No
   Product Owner acceptance is claimed and nothing here authorizes a merge.
+
+### 51. PDR-18 §4.1 / OQ-45 — backend Grace/Read-Only enforcement audit (2026-10-17)
+
+Under the rule "if OQ-45 is already implemented, do not rebuild it from zero;
+fix proven defects or move to the next authorized gap", the merged
+implementation (PR #167 `c715a64…`, PR #168) was audited **read-only** at `main`
+`7fa9ff3ba460eb023b657db216c6a6488cc2af87`. Recorded in
+[`docs/tasks/pdr-18-grace-readonly-enforcement-audit.md`](docs/tasks/pdr-18-grace-readonly-enforcement-audit.md);
+evidence-matrix row **L-18.10**.
+
+- **Result: no proven defect found. Nothing was changed, fixed or weakened.**
+  The audit is evidence, not a patch.
+- **Seven confirmations, each with file/line evidence:** Grace is 14×24 h of
+  UTC millisecond arithmetic from the signed expiry instant and never mutates
+  `validUntil`; Read-Only starts *at or after* the boundary (`at >= graceEndsAt`)
+  as PDR-18 §4.1 requires; only natural expiry earns Grace, so cancellation and
+  revocation do not silently inherit it (the §4.2 outcome) even though §4's
+  instrument remains blocked by OQ-78; HTTP is enforced in the backend through
+  `AuthorizationGuard` → `hasAllPermissions` → `filterLicensedPermissions`, not
+  only in the UI; Read-Only keeps `View`/`Export` of entitled modules and
+  `BLOCKED` keeps only platform permissions, so an unlicensed installation can
+  still be licensed; the service-authority escalation re-reads the initiating
+  permission through the same filter, so it is not a licensing bypass; and there
+  is no cache on the decision path, so a deadline and a restoration both take
+  effect on the next check.
+- **One genuine gap, documented and deliberately not patched:** the
+  system/worker-context guard in `requireAllPermissions` keys **only** on
+  `READ_ONLY`, so a background path may still mutate while the license is
+  `SUSPENDED` (`BLOCKED`). Keeping that open is *necessary* for `UNLICENSED`
+  bootstrap (requiring a license to create the only account that can install one
+  is a deadlock), and closing it only for `SUSPENDED` would invent the cause
+  attribution **OQ-78** has not decided — with OQ-79 additionally forbidding a
+  blanket mapping of legacy `SUSPENDED`. **Current exposure is nil:** the worker
+  process performs no jobs today (it verifies database connectivity and idles),
+  so nothing reaches the gap; the gate is in place for whichever job first
+  mutates business state.
+- **Blocked / next:** the gap must be revisited by whichever slice implements
+  PDR-18 §4, after OQ-78 is answered. No Product Owner acceptance is claimed.
