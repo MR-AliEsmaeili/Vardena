@@ -112,7 +112,7 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 > only on that same authorized recovery operation, after the §8.6 comparison
 > against the deterministically selected latest lapsed coverage version. This
 > is a narrow C10 decision; OQ-87 stays open under the registry convention,
-> C11 remains open, and no OQ is closed.
+> C11 product policy is decided by PDR-18 (no special backdated/internal-gap path); implementation compatibility remains open. No OQ is closed by OD-LIC-05.
 >
 > **Registry-only licensing rows (2026-10-11).** `OQ-74`…`OQ-85` are licensing
 > product/security questions registered in the central registry
