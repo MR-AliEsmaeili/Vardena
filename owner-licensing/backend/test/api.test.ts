@@ -2839,14 +2839,14 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       await tx.query("DROP SCHEMA owner_audit_archive CASCADE");
       // Simulate PostgreSQL backup restore that lost the 3 fixture source events from owner.audit_events
       await tx.query(
-        "ALTER TABLE owner.audit_events DISABLE TRIGGER retain_audit_events",
+        "ALTER TABLE owner.audit_events DISABLE TRIGGER retain_audit",
       );
       await tx.query(
         "DELETE FROM owner.audit_events WHERE id = ANY($1::char(26)[])",
         [[youngerEventId, exactBoundaryEventId, pastFloorIncidentId]],
       );
       await tx.query(
-        "ALTER TABLE owner.audit_events ENABLE TRIGGER retain_audit_events",
+        "ALTER TABLE owner.audit_events ENABLE TRIGGER retain_audit",
       );
       await tx.query(migration004Sql);
     });
