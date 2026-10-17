@@ -98,3 +98,20 @@ or validated by this record.
 
 These source references support the gap classifications only. No runtime,
 unit, integration, database, E2E or CI tests were run for this documentation PR.
+
+
+## Product Owner decision reconciliation — 2026-10-17
+
+The approved decisions in [PDR-18](../decisions/product/PDR-18-licensing-contract-and-activation-policy.md) supersede conflicting earlier text as follows:
+
+| Topic | Product policy decision | Remaining engineering/evidence work |
+|---|---|---|
+| Contract vs activation dates | Separate commercial contract start/end from activation validity start/end. Start is auto-filled from issuance date and cannot be edited; past/future starts prohibited; issuer chooses end. | Distinct persisted fields, API contract, UI labels and date-boundary tests; conflict-safe issue-today successor behavior must be designed. |
+| C11/backdated internal gap | No special gap-fill/backdated activation path for MVP. C10 OD-LIC-05 remains accepted. | Reconcile issue-today rule with existing version precedence, renewal-gap and supersession mechanics without bypassing conflict guards. |
+| OQ-77/WORM | WORM is not an MVP requirement. Approved append-only audit, three-year minimum retention, separate durable archive and unresolved-incident hold remain. | Customer-side archive, incident resolution, deployment/recovery evidence and Owner acceptance remain separate. |
+| OQ-45 termination | Contract termination follows 14×24h UTC Grace then Read-Only. Cancellation/revocation/emergency revocation make license inactive without automatic expiry Grace; audit reasons remain distinct. | Lifecycle state enforcement, APIs, session restrictions, restoration and exact boundary verification. |
+| OQ-81 replay | Return original operation result and current license state separately; mark replay; do not reapply operation. | DTO, durable receipt/retrieval, security interaction and tests. |
+| OQ-82 server replacement | Limited one-time Owner authorization; new server may activate before old is manually decommissioned; record customer/representative approval details; no remote shutdown claim. | Installation-binding-safe technical design, pending/failure recovery and audit/API implementation. |
+| OQ-83 client devices | Customer Vardena System Administrator may deactivate client from dashboard and atomically transfer quota; active-device limit remains enforced. | Reconcile current code/UI, atomic operation and concurrency evidence. |
+
+This addendum records product decisions, not implementation completion. Keep OQ rows open where their established convention requires implementation, evidence, or acceptance. No runtime tests were run as part of this documentation update.
