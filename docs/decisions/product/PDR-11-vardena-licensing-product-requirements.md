@@ -1203,7 +1203,7 @@ except for explicit conflicts below.
 
 | Topic | Product decision status | Remaining product/API question | Specification / evidence gap | MVP implementation status from inspected repository |
 |---|---|---|---|---|
-| OQ-45 | Natural subscription expiry boundary decided | Contract termination; cancellation outcome beyond no automatic Grace | UTC enforcement/restoration acceptance | Not implemented; exact target and code evidence in matrix |
+| OQ-45 | Natural subscription expiry and contract-termination Grace → Read-Only policy decided by PDR-18 | Cancellation/revocation operational outcome is inactive; audit reasons remain distinct | UTC enforcement/restoration acceptance | Implementation/evidence remains open; see matrix |
 | OQ-74 | No automatic invalidation of already-issued licenses | None without a new explicit trade-off | Key custody, compromise/rotation trust transition, key-compromise/replay interaction | No production rotation/custody mechanism established |
 | OQ-75 | Two roles decided | None for role count/purpose | Permission mapping, authentication and review | Existing four-role implementation/docs mismatch; no runtime change here |
 | OQ-76 | Evidence-based rollback restriction/recovery | No threshold decided | Trusted-time evidence, controlled attributable audited unlock, and secure recovery criteria | Detector/watermark not implemented |
