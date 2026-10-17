@@ -591,6 +591,7 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
       "002-manual-operations.sql",
       "003-two-role-authorization.sql",
       "004-audit-retention-archive.sql",
+      "005-contract-and-activation-dates.sql",
     ]);
     await expect(
       db.pool.query("UPDATE owner.users SET role='SYSTEM_ADMIN' WHERE id=$1", [
@@ -1134,6 +1135,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       "002-manual-operations.sql",
       "003-two-role-authorization.sql",
       "004-audit-retention-archive.sql",
+      "005-contract-and-activation-dates.sql",
     ]);
     await db.pool.query("TRUNCATE owner.login_limits");
     for (let n = 0; n < 10; n++)
@@ -1732,8 +1734,10 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       tx.query(
         `INSERT INTO owner.operational_records(
           id, customer_id, kind, observed_status, observation_category,
-          installation_reference, emergency_old_server_lost, created_by, updated_by)
-        VALUES ($1,$2,'LICENSE','ISSUED','EXTERNAL_ISSUANCE_OBSERVED',$3,false,$4,$4)`,
+          installation_reference, activation_valid_from,
+          emergency_old_server_lost, created_by, updated_by)
+        VALUES ($1,$2,'LICENSE','ISSUED','EXTERNAL_ISSUANCE_OBSERVED',$3,
+          '2026-01-01'::date, false,$4,$4)`,
         [id, customerId, reference, adminId],
       );
     const activate = (tx: PoolClient, id: string) =>

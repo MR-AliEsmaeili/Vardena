@@ -41,7 +41,17 @@ ALTER TABLE owner.operational_records
       activation_valid_from IS NULL
       AND activation_valid_until IS NULL
     )
-  );
+  ),
+  -- PDR-18 §1.2: the activation-validity start is mandatory for a license
+  -- record. It is added NOT VALID on purpose: a row recorded before this
+  -- migration may legitimately carry no recorded start, and this migration
+  -- must not fail a populated upgrade. The constraint is enforced for every
+  -- insert and update from this point on, and a deployment owner may
+  -- `ALTER TABLE owner.operational_records VALIDATE CONSTRAINT
+  -- activation_valid_from_required` after reviewing the backfill below.
+  ADD CONSTRAINT activation_valid_from_required CHECK (
+    kind <> 'LICENSE' OR activation_valid_from IS NOT NULL
+  ) NOT VALID;
 
 -- Backward-compatibility backfill for rows recorded before this migration.
 -- The issuance-observation instant (`created_at`) is the only authoritative
@@ -49,14 +59,12 @@ ALTER TABLE owner.operational_records
 -- activation-validity start. No end date is invented: a pre-existing row keeps
 -- `activation_valid_until = NULL` (no recorded end) rather than a guessed one.
 -- New rows never rely on this branch; the API asserts the start explicitly.
+--
+-- This statement is deliberately LAST: an UPDATE followed by an ALTER TABLE on
+-- the same table inside one transaction fails with SQLSTATE 55006 ("cannot
+-- ALTER TABLE ... because it has pending trigger events"), and the migration
+-- chain is applied in a single transaction.
 UPDATE owner.operational_records
   SET activation_valid_from = (created_at AT TIME ZONE 'UTC')::date
 WHERE kind = 'LICENSE'
   AND activation_valid_from IS NULL;
-
--- The start is mandatory for a license record (PDR-18 §1.2). Applied after the
--- backfill so a populated table cannot fail the validation.
-ALTER TABLE owner.operational_records
-  ADD CONSTRAINT activation_valid_from_required CHECK (
-    kind <> 'LICENSE' OR activation_valid_from IS NOT NULL
-  );
