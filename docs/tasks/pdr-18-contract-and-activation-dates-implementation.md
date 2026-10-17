@@ -253,71 +253,48 @@ Actions on the exact PR head; their results are recorded in §6.
 
 ## 6. CI evidence
 
-**Verified head SHA: `6642a3e82d72ebb914a431819eb9cae0e502d9d9`** (the current
-head of the pull request at the time of writing).
-
+**Verified implementation head: `b7adb8124f0ad6f634b750e35668a866c8c50b95`.**
 GitHub Actions run
-[`39054572495`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495)
-— `pull_request`, `completed / success`, and its head SHA equals the PR head
-above, so this run tested exactly this change set.
+[`39060731535`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39060731535)
+— `pull_request`, `completed / success`, `head_sha` equal to the SHA above, so
+this run tested exactly this change set.
 
-| Job                    | Conclusion                           | Job link                                                                                                |
-| ---------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `classify`             | success                              | [job 117459811238](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495/job/117459811238) |
-| `backend`              | success (5m40s)                      | [job 117459846264](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495/job/117459846264) |
-| `frontend`             | success (2m25s)                      | [job 117459846257](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495/job/117459846257) |
-| `docs`                 | success                              | [job 117459846319](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495/job/117459846319) |
-| `generated-api-client` | skipped (not applicable — see below) | [job 117459848168](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495/job/117459848168) |
-| `ci-gate`              | success                              | [job 117461042742](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495/job/117461042742) |
+| Job                    | Conclusion               | Job link                                                                                                |
+| ---------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `classify`             | success                  | [job 117477968002](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39060731535/job/117477968002) |
+| `backend`              | success (5m35s)          | [job 117478018547](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39060731535/job/117478018547) |
+| `frontend`             | success (2m35s)          | [job 117478018601](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39060731535/job/117478018601) |
+| `docs`                 | success                  | [job 117478018619](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39060731535/job/117478018619) |
+| `generated-api-client` | skipped (not applicable) | [job 117478019397](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39060731535/job/117478019397) |
+| `ci-gate`              | success                  | [job 117479225769](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39060731535/job/117479225769) |
 
-The `backend` job is the one that carries the heavy verification that is never
-run locally: Prisma validate/generate, lint, typecheck, format check, unit
-tests, build, the **Owner API static and unit checks**, the **Owner fresh
-migrations and PostgreSQL API/security regressions** (`test/api.test.ts` against
-a real disposable PostgreSQL database — this is where the new contract-date and
-activation-validity API tests ran), the customer production-image/Owner
-isolation checks, licensing-vector determinism, production-artifact and secret
-hygiene, `prisma:deploy` on the test database, system-administrator bootstrap,
-both non-UTC-timezone live BusinessDate suites, three migration rehearsals and
-the full E2E set including the serial live-DB licensing suites. The `frontend`
-job runs the **Owner UI verification** (lint, format, typecheck, tests, build)
-and the independent Owner UI image.
+Steps inside the green `backend` job that matter for this record:
 
-`generated-api-client` was marked not applicable by the classifier and therefore
-skipped. That is legitimate and not a narrowed gate: no backend DTO, OpenAPI
-document or generated client was touched by this change, and `ci-gate` — which
-fails closed when a job the classifier marked applicable did not succeed —
-reports success.
+- **Owner API static and unit checks** — the corrected domain and unit suites.
+- **Owner fresh migrations and PostgreSQL API/security regressions** — the
+  migration-005 case and the corrected API semantics against a real disposable
+  PostgreSQL database.
+- **Regenerate licensing vectors (determinism check)** — success, which is the
+  direct evidence that the **customer-side signed-license vectors, including the
+  future-dated `validFrom` cases, are unchanged and still pass**.
+- **Three migration rehearsals** (populated pre-Task-11 data, Inventory
+  BusinessDate validity windows, Licensing populated chain through OQ-83) — all
+  success, so the corrected forward migration is safe for populated data.
+- **E2E tests (incl. live-DB suites)**, the **Licensing persistence live
+  PostgreSQL suite** and the **OQ-83 client-device live PostgreSQL suite** — all
+  success, so no customer runtime behaviour changed.
+- Customer production-image/Owner-isolation, production-artifact and secret
+  hygiene, `prisma:deploy`, system-admin bootstrap, and both non-UTC-timezone
+  live BusinessDate suites — all success.
 
-An earlier run,
-[`39053752059`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39053752059),
-tested the previous head `668e034` and **failed** in the `backend` job. Its three
-findings were genuine defects in this change and were fixed in `6642a3e` (see
-§6.1). No earlier or partial run is offered as evidence for the final head.
+`generated-api-client` was marked not applicable by the classifier and skipped.
+That is legitimate and not a narrowed gate: no backend DTO, OpenAPI document or
+generated client was touched, and `ci-gate` — which fails closed when a job the
+classifier marked applicable did not succeed — reports success.
 
-### 6.1 Corrections made during this PR
-
-**Run `39053752059` (head `668e034`) failed** with three genuine defects, all
-fixed in `6642a3e`:
-
-1. **SQLSTATE 55006 in the migration chain.** Migration 005 ran
-   `UPDATE owner.operational_records` and then `ALTER TABLE
-owner.operational_records` inside the same transaction. The Owner migrator
-   applies the whole chain in one transaction, and the legacy role-remediation
-   flow calls it with rows already present, so the UPDATE queued after-row
-   referential-integrity trigger events and the following ALTER was rejected.
-2. **A direct-SQL history fixture inserted a `LICENSE` row with no start**, which
-   the then-current constraint refused.
-3. **Two migration-ledger assertions still expected 001..004.**
-
-**Semantic correction (later, in the same PR).** The `activation_valid_from` /
-`activationValidFrom` naming was found to overclaim what the Owner application
-knows (PDR-17: cryptographic issuance and verification are not implemented).
-This removed the stored start column and the backfill outright, renamed the end
-to `observed_validity_end`, renamed the API and UI fields to `recordedOn` /
-`observedValidityEnd`, and rewrote the Persian labels. Because the corrected
-migration contains no `UPDATE`, the SQLSTATE 55006 hazard of defect 1 is
-structurally gone rather than merely ordered around.
+> The commit that carries this paragraph is **documentation-only**; its own
+> PR-head run is reported in the pull-request description and comments rather
+> than here, so no run is ever claimed for a SHA it did not test.
 
 ## 7. Status
 
