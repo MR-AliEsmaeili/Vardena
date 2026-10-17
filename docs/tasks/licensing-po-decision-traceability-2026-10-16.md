@@ -102,7 +102,7 @@ unit, integration, database, E2E or CI tests were run for this documentation PR.
 
 ## Product Owner decision reconciliation — 2026-10-17
 
-The approved decisions in [PDR-18](../decisions/product/PDR-18-licensing-contract-and-activation-policy.md) supersede conflicting earlier text as follows:
+The approved decisions in [PDR-18](../decisions/product/PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) supersede conflicting earlier text as follows:
 
 | Topic | Product policy decision | Remaining engineering/evidence work |
 |---|---|---|
