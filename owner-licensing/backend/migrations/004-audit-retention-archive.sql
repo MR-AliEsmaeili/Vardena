@@ -57,6 +57,7 @@ RETURNS TRIGGER AS $$
 DECLARE
   v_inherent BOOLEAN;
 BEGIN
+  NEW.occurred_at := date_trunc('milliseconds', COALESCE(NEW.occurred_at, clock_timestamp()));
   v_inherent := owner.is_security_incident_event(NEW.event_type, NEW.outcome);
   IF v_inherent AND NEW.security_incident IS FALSE THEN
     RAISE EXCEPTION 'Inconsistent incident metadata: security denial or failure event (%) must have security_incident = true', NEW.event_type
@@ -263,8 +264,8 @@ BEGIN
      OR v_src.event_type <> NEW.event_type
      OR v_src.target_type <> NEW.target_type
      OR v_src.target_id IS DISTINCT FROM NEW.target_id
-     OR v_src.occurred_at <> NEW.occurred_at
-     OR v_src.minimum_retained_until <> NEW.minimum_retained_until
+     OR ABS(EXTRACT(EPOCH FROM (v_src.occurred_at - NEW.occurred_at))) > 0.001
+     OR ABS(EXTRACT(EPOCH FROM (v_src.minimum_retained_until - NEW.minimum_retained_until))) > 0.001
      OR v_src.outcome <> NEW.outcome
      OR v_src_incident <> NEW.security_incident
      OR v_src_status <> NEW.incident_status
