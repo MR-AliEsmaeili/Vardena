@@ -174,3 +174,15 @@ OQ-83's policy is decided, but the row remains open for implementation review
 and exact evidence. Existing customer self-service/signed-response code, if
 present, is not evidence that the new manual Owner Admin policy is implemented;
 reconcile it in an authorized implementation change.
+
+
+## 7. Product Owner decision — customer-side client deactivation (2026-10-17)
+
+This later decision in [PDR-18](PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) supersedes the conflicting Owner-Admin-managed client replacement policy in §6 only for **ordinary client-device deactivation and quota transfer**:
+
+1. The customer's Vardena System Administrator can manually deactivate an active client device from the customer dashboard when the device has failed, is unavailable, or is no longer needed.
+2. Its quota slot can be transferred to another client by one atomic operation. The active-device limit remains enforced under concurrency, and no partial transfer may strand quota or exceed the signed limit.
+3. Keep attributable history of the deactivation and transfer. No elaborate evidence protocol is required by this decision.
+4. This applies to client devices only; Owner-authorized server installation replacement remains separate under PDR-17/PDR-18.
+
+The product policy is decided. API/UI implementation, concurrency verification, and reconciliation of existing signed request/response flows remain engineering work. OQ-83 must retain its implementation/evidence status until those checks are complete.

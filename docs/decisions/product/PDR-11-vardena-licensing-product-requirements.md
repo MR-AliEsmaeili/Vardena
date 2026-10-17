@@ -1203,7 +1203,7 @@ except for explicit conflicts below.
 
 | Topic | Product decision status | Remaining product/API question | Specification / evidence gap | MVP implementation status from inspected repository |
 |---|---|---|---|---|
-| OQ-45 | Natural subscription expiry boundary decided | Contract termination; cancellation outcome beyond no automatic Grace | UTC enforcement/restoration acceptance | Not implemented; exact target and code evidence in matrix |
+| OQ-45 | Natural subscription expiry and contract-termination Grace → Read-Only policy decided by PDR-18 | Cancellation/revocation operational outcome is inactive; audit reasons remain distinct | UTC enforcement/restoration acceptance | Implementation/evidence remains open; see matrix |
 | OQ-74 | No automatic invalidation of already-issued licenses | None without a new explicit trade-off | Key custody, compromise/rotation trust transition, key-compromise/replay interaction | No production rotation/custody mechanism established |
 | OQ-75 | Two roles decided | None for role count/purpose | Permission mapping, authentication and review | Existing four-role implementation/docs mismatch; no runtime change here |
 | OQ-76 | Evidence-based rollback restriction/recovery | No threshold decided | Trusted-time evidence, controlled attributable audited unlock, and secure recovery criteria | Detector/watermark not implemented |
@@ -1219,3 +1219,18 @@ except for explicit conflicts below.
 This matrix distinguishes decided policy from implementation; entries naming a
 code gap are not feature tests. Separate product questions not answered above
 remain open and must not be guessed.
+
+
+## 22. Product Owner decisions — contract and activation policy (2026-10-17)
+
+The later binding policy is recorded in [PDR-18](PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md). It supersedes conflicting earlier text only on the topics it explicitly addresses:
+
+- Commercial contract start/end dates and technical activation validity are independent fields and concepts. On issuance, activation `validFrom` is populated from the current issuance date and cannot be edited; past- or future-start activation is forbidden. The issuer selects `validUntil` independently. Owner UI/API must show both date pairs distinctly.
+- A special C11/internal-gap/backdated-gap-fill path is not required for MVP. The accepted C10/OD-LIC-05/ADR-0050 reduction guard remains in force. Engineering must specify compatibility with existing version conflict/renewal rules before changing import behavior.
+- WORM is not an MVP requirement. Previously approved append-only audit, minimum three-year retention, permanent separate archive, unresolved-security-incident hold, access/minimization, verification and recovery policy remain.
+- Contract termination follows natural expiry: 14×24 hours UTC Grace, then Read-Only. Intentional subscription cancellation, license cancellation/revocation and emergency revocation share the operational outcome of an inactive license and do not automatically receive expiry Grace; audit reasons remain distinct.
+- Successful API replay returns the original operation result separately from current license state, marks replay explicitly and does not reapply the operation.
+- Server replacement may activate the new server before manual decommission of the old server under a limited one-time Owner authorization; record customer/authorized-representative approval and its details. No remote shutdown is claimed. Engineering must propose a binding-safe, failure-recoverable protocol.
+- Customer Vardena System Administrators may manually deactivate client devices and atomically transfer quota; active-device limits and history remain enforced.
+
+**Status discipline:** these are approved product policies, not claims that implementation, tests, CI, or operational readiness are complete. See PDR-18 and the registry/traceability records for follow-up.

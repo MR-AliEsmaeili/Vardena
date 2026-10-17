@@ -178,7 +178,7 @@ cleanup authority or incident-resolution semantics:
   compromised OS root or PostgreSQL superuser. `OWNER_AUDIT_ARCHIVE_DIR` must be
   mounted on a dedicated durable volume outside the PostgreSQL data directory
   (a different path alone does not guarantee physical storage independence,
-  hardware WORM, or protection against a compromised OS `root`, and provisioning
+  WORM (not required for MVP by PDR-18), or protection against a compromised OS `root`, and provisioning
   the dedicated volume mount and external backup/restore procedure remains an
   unresolved operational requirement in target deployments). Customer-side
   `licensing.license_audit_events` archiving, incident-resolution lifecycle, and
@@ -189,7 +189,7 @@ cleanup authority or incident-resolution semantics:
 PDR-11 §§9–10, 12 and 20 record 14-day Grace → Read-Only after natural
 subscription expiry only; intentional subscription cancellation gets no automatic
 Grace. License cancellation, replacement, reissuance and contract termination
-remain distinct events; contract-termination strictness remains open. The records
+remain distinct events; contract-termination policy was decided in PDR-18 on 2026-10-17. Implementation/evidence remains open. The records
 also cover immediate validated emergency restriction with explicit reason,
 independent authenticated customer-administrator recovery, signed applicable
 restoration, and rollback-only unlock only through controlled, attributable,
@@ -323,3 +323,14 @@ activates, then perform an atomic quota-neutral one-for-one swap. It is separate
 from server replacement and ordinary activation receipts. Existing implementation
 must be assessed against this superseding policy; this documentation change does
 not alter runtime behavior.
+
+
+## Product Owner decision update — activation dates and server replacement (2026-10-17)
+
+See [PDR-18](PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) for the complete binding policy.
+
+- Owner-side commercial contract dates must be stored and displayed separately from activation validity dates. On issue, activation start is populated from the current issuance date and is not editable; past and future starts are prohibited. The issuer sets the end date independently.
+- Server replacement uses a limited one-time Owner authorization and may activate the new server before the old server is manually decommissioned. Owner Admin records customer/authorized representative approval with approver name, time, reason, and evidence reference. Do not claim remote shutdown or remote control.
+- Engineering must propose a design that preserves license-to-Installation binding and handles activation failure, retries, pending/finalization consistency, and recovery before implementation. Existing period/timeout and evidence details not superseded by PDR-18 remain subject to the current PDR-17/OQ-82 record and require reconciliation rather than inference.
+
+These are product decisions, not implementation claims. OQ-82 remains open for specification/evidence until the conflict-safe replacement protocol is reviewed.

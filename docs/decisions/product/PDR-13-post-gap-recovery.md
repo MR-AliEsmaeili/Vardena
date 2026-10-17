@@ -284,13 +284,17 @@ candidates.
 
 ### 8.3 Boundaries and status
 
-This addendum addresses C10 only. C11 (measuring interior/backdated gap-fill
-candidates) remains open and unchanged. OQ-87 remains open under the registry's
-existing convention: accepting OD-LIC-05 decides the C10 reduction policy but
-does not close or otherwise change OQ-87 or any other OQ. The final §7
+This addendum addresses C10 only. At the time it was recorded, C11 (measuring interior/backdated gap-fill candidates) remained open and unchanged. The later Product Owner decision in PDR-18 decides that no special C11 path is required for MVP. OQ-87 remains open under the registry's existing convention: accepting OD-LIC-05 decides the C10 reduction policy but does not close OQ-87 or any other OQ. The final §7
 non-authorization bullet is narrowly qualified only for the post-gap reduction
 measured and explicitly resolved on the dedicated recovery route as specified
 here. All other PDR-13 §7 non-goals, OQ-79/OQ-82/OQ-83/OQ-84/OQ-77 boundaries,
 and the distinct OD-LIC-02 decision remain unchanged. Implementation and
 exact-head CI delivery status are tracked separately; this acceptance is not a
-merge authorization. PR #171 remains open and unmerged for Product Owner review.
+merge authorization. PR #171 was subsequently merged on 2026-10-17 at `53a9d4e31855e71e02360d7f2e8a746a5b28b7b3`; this historical paragraph does not claim that the merge-commit CI was verified.
+
+
+## 9. Product Owner decision — C11 and activation dates (2026-10-17)
+
+Per [PDR-18](PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md), MVP does not introduce a special C11/interior-gap/backdated-gap-fill operation. A newly issued activation license must start on its issuance date; past and future start dates are prohibited, and contract dates are independent. C10 and OD-LIC-05 Option 1 in ADR-0050 remain in force. Engineering must reconcile this issue-today rule with existing renewal-gap/supersession conflict semantics before changing implementation; this addendum does not bypass those guards.
+
+The C11 product policy is decided (no special path), but OQ-87 and other OQs remain open under their existing registry conventions for implementation, evidence, or separate unresolved lifecycle questions. This section makes no implementation or CI claim.

@@ -52,7 +52,7 @@ The Product Owner explicitly approved OD-LIC-05 Option 1 on 2026-10-17. This
 accepted decision selects the combined-operation option in the 2026-10-16
 licensing brief §4 and rejects terminal refusal of every reducing recovery. It
 does not close OQ-87 or any other OQ; OQ-87 remains open under the registry's
-convention and C11 remains open.
+convention and C11's product policy is decided by PDR-18 (no special path); implementation compatibility remains engineering work.
 
 ## Consequences
 
@@ -67,4 +67,4 @@ convention and C11 remains open.
   messages, generated OpenAPI client, and domain/service/HTTP/live-PostgreSQL
   contract tests evolve together.
 - OD-LIC-05 is accepted, but OQ-87 remains open under the registry convention;
-  C11 remains open and no OQ is closed or changed by this decision.
+  C11's product policy is decided by PDR-18 (no special path); no OQ status is changed by ADR-0050.
