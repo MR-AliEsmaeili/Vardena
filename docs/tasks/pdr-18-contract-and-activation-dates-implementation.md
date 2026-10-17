@@ -167,8 +167,66 @@ Actions on the exact PR head; their results are recorded in §6.
 
 ## 6. CI evidence
 
-See the pull request description; this section is completed after the final-head
-run. (Filled in by the follow-up commit on the same PR.)
+**Verified head SHA: `6642a3e82d72ebb914a431819eb9cae0e502d9d9`** (the current
+head of the pull request at the time of writing).
+
+GitHub Actions run
+[`39054572495`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495)
+— `pull_request`, `completed / success`, and its head SHA equals the PR head
+above, so this run tested exactly this change set.
+
+| Job | Conclusion | Job link |
+|---|---|---|
+| `classify` | success | [job 117459811238](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495/job/117459811238) |
+| `backend` | success (5m40s) | [job 117459846264](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495/job/117459846264) |
+| `frontend` | success (2m25s) | [job 117459846257](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495/job/117459846257) |
+| `docs` | success | [job 117459846319](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495/job/117459846319) |
+| `generated-api-client` | skipped (not applicable — see below) | [job 117459848168](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495/job/117459848168) |
+| `ci-gate` | success | [job 117461042742](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495/job/117461042742) |
+
+The `backend` job is the one that carries the heavy verification that is never
+run locally: Prisma validate/generate, lint, typecheck, format check, unit
+tests, build, the **Owner API static and unit checks**, the **Owner fresh
+migrations and PostgreSQL API/security regressions** (`test/api.test.ts` against
+a real disposable PostgreSQL database — this is where the new contract-date and
+activation-validity API tests ran), the customer production-image/Owner
+isolation checks, licensing-vector determinism, production-artifact and secret
+hygiene, `prisma:deploy` on the test database, system-administrator bootstrap,
+both non-UTC-timezone live BusinessDate suites, three migration rehearsals and
+the full E2E set including the serial live-DB licensing suites. The `frontend`
+job runs the **Owner UI verification** (lint, format, typecheck, tests, build)
+and the independent Owner UI image.
+
+`generated-api-client` was marked not applicable by the classifier and therefore
+skipped. That is legitimate and not a narrowed gate: no backend DTO, OpenAPI
+document or generated client was touched by this change, and `ci-gate` — which
+fails closed when a job the classifier marked applicable did not succeed —
+reports success.
+
+An earlier run,
+[`39053752059`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39053752059),
+tested the previous head `668e034` and **failed** in the `backend` job. Its three
+findings were genuine defects in this change and were fixed in `6642a3e` (see
+§6.1). No earlier or partial run is offered as evidence for the final head.
+
+### 6.1 Corrections made after the failing run `39053752059`
+
+1. **SQLSTATE 55006 in the migration chain.** Migration 005 ran
+   `UPDATE owner.operational_records` and then `ALTER TABLE
+   owner.operational_records` inside the same transaction. The Owner migrator
+   applies the whole chain in one transaction, and the legacy role-remediation
+   flow calls it in a transaction that already contains rows, so the UPDATE
+   queued after-row referential-integrity trigger events and the following ALTER
+   was rejected with "cannot ALTER TABLE ... because it has pending trigger
+   events". Fixed by making the backfill the **last** statement of 005 and by
+   adding `activation_valid_from_required` as `NOT VALID` before it: a populated
+   upgrade cannot fail, and the constraint is still enforced for every insert
+   and update from that point on.
+2. **A direct-SQL history fixture inserted a `LICENSE` row with no
+   activation-validity start**, which the new constraint refuses. The fixture
+   now supplies one.
+3. **Two migration-ledger assertions still expected 001..004**; they now expect
+   005 as well.
 
 ## 7. Status
 

@@ -2756,10 +2756,24 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   `scripts/check-date-contract.py` (PASS). No heavy suite, PostgreSQL
   integration suite, migration rehearsal, E2E, Docker build or full
   backend/frontend build was run locally, per instruction.
-- **CI evidence and handoff:** the applicable GitHub Actions jobs run on the
-  exact final PR head; the run id, job conclusions and verified head SHA are
-  recorded in the PR description and in
+- **CI evidence and handoff:** GitHub Actions run
+  [`39054572495`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39054572495)
+  (`pull_request`, `completed / success`) tested the exact PR head
+  **`6642a3e82d72ebb914a431819eb9cae0e502d9d9`**: `classify`, `backend` (5m40s,
+  including the Owner fresh-migration and PostgreSQL API/security regression
+  suite, both non-UTC-timezone live suites, three migration rehearsals and the
+  full E2E set), `frontend` (2m25s, including the Owner UI verification), `docs`
+  and `ci-gate` all **succeeded**; `generated-api-client` was marked not
+  applicable by the classifier and skipped, and `ci-gate` (which fails closed)
+  confirms that skip is legitimate. The earlier run
+  [`39053752059`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39053752059)
+  tested the previous head `668e034` and **failed** in the `backend` job with
+  three genuine defects (SQLSTATE 55006 from an `UPDATE` followed by `ALTER
+  TABLE` on `owner.operational_records` inside the single migration transaction;
+  a direct-SQL `LICENSE` fixture without an activation-validity start; and two
+  migration-ledger assertions that still expected 001..004), all corrected in
+  `6642a3e`. Job-by-job evidence, and the note that no earlier or partial run is
+  offered as final-head evidence, are in
   [`docs/tasks/pdr-18-contract-and-activation-dates-implementation.md`](docs/tasks/pdr-18-contract-and-activation-dates-implementation.md)
-  §6. An earlier run or a single green job is never substituted for the
-  final-head result. Product Owner acceptance remains a separate, outstanding
-  status.
+  §6. Product Owner acceptance remains a separate, outstanding status; CI
+  success is not acceptance and does not authorize a merge.
