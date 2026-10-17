@@ -178,7 +178,7 @@ cleanup authority or incident-resolution semantics:
   compromised OS root or PostgreSQL superuser. `OWNER_AUDIT_ARCHIVE_DIR` must be
   mounted on a dedicated durable volume outside the PostgreSQL data directory
   (a different path alone does not guarantee physical storage independence,
-  hardware WORM, or protection against a compromised OS `root`, and provisioning
+  WORM (not required for MVP by PDR-18), or protection against a compromised OS `root`, and provisioning
   the dedicated volume mount and external backup/restore procedure remains an
   unresolved operational requirement in target deployments). Customer-side
   `licensing.license_audit_events` archiving, incident-resolution lifecycle, and
@@ -189,7 +189,7 @@ cleanup authority or incident-resolution semantics:
 PDR-11 §§9–10, 12 and 20 record 14-day Grace → Read-Only after natural
 subscription expiry only; intentional subscription cancellation gets no automatic
 Grace. License cancellation, replacement, reissuance and contract termination
-remain distinct events; contract-termination strictness remains open. The records
+remain distinct events; contract-termination policy was decided in PDR-18 on 2026-10-17. Implementation/evidence remains open. The records
 also cover immediate validated emergency restriction with explicit reason,
 independent authenticated customer-administrator recovery, signed applicable
 restoration, and rollback-only unlock only through controlled, attributable,
