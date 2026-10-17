@@ -30,11 +30,11 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 > open. OQ-74–OQ-85 decisions are recorded with technical/API/implementation
 > gaps kept open; OQ-84 remains product-closed. No new OQ was created and no
 > implementation is claimed. Earlier dated notes remain historical unless
-> superseded by the 2026-10-16 addendum or [PDR-18](./PDR-18-licensing-contract-and-activation-policy.md) (2026-10-17).
+> superseded by the 2026-10-16 addendum or [PDR-18](./PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) (2026-10-17).
 
 ## Records
 
-| [PDR-18](./PDR-18-licensing-contract-and-activation-policy.md) | Licensing contract dates vs activation validity, no WORM MVP requirement, lifecycle/replay/server/client-device decisions (2026-10-17) | PDR | **Decided — Product Owner approved** | Product policy is decided; technical/API/UI implementation and evidence remain separate |
+| [PDR-18](./PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) | Licensing contract dates vs activation validity, no WORM MVP requirement, lifecycle/replay/server/client-device decisions (2026-10-17) | PDR | **Decided — Product Owner approved** | Product policy is decided; technical/API/UI implementation and evidence remain separate |
 
 | ID | Title | Type | Status | Blocks MVP |
 |---|---|---|---|---|
