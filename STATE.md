@@ -2596,3 +2596,71 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   `EBADF`, `ENOTSUP`, or unclassified errors); customer-side
   `licensing.license_audit_events` archiving and Product Owner acceptance remain
   open under `OQ-77`.
+
+## 48. L-07 / C10 — §8.6 guard on post-gap recovery (2026-10-17)
+
+- **Baseline and branch:** implementation started from `origin/main` at
+  `af68fd8eea5e5163d7827fa7b21d4bea85388e32` (PR #169 merge) on the fixed
+  session branch `arena/9619675c-vardena`. Live GitHub check before implementation:
+  PR #170 remains OPEN on head `ff2f4df1cc97b9fd974f0d73e197074727829af3`,
+  clean/mergeable; run `39020357567` succeeded for `classify`, `docs`, `backend`,
+  `frontend`, and `ci-gate`; `generated-api-client` was **SKIPPED**, not passed.
+- **Decision/document status:** PDR-13 §8 records proposed OD-LIC-05 (Option 1)
+  and ADR-0050 is Proposed for Product Owner review. §§1–7 of PDR-13 were not
+  rewritten. The proposal would narrowly supersede §7's recovery-reduction
+  prohibition only for the measured, explicitly resolved combined operation;
+  until acceptance is recorded, §7 remains controlling. OQ-87 remains open;
+  C11 remains separately open; no OQ was closed or otherwise changed.
+- **Domain:** added `lapsedCoverageVersion`, selecting the latest effective end
+  then latest `importedAt` and `versionId`, and returning `null` if any retained
+  effective window is perpetual. `lapsedLicenseContext` delegates to it with
+  the existing receipt behavior preserved (perpetual → `null`). The dedicated
+  post-gap reduction check runs after target validation and before rules 4/5,
+  measures against the latest lapsed grant, and reports structured conflicts.
+  A post-gap recovery with a supersession target is deliberately
+  `recovery-not-applicable`; recovery retires no predecessor. Ordinary import,
+  the separate resolution route, renewal-gap precedence, and non-post-gap
+  behavior remain unchanged.
+- **Application/API/persistence:** `recoverAfterGap` accepts an optional
+  3–500 character `reductionResolutionReason`; that combined request is checked
+  for Activate + RecoverAfterGap + ResolveReduction. The response optionally
+  returns the resolved predecessor and conflicts. Recovery refusal copy is
+  operation-aware at both pre-check and transaction-race boundaries. The
+  repository now independently emits the recovery and reduction-resolution
+  audit receipts/events in the same transaction; no schema or migration change.
+  OpenAPI was dumped and `frontend/src/api/generated/vardena-api.d.ts`
+  regenerated.
+- **Tests added/updated:** replaced the three domain characterisation tests
+  with contract coverage for lapsed-version selection/perpetual-null semantics,
+  reduction refusal/resolution, unused resolution, ordinary/standalone-route
+  refusal, and the supersession-target case. Added service tests for the
+  combined receipt/two events, operation-aware pre-check and race messages,
+  invalid reason, and no supersession stamp; added HTTP e2e coverage for
+  403/400/409/200 and audit; added CI-only live-PostgreSQL transaction/rollback
+  coverage that forces the second event insert to fail and retries the same
+  signed recovery after rollback. OpenAPI contract test asserts request/response
+  schemas.
+- **Local verification and execution policy:** targeted unit/service/contract
+  suite passed (172 tests across 3 files); backend and frontend typechecks,
+  targeted lint/format checks, `git diff --check`, documentation-link check,
+  and date-contract guard passed. Backend `npm run build` passed. A local
+  `prisma:generate` attempt could not fetch `schema-engine` from
+  `binaries.prisma.sh` (outside this sandbox's network allowlist); the workflow's
+  CI generation/contract jobs remain authoritative. No E2E/live-DB/migration/
+  concurrency suite was run locally.
+
+### TEST EXECUTION MATRIX — L-07 / C10
+
+| Tier | Checks | Where | Result |
+|---|---|---|---|
+| FAST-LOCAL | Targeted Vitest: domain, import service, OpenAPI contract (172 tests); backend/frontend typecheck; targeted oxlint/Prettier; docs links/date contract; diff check | Local | **PASS** |
+| CI-HEAVY | `test:e2e`, recovery-resolution HTTP 403/400/409/200, live PostgreSQL atomicity/rollback and concurrency, migration rehearsals/full CI suites | GitHub Actions only | Not run locally; exact PR-head Actions verification to be recorded at handoff |
+| Generated API client | OpenAPI dump → `api:types`; CI drift check required | Local generation + GitHub Actions verification | Regenerated; local Prisma-engine download was blocked; CI verification pending |
+
+"No heavy E2E/live-DB test was executed locally unless explicitly authorized."
+
+- **Current delivery status at this entry:** implementation and documentation
+  are present on the branch; PR creation and exact-head Actions/`ci-gate`
+  verification are the remaining delivery steps. Update this section after the
+  final PR head and checks are known. CI-skipped jobs must be stated explicitly
+  and are not to be reported as passed.

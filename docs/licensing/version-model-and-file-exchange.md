@@ -399,21 +399,33 @@ import ──► retained (not yet effective | effective | expired)
   *which* version it replaces, so it may replace at most one still-governing
   version that has no recorded supersession; anything else is refused rather
   than guessed.
-- **Known gap — the post-gap recovery path is not measured (open decision).**
-  [PDR-13](../decisions/product/PDR-13-post-gap-recovery.md) §4.2 requires the
-  reduction guard to run on the recovery path "exactly as on every other path",
-  and it does not: a recovery candidate starts strictly after the installation's
-  coverage end, while the baseline rule above requires exact adjacency, so no
-  predecessor exists and a reducing recovery is applied. Enabling the guard is
-  not a one-line change, because the dedicated recovery route carries only the
-  recovery intent and the dedicated resolution route carries only the resolution
-  intent — the latter is refused by `post-gap-recovery-requires-dedicated-operation`
-  before any reduction rule runs — so a guard without a resolution-capable
-  recovery operation would make a legitimate reducing recovery permanently
-  inapplicable. The current behaviour is pinned by a labelled characterisation
-  suite in `license-version.spec.ts` as evidence for the pending Product Owner
-  decision recorded in
-  [`docs/tasks/licensing-open-decisions-brief.md`](../tasks/licensing-open-decisions-brief.md) §4.
+- **Post-gap recovery reduction guard (L-07, proposed OD-LIC-05 / ADR-0050).**
+  PDR-13 §4.2 requires the §8.6 guard on recovery; an exact-adjacency
+  continuation baseline can never exist across a lapse. The proposed and
+  implemented C10 contract therefore measures only a genuine post-gap candidate
+  on the dedicated recovery path against `lapsedCoverageVersion`: the retained
+  version with the latest effective end, ties by latest `importedAt` then
+  `versionId`. The helper returns `null` if nothing is retained or any effective
+  window is perpetual; `lapsedLicenseContext` delegates to it and retains the
+  same public semantics (perpetual coverage still produces `null`). This check
+  runs **before overlap/precedence rules 4/5**. A conflicting reduction is
+  refused as `reduction-requires-resolution` with the lapsed version id and
+  concrete conflicts unless `POST /api/v1/license/gap-recovery` carries the
+  optional 3–500 character `reductionResolutionReason`. When supplied, the same
+  operation requires `Licensing.License.Activate`,
+  `Licensing.Installation.RecoverAfterGap` and
+  `Licensing.License.ResolveReduction`, and commits the version plus both typed
+  audit events (`license.import.recovered` and
+  `license.import.reduction-resolved`) in one transaction. The lapsed version
+  is the measured resolution subject and is never superseded or stamped. A
+  post-gap recovery that declares a supersession target is
+  `recovery-not-applicable`; the dedicated recovery message must not point to
+  the separate resolution route, which continues to reject post-gap candidates.
+  Ordinary imports, the separate resolution route, renewal-gap precedence and
+  non-post-gap behavior remain unchanged. No schema/migration change is needed.
+  The product proposal is recorded in PDR-13 §8; **OQ-87 remains open and is not
+  closed by this implementation**. The separate C11 question — measurement of
+  interior/backdated gap fills — remains open and is unchanged.
 - **A supersession may not hand over in the past.** The hand-over is the
   candidate's own `validFrom`, so retiring a version at an instant that is
   already past removes coverage that version really had, and the as-of answer

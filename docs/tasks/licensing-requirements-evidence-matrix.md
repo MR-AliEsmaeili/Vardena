@@ -1,13 +1,15 @@
 # Licensing requirements-to-evidence matrix
 
-**Baseline:** `main` `c715a64cdfcbc866fe65613a0375a118e0024a8b` (PR #167 merge).
-**Branch under review:** `arena/oq45-readonly-completion-vardena` (PR #168), which is
-**not merged**; the matrix therefore describes the code **with** that branch applied.
-**Date:** 2026-10-16 · **Owner:** Ali Esmaeili (product decisions) · **Agent:** implementation.
+**Baseline:** `main` `af68fd8eea5e5163d7827fa7b21d4bea85388e32` (PR #169 merge; PR #168 is merged).
+**Implementation branch:** `arena/9619675c-vardena` (L-07 / C10 implementation under review).
+**Concurrent PR:** #170 remains open on head `ff2f4df1cc97b9fd974f0d73e197074727829af3`; its run `39020357567` is green, with `generated-api-client` skipped. It is not this branch's base and is not included in the matrix baseline.
+**Date:** 2026-10-17 · **Owner:** Ali Esmaeili (product decisions) · **Agent:** implementation.
 
 Status legend: **Implemented** (in code, with tests) · **Partial** (implemented for the
 approved slice, with a named gap) · **Open — decision** (needs a Product Owner decision
-before code may exist) · **Open — implementation** (approved, not written yet).
+before code may exist) · **Open — implementation** (approved, not written yet) ·
+**Implemented for review** (code follows a proposed decision; Owner acceptance and
+exact-head CI remain pending, and no OQ closure is implied).
 
 CI job names below are the ones the workflow actually runs
 (`.github/workflows/ci.yml`): `classify`, `docs`, `backend`, `frontend`,
@@ -53,7 +55,7 @@ CI job names below are the ones the workflow actually runs
 | C7 | One operator resolution authorizes exactly the predecessor and conflicts it was shown | Implemented | rule 6b′ single subject; `resolutionSubject` receipt | `license-version.spec.ts`, `license-import.service.spec.ts` | `backend` |
 | C8 | Same-licenseId and changed-licenseId renewals measured against the same baseline | Implemented (F-8 non-bypass) | `continuationBaselineFor` | `license-version.spec.ts` (F-8 cases) | `backend` |
 | C9 | Post-gap recovery only through the dedicated, authorized, audited operation | Implemented (PDR-13 / OD-LIC-02) | `postGapGuard`, `license-gap-recovery.controller.ts`, `license.import.recovered` event | `license-import.service.spec.ts`, `test/license-recovery-resolution.e2e-spec.ts`, live suite | `backend` |
-| C10 | The §8.6 reduction guard also runs **on the recovery path** | **Open — decision** (PDR-13 §4.2 requires it; no predecessor exists today) | characterisation only | `license-version.spec.ts` "post-gap recovery and the §8.6 reduction guard (characterisation)" (3 cases) | `backend` |
+| C10 | The §8.6 reduction guard also runs **on the recovery path** | Implemented for review under proposed OD-LIC-05 / ADR-0050; Product Owner acceptance pending; OQ-87 remains open | `lapsedCoverageVersion`; same-route optional reduction resolution; dual typed audit events in one transaction | `license-version.spec.ts` contract cases; `license-import.service.spec.ts`; `test/license-recovery-resolution.e2e-spec.ts`; live PostgreSQL atomicity case (CI-only) | `backend` on the exact implementation PR head; pending final CI evidence |
 | C11 | Interior/backdated gap-fill candidates are measured | **Open — decision** | — | — | — |
 | C12 | Signed receipts for ordinary activation | Closed as a product question (OQ-84, 2026-10-15): not required | existing activation audit suffices | live suite audit assertions | `backend` |
 
@@ -162,12 +164,15 @@ CI job names below are the ones the workflow actually runs
 
 ## Summary of what is not done
 
-- **Decision required:** C10/C11 (reduction guard on no-baseline paths, incl. the
-  recovery/resolution capability question), E8 (does Grace permit device operations),
-  F2–F5 (revocation/recovery instrument and semantics), G3–G5 (time-integrity evidence
-  model and unlock), H5 (audit retention), J2 (Owner role matrix/operational acceptance).
-- **Implementation required after the decision:** the above, each with its own migration,
-  API contract, tests and operational documentation.
+- **Decision/acceptance required:** C11 (interior/backdated gap-fill measurement); E8
+  (does Grace permit device operations); F2–F5 (revocation/recovery instrument and
+  semantics); G3–G5 (time-integrity evidence model and unlock); H5 (audit retention);
+  J2 (Owner role matrix/operational acceptance). C10 has an implementation proposal
+  under OD-LIC-05 in the current branch; exact-head CI and Product Owner acceptance
+  remain pending, and OQ-87 is not closed.
+- **Implementation required after the remaining decisions:** the above open items,
+  each with its own contract, tests and operational documentation. C10 has no schema
+  change or migration; do not infer acceptance from implementation or CI.
 - **Open product questions that block nothing implemented here:** OQ-45 contract-termination
   strictness, OQ-86, OQ-79, OQ-77.
 

@@ -11,6 +11,8 @@ import {
   isResolvableReductionConflict,
   isEligibleAt,
   isSupersededAt,
+  lapsedCoverageVersion,
+  lapsedLicenseContext,
   overlappingVersions,
   resolveEffectiveVersion,
   reducesCapacityOrEntitlements,
@@ -2561,27 +2563,12 @@ describe('continuation baseline of a renewal that retires nothing (L-05)', () =>
 });
 
 /**
- * CHARACTERISATION (temporary) — the post-gap recovery path and §8.6.
- *
- * [PDR-13](../../decisions/product/PDR-13-post-gap-recovery.md) §4.2 states that
- * the capacity/entitlement reduction guard "runs on the recovery path exactly
- * as on every other path". It does not: {@link continuationBaselineFor}
- * requires exact adjacency (a retained effective window ending exactly at the
- * candidate's `validFrom`), and a post-gap candidate starts strictly AFTER the
- * installation's coverage end, so no predecessor is measured and the recovery
- * applies with any lower capacity or entitlement set.
- *
- * This suite pins that behaviour as evidence for the pending Product Owner
- * decision, rather than freezing it as the product contract. Enabling the guard
- * requires a way to carry an explicit reduction resolution on the recovery
- * operation: `POST /api/v1/license/gap-recovery` passes only the recovery
- * intent, and the dedicated resolution route passes only the resolution intent,
- * so a post-gap candidate that conflicts is refused by `postGapGuard` on that
- * route — a guard enabled without the combined operation would make a reducing
- * recovery permanently inapplicable. Replace these expectations when the
- * decision is made.
+ * Contract tests for the post-gap recovery reduction guard (L-07, proposed
+ * OD-LIC-05 / ADR-0050). A post-gap start is never adjacent to retained
+ * coverage, so the §8.6 comparison is against the latest lapsed coverage
+ * version, and any resolution is carried by the dedicated recovery operation.
  */
-describe('post-gap recovery and the §8.6 reduction guard (characterisation)', () => {
+describe('post-gap recovery and the §8.6 reduction guard (contract)', () => {
   const LAPSED_END = '2026-06-01T00:00:00.000Z';
 
   function lapsedVersion(): RetainedLicenseVersion {
@@ -2594,12 +2581,15 @@ describe('post-gap recovery and the §8.6 reduction guard (characterisation)', (
     });
   }
 
-  function recoveryCandidate(): RetainedLicenseVersion {
+  function recoveryCandidate(
+    overrides: Partial<RetainedLicenseVersion> = {},
+  ): RetainedLicenseVersion {
     return version({
       ...window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
       licenseId: '01K7NEWLICENSE00000000000',
       organizationLimit: 2,
       entitlements: [],
+      ...overrides,
     });
   }
 
@@ -2609,7 +2599,82 @@ describe('post-gap recovery and the §8.6 reduction guard (characterisation)', (
     registeredDeviceCount: 0,
   };
 
-  it('applies a reducing recovery with no measurement (known gap)', () => {
+  it('selects the deterministic latest lapsed coverage version and preserves perpetual-null semantics', () => {
+    const earlier = version({
+      ...window('2026-01-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z'),
+      versionId: 'version-earlier-end',
+    });
+    const laterButOlderImport = version({
+      ...window('2026-01-01T00:00:00.000Z', LAPSED_END),
+      versionId: 'version-latest-end-older-import',
+      importedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    const laterImport = version({
+      ...window('2026-01-01T00:00:00.000Z', LAPSED_END),
+      versionId: 'version-latest-end-newer-import',
+      importedAt: new Date('2026-02-01T00:00:00.000Z'),
+    });
+    const laterId = version({
+      ...window('2026-01-01T00:00:00.000Z', LAPSED_END),
+      versionId: 'version-z',
+      importedAt: laterImport.importedAt,
+    });
+
+    expect(
+      lapsedCoverageVersion([earlier, laterButOlderImport, laterImport]),
+    ).toBe(laterImport);
+    expect(lapsedCoverageVersion([laterImport, laterId])).toBe(laterId);
+    expect(lapsedLicenseContext([laterImport, laterId])).toEqual({
+      licenseId: laterId.licenseId,
+      coverageEnd: laterId.validUntil,
+    });
+    expect(lapsedCoverageVersion([])).toBeNull();
+    expect(
+      lapsedCoverageVersion([
+        laterImport,
+        version(window('2026-01-01T00:00:00.000Z', null)),
+      ]),
+    ).toBeNull();
+    expect(
+      lapsedLicenseContext([version(window('2026-01-01T00:00:00.000Z', null))]),
+    ).toBeNull();
+  });
+
+  it('requires an explicit resolution for a post-gap reduction and names the lapsed grant', () => {
+    const lapsed = lapsedVersion();
+    const candidate = recoveryCandidate();
+
+    const refused = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'none' },
+      versions: [lapsed],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+      gapRecovery: { reason: 'Operator confirmed the recovery.' },
+    });
+
+    expect(refused.conflict).toEqual({
+      reason: 'reduction-requires-resolution',
+      overlapping: 1,
+      reduction: {
+        predecessorVersionId: lapsed.versionId,
+        conflicts: [
+          { kind: 'organization-capacity', limit: 2, currentUsage: 40 },
+          {
+            kind: 'entitlement-removed',
+            entitlement: { kind: 'MODULE', code: 'accounting' },
+          },
+        ],
+      },
+    });
+    expect(refused.supersedes).toBeNull();
+  });
+
+  it('applies a resolved reduction on recovery, auditing the lapsed grant without superseding it', () => {
     const lapsed = lapsedVersion();
     const candidate = recoveryCandidate();
 
@@ -2624,20 +2689,26 @@ describe('post-gap recovery and the §8.6 reduction guard (characterisation)', (
       installationCustomerCode: CUSTOMER_CODE,
       usage,
       gapRecovery: { reason: 'Operator confirmed the recovery.' },
+      reductionResolution: { reason: 'Customer approved the lower grant.' },
     });
 
-    // 50 organizations granted and 40 in use, the recovery grants 2 and drops
-    // the entitlement — and it is applied.
-    if (applied.conflict !== null)
+    if (applied.conflict !== null) {
       throw new Error(
-        `expected the recovery to apply, refused: ${applied.conflict.reason}`,
+        `expected authorized recovery, refused: ${applied.conflict.reason}`,
       );
-    expect(applied.resolutionSubject).toBeNull();
+    }
+    expect(applied.supersedes).toBeNull();
+    expect(applied.resolutionSubject).toBe(lapsed);
   });
 
-  it('refuses the same document without the dedicated recovery intent', () => {
+  it('refuses an unused resolution on a non-reducing recovery', () => {
     const lapsed = lapsedVersion();
-    const candidate = recoveryCandidate();
+    const candidate = recoveryCandidate({
+      organizationLimit: 60,
+      entitlements: [
+        { kind: 'MODULE', code: 'accounting' } as LicenseEntitlement,
+      ],
+    });
 
     const refused = evaluateImportConflicts({
       candidate,
@@ -2649,37 +2720,62 @@ describe('post-gap recovery and the §8.6 reduction guard (characterisation)', (
       installationCustomerId: CUSTOMER,
       installationCustomerCode: CUSTOMER_CODE,
       usage,
+      gapRecovery: { reason: 'Operator confirmed the recovery.' },
+      reductionResolution: { reason: 'Customer approved a reduction.' },
     });
 
-    // The gap is the missing MEASUREMENT, not a missing gate: without the
-    // dedicated intent the very same document is refused.
     expect(refused.conflict).toEqual({
-      reason: 'post-gap-recovery-requires-dedicated-operation',
+      reason: 'resolution-not-applicable',
       overlapping: 0,
     });
   });
 
-  it('does not let the resolution route carry a post-gap candidate either', () => {
+  it('keeps ordinary import and the separate resolution route from carrying a post-gap candidate', () => {
     const lapsed = lapsedVersion();
     const candidate = recoveryCandidate();
-
-    // The deadlock the decision has to resolve: the resolution intent cannot
-    // reach a post-gap candidate, because the recovery gate refuses it first.
-    const refused = evaluateImportConflicts({
+    const common = {
       candidate,
       operationId: candidate.operationId,
       documentHash: candidate.documentHash,
-      supersession: { kind: 'none' },
+      supersession: { kind: 'none' } as const,
       versions: [lapsed],
       at: NOW,
       installationCustomerId: CUSTOMER,
       installationCustomerCode: CUSTOMER_CODE,
       usage,
-      reductionResolution: { reason: 'Operator confirmed the reduction.' },
+    };
+
+    expect(evaluateImportConflicts(common).conflict).toMatchObject({
+      reason: 'post-gap-recovery-requires-dedicated-operation',
+    });
+    expect(
+      evaluateImportConflicts({
+        ...common,
+        reductionResolution: { reason: 'Customer approved the reduction.' },
+      }).conflict,
+    ).toMatchObject({
+      reason: 'post-gap-recovery-requires-dedicated-operation',
+    });
+  });
+
+  it('rejects a post-gap recovery that declares a supersession target as recovery-not-applicable', () => {
+    const lapsed = lapsedVersion();
+    const candidate = recoveryCandidate();
+    const refused = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'explicit', operationId: lapsed.operationId },
+      versions: [lapsed],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+      gapRecovery: { reason: 'Operator confirmed the recovery.' },
     });
 
     expect(refused.conflict).toEqual({
-      reason: 'post-gap-recovery-requires-dedicated-operation',
+      reason: 'recovery-not-applicable',
       overlapping: 0,
     });
   });

@@ -10,6 +10,7 @@ import { ClientDeviceLifecycleService } from '../application/client-device-lifec
 import { ClientDevicesController } from './client-devices.controller.js';
 import { LicenseActivationController } from './license-activation.controller.js';
 import { LicenseImportController } from './license-import.controller.js';
+import { LicenseGapRecoveryController } from './license-gap-recovery.controller.js';
 import { LicenseStateController } from './license-state.controller.js';
 
 /**
@@ -23,6 +24,7 @@ describe('Licensing OpenAPI success-response contracts', () => {
         LicenseStateController,
         LicenseActivationController,
         LicenseImportController,
+        LicenseGapRecoveryController,
         ClientDevicesController,
       ],
       providers: [
@@ -64,6 +66,51 @@ describe('Licensing OpenAPI success-response contracts', () => {
       });
       expect(jsonSchema(imported)).toEqual({
         $ref: '#/components/schemas/LicenseImportResultDto',
+      });
+
+      const gapRecovery = document.paths['/license/gap-recovery']?.post;
+      expect(jsonSchema(gapRecovery?.responses?.['200'])).toEqual({
+        $ref: '#/components/schemas/GapRecoveryResultDto',
+      });
+      const gapRecoveryRequest = gapRecovery?.requestBody as
+        | {
+            content?: {
+              'application/json'?: { schema?: unknown };
+            };
+          }
+        | undefined;
+      expect(gapRecoveryRequest?.content?.['application/json']?.schema).toEqual(
+        { $ref: '#/components/schemas/RecoverAfterGapDto' },
+      );
+      const gapRecoveryRequestSchema =
+        document.components?.schemas?.['RecoverAfterGapDto'];
+      expect(gapRecoveryRequestSchema).toBeDefined();
+      if (
+        !gapRecoveryRequestSchema ||
+        !('properties' in gapRecoveryRequestSchema) ||
+        !gapRecoveryRequestSchema.properties
+      ) {
+        throw new Error('RecoverAfterGapDto missing properties');
+      }
+      expect(
+        gapRecoveryRequestSchema.properties.reductionResolutionReason,
+      ).toMatchObject({ minLength: 3, maxLength: 500 });
+      const gapRecoveryResult =
+        document.components?.schemas?.['GapRecoveryResultDto'];
+      expect(gapRecoveryResult).toBeDefined();
+      if (
+        !gapRecoveryResult ||
+        !('properties' in gapRecoveryResult) ||
+        !gapRecoveryResult.properties
+      ) {
+        throw new Error('GapRecoveryResultDto missing properties');
+      }
+      expect(
+        gapRecoveryResult.properties.resolvedPredecessorVersionId,
+      ).toBeDefined();
+      expect(gapRecoveryResult.properties.resolvedConflicts).toMatchObject({
+        type: 'array',
+        items: { $ref: '#/components/schemas/ReductionConflictDto' },
       });
 
       const state = document.components?.schemas?.['LicenseStateDto'];

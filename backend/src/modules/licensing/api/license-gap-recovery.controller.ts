@@ -35,14 +35,15 @@ import { toLicenseStateView } from './license-state.view.js';
  * recovery path: it answers 409
  * `post-gap-recovery-requires-dedicated-operation` with nothing written.
  *
- * The route requires BOTH `Licensing.License.Activate` and the dedicated
+ * The route requires `Licensing.License.Activate` and the dedicated
  * `Licensing.Installation.RecoverAfterGap` permission, and a validated
- * operator reason; the application service re-checks all of it (AR-21). The
- * recovery and the typed `license.import.recovered` audit event (the new
- * version, the lapsed license, its coverage end, the actor, the source, the
- * instant and the reason) are written in ONE transaction (see
- * `LicensesRepository.importVersion`), so a failed recovery leaves the
- * retained state untouched. A recovery never changes the installation's
+ * operator reason; the application service re-checks all of it (AR-21). When
+ * a reduction conflicts with the lapsed grant or current usage, the operator
+ * may supply `reductionResolutionReason`; that combined path additionally
+ * requires `Licensing.License.ResolveReduction`. Both typed audit events
+ * (`license.import.recovered` and `license.import.reduction-resolved`) are
+ * written with the version in ONE transaction, so a failed recovery or
+ * resolution leaves the retained state and audit trail untouched. A recovery never changes the installation's
  * customer binding: the document must name the customer the installation is
  * bound to (`installation-customer-mismatch` otherwise). A legacy text code
  * cannot carry a recovery (422 `recovery-requires-signed-document`).
@@ -70,7 +71,7 @@ export class LicenseGapRecoveryController {
     summary:
       'Recover this installation after a license coverage lapse with a signed license document.',
     description:
-      'Verifies the signed document, then — under the installation lock — applies the new license identity that covers a lapsed coverage window, together with a typed audit event recording the lapsed license, its coverage end, the operation, the actor, the source, the instant and the supplied reason, in one transaction. Only valid when coverage has actually lapsed; every other licensing rule (signature, binding, overlap, term rules) is unchanged.',
+      'Verifies the signed document, then — under the installation lock — applies the new license identity that covers a lapsed coverage window, together with a typed audit event recording the lapsed license, its coverage end, the operation, the actor, the source, the instant and the supplied reason, in one transaction. When a capacity or entitlement reduction conflicts with the lapsed grant or current usage, the caller may provide reductionResolutionReason; the application service then additionally requires Licensing.License.ResolveReduction and records the resolution as a second typed audit event in the same transaction. Only valid when coverage has actually lapsed; every other licensing rule (signature, binding, overlap, term rules) is unchanged.',
   })
   @ApiOkResponse({
     type: GapRecoveryResultDto,
@@ -80,7 +81,7 @@ export class LicenseGapRecoveryController {
   @ApiBadRequestResponse({ description: 'Validation failed.' })
   @ApiConflictResponse({
     description:
-      'The document is authentic but conflicts with retained state: coverage has not lapsed (import it instead), the license identifier belongs to another customer or installation, a renewal would leave a gap, the version overlaps retained history, or it reduces entitlements without an authorized resolution.',
+      'The document is authentic but conflicts with retained state: coverage has not lapsed, the license identifier belongs to another customer or installation, a renewal would leave a gap, the version overlaps retained history, or a recovery reduction needs an explicit resolution. For a post-gap reduction, supply reductionResolutionReason on this route and hold Activate, RecoverAfterGap, and ResolveReduction; the separate reduction-resolution route cannot apply a post-gap document.',
   })
   @ApiUnprocessableEntityResponse({
     description:
@@ -92,6 +93,7 @@ export class LicenseGapRecoveryController {
     const result = await this.licenseImport.recoverAfterGap(
       body.document,
       body.reason,
+      body.reductionResolutionReason,
     );
     // The response is a FRESH canonical read plus the transaction's own
     // lapse facts — never the mutation's own opinion about license state.
@@ -102,6 +104,13 @@ export class LicenseGapRecoveryController {
       outcome: result.outcome,
       lapsedLicenseId: result.lapsedLicenseId,
       coverageEnd: result.coverageEnd,
+      ...(result.resolvedPredecessorVersionId === undefined ||
+      result.resolvedConflicts === undefined
+        ? {}
+        : {
+            resolvedPredecessorVersionId: result.resolvedPredecessorVersionId,
+            resolvedConflicts: result.resolvedConflicts,
+          }),
     };
   }
 }

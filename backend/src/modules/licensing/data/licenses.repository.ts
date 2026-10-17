@@ -1017,12 +1017,13 @@ export class LicensesRepository {
             ]
           : [...command.auditEvents];
 
-      // A dedicated operation's APPLIED event is built HERE, inside the
+      // Dedicated-operation APPLIED events are built HERE, inside the
       // transaction, from the facts only the lock guarantees — exactly like
-      // the transfer event above. The service deliberately does not build it:
-      // the retained list the pre-check read may already have moved by the
-      // time the lock was granted, and the audit row must describe the
-      // retirement/lapse as the transaction found it.
+      // the transfer event above. A combined recovery/resolution writes both
+      // typed events independently. The service deliberately does not build
+      // them: the retained list the pre-check read may already have moved by
+      // the time the lock was granted, and the audit rows must describe the
+      // lapse and resolution as the transaction found them.
       let recoveryReceipt: ImportVersionResult['recovery'] = null;
       let resolutionReceipt: ImportVersionResult['resolution'] = null;
       if (command.gapRecovery !== null) {
@@ -1032,7 +1033,8 @@ export class LicensesRepository {
           coverageEnd: lapsed?.coverageEnd ?? null,
         };
         auditEvents.push(recoveryAuditEvent(command, lapsed));
-      } else if (command.reductionResolution !== null) {
+      }
+      if (command.reductionResolution !== null) {
         // The evaluation's resolution subject is the version whose grant the
         // resolution authorized reducing: the retired predecessor on a
         // hand-over path, or — L-05 — the deterministic continuation baseline

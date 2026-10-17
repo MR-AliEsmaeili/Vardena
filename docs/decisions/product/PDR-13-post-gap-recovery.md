@@ -194,3 +194,83 @@ decision. This change implements that flow:
   reducing capacity/entitlements by recovery; bypassing signature, binding,
   identity, precedence, retained-history or audit rules; weakening VLIC1's
   restrictions; or changing OQ-80/OQ-86/Q3/Q4/PDR-12.
+
+## 8. Addendum (2026-10-17) — proposed OD-LIC-05: §8.6 reduction control on recovery
+
+**Status:** proposed for Product Owner review; implementation is presented in the
+same change for review. This addendum does not rewrite §§1–7, replace OD-LIC-02,
+or close OQ-87.
+
+### 8.1 Evidence and question
+
+PDR-13 §4.2 requires the §8.6 guard to run on recovery, but the current
+`continuationBaselineFor` selects only a retained effective window ending
+exactly at the candidate's `validFrom`. A post-gap candidate starts strictly
+after the installation-wide retained coverage end, so that baseline is always
+absent. A capacity/entitlement reduction on recovery could consequently be
+applied without measurement. The existing reduction-resolution route cannot
+resolve the defect: it does not carry recovery intent and the post-gap guard
+rejects the candidate there.
+
+### 8.2 Proposed Owner decision — OD-LIC-05 (Option 1)
+
+A dedicated post-gap recovery may reduce capacity or entitlements only after the
+§8.6 check measures the candidate against the retained version whose effective
+coverage ended last, and any resulting resolvable conflicts are explicitly
+resolved on **the same recovery operation**. This is the proposed combined
+recovery-and-resolution path; a reducing recovery is not terminally refused.
+
+1. `lapsedCoverageVersion(versions)` selects the retained version with the
+   greatest effective end, with ties broken by latest `importedAt` and then
+   `versionId`. It returns `null` if there are no retained versions or if any
+   effective coverage window is perpetual. `lapsedLicenseContext` delegates to
+   this helper and preserves its existing public result exactly: perpetual
+   coverage still yields `null`.
+2. For a candidate that is both a post-gap recovery candidate and carries the
+   dedicated recovery intent, the domain evaluates `reductionConflicts` against
+   this lapsed version **before overlap/precedence rules 4/5**. A conflicting
+   recovery without an explicit resolution is refused as
+   `reduction-requires-resolution` (409), with
+   `reduction.predecessorVersionId` naming the lapsed version and the concrete
+   conflicts. Usage that cannot be counted and every other non-resolvable arm
+   remain fail-closed.
+3. `POST /api/v1/license/gap-recovery` may additionally receive the optional
+   `reductionResolutionReason` (3–500 characters). When supplied, the
+   application service requires all three permissions:
+   `Licensing.License.Activate`,
+   `Licensing.Installation.RecoverAfterGap`, and
+   `Licensing.License.ResolveReduction`. A resolution with no actual conflict
+   remains `resolution-not-applicable`.
+4. Applying the combined operation creates the license version and writes both
+   `license.import.recovered` and `license.import.reduction-resolved` typed audit
+   events in the existing transaction. The lapsed version is the reduction
+   resolution subject and appears in the receipt/audit facts, but is **not** a
+   supersession target: recovery retires nothing and does not stamp the lapsed
+   row. No schema or migration change is required.
+5. A post-gap recovery document that also declares a supersession target is
+   refused as `recovery-not-applicable`; recovery cannot silently retire a
+   retained version. The ordinary import and the separate
+   `POST /api/v1/license/reduction-resolution` operation continue to refuse
+   post-gap candidates. Renewal-gap precedence for a retained identity,
+   signature/binding/overlap/term rules, legacy `VLIC1` restrictions, and all
+   non-post-gap recovery behavior remain unchanged.
+
+The selected implementation is documented in [ADR-0050](../../adr/0050-post-gap-recovery-reduction-guard.md).
+The alternative — terminally refusing any reducing recovery — is not selected
+by this proposal. The message on a recovery refusal must be operation-aware and
+must not direct the operator to the separate resolution route, which rejects
+post-gap candidates.
+
+### 8.3 Boundaries and status
+
+This addendum addresses C10 only. C11 (measuring interior/backdated gap-fill
+candidates) remains open and unchanged. OQ-87 remains open under the registry's
+existing convention; this proposal does not close or otherwise change any OQ.
+For traceability, if expressly accepted, OD-LIC-05 would narrow the final §7
+non-authorization bullet only for a post-gap reduction that is measured and
+explicitly resolved on the dedicated recovery route as specified here. Until
+that approval is recorded, §7's existing prohibition remains controlling; this
+branch presents the change for review rather than silently reinterpreting it.
+All other PDR-13 §7 non-goals, OQ-79/OQ-82/OQ-83/OQ-84/OQ-77 boundaries, and
+Product Owner acceptance requirements are unchanged. Implementation and CI
+evidence must be reported separately from Owner approval.

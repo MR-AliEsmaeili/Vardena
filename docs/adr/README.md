@@ -111,3 +111,4 @@ Keep ADRs **short** (≤ ~60 lines). If it needs more, it belongs in `docs/`.
 | [0047](./0047-atomic-self-service-credential-transition.md) | Atomic self-service credential transition (F-12 concurrency/failure correction) | Proposed; implemented for review |
 | [0048](./0048-owner-side-licensing-separation-boundary.md) | Owner-side licensing separation boundary (OQ-85 Phase 0 design) | **Accepted for Phase 1 separation boundary (2026-10-15)**; PDR-17/addendum; no OQ closure or signing authorization |
 | [0049](./0049-license-grace-read-only-enforcement.md) | License Grace and Read-Only enforcement boundary (OQ-45) | Proposed; implemented for Product Owner review (2026-10-16); no OQ closure |
+| [0050](./0050-post-gap-recovery-reduction-guard.md) | Measure reducing post-gap recoveries against lapsed coverage (C10 / proposed OD-LIC-05) | Proposed; implemented for Product Owner review (2026-10-17); OQ-87 remains open |

@@ -1949,6 +1949,224 @@ describe.skipIf(DATABASE_URL === undefined)(
       ).toBe(1);
     }, 120_000);
 
+    it('commits a post-gap reduction resolution and its two audit events atomically in PostgreSQL', async () => {
+      await resetApplicationForFreshInstallation();
+      vi.useFakeTimers({ toFake: ['Date'] });
+      const identity = await app.get(InstallationIdentityService).current();
+      const T0 = new Date('2026-01-01T00:00:00.000Z');
+      const LAPSE_END = new Date('2026-03-01T00:00:00.000Z');
+      const AFTER_LAPSE = new Date('2026-06-01T00:00:00.000Z');
+      const operator = await createAuditOperator('combined-recovery', [
+        LICENSING_PERMISSIONS.LICENSE_ACTIVATE,
+        LICENSING_PERMISSIONS.INSTALLATION_RECOVER_AFTER_GAP,
+        LICENSING_PERMISSIONS.LICENSE_RESOLVE_REDUCTION,
+      ]);
+      const secondActiveUser = await createAuditOperator('recovery-usage', [
+        LICENSING_PERMISSIONS.LICENSE_ACTIVATE,
+      ]);
+      const lapsed = licenseFor(
+        {
+          installationId: identity.installationId,
+          licenseId: generateId(),
+          validFrom: new Date('2025-01-01T00:00:00.000Z'),
+          validUntil: LAPSE_END,
+          organizationLimit: 1000,
+          userLimit: 1000,
+          moduleEntitlements: ['organization', 'users', 'rbac'],
+        },
+        authority.privateKey,
+      );
+
+      vi.setSystemTime(T0);
+      await app.get(LicenseImportService).importDocument(lapsed.file);
+      await activateAuditOperators([operator, secondActiveUser]);
+      const activeUserCount = await app
+        .get(UsersService)
+        .countLicensedActiveUsers();
+      expect(activeUserCount).toBeGreaterThan(1);
+
+      vi.setSystemTime(AFTER_LAPSE);
+      const agent = await loginAuditOperator(operator.username);
+      const recovery = licenseFor(
+        {
+          installationId: identity.installationId,
+          licenseId: generateId(),
+          validFrom: AFTER_LAPSE,
+          validUntil: new Date('2028-01-01T00:00:00.000Z'),
+          organizationLimit: 1000,
+          userLimit: 1,
+          moduleEntitlements: ['organization', 'users', 'rbac'],
+        },
+        authority.privateKey,
+      );
+      const reason = 'Renewal order arrived after the prior coverage ended.';
+      const resolutionReason =
+        'Customer approved the lower user limit after reviewing active users.';
+      const appliedEvents = [
+        'license.import.recovered',
+        'license.import.reduction-resolved',
+      ];
+
+      // Force the second typed event insert to fail after the recovery event
+      // insert has run. The exception must roll back the version and BOTH
+      // events; after removing the trigger, the same signed document can be
+      // retried successfully.
+      const client = await prisma.getClient<{
+        $executeRawUnsafe(
+          query: string,
+          ...values: unknown[]
+        ): Promise<unknown>;
+      }>();
+      await client.$executeRawUnsafe(
+        `CREATE OR REPLACE FUNCTION licensing.fail_l07_resolution_audit()
+         RETURNS trigger LANGUAGE plpgsql AS $$
+         BEGIN
+           IF NEW."event_type" = 'license.import.reduction-resolved' THEN
+             RAISE EXCEPTION 'forced L-07 resolution audit failure';
+           END IF;
+           RETURN NEW;
+         END;
+         $$`,
+      );
+      await client.$executeRawUnsafe(
+        `CREATE TRIGGER fail_l07_resolution_audit
+         BEFORE INSERT ON "licensing"."license_audit_events"
+         FOR EACH ROW EXECUTE FUNCTION licensing.fail_l07_resolution_audit()`,
+      );
+      try {
+        await agent
+          .post('/api/v1/license/gap-recovery')
+          .send({
+            document: recovery.file,
+            reason,
+            reductionResolutionReason: resolutionReason,
+          })
+          .expect(500);
+        expect(
+          await count(
+            `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+              WHERE "operation_id" = $1`,
+            recovery.payload.operationId,
+          ),
+        ).toBe(0);
+        expect(
+          await count(
+            `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
+              WHERE "operation_id" = $1
+                AND "event_type" IN ($2, $3)`,
+            recovery.payload.operationId,
+            ...appliedEvents,
+          ),
+        ).toBe(0);
+        expect(
+          await query<{ superseded_at: Date | null }>(
+            `SELECT "superseded_at" FROM "licensing"."license_versions"
+              WHERE "operation_id" = $1`,
+            lapsed.payload.operationId,
+          ),
+        ).toEqual([{ superseded_at: null }]);
+      } finally {
+        await client.$executeRawUnsafe(
+          `DROP TRIGGER IF EXISTS fail_l07_resolution_audit
+             ON "licensing"."license_audit_events"`,
+        );
+        await client.$executeRawUnsafe(
+          'DROP FUNCTION IF EXISTS licensing.fail_l07_resolution_audit()',
+        );
+      }
+
+      const response = await agent
+        .post('/api/v1/license/gap-recovery')
+        .send({
+          document: recovery.file,
+          reason,
+          reductionResolutionReason: resolutionReason,
+        })
+        .expect(200);
+      expect(response.body).toMatchObject({
+        changed: true,
+        outcome: 'APPLIED',
+        lapsedLicenseId: lapsed.payload.licenseId,
+        coverageEnd: LAPSE_END.toISOString(),
+        resolvedConflicts: [
+          {
+            kind: 'user-capacity',
+            limit: 1,
+            currentUsage: activeUserCount,
+          },
+        ],
+      });
+      expect(response.body.resolvedPredecessorVersionId).toBeDefined();
+
+      expect(
+        await query<{
+          event_type: string;
+          operation_id: string | null;
+          license_id: string | null;
+          version_id: string | null;
+          previous_license_id: string | null;
+          detail: string | null;
+        }>(
+          `SELECT "event_type", "operation_id", "license_id", "version_id",
+                  "previous_license_id", "detail"
+             FROM "licensing"."license_audit_events"
+            WHERE "operation_id" = $1 AND "event_type" IN ($2, $3)
+            ORDER BY "event_type"`,
+          recovery.payload.operationId,
+          ...appliedEvents,
+        ),
+      ).toMatchObject([
+        {
+          event_type: 'license.import.recovered',
+          operation_id: recovery.payload.operationId,
+          license_id: recovery.payload.licenseId,
+          previous_license_id: lapsed.payload.licenseId,
+        },
+        {
+          event_type: 'license.import.reduction-resolved',
+          operation_id: recovery.payload.operationId,
+          license_id: recovery.payload.licenseId,
+          previous_license_id: null,
+        },
+      ]);
+      const events = await query<{ event_type: string; detail: string | null }>(
+        `SELECT "event_type", "detail"
+           FROM "licensing"."license_audit_events"
+          WHERE "operation_id" = $1 AND "event_type" IN ($2, $3)`,
+        recovery.payload.operationId,
+        ...appliedEvents,
+      );
+      expect(events).toHaveLength(2);
+      expect(
+        events.find((event) => event.event_type === 'license.import.recovered')
+          ?.detail,
+      ).toContain(reason);
+      expect(
+        events.find(
+          (event) => event.event_type === 'license.import.reduction-resolved',
+        )?.detail,
+      ).toContain(resolutionReason);
+      expect(
+        events.find(
+          (event) => event.event_type === 'license.import.reduction-resolved',
+        )?.detail,
+      ).toContain('user-capacity');
+      expect(
+        await query<{ superseded_at: Date | null; governs_until: Date | null }>(
+          `SELECT "superseded_at", "governs_until" FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          lapsed.payload.operationId,
+        ),
+      ).toEqual([{ superseded_at: null, governs_until: null }]);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          recovery.payload.operationId,
+        ),
+      ).toBe(1);
+    }, 120_000);
+
     it('persists an authorized L-04 resolution with a 500-character reason in PostgreSQL', async () => {
       await resetApplicationForFreshInstallation();
       const identity = await app.get(InstallationIdentityService).current();
