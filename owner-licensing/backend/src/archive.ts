@@ -1280,10 +1280,11 @@ export class FilesystemAuditArchiveStore implements AuditArchiveStore {
       };
     }
 
+    let rawManifestText = "";
     let rawManifestObj: Record<string, unknown>;
     try {
-      const rawText = await readFile(this.manifestPath, "utf8");
-      rawManifestObj = object(JSON.parse(rawText), [
+      rawManifestText = await readFile(this.manifestPath, "utf8");
+      rawManifestObj = object(JSON.parse(rawManifestText), [
         "format",
         "formatVersion",
         "updatedAt",
@@ -1443,10 +1444,11 @@ export class FilesystemAuditArchiveStore implements AuditArchiveStore {
     const bundles: DurableArchiveBundleFile[] = [];
     for (const entry of manifestEntries) {
       const filePath = path.join(this.batchesDir, entry.fileName);
+      let rawBundleText = "";
       let rawBundle: unknown;
       try {
-        const text = await readFile(filePath, "utf8");
-        rawBundle = JSON.parse(text);
+        rawBundleText = await readFile(filePath, "utf8");
+        rawBundle = JSON.parse(rawBundleText);
       } catch {
         fail(
           409,
@@ -1472,7 +1474,7 @@ export class FilesystemAuditArchiveStore implements AuditArchiveStore {
         );
       }
       const parsedObj = rawBundle as DurableArchiveBundleFile;
-      bundles.push({
+      const canonicalBundle: DurableArchiveBundleFile = {
         format: "vardena-owner-audit-archive-bundle",
         formatVersion: 1,
         durableFileName: entry.fileName,
@@ -1483,22 +1485,39 @@ export class FilesystemAuditArchiveStore implements AuditArchiveStore {
           bundleDigestSha256: entry.bundleDigestSha256,
         },
         events: parsedObj.events,
-      });
+      };
+      if (rawBundleText.trim() !== canonicalJson(canonicalBundle)) {
+        fail(
+          409,
+          "ArchiveIntegrityViolation",
+          `Durable archive batch file ${entry.fileName} raw content does not match canonical bundle representation.`,
+        );
+      }
+      bundles.push(canonicalBundle);
+    }
+
+    const canonicalManifest: DurableArchiveManifest = {
+      format: "vardena-owner-audit-archive-manifest",
+      formatVersion: 1,
+      updatedAt,
+      latestBatchId: lastEntry ? lastEntry.id : null,
+      latestBatchNumber: lastEntry ? lastEntry.batchNumber : 0,
+      latestBatchDigestSha256: lastEntry ? lastEntry.batchDigestSha256 : null,
+      lastArchivedSequence: lastEntry ? lastEntry.lastSequence : null,
+      batches: manifestEntries,
+      manifestDigestSha256: expectedManifestDigest,
+    };
+    if (rawManifestText.trim() !== canonicalJson(canonicalManifest)) {
+      fail(
+        409,
+        "ArchiveIntegrityViolation",
+        "Durable archive manifest.json raw content does not match canonical manifest representation.",
+      );
     }
 
     return {
       verified: true,
-      manifest: {
-        format: "vardena-owner-audit-archive-manifest",
-        formatVersion: 1,
-        updatedAt,
-        latestBatchId: lastEntry ? lastEntry.id : null,
-        latestBatchNumber: lastEntry ? lastEntry.batchNumber : 0,
-        latestBatchDigestSha256: lastEntry ? lastEntry.batchDigestSha256 : null,
-        lastArchivedSequence: lastEntry ? lastEntry.lastSequence : null,
-        batches: manifestEntries,
-        manifestDigestSha256: expectedManifestDigest,
-      },
+      manifest: canonicalManifest,
       bundles,
     };
   }
