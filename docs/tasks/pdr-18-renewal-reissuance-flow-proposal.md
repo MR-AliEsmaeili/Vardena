@@ -134,7 +134,9 @@ issuance day when there is no predecessor.
 - **Consistent with the Owner-side slice already implemented:** the Owner app
   records `activationValidFrom` as the issuance day
   ([implementation record](pdr-18-contract-and-activation-dates-implementation.md)),
-  which is precisely the artifact-side date this option needs.
+  which is precisely the artifact-side date this option needs. (The Owner field
+  named there is `recordedOn`, the day the observation was recorded — it is
+  deliberately **not** presented as the license's issuance date.)
 
 ### Option 3 — Renewals are issued at/after expiry only; start = issuance day
 

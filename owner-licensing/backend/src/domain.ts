@@ -137,8 +137,15 @@ export function status(value: unknown): string {
 // Both pairs are canonical BusinessDate calendar days (`YYYY-MM-DD`,
 // docs/datetime.md, AR-32). They are deliberately separate: contract dates are
 // commercial/administrative and may precede issuance, while activation validity
-// is the technical window of the license and starts on the authoritative
-// issuance day. Nothing here accepts a client clock or a browser-supplied date.
+// Owner-side observation metadata: the day an operator RECORDED an observation,
+// derived on read from the immutable `created_at` instant, and the validity end
+// the operator recorded having seen. Neither is an attested property of a
+// signed artifact — PDR-17 records cryptographic issuance and verification as
+// not implemented, and every response states
+// `cryptographicVerification = NOT_IMPLEMENTED`.
+//
+// Nothing here accepts a client clock or a browser-supplied date: the recording
+// day is derived from a server-generated, immutable `timestamptz` column.
 // ---------------------------------------------------------------------------
 
 const BUSINESS_DAY_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
@@ -190,17 +197,36 @@ export function persistedBusinessDay(value: unknown): string | null {
 }
 
 /**
- * The activation-validity interval convention: half-open
- * `[activationValidFrom, activationValidUntil)` — the end is exclusive and must
- * be later than the start. `null` end means no recorded end.
+ * The UTC calendar day on which an observation was RECORDED.
+ *
+ * This is derived, never stored and never accepted from a client: it is the
+ * canonical BusinessDay projection of the row's `created_at` instant, a server
+ * -generated `timestamptz` that migration 002 makes immutable. It answers
+ * "when did an operator record this?", never "when was the license really
+ * issued or activated?" — the Owner application has no cryptographic evidence
+ * of the latter (PDR-17).
  */
-export function assertActivationValidityInterval(
-  start: string | null,
+export function recordedOnFor(createdAt: unknown): string {
+  if (createdAt instanceof Date) return utcCalendarDay(createdAt);
+  if (typeof createdAt === "string") {
+    const at = new Date(createdAt);
+    if (!Number.isNaN(at.getTime())) return utcCalendarDay(at);
+  }
+  fail(500, "InternalError", "The operation failed. Please retry.");
+}
+
+/**
+ * The retained interval convention for the operator-recorded validity end: it
+ * must be later than the day the observation was recorded. A `null` end means
+ * "no end was recorded" — it is never defaulted and never invented.
+ */
+export function assertObservedValidityEnd(
+  recordedOn: string,
   end: string | null,
 ): void {
-  if (start !== null && end !== null && end <= start)
+  if (end !== null && end <= recordedOn)
     invalid(
-      "activationValidUntil must be later than the activation validity start.",
+      "observedValidityEnd must be later than the day the observation is recorded.",
     );
 }
 
@@ -508,12 +534,13 @@ export function operationResponse(
     replacementObservedState: row.replacement_observed_state,
     emergencyOldServerLost: row.emergency_old_server_lost,
     replacesRecordId: row.replaces_record_id,
-    // PDR-18 §1: the recorded activation-validity window of the license. The
-    // start is the authoritative issuance day asserted by the server; the end is
-    // issuer-supplied and exclusive. Operator-observed administrative data, not
-    // a cryptographic fact about a signed artifact.
-    activationValidFrom: persistedBusinessDay(row.activation_valid_from),
-    activationValidUntil: persistedBusinessDay(row.activation_valid_until),
+    // PDR-18 §1 / PDR-17: Owner-side OBSERVATION metadata, not a claim about a
+    // signed artifact. `recordedOn` is the day this observation was recorded —
+    // the UTC BusinessDay projection of the immutable server-generated
+    // `created_at` instant, never the license's actual issuance or activation
+    // day. `observedValidityEnd` is the end the operator recorded having seen.
+    recordedOn: recordedOnFor(row.created_at),
+    observedValidityEnd: persistedBusinessDay(row.observed_validity_end),
     evidenceBasis: "OPERATOR_OBSERVED",
     cryptographicVerification: "NOT_IMPLEMENTED",
     signedArtifactProduced: false,

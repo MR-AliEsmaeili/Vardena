@@ -109,8 +109,8 @@ beforeEach(() => {
     replacementObservedState: null,
     emergencyOldServerLost: false,
     replacesRecordId: null,
-    activationValidFrom: '2026-10-15',
-    activationValidUntil: '2027-10-15',
+    recordedOn: '2026-10-15',
+    observedValidityEnd: '2027-10-15',
     evidenceBasis: 'OPERATOR_OBSERVED',
     cryptographicVerification: 'NOT_IMPLEMENTED',
     signedArtifactProduced: false,
@@ -195,26 +195,42 @@ describe('manual operations UI', () => {
     ).toHaveLength(2);
     expect(api.recordLicenseObservation).not.toHaveBeenCalled();
   });
-  // PDR-18 §1: the recorded activation-validity window is displayed as its own
-  // pair, separate from the customer's commercial contract dates. The start is
-  // server-asserted; the UI never offers a control for it.
-  it('renders the recorded activation-validity window as a distinct pair on a license record', async () => {
+  // PDR-18 §1 + PDR-17: Owner-side observation metadata is displayed as its
+  // own pair, separate from the customer's commercial contract dates and from
+  // a signed license's technical validity. The recording day is server-derived
+  // and the UI never offers a control for it.
+  it('renders Owner-side observation metadata as a distinct pair on a license record', async () => {
     const record = await api.recordLicenseObservation(
       {} as Parameters<typeof api.recordLicenseObservation>[0],
     );
     vi.mocked(api.operationalRecord).mockResolvedValue({
       ...record,
-      activationValidFrom: '2026-10-15',
-      activationValidUntil: '2027-10-15',
+      recordedOn: '2026-10-15',
+      observedValidityEnd: '2027-10-15',
     });
     vi.mocked(api.recordLicenseObservation).mockClear();
     mount(`/app/operations/${record.id}`);
-    expect(await screen.findByText(o.activationValidFrom)).toBeInTheDocument();
+    expect(await screen.findByText(o.recordedOn)).toBeInTheDocument();
     expect(screen.getByText('۱۴۰۵/۰۷/۲۳ (2026-10-15)')).toBeInTheDocument();
     expect(screen.getByText('۱۴۰۶/۰۷/۲۳ (2027-10-15)')).toBeInTheDocument();
+    // The recording day is never editable; only the recorded end has a control.
+    expect(screen.queryByLabelText(o.recordedOn)).not.toBeInTheDocument();
+  });
+  it('never labels an Owner-side recording day as a signed issuance or activation date', async () => {
+    const record = await api.recordLicenseObservation(
+      {} as Parameters<typeof api.recordLicenseObservation>[0],
+    );
+    mount(`/app/operations/${record.id}`);
+    // No label may claim a verified issuance date (PDR-17).
     expect(
-      screen.queryByLabelText(o.activationValidFrom),
+      screen.queryByText(/تاریخ صدور معتبر|صدور واقعی|فعال‌سازی واقعی/),
     ).not.toBeInTheDocument();
+    // The record states its own epistemic status instead (PDR-17).
+    expect(await screen.findByText(o.recordedOn)).toBeInTheDocument();
+    expect(screen.getByText(o.operatorObserved)).toBeInTheDocument();
+    expect(screen.getAllByText(o.notVerified).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(o.noArtifact).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(o.noContact).length).toBeGreaterThan(0);
   });
   it('denies operational records when operations.view is not granted', async () => {
     vi.mocked(identity.getEffectivePermissions).mockResolvedValue({

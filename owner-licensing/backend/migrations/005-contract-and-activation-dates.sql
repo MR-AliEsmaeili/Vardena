@@ -1,20 +1,43 @@
--- PDR-18 §1 (Product Owner decision 2026-10-17): commercial contract dates and
--- technical activation-validity dates are SEPARATE concepts.
+-- PDR-18 §1 (Product Owner decision 2026-10-17), corrected 2026-10-17:
+-- commercial contract dates, Owner-side observation metadata and customer-side
+-- signed-license validity are THREE SEPARATE concepts, and this model records
+-- only the first two.
 --
 --   owner.customers.contract_start_date / contract_end_date
 --     Commercial and administrative information recorded by the Owner. They do
---     not define, and never rewrite, a signed license's technical
---     activation-validity window, and they may legitimately precede issuance.
+--     not define, and never rewrite, a signed license's technical validity, and
+--     they may legitimately precede issuance.
 --
---   owner.operational_records.activation_valid_from / activation_valid_until
---     The activation-validity window of the recorded license. The start is the
---     authoritative issuance day, asserted by the server; it is never accepted
---     from a client. The end is set by the issuer and is EXCLUSIVE, following
---     the existing half-open signed-license interval convention.
+--   owner.operational_records.observed_validity_end
+--     The validity end the OPERATOR RECORDED having seen, and nothing more.
+--     The Owner application performs no cryptographic verification
+--     (PDR-17: cryptographic issuance, signed receipt, deactivation proof,
+--     revocation and recovery are "not implemented"; every response states
+--     `cryptographicVerification = NOT_IMPLEMENTED`). This column is therefore
+--     an `OPERATOR_OBSERVED` administrative fact about what was recorded, NOT
+--     an attested property of a signed artifact.
 --
--- Both pairs are PostgreSQL `date` (canonical BusinessDate `YYYY-MM-DD`,
--- docs/datetime.md / AR-32), never a UTC-midnight JS `Date` on the wire.
--- Forward-only migration; preserves 001, 002, 003 and 004 checksums.
+--   The day the observation was recorded — `recordedOn` in the API — is NOT a
+--     stored column. It is derived, on read, as the UTC calendar day of the
+--     existing `created_at` instant, which is `NOT NULL DEFAULT
+--     clock_timestamp()` and is protected against change by the
+--     `owner.immutable_operation_facts` trigger of migration 002. Deriving it
+--     means no separate column can drift from it, no backfill is needed, and
+--     no historical issuance or activation date is ever fabricated for rows
+--     recorded before this migration.
+--
+--   Customer-side signed-license validity (`VLIC2` `validFrom`/`validUntil`,
+--     the version model in `backend/src/modules/licensing/`) is owned by the
+--     customer runtime and is deliberately NOT modelled here. See OQ-88.
+--
+-- Both stored day columns are PostgreSQL `date` (canonical BusinessDate
+-- `YYYY-MM-DD`, docs/datetime.md / AR-32), never a UTC-midnight JS `Date` on
+-- the wire. Forward-only migration; preserves 001, 002, 003 and 004 checksums.
+--
+-- 005 has never been part of a released migration history (it exists only on
+-- the unmerged PR branch that introduces it), so it is corrected in place
+-- rather than superseded by a follow-up migration. No supported installation
+-- can have applied it; the ledger checksum guard makes any such mismatch loud.
 
 ALTER TABLE owner.customers
   ADD COLUMN IF NOT EXISTS contract_start_date date,
@@ -26,45 +49,22 @@ ALTER TABLE owner.customers
   );
 
 ALTER TABLE owner.operational_records
-  ADD COLUMN IF NOT EXISTS activation_valid_from date,
-  ADD COLUMN IF NOT EXISTS activation_valid_until date,
-  ADD CONSTRAINT activation_validity_order CHECK (
-    activation_valid_from IS NULL
-    OR activation_valid_until IS NULL
-    OR activation_valid_until > activation_valid_from
-  ),
-  -- Activation validity is a license concept; a server-replacement record
-  -- carries no activation window at all.
-  ADD CONSTRAINT activation_validity_license_only CHECK (
+  ADD COLUMN IF NOT EXISTS observed_validity_end date,
+  -- An observed validity end is a license concept; a server-replacement record
+  -- records no license validity at all.
+  ADD CONSTRAINT observed_validity_end_license_only CHECK (
     kind = 'LICENSE'
-    OR (
-      activation_valid_from IS NULL
-      AND activation_valid_until IS NULL
-    )
+    OR observed_validity_end IS NULL
   ),
-  -- PDR-18 §1.2: the activation-validity start is mandatory for a license
-  -- record. It is added NOT VALID on purpose: a row recorded before this
-  -- migration may legitimately carry no recorded start, and this migration
-  -- must not fail a populated upgrade. The constraint is enforced for every
-  -- insert and update from this point on, and a deployment owner may
-  -- `ALTER TABLE owner.operational_records VALIDATE CONSTRAINT
-  -- activation_valid_from_required` after reviewing the backfill below.
-  ADD CONSTRAINT activation_valid_from_required CHECK (
-    kind <> 'LICENSE' OR activation_valid_from IS NOT NULL
-  ) NOT VALID;
-
--- Backward-compatibility backfill for rows recorded before this migration.
--- The issuance-observation instant (`created_at`) is the only authoritative
--- issuance evidence such rows carry, so its UTC calendar day is used as the
--- activation-validity start. No end date is invented: a pre-existing row keeps
--- `activation_valid_until = NULL` (no recorded end) rather than a guessed one.
--- New rows never rely on this branch; the API asserts the start explicitly.
---
--- This statement is deliberately LAST: an UPDATE followed by an ALTER TABLE on
--- the same table inside one transaction fails with SQLSTATE 55006 ("cannot
--- ALTER TABLE ... because it has pending trigger events"), and the migration
--- chain is applied in a single transaction.
-UPDATE owner.operational_records
-  SET activation_valid_from = (created_at AT TIME ZONE 'UTC')::date
-WHERE kind = 'LICENSE'
-  AND activation_valid_from IS NULL;
+  -- Retained interval convention: the recorded end must be later than the day
+  -- the observation was recorded. `created_at` is NOT NULL and immutable
+  -- (migration 002), and `timezone('UTC', timestamptz)` is immutable, so this
+  -- is a stable per-row invariant rather than a time-dependent predicate.
+  -- Every pre-existing row has a NULL end, so the constraint validates
+  -- immediately without a backfill and without an UPDATE (an UPDATE followed
+  -- by an ALTER TABLE on the same table fails inside the single migration
+  -- transaction with SQLSTATE 55006).
+  ADD CONSTRAINT observed_validity_end_after_recorded_day CHECK (
+    observed_validity_end IS NULL
+    OR observed_validity_end > (created_at AT TIME ZONE 'UTC')::date
+  );

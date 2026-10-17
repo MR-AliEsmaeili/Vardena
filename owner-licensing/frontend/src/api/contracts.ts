@@ -78,12 +78,16 @@ export interface OperationalRecord {
   emergencyOldServerLost: boolean;
   replacesRecordId: string | null;
   /**
-   * PDR-18 §1: the recorded activation-validity window of the license.
-   * `activationValidFrom` is the authoritative issuance day asserted by the
-   * server; `activationValidUntil` is issuer-supplied and exclusive.
+   * PDR-18 §1 + PDR-17: Owner-side OBSERVATION metadata, never a claim about a
+   * signed artifact. `recordedOn` is the UTC calendar day on which an operator
+   * recorded this observation (derived by the server from the immutable
+   * `createdAt` instant) — it is NOT the license's actual issuance or
+   * activation date, which this application cannot verify.
+   * `observedValidityEnd` is the validity end the operator recorded having
+   * seen; null means no end was recorded.
    */
-  activationValidFrom: string | null;
-  activationValidUntil: string | null;
+  recordedOn: string | null;
+  observedValidityEnd: string | null;
   evidenceBasis: 'OPERATOR_OBSERVED';
   cryptographicVerification: 'NOT_IMPLEMENTED';
   signedArtifactProduced: false;

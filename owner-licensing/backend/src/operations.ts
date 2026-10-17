@@ -2,7 +2,7 @@ import { ulid } from "ulid";
 import type { PoolClient } from "pg";
 import { audit } from "./db.js";
 import {
-  assertActivationValidityInterval,
+  assertObservedValidityEnd,
   assertPermission,
   evidenceReference,
   fail,
@@ -22,6 +22,7 @@ import {
   persistedBusinessDay,
   queryText,
   reasonText,
+  recordedOnFor,
   replacementCreate,
   replacementObservation,
   type Permission,
@@ -33,7 +34,7 @@ const columns = `r.id, r.customer_id, c.customer_code, c.display_name, r.kind,
   r.old_installation_reference, r.replacement_installation_reference,
   r.old_server_observed_state, r.replacement_observed_state,
   r.emergency_old_server_lost, r.replaces_record_id,
-  r.activation_valid_from, r.activation_valid_until,
+  r.observed_validity_end,
   r.created_at, r.updated_at,
   r.created_by, r.updated_by`;
 
@@ -112,10 +113,12 @@ function snapshot(row: Record<string, unknown>, evidence: string | null) {
     replacementObservedState: row.replacement_observed_state,
     emergencyOldServerLost: row.emergency_old_server_lost,
     replacesRecordId: row.replaces_record_id,
-    // PDR-18 §1: the recorded activation-validity window, distinct from the
-    // customer's commercial contract dates.
-    activationValidFrom: persistedBusinessDay(row.activation_valid_from),
-    activationValidUntil: persistedBusinessDay(row.activation_valid_until),
+    // PDR-18 §1 / PDR-17: Owner-side observation metadata only, distinct from
+    // the customer's commercial contract dates and from a signed license's
+    // technical validity. `recordedOn` is the day this observation was
+    // recorded, never the license's actual issuance or activation day.
+    recordedOn: recordedOnFor(row.created_at),
+    observedValidityEnd: persistedBusinessDay(row.observed_validity_end),
     evidenceReference: evidence,
     evidenceBasis: "OPERATOR_OBSERVED",
   };
@@ -272,16 +275,16 @@ export async function recordLicenseObservation(
   body: unknown,
 ) {
   assertOperationPermission(role, "operations.record");
-  // `activationValidFrom` is deliberately NOT in the allowlist: the activation
-  // validity start is the authoritative issuance day and is asserted by the
-  // server, never selected, backdated or future-dated by the issuer
-  // (PDR-18 §1.2). An unknown field is refused by `object`.
+  // `recordedOn` is deliberately NOT in the allowlist: the day an observation
+  // was recorded is derived from the server-generated, immutable `created_at`
+  // instant and can never be selected, backdated or future-dated by a client
+  // (PDR-18 §1.2, PDR-17). An unknown field is refused by `object`.
   const input = object(body, [
     "customerId",
     "installationReference",
     "reason",
     "evidenceReference",
-    "activationValidUntil",
+    "observedValidityEnd",
   ]);
   const customerId = id(input.customerId);
   const installation = installationReference(
@@ -290,11 +293,13 @@ export async function recordLicenseObservation(
   );
   const reason = reasonText(input.reason);
   const evidence = evidenceReference(input.evidenceReference);
-  // The activation-validity end is issuer-supplied and EXCLUSIVE, following the
-  // half-open signed-license interval convention. A null end records no end.
-  const activationValidUntil = optionalBusinessDay(
-    input.activationValidUntil,
-    "activationValidUntil",
+  // The operator-recorded validity end follows the half-open interval
+  // convention of the signed-license model and is EXCLUSIVE. A null or empty
+  // value records "no end was recorded" — it is never defaulted, never derived
+  // from the recording day, and never derived from the contract dates.
+  const observedValidityEnd = optionalBusinessDay(
+    input.observedValidityEnd,
+    "observedValidityEnd",
   );
   const plan = licenseObservationCreate();
   await lockCustomer(tx, customerId);
@@ -310,31 +315,31 @@ export async function recordLicenseObservation(
       "An operation already exists for this installation.",
     );
   const recordId = ulid();
-  // The issuance day is the UTC calendar day of the authoritative database
-  // clock. It is asserted here, after the end is validated, so the half-open
-  // interval `[issuance day, activationValidUntil)` can be checked exactly.
-  const issued = await tx.query<{ activation_valid_from: Date | string }>(
+  // The recording day is never sent by the client and never stored in its own
+  // column: it is the UTC calendar day of this row's `created_at`, which
+  // PostgreSQL sets from `clock_timestamp()` and migration 002 then makes
+  // immutable. The recorded end is checked against that day so no row can ever
+  // carry an end at or before the day it was recorded.
+  const inserted = await tx.query<{ created_at: Date | string }>(
     `INSERT INTO owner.operational_records(
       id, customer_id, kind, observed_status, observation_category,
-      installation_reference, activation_valid_from, activation_valid_until,
-      created_by, updated_by)
-    VALUES ($1,$2,'LICENSE',$3,$4,$5,
-      (clock_timestamp() AT TIME ZONE 'UTC')::date, $6, $7,$7)
-    RETURNING activation_valid_from`,
+      installation_reference, observed_validity_end, created_by, updated_by)
+    VALUES ($1,$2,'LICENSE',$3,$4,$5,$6,$7,$7)
+    RETURNING created_at`,
     [
       recordId,
       customerId,
       plan.observedStatus,
       plan.observationCategory,
       installation,
-      activationValidUntil,
+      observedValidityEnd,
       actorId,
     ],
   );
-  const activationValidFrom = persistedBusinessDay(
-    issued.rows[0]!.activation_valid_from,
-  )!;
-  assertActivationValidityInterval(activationValidFrom, activationValidUntil);
+  assertObservedValidityEnd(
+    recordedOnFor(inserted.rows[0]!.created_at),
+    observedValidityEnd,
+  );
   await writeTransition(
     tx,
     recordId,

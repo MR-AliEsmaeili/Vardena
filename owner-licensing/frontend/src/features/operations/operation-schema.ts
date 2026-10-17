@@ -24,12 +24,13 @@ const evidence = z
 const acknowledged = z.boolean().refine((value) => value, o.confirmRequired);
 
 /**
- * PDR-18 §1.2: the activation-validity START is the authoritative issuance day
- * and is asserted by the server. There is deliberately no `activationValidFrom`
- * field here — the issuer cannot select, backdate or future-date that start.
- * Only the issuer-supplied, EXCLUSIVE end is collected.
+ * PDR-18 §1.2 + PDR-17: the day an observation was recorded is derived by the
+ * server from the immutable record instant. There is deliberately no
+ * `recordedOn` field here — an operator can never select, backdate or
+ * future-date it. Only the operator-recorded, EXCLUSIVE validity end is
+ * collected, and an empty value records "no end was recorded".
  */
-const activationValidUntil = z
+const observedValidityEnd = z
   .string()
   .trim()
   .refine((value) => value === '' || isBusinessDay(value), o.invalidDay);
@@ -39,7 +40,7 @@ export const licenseObservationSchema = z.object({
   installationReference: installation,
   reason,
   evidenceReference: evidence,
-  activationValidUntil,
+  observedValidityEnd,
   acknowledged,
 });
 export const activationObservationSchema = z.object({

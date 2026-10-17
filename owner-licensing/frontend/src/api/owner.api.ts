@@ -76,8 +76,12 @@ export const recordLicenseObservation = (body: {
   installationReference: string;
   reason: string;
   evidenceReference?: string;
-  /** Issuer-supplied EXCLUSIVE end of the activation-validity window. */
-  activationValidUntil?: string;
+  /**
+   * The validity end the operator recorded having seen (EXCLUSIVE). There is
+   * deliberately no `recordedOn` field: the recording day is derived by the
+   * server and can never be supplied by a client.
+   */
+  observedValidityEnd?: string;
 }) =>
   apiPost<OperationalRecord>('/operational-records/license-observations', body);
 export const recordActivationObservation = (

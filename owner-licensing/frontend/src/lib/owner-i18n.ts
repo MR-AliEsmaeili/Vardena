@@ -117,24 +117,27 @@ export const o = {
   name: 'نام نمایشی *',
   status: 'وضعیت',
   reference: 'مرجع قرارداد (اختیاری)',
-  // PDR-18 §1: contract dates and activation-validity dates are separate
-  // concepts, so they carry separate labels everywhere they appear.
+  // PDR-18 §1 + PDR-17: commercial contract dates, Owner-side observation
+  // metadata and customer-side signed-license validity are three separate
+  // concepts, so they carry separate, truthful labels everywhere they appear.
+  // No label may imply that this application knows or has verified the actual
+  // issuance or activation date of a signed license.
   contractStartDate: 'تاریخ شروع قرارداد (تجاری، اختیاری)',
   contractEndDate: 'تاریخ پایان قرارداد (تجاری، اختیاری)',
   contractDatesHelp:
-    'تاریخ‌های قرارداد فقط اطلاعات تجاری و اداری هستند و اعتبار فنی فعال‌سازی مجوز را تعیین یا تغییر نمی‌دهند. شروع قرارداد می‌تواند پیش از صدور باشد.',
-  activationValidFrom: 'شروع اعتبار فعال‌سازی (تاریخ صدور معتبر)',
-  activationValidUntil: 'پایان اعتبار فعال‌سازی (اختیاری، نیمه‌باز)',
-  activationValidityHelp:
-    'شروع اعتبار فعال‌سازی برابر روز صدور معتبر است و توسط سرور تعیین می‌شود؛ امکان انتخاب، عقب‌گرد یا جلوکِشی آن وجود ندارد. تاریخ پایان توسط صادرکننده تعیین می‌شود و نسبت به بازهٔ امضاشده (نیمه‌باز) خودِ آن روز شامل نیست.',
-  activationValidityTitle: 'اعتبار فعال‌سازی (فنی)',
+    'تاریخ‌های قرارداد فقط اطلاعات تجاری و اداری هستند. این تاریخ‌ها اعتبار فنی مجوز امضاشده را تعیین یا تغییر نمی‌دهند و می‌توانند پیش از ثبت مشاهده باشند.',
+  recordedOn: 'روز ثبت این مشاهده (تعیین‌شده توسط سرور)',
+  observedValidityEnd: 'پایان اعتبارِ مشاهده‌شده (اختیاری)',
+  observationDatesHelp:
+    'روز ثبتِ مشاهده توسط سرور و از زمانِ ثبتِ رکورد تعیین می‌شود و قابل انتخاب، عقب‌گرد یا جلوکِشی نیست. این روز، تاریخ صدور یا فعال‌سازی واقعی مجوز امضاشده نیست؛ این برنامه مجوز را صادر نمی‌کند و به‌صورت رمزنگارانه بررسی نمی‌کند. پایان اعتبار، پایانی است که اپراتور اعلام کرده است مشاهده کرده باشد.',
+  observationDatesTitle: 'مشاهدهٔ ثبت‌شده (دستی)',
   contractDatesTitle: 'تاریخ‌های قرارداد (تجاری)',
   notRecorded: 'ثبت نشده',
   invalidDay: 'تاریخ باید یک روز معتبر باشد.',
   contractEndBeforeStart:
     'تاریخ پایان قرارداد نمی‌تواند پیش از تاریخ شروع باشد.',
-  activationEndNotAfterStart:
-    'پایان اعتبار فعال‌سازی باید پس از تاریخ شروع اعتبار باشد.',
+  observedEndNotAfterStart:
+    'پایان اعتبارِ مشاهده‌شده باید پس از روز ثبت مشاهده باشد.',
   reason: 'دلیل تغییر *',
   active: 'فعال',
   inactive: 'غیرفعال',

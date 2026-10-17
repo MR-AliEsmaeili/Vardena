@@ -111,7 +111,7 @@ export function ActivationFormPage() {
       installationReference: '',
       reason: '',
       evidenceReference: '',
-      activationValidUntil: '',
+      observedValidityEnd: '',
       acknowledged: false,
     },
   });
@@ -125,10 +125,10 @@ export function ActivationFormPage() {
           reason: values.reason,
           evidenceReference: values.evidenceReference,
         }),
-        // The activation-validity START is never sent: the server asserts the
-        // authoritative issuance day (PDR-18 §1.2).
-        ...(values.activationValidUntil.trim()
-          ? { activationValidUntil: values.activationValidUntil.trim() }
+        // The recording day is never sent: the server derives it from the
+        // immutable record instant (PDR-18 §1.2, PDR-17).
+        ...(values.observedValidityEnd.trim()
+          ? { observedValidityEnd: values.observedValidityEnd.trim() }
           : {}),
       }),
     onSuccess: async (record) => {
@@ -206,20 +206,20 @@ export function ActivationFormPage() {
         </FormField>
         <fieldset className="space-y-3 rounded border p-3">
           <legend className="px-1 text-sm font-semibold">
-            {o.activationValidityTitle}
+            {o.observationDatesTitle}
           </legend>
-          <p className="text-sm text-slate-500">{o.activationValidityHelp}</p>
+          <p className="text-sm text-slate-500">{o.observationDatesHelp}</p>
           <FormField
-            id="activationValidUntil"
-            label={o.activationValidUntil}
-            error={form.formState.errors.activationValidUntil?.message}
+            id="observedValidityEnd"
+            label={o.observedValidityEnd}
+            error={form.formState.errors.observedValidityEnd?.message}
           >
             {(props) => (
               <DateInput
                 {...props}
-                value={form.watch('activationValidUntil')}
+                value={form.watch('observedValidityEnd')}
                 onChange={(value) =>
-                  form.setValue('activationValidUntil', value, {
+                  form.setValue('observedValidityEnd', value, {
                     shouldValidate: true,
                   })
                 }

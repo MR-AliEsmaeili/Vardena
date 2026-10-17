@@ -2696,29 +2696,37 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   `contract_reference`), **no** activation-validity dates anywhere, and no
   issuance-day rule.
 - **Implemented (Owner side, PDR-18 §1.1–§1.5):**
-  - Additive migration `owner-licensing/backend/migrations/005-contract-and-activation-dates.sql`:
-    `owner.customers.contract_start_date` / `contract_end_date` (commercial,
-    may precede issuance, order-checked only) and
-    `owner.operational_records.activation_valid_from` /
-    `activation_valid_until` (technical, half-open `[from, until)` with a
-    strictly later exclusive end; a `SERVER_REPLACEMENT` record carries no
-    window; a `LICENSE` record always has a start). All four are PostgreSQL
-    `date` (canonical BusinessDate). The migration backfills
-    `activation_valid_from` for pre-existing `LICENSE` rows from the UTC
-    calendar day of their own issuance-observation instant and invents **no**
-    end date; no applied migration is edited.
-  - `recordLicenseObservation` does not accept `activationValidFrom`: the
-    request allowlist refuses any other field with `400 ValidationFailed`, and
-    the start is inserted by PostgreSQL as
-    `(clock_timestamp() AT TIME ZONE 'UTC')::date` — the authoritative
-    server/database clock, never a browser or client value.
+  - Additive migration `owner-licensing/backend/migrations/005-contract-and-activation-dates.sql`
+    (**semantically corrected 2026-10-17**): `owner.customers.contract_start_date`
+    / `contract_end_date` (commercial, may precede the recording, order-checked
+    only) and `owner.operational_records.observed_validity_end` (the validity
+    end the operator recorded having seen; exclusive; a `SERVER_REPLACEMENT`
+    record records none; `null` means no end was recorded).
+    **No issuance or activation date is stored at all.** The recording day
+    (`recordedOn`) is derived on read as the UTC calendar day of the row's
+    `created_at`, which is `NOT NULL DEFAULT clock_timestamp()` and is
+    immutable under migration 002's `owner.immutable_operation_facts` trigger —
+    so it is server-controlled, always present, and cannot be confused with a
+    signed license's issuance date. The migration contains **no backfill and no
+    `UPDATE`**, so no historical issuance/activation date is fabricated for
+    existing rows, and the SQLSTATE 55006 hazard (an `UPDATE` followed by an
+    `ALTER TABLE` on the same table inside the single migration transaction) is
+    structurally absent. 005 was corrected in place rather than superseded
+    because it has never been released: it exists only on this unmerged PR
+    branch and is absent from `main`. No applied migration is edited; 001–004
+    checksums are unchanged.
+  - `recordLicenseObservation` does not accept `recordedOn`: the request
+    allowlist refuses any other field with `400 ValidationFailed`, and the
+    recording day comes from PostgreSQL's `clock_timestamp()` via `created_at` —
+    the authoritative server clock, never a browser or client value.
   - `persistedBusinessDay` in `owner-licensing/backend/src/domain.ts` is the
     single place that undoes node-postgres' local-midnight materialization of a
     `date`, so a process east or west of UTC cannot shift a recorded day.
-  - The API, the audit-state allowlist and the Owner UI expose the two pairs
+  - The API, the audit-state allowlist and the Owner UI expose the two groups
     under separate names and separate Persian labels, rendered Jalali-first
     through the staged shared date foundation; the UI offers **no** input for
-    the activation-validity start.
+    the recording day, and its help text states that the recording day is not
+    the signed license's issuance date (PDR-17).
 - **Deliberately blocked:**
   - **OQ-88 (registered 2026-10-17, engineering).** PDR-18 §1.2/§1.6 forbids a
     past or future activation-validity start, but the approved version model
@@ -2860,3 +2868,74 @@ evidence-matrix row **L-18.10**.
   mutates business state.
 - **Blocked / next:** the gap must be revisited by whichever slice implements
   PDR-18 §4, after OQ-78 is answered. No Product Owner acceptance is claimed.
+
+### 52. PDR-18 §1 — semantic correction of the Owner-side date model (2026-10-17)
+
+**The defect.** The first revision of this PR modelled the Owner-side recording
+date as `activation_valid_from` / `activationValidFrom` and the operator-supplied
+end as `activation_valid_until` / `activationValidUntil`, presenting them as the
+license's "activation validity". That overclaimed what the Owner application
+knows. PDR-17 records cryptographic issuance, signed receipts, deactivation
+proofs, revocation and recovery as **not implemented** in the Owner application
+and states that Owner operations record only `OPERATOR_OBSERVED` facts —
+"manually attributable facts, not cryptographically verified operations" — with
+every response carrying `cryptographicVerification = NOT_IMPLEMENTED`. A
+database-recording date is not proof of a signed license's issuance or activation
+date, and calling it one is a false claim in the schema, the API, the UI label
+and the audit trail.
+
+**The correction, applied at the source across every layer.**
+
+- **No stored issuance or activation date at all.** `activation_valid_from` is
+  gone. The recording day (`recordedOn` in the API) is _derived on read_ from the
+  row's `created_at`: a server-generated `timestamptz` that is `NOT NULL DEFAULT
+clock_timestamp()` and is immutable under migration 002's
+  `owner.immutable_operation_facts` trigger. This is the canonical BusinessDate
+  projection of an Instant (AR-32), so it creates no second source of truth that
+  could drift and requires no backfill.
+- **The operator-recorded end is renamed** to `observed_validity_end` /
+  `observedValidityEnd`, making its epistemic status part of its name.
+- **The backfill is removed entirely**, so no observation timestamp is ever
+  written into a field that could be read as verified issuance evidence, and no
+  historical fact is fabricated for rows recorded before the migration.
+- **API, DTOs, zod schemas, forms, detail pages, audit projection, Persian
+  labels and every test were updated together**, so no two sources of truth
+  disagree. The UI help text now states explicitly that the recording day is not
+  the signed license's issuance date.
+- **Migration 005 was corrected in place, not superseded**: it has never been
+  released (it exists only on this unmerged PR branch and is absent from `main`,
+  verified by object lookup), so no supported installation can have applied it,
+  and the ledger's checksum guard would make any mismatch loud.
+
+**Three separate concepts, now distinct everywhere.** (1) Contract dates —
+commercial, on `owner.customers`, order-checked only, never derived from or
+overwriting technical validity. (2) Owner-side observation metadata —
+`recordedOn` (derived, server-controlled) and `observedValidityEnd` (recorded by
+the operator). (3) Customer-side signed-license validity — owned by the customer
+runtime; this PR does not model, read or alter it.
+
+**Evidence that nothing was missed:** `git diff --stat main…HEAD -- backend/src`
+is empty (the customer runtime is untouched) and `-- docs/licensing` is empty
+(the committed vectors, including the future-dated `validFrom` cases, are
+unchanged). A grep for the old identifiers returns nothing except two deliberate
+negative assertions in `unit.test.ts` that guard against their return.
+
+**Tests added/updated for the corrected semantics:** the recording day follows
+the recording instant (two instants, two days), the response carries no property
+claiming an issuance or activation date, the response states its own
+`OPERATOR_OBSERVED` / `NOT_IMPLEMENTED` status, a client-supplied `recordedOn`
+is refused (400) and stripped by the form schema, no label claims a verified
+issuance date, and a new PostgreSQL migration case proves the column set
+contains no issuance/activation column, that a row with an older `created_at`
+reports that day as its recording day with a `NULL` observed end (nothing
+invented), and that both new CHECKs reject violations.
+
+**Limitation, flagged not patched:** the retained interval rule requires the
+observed end to be later than the recording day, so an operator cannot record an
+end that is already past (e.g. an expired license observed after the fact).
+Changing that would be a new product rule, so it is documented instead.
+
+**Unchanged:** no cryptographic issuance, signing, verification or revocation was
+added; PDR-18's authorization status was not altered; no new product decision was
+recorded on the Product Owner's behalf; OQ-88 (customer-side) and OQ-78
+(termination instrument) remain open and blocking for their own scopes.

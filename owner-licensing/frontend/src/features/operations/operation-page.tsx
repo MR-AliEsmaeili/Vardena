@@ -239,20 +239,21 @@ export function OperationPage() {
           [o.notVerified, o.notVerified],
           [o.noArtifact, o.noArtifact],
           [o.noContact, o.noContact],
-          // PDR-18 §1: the recorded activation-validity window. Distinct from
-          // the customer's commercial contract dates, which live on the
-          // customer record and are never mixed in here.
+          // PDR-18 §1 + PDR-17: Owner-side observation metadata. Distinct
+          // from the customer's commercial contract dates (which live on the
+          // customer record) and from a signed license's technical validity
+          // (which this application cannot verify).
           ...(record.kind === 'LICENSE'
             ? ([
                 [
-                  o.activationValidFrom,
-                  formatOwnerBusinessDay(record.activationValidFrom),
-                  record.activationValidFrom,
+                  o.recordedOn,
+                  formatOwnerBusinessDay(record.recordedOn),
+                  record.recordedOn,
                 ],
                 [
-                  o.activationValidUntil,
-                  formatOwnerBusinessDay(record.activationValidUntil),
-                  record.activationValidUntil,
+                  o.observedValidityEnd,
+                  formatOwnerBusinessDay(record.observedValidityEnd),
+                  record.observedValidityEnd,
                 ],
               ] as [string, string, string | null][])
             : []),

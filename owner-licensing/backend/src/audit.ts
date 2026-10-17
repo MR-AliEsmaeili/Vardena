@@ -123,8 +123,8 @@ const auditStateKeys = new Set([
   // window are separate, attributable lifecycle facts.
   "contractStartDate",
   "contractEndDate",
-  "activationValidFrom",
-  "activationValidUntil",
+  "recordedOn",
+  "observedValidityEnd",
   "username",
   "role",
   "isActive",
