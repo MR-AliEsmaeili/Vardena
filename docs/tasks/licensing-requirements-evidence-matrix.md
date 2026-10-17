@@ -6,7 +6,7 @@
 **Date:** 2026-10-17 · **Owner:** Ali Esmaeili (product decisions) · **Agent:** implementation.
 
 Status legend: **Implemented** (in code, with tests) · **Partial** (implemented for the
-approved slice, with a named gap) · **Open — decision** (needs a Product Owner decision
+approved slice, with a named gap) · **Product policy decided (PDR-18); implementation compatibility remains open** (needs a Product Owner decision
 before code may exist) · **Open — implementation** (approved, not written yet) ·
 **Implemented in open PR** (code is on an unmerged branch; decision acceptance,
 exact-head CI and merge status are recorded separately; no OQ closure or broader
@@ -57,7 +57,7 @@ CI job names below are the ones the workflow actually runs
 | C8 | Same-licenseId and changed-licenseId renewals measured against the same baseline | Implemented (F-8 non-bypass) | `continuationBaselineFor` | `license-version.spec.ts` (F-8 cases) | `backend` |
 | C9 | Post-gap recovery only through the dedicated, authorized, audited operation | Implemented (PDR-13 / OD-LIC-02) | `postGapGuard`, `license-gap-recovery.controller.ts`, `license.import.recovered` event | `license-import.service.spec.ts`, `test/license-recovery-resolution.e2e-spec.ts`, live suite | `backend` |
 | C10 | The §8.6 reduction guard also runs **on the recovery path** | Implemented in open PR #171; OD-LIC-05 Option 1 accepted by Product Owner (2026-10-17); OQ-87 remains open | `lapsedCoverageVersion`; same-route optional resolution with all three permissions; exact in-transaction conflicts in dual typed audit events; no migration | `license-version.spec.ts` contract cases; `license-import.service.spec.ts`; `test/license-recovery-resolution.e2e-spec.ts`; live PostgreSQL atomicity case (CI-only) | Exact-current-head GitHub Actions run and job conclusions are linked in PR #171; prior-SHA runs are not final-head evidence |
-| C11 | Interior/backdated gap-fill candidates are measured | **Open — decision** | — | — | — |
+| C11 | Interior/backdated gap-fill candidates are measured | **Product policy decided (PDR-18, 2026-10-17): no special internal-gap/backdated activation path for MVP; activation start is issuance date** | — | — | Engineering must reconcile issue-today validity with version conflict/renewal/supersession behavior; do not bypass guards |
 | C12 | Signed receipts for ordinary activation | Closed as a product question (OQ-84, 2026-10-15): not required | existing activation audit suffices | live suite audit assertions | `backend` |
 
 ## D. Expiry, Grace and Read-Only (OQ-45 / ADR-0049)
@@ -171,12 +171,9 @@ CI job names below are the ones the workflow actually runs
   J2 (Owner role matrix/operational acceptance). OD-LIC-05 Option 1 for C10 is
   accepted; OQ-87 remains open under the registry convention and is not closed.
 - **Implementation / delivery still pending:** the remaining open items above,
-  each with its own contract, tests and operational documentation. C10 is
-  implemented in open PR #171 but is not merged/delivered; its exact-head CI is
-  tracked from the live PR checks. C10 has no schema change or migration, and this
+  each with its own contract, tests and operational documentation. C10 was delivered via PR #171; verify the current main/merge state independently before treating any branch-specific evidence in this historical matrix as current. C10 has no schema change or migration, and this
   narrow acceptance does not imply broader licensing completion.
-- **Open product questions that block nothing implemented here:** OQ-45 contract-termination
-  strictness, OQ-86, OQ-79, OQ-77.
+- **Open product questions that block nothing implemented here:** OQ-86, OQ-79 and OQ-77 implementation/evidence. OQ-45 contract-termination policy is decided by PDR-18; enforcement/evidence remains open.
 
 This matrix describes the **implemented slice plus corrective slices** on the PR
 branch; it does not close any OQ, promote ADR-0049 (still Proposed), or claim the
