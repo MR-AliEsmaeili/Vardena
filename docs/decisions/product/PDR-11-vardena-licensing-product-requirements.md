@@ -1223,7 +1223,7 @@ remain open and must not be guessed.
 
 ## 22. Product Owner decisions — contract and activation policy (2026-10-17)
 
-The later binding policy is recorded in [PDR-18](PDR-18-licensing-contract-and-activation-policy.md). It supersedes conflicting earlier text only on the topics it explicitly addresses:
+The later binding policy is recorded in [PDR-18](PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md). It supersedes conflicting earlier text only on the topics it explicitly addresses:
 
 - Commercial contract start/end dates and technical activation validity are independent fields and concepts. On issuance, activation `validFrom` is populated from the current issuance date and cannot be edited; past- or future-start activation is forbidden. The issuer selects `validUntil` independently. Owner UI/API must show both date pairs distinctly.
 - A special C11/internal-gap/backdated-gap-fill path is not required for MVP. The accepted C10/OD-LIC-05/ADR-0050 reduction guard remains in force. Engineering must specify compatibility with existing version conflict/renewal rules before changing import behavior.
