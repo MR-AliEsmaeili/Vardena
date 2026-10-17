@@ -62,11 +62,17 @@ import type {
  * `supersedesOperationId` included — and a contiguous renewal that retires
  * nothing is measured against the deterministic continuation baseline (the
  * retained grant whose effective window ends exactly at the renewal's start,
- * L-05). Conflicts are refused with their concrete details unless the caller
- * carries the explicit resolution of the dedicated, authorized, audited
- * resolution operation (PDR-11 §8.6, L-04/L-05); on a renewal the resolution
- * subject is that baseline, which is audited but never retired or stamped.
- * Naming the version to retire is not that resolution.
+ * L-05). An accepted post-gap recovery (L-07 / OD-LIC-05 Option 1) is instead
+ * measured against the retained version whose effective coverage ended last,
+ * because there can be no adjacent baseline across a lapse. Conflicts are
+ * refused with their concrete details unless the operation carries the
+ * explicit resolution permitted for that path: ordinary imports, renewals and
+ * hand-overs use the dedicated reduction-resolution operation, while a genuine
+ * post-gap recovery may resolve only on that same authorized recovery request
+ * (PDR-11 §8.6, L-04/L-05/L-07). The resolution subject is audited; the
+ * resolution itself never retires or stamps it. A predecessor is stamped only
+ * when it is independently the actual supersession target (never so for the
+ * lapsed recovery subject). Naming a version to retire is not a resolution.
  * `evaluateImportConflicts` is the single authority for that guarantee and is
  * evaluated twice — once as a read-side pre-check (fast, informative rejection)
  * and once inside the import transaction, under a per-installation database
@@ -438,15 +444,17 @@ export function installationCoverageEnd(
 }
 
 /**
- * The license whose retained coverage ended last — the license the
- * installation lapsed ON (OQ-87 recovery audit context). Deterministic
- * (latest end, then latest import, then id) and `null` when coverage never
- * ended, so a recovery event can never name a predecessor that does not
- * exist.
+ * The retained version whose effective coverage ended last — the version the
+ * installation lapsed ON (OQ-87 recovery audit context; L-07 / OD-LIC-05: also
+ * the grant a post-gap recovery candidate is measured against by the §8.6
+ * reduction guard). Deterministic (latest effective end, then latest import,
+ * then version id) and `null` when coverage never ended — either nothing is
+ * retained or a perpetual version still covers — so a recovery can never be
+ * measured against, or name, a predecessor that does not exist.
  */
-export function lapsedLicenseContext(
+export function lapsedCoverageVersion(
   versions: readonly RetainedLicenseVersion[],
-): { licenseId: string; coverageEnd: Date } | null {
+): RetainedLicenseVersion | null {
   let best: RetainedLicenseVersion | null = null;
   let bestEnd: Date | null = null;
   for (const version of versions) {
@@ -464,9 +472,24 @@ export function lapsedLicenseContext(
       bestEnd = window.end;
     }
   }
-  return best === null || bestEnd === null
+  return best;
+}
+
+/**
+ * The license whose retained coverage ended last — the license the
+ * installation lapsed ON (OQ-87 recovery audit context). `null` when coverage
+ * never ended, so a recovery event can never name a predecessor that does not
+ * exist.
+ */
+export function lapsedLicenseContext(
+  versions: readonly RetainedLicenseVersion[],
+): { licenseId: string; coverageEnd: Date } | null {
+  const best = lapsedCoverageVersion(versions);
+  if (best === null) return null;
+  const coverageEnd = effectiveWindow(best).end;
+  return coverageEnd === null
     ? null
-    : { licenseId: best.licenseId, coverageEnd: bestEnd };
+    : { licenseId: best.licenseId, coverageEnd };
 }
 
 /**
@@ -512,8 +535,10 @@ export function isPostGapRecoveryCandidate(
  * within the new finite limits and removes no entitlement is NOT a conflict
  * and is applied; one that does conflict is refused
  * (`reduction-requires-resolution`, 409, nothing written) with the concrete
- * conflicts, unless the explicit resolution of the dedicated resolution
- * operation authorizes it.
+ * conflicts, unless the caller carries the explicit resolution authorized for
+ * that path. For a genuine post-gap recovery, accepted OD-LIC-05 permits that
+ * resolution only on the same dedicated recovery operation; other paths use
+ * the dedicated reduction-resolution operation.
  *
  * `null` is unlimited, so replacing an unlimited limit with a number is a
  * reduction too. An entitlement the predecessor granted and the candidate does
@@ -952,8 +977,11 @@ export interface CustomerTransferIntent {
  * recovery route — is what allows a NEW license identity to cover a lapse.
  * On every path without it, such a candidate is refused
  * (`post-gap-recovery-requires-dedicated-operation`): ordinary license import
- * is not a permitted post-gap recovery path. Like the transfer intent it is
- * never inferred from the document, and it authorizes nothing else: every
+ * is not a permitted post-gap recovery path. L-07 also permits this intent to
+ * accompany `reductionResolution` so the same recovery operation can resolve
+ * a conflict measured against the latest lapsed grant; the two intentions are
+ * independently permission-checked and audited. Like the transfer intent it
+ * is never inferred from the document, and it authorizes nothing else: every
  * signature, binding, identity, overlap, reduction and audit rule still runs.
  */
 export interface GapRecoveryIntent {
@@ -1010,8 +1038,9 @@ export interface EvaluateImportConflictsParams {
   /** Set only by the dedicated post-gap recovery operation; null otherwise. */
   gapRecovery?: GapRecoveryIntent | null;
   /**
-   * Set only by the dedicated reduction-resolution operation; null on every
-   * other path (an ordinary import can never carry it).
+   * Set by the dedicated reduction-resolution operation, or by the dedicated
+   * post-gap recovery operation under accepted OD-LIC-05; an ordinary import
+   * can never carry it.
    */
   reductionResolution?: ReductionResolutionIntent | null;
 }
@@ -1023,13 +1052,12 @@ export type ImportConflictEvaluation =
       supersedes: RetainedLicenseVersion | null;
       /**
        * The version whose grant an APPLIED resolution authorized reducing
-       * (L-04/L-05): the retired predecessor on a hand-over path, or the
-       * deterministic continuation baseline when the candidate is a renewal
-       * that retires nothing. Null when this import consumed no resolution —
-       * in particular when the reduction guard had nothing to lift. The
-       * repository audits and receipts name exactly this version, and it is
-       * never stamped: a resolution authorizes a reduction, it does not retire
-       * the version it is measured against.
+       * (L-04/L-05/L-07): the retired predecessor on a hand-over path, the
+       * deterministic continuation baseline on a contiguous renewal, or the
+       * latest lapsed coverage version on a post-gap recovery. Null when this
+       * import consumed no resolution. The repository recomputes and records
+       * the actual conflicts against exactly this version; it is never stamped
+       * merely because a resolution authorized reducing it.
        */
       resolutionSubject: RetainedLicenseVersion | null;
     };
@@ -1039,9 +1067,10 @@ export type ImportConflictEvaluation =
  * (L-05, PDR-11 §8.6): the retained version whose **effective** window ends
  * exactly at the candidate's `validFrom` — the grant the installation was
  * enjoying immediately before a contiguous renewal takes over. Null when no
- * retained version ends there (a first license, a backwards gap fill, a
- * post-gap start), which leaves the candidate unmeasured exactly as the
- * documented out-of-scope cases require.
+ * retained version ends there (a first license, a backwards gap fill, or a
+ * post-gap start). A dedicated post-gap recovery has its separate accepted
+ * L-07 measurement against `lapsedCoverageVersion`; this helper does not broaden
+ * to interior or backdated gap-fill candidates (C11 remains open).
  *
  * Selection is total and identity-independent (a changed `licenseId` must not
  * weaken the §8.6 check — the F-8 decision of 2026-10-13):
@@ -1127,6 +1156,18 @@ export function continuationBaselineFor(
  *    declared operation id) must exist in this installation, must not have a
  *    supersession recorded yet, and must still govern at `at` — a version is
  *    retired once, so two competing successors cannot be booked;
+ * Pre-4/5 (L-07, accepted OD-LIC-05 Option 1): a dedicated post-gap recovery
+ *    candidate is measured against `lapsedCoverageVersion` before
+ *    overlap/hand-over rules, because exact-adjacency baselines cannot exist
+ *    across a lapse. A conflicting reduction is refused with its lapsed
+ *    predecessor and concrete details unless the SAME recovery operation
+ *    carries an explicit reduction resolution; that combined operation
+ *    requires Activate, RecoverAfterGap and ResolveReduction and writes both
+ *    typed audit events in the same transaction. The measured lapsed version
+ *    is a resolution subject only, never a supersession target. A post-gap
+ *    recovery that declares any target is `recovery-not-applicable`. Ordinary
+ *    import and the separate resolution route still refuse post-gap candidates,
+ *    and all non-post-gap precedence is unchanged. See PDR-13 §8 and ADR-0050.
  * 4. **no overlap with retained history** (OQ-86 Option C, 2026-10-12): the
  *    candidate's window may not intersect the *effective* window of any
  *    retained version unless that version is the one it retires. Retired
@@ -1169,10 +1210,12 @@ export function continuationBaselineFor(
  *    removed entitlement is a conflict, refused as
  *    `reduction-requires-resolution` (409, nothing written) WITH the concrete
  *    conflicts in `conflict.reduction`. The refusal lifts only for the
- *    explicit resolution of the dedicated, authorized, audited resolution
- *    operation (`reductionResolution`), which the importing transaction
- *    audits; a signed `supersedesOperationId` proves which version the
- *    document replaces and is never that resolution. An unresolvable
+ *    explicit resolution authorized for that operation (`reductionResolution`):
+ *    the dedicated post-gap recovery operation under accepted OD-LIC-05 for a
+ *    true post-gap candidate, or the dedicated reduction-resolution operation
+ *    on the other applicable paths. The importing transaction audits the
+ *    actual recomputed conflicts; a signed `supersedesOperationId` proves which
+ *    version the document replaces and is never that resolution. An unresolvable
  *    composition — closing an open end where the document does not name the
  *    version it retires (implicit hand-over, legacy replacement; PDR-12), or
  *    a countable-but-unavailable usage — stays refused even with a
@@ -1193,8 +1236,10 @@ export function continuationBaselineFor(
  *    and the typed audit event name it, and it is never stamped — a
  *    resolution authorizes a reduction, it does not retire the version it is
  *    measured against. Where nothing retained ends at the candidate's start
- *    (a first license, a backwards gap fill, a post-gap start) there is no
- *    baseline and no measurement — those cases keep their own flows. The
+ *    (a first license or a backwards gap fill) there is no continuation
+ *    baseline and no measurement under rule 6c. A post-gap recovery has its
+ *    separate pre-rule-4/5 measurement against the latest lapsed version
+ *    (L-07); an ordinary post-gap import remains refused by rule 7b. The
  *    open-end arm cannot arise from adjacency: an open-ended grant has no
  *    effective end, so it is never the baseline, and a candidate over a
  *    perpetual grant is the already-guarded hand-over of rule 6b;
@@ -1215,8 +1260,10 @@ export function continuationBaselineFor(
  *    path. The dedicated recovery operation (its own permission, a required
  *    reason, a typed audit event) may apply exactly such a candidate and
  *    refuses everything else (`recovery-not-applicable`): there is nothing to
- *    recover. A start exactly AT the coverage end is adjacency, not a gap,
- *    and stays an ordinary import;
+ *    recover. Its L-07 reduction check runs before rules 4/5; when it conflicts,
+ *    this operation may carry the explicit reduction resolution and add the
+ *    third permission plus a second typed audit event. A start exactly AT the
+ *    coverage end is adjacency, not a gap, and stays an ordinary import;
  * 8. a legacy `VLIC1` text code keeps its documented L-02 lifecycle rules
  *    unchanged — at most one overlapping version that is still governing and
  *    has no recorded supersession, and never a hand-over in the past (which its
@@ -1290,6 +1337,18 @@ export function evaluateImportConflicts(
     });
   }
 
+  // Determine the narrow L-07 recovery case before resolving an explicit
+  // supersession target. A true post-gap recovery never retires a version, so
+  // any declared target — even an unknown or already-retired operation id —
+  // is a recovery applicability error, not a target-selection opportunity.
+  const postGapRecoveryCandidate =
+    gapRecovery !== null &&
+    supersession.kind !== 'implicit' &&
+    isPostGapRecoveryCandidate(candidate, versions);
+  if (postGapRecoveryCandidate && supersession.kind === 'explicit') {
+    return conflictOnly({ reason: 'recovery-not-applicable', overlapping: 0 });
+  }
+
   let target: RetainedLicenseVersion | null = null;
   if (supersession.kind === 'explicit') {
     const found = findVersionByOperationId(versions, supersession.operationId);
@@ -1301,6 +1360,65 @@ export function evaluateImportConflicts(
       return conflictOnly({ reason: 'unknown-supersession', overlapping: 0 });
     }
     target = found;
+  }
+
+  // Rule 7b′ (L-07, OD-LIC-05 / ADR-0050): on the dedicated recovery path, a
+  // post-gap candidate IS measured by the §8.6 reduction guard — against the
+  // version whose coverage ended last (`lapsedCoverageVersion`), because a
+  // post-gap start is never exactly adjacent, so the continuation baseline of
+  // rule 6c can never select a predecessor for it. This runs BEFORE rules
+  // 4/5: the candidate starts after every retained effective window, so no
+  // overlap or hand-over can arise, and the measurement must not depend on
+  // them. The verdicts mirror every other measured path:
+  //
+  // - a candidate that also names a supersession target is not a recovery
+  //   (the recovery applies a NEW identity over a lapse; it retires nothing),
+  //   refused as `recovery-not-applicable`;
+  // - a conflicting reduction without the explicit resolution the recovery
+  //   operation may now carry is refused as `reduction-requires-resolution`,
+  //   naming the lapsed version and the concrete conflicts — the recovery
+  //   route, not the resolution route (which refuses post-gap candidates),
+  //   is where the operator resolves it;
+  // - a supplied resolution that meets no conflict is refused as
+  //   `resolution-not-applicable`;
+  // - a resolvable conflict WITH the resolution is applied, the lapsed
+  //   version is the resolution subject (audited, never stamped — a recovery
+  //   retires nothing), and evaluation continues so every other rule still
+  //   runs exactly as before.
+  //
+  // Without the recovery intent nothing changes here: the ordinary import
+  // and the resolution route keep the `postGapGuard` verdict below, and a
+  // non-post-gap recovery keeps its existing rule order (G2 renewal-gap
+  // precedence included).
+  if (postGapRecoveryCandidate) {
+    // The explicit-target case was refused above, so this dedicated recovery
+    // reaches the reduction check with no supersession target.
+    const lapsed = lapsedCoverageVersion(versions);
+    if (lapsed !== null) {
+      const conflicts = reductionConflicts(lapsed, candidate, usage);
+      if (conflicts.length > 0) {
+        if (
+          reductionResolution === null ||
+          !conflicts.every(isResolvableReductionConflict)
+        ) {
+          return conflictOnly({
+            reason: 'reduction-requires-resolution',
+            overlapping: 1,
+            reduction: {
+              predecessorVersionId: lapsed.versionId,
+              conflicts,
+            },
+          });
+        }
+        resolutionApplied = true;
+        resolutionSubject = lapsed;
+      } else if (reductionResolution !== null) {
+        return conflictOnly({
+          reason: 'resolution-not-applicable',
+          overlapping: 0,
+        });
+      }
+    }
   }
 
   // Everything the candidate overlaps in the FULL retained history, minus the

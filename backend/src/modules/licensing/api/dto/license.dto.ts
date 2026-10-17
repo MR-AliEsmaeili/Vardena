@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import type { LicenseStatus } from '../../domain/license.js';
 import type {
   LicenseVersionSource,
@@ -70,8 +70,11 @@ export class TransferLicenseCustomerDto {
 /**
  * The dedicated post-gap recovery request (Owner decision 2026-10-12, OQ-87
  * Option B, PDR-13). Like the transfer: the body carries the signed document
- * and the operator's reason — never a license id, a window or any other
- * licensing fact, all of which are read from the verified payload.
+ * and the operator's recovery reason — never a license id, a window or any
+ * other licensing fact, all of which are read from the verified payload. A
+ * reductionResolutionReason is optional; if supplied it explicitly resolves a
+ * §8.6 conflict on this same recovery operation and requires the additional
+ * ResolveReduction permission.
  */
 export class RecoverAfterGapDto {
   @ApiProperty({
@@ -100,6 +103,23 @@ export class RecoverAfterGapDto {
   })
   @MaxLength(500)
   reason!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional explicit resolution reason for a capacity or entitlement reduction that conflicts with the lapsed grant or current usage. When supplied, this same recovery operation requires Licensing.License.ResolveReduction in addition to Activate and RecoverAfterGap, and records both typed audit events atomically. It cannot authorize an open-end closure or an unavailable usage count.',
+    minLength: 3,
+    maxLength: 500,
+    example:
+      'The customer approved the lower limit after confirming that the excess organizations were retired.',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(3, {
+    message:
+      'A reduction resolution reason of at least 3 characters is required.',
+  })
+  @MaxLength(500)
+  reductionResolutionReason?: string;
 }
 
 /**
@@ -510,6 +530,19 @@ export class GapRecoveryResultDto extends LicenseImportResultDto {
       'When that coverage ended; the recovery started strictly after it (ISO instant).',
   })
   coverageEnd!: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Present only when this recovery also resolved a §8.6 reduction; names the lapsed predecessor whose grant was measured.',
+  })
+  resolvedPredecessorVersionId?: string;
+
+  @ApiPropertyOptional({
+    type: [ReductionConflictDto],
+    description:
+      'Present only for a combined recovery and reduction resolution; the concrete conflicts the resolution authorized.',
+  })
+  resolvedConflicts?: ReductionConflictDto[];
 }
 
 /**

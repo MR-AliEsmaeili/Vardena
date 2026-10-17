@@ -1,42 +1,44 @@
 # Licensing version model, signed documents and file exchange — technical design
 
-> **Current policy correction (2026-10-16):** PDR-11 §21, PDR-15 §6 and PDR-17
-> govern current licensing policy. The existing self-service device-replacement
-> slice is prior implementation evidence, not the current OQ-83 MVP workflow;
-> Owner Admin-managed replacement is not yet evidenced as implemented. OQ-82's
-> manual server sequence and confirmation window are decided, but new-server
-> activation under the one-active-installation binding, pending/finalization
-> consistency, exact evidence and timeout recovery remain open. OQ-75 has exactly two MVP roles; OQ-77's
-> append-only minimum-three-year-from-occurrence retention and permanent separate
-> archive policy are decided, while archive/access implementation remains open.
-> OQ-45's natural-subscription-expiry boundary is signed expiry + 14×24h UTC
-> (`now >= boundary`); enforcement
-> is not implemented. This document is technical design/code evidence, not proof
-> of policy implementation; no runtime or signed-protocol changes are made here.
+> **Current policy correction (2026-10-16; addendum 2026-10-17):** PDR-11 §21,
+> PDR-15 §6 and PDR-17 govern current licensing policy. The existing self-service
+> device-replacement slice is prior implementation evidence, not the current
+> OQ-83 MVP workflow; Owner Admin-managed replacement is not yet evidenced as
+> implemented. OQ-82's manual server sequence and confirmation window are
+> decided, but new-server activation under the one-active-installation binding,
+> pending/finalization consistency, exact evidence and timeout recovery remain
+> open. OQ-75 has exactly two MVP roles; OQ-77's append-only minimum-three-year-
+> from-occurrence retention and permanent separate archive policy are decided,
+> while archive/access implementation remains open. OQ-45's natural-subscription-
+> expiry boundary is signed expiry + 14×24h UTC (`now >= boundary`); enforcement
+> is not implemented. The accepted C10 policy (OD-LIC-05 Option 1) is recorded
+> in PDR-13 §8 / ADR-0050 and described in §3.3; OQ-87 stays open and C11 remains
+> outside its scope. This document is technical design/code evidence, not proof
+> of merge or broader subsystem completion.
 
 > **Historical product reconciliation (2026-10-15):**
 > [PDR-11 §§9–10, 12, 15 and 20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
 > supersedes earlier undecided product wording for Grace/Read-Only, emergency/
 > recovery, clock, archive, successful duplicate replay, key compromise and the
-> `SUSPENDED` concept. This document still describes the existing technical
-> implementation, including known deviations. No canonical bytes, vector
-> contract, signature verification or version/gap/reduction rule changes here.
-> Global Jalali-first presentation applies to licensing and Owner surfaces
-> ([date/time policy §0](../datetime.md)), without reclassifying signed Instants.
+> `SUSPENDED` concept. That reconciliation did not change canonical bytes, vector
+> contracts or signature verification. Current version/gap/reduction policy,
+> including accepted OD-LIC-05 in §3.3, is stated below. Global Jalali-first
+> presentation applies to licensing and Owner surfaces ([date/time policy §0](../datetime.md)),
+> without reclassifying signed Instants.
 
 
 | Field | Value |
 | --- | --- |
-| Status | Active design record and existing implementation snapshot; the prior customer self-service OQ-83 slice merged and CI-verified, but its conformance to current manual Owner Admin policy remains open alongside operational evidence |
-| Authority | [ADR-0046](../adr/0046-signed-license-documents-and-version-lifecycle.md) (decision) · [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) (product source) · [PDR-15](../decisions/product/PDR-15-client-device-licensing-and-replacement.md) (OQ-83 policy) |
-| Date | 2026-10-11; licensing policy reconciliation updated 2026-10-16 |
+| Status | Active design and implementation snapshot; L-07/C10 is an accepted policy implemented on open PR #171 but is not yet merged; the prior customer self-service OQ-83 slice remains evidence only and its conformance to current manual Owner Admin policy is open |
+| Authority | [ADR-0046](../adr/0046-signed-license-documents-and-version-lifecycle.md) (versioning decision) · [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) (product source) · [PDR-13](../decisions/product/PDR-13-post-gap-recovery.md) §8 / [ADR-0050](../adr/0050-post-gap-recovery-reduction-guard.md) (accepted OD-LIC-05) · [PDR-15](../decisions/product/PDR-15-client-device-licensing-and-replacement.md) (OQ-83 policy) |
+| Date | 2026-10-17; licensing policy reconciliations updated through 2026-10-17 |
 | Scope | Server license import: signed document format, retained versions, effective-version resolution, replay protection, audit, migration, API and frontend boundary; OQ-83 signed device quota and its import conflict rules |
 | Out of scope (unchanged, gated) | Owner-side licensing system and client-device issuer, CRM/billing, server replacement, full revocation/reactivation, Grace/Read-Only enforcement, installation identity key, clock-rollback enforcement, test/training entitlements |
 
 This record is the design detail behind ADR-0046. Where PDR-11 leaves a product
 question open, this document says so explicitly and fails closed instead of
 inventing policy. Registered open items are listed in `docs/open-questions.md`
-(OQ-74…OQ-85) and cross-referenced from PDR-11 §19.4.
+(OQ-74…OQ-87) and cross-referenced from PDR-11 §19.4.
 
 ---
 
@@ -319,7 +321,9 @@ import ──► retained (not yet effective | effective | expired)
   in ONE transaction with conflicts recomputed under the allocation locks. A
   resolution whose document does not conflict is refused
   (`resolution-not-applicable`), and retrying a document or naming a version is
-  never a resolution.
+  never a resolution. The only route exception is the accepted L-07 C10 combined
+  recovery-and-resolution operation specified in §3.3; it does not create a
+  post-gap bypass on ordinary import or this separate route.
 - **A contiguous renewal is measured against the deterministic continuation
   baseline (L-05, PDR-11 §8.6 — implemented 2026-10-13).** §8.6's trigger is
   unconditional — it does not require the candidate to retire a version — and
@@ -399,21 +403,37 @@ import ──► retained (not yet effective | effective | expired)
   *which* version it replaces, so it may replace at most one still-governing
   version that has no recorded supersession; anything else is refused rather
   than guessed.
-- **Known gap — the post-gap recovery path is not measured (open decision).**
-  [PDR-13](../decisions/product/PDR-13-post-gap-recovery.md) §4.2 requires the
-  reduction guard to run on the recovery path "exactly as on every other path",
-  and it does not: a recovery candidate starts strictly after the installation's
-  coverage end, while the baseline rule above requires exact adjacency, so no
-  predecessor exists and a reducing recovery is applied. Enabling the guard is
-  not a one-line change, because the dedicated recovery route carries only the
-  recovery intent and the dedicated resolution route carries only the resolution
-  intent — the latter is refused by `post-gap-recovery-requires-dedicated-operation`
-  before any reduction rule runs — so a guard without a resolution-capable
-  recovery operation would make a legitimate reducing recovery permanently
-  inapplicable. The current behaviour is pinned by a labelled characterisation
-  suite in `license-version.spec.ts` as evidence for the pending Product Owner
-  decision recorded in
-  [`docs/tasks/licensing-open-decisions-brief.md`](../tasks/licensing-open-decisions-brief.md) §4.
+- **Post-gap recovery reduction guard (L-07, accepted OD-LIC-05 Option 1 / ADR-0050; Product Owner approval 2026-10-17).**
+  PDR-13 §4.2 requires the §8.6 guard on recovery; an exact-adjacency
+  continuation baseline can never exist across a lapse. The accepted C10
+  contract therefore measures only a genuine post-gap candidate on the
+  dedicated recovery path against `lapsedCoverageVersion`: the retained version
+  with the latest effective end, ties by latest `importedAt` then `versionId`.
+  The helper returns `null` if nothing is retained or any effective window is
+  perpetual; `lapsedLicenseContext` delegates to it and retains the same public
+  semantics (perpetual coverage still produces `null`). This check runs
+  **before overlap/precedence rules 4/5**. A conflicting reduction is refused
+  as `reduction-requires-resolution` with the lapsed version id and concrete
+  conflicts unless `POST /api/v1/license/gap-recovery` carries the optional
+  3–500 character `reductionResolutionReason`. When supplied, the same
+  operation requires `Licensing.License.Activate`,
+  `Licensing.Installation.RecoverAfterGap` and
+  `Licensing.License.ResolveReduction`. Supplying a resolution reason when no
+  §8.6 conflict exists is refused as `resolution-not-applicable`. The operation
+  commits the version plus both typed
+  audit events (`license.import.recovered` and
+  `license.import.reduction-resolved`) in one transaction. The resolution event
+  records the actual conflict objects recomputed inside that transaction under
+  the locks; conflicts are not client-supplied. The lapsed version is the
+  measured resolution subject and is never superseded or stamped. Any post-gap
+  recovery that declares a supersession target is `recovery-not-applicable`; the
+  dedicated recovery message must not point to the separate resolution route,
+  which continues to reject post-gap candidates. Ordinary imports, the separate
+  resolution route, renewal-gap precedence and non-post-gap behavior remain
+  unchanged. No schema/migration change is needed. OD-LIC-05 accepts this narrow
+  C10 behavior only; **OQ-87 remains open under the registry convention**. The
+  separate C11 question — measurement of interior/backdated gap fills — remains
+  open and outside this decision.
 - **A supersession may not hand over in the past.** The hand-over is the
   candidate's own `validFrom`, so retiring a version at an instant that is
   already past removes coverage that version really had, and the as-of answer

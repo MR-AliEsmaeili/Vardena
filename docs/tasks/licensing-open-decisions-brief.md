@@ -1,9 +1,10 @@
 # Licensing — open decisions brief (OQ-76, OQ-78, device lifecycle vs Grace)
 
-**Type:** decision brief (no decision is taken here) · **Date:** 2026-10-16 ·
-**Baseline:** `main` `c715a64cdfcbc866fe65613a0375a118e0024a8b` (PR #167 merge).
-**Authority:** only the Product Owner decides. Every item below is recorded as
-**OPEN**; nothing in this document changes a registry status, a PDR or an ADR.
+**Type:** decision brief (decision status is explicit in each section) · **Date:** 2026-10-17 ·
+**Original audit baseline:** `main` `c715a64cdfcbc866fe65613a0375a118e0024a8b` (PR #167 merge).
+**Current source-of-truth baseline (2026-10-17):** `main` `af68fd8eea5e5163d7827fa7b21d4bea85388e32` (PR #169 merge); PR #170 is **closed without merging** at head `ff2f4df1cc97b9fd974f0d73e197074727829af3` and its work is not assumed to be on `main`.
+**Update:** 2026-10-17 — Product Owner expressly accepted OD-LIC-05 Option 1 for C10; OQ-87 and C11 remain open.
+**Authority:** only the Product Owner decides. Open questions in §§1–3 and C11 remain **OPEN**; OD-LIC-05 is accepted and recorded in PDR-13 §8 / ADR-0050. This brief is supporting evidence and does not change any registry OQ status.
 
 This brief exists because a licensing audit of the merged OQ-45/device work
 found behaviours that the approved documents do not settle. Each section states
@@ -161,73 +162,88 @@ Until either exists, the standing risk in `docs/tasks/licensing-owner-side-phase
 
 ---
 
-## 4. Reduction-guard findings from the renewal audit (one fixed, one to decide)
+## 4. Reduction-guard findings and accepted C10 decision (updated 2026-10-17)
 
-The renewal/supersession audit re-checked the L-05 downgrade question the Owner
-asked about, and confirmed the guard is **not** keyed on `supersedes`:
-`evaluateImportConflicts` runs the capacity/entitlement arms on the explicit
-supersession path, the implicit hand-over, the legacy `VLIC1` path and the
-adjacent renewal path. Two facts came out of it:
+The renewal/supersession audit re-checked L-05 and the post-gap recovery flow.
+This section preserves the original defect evidence and records the accepted
+OD-LIC-05 decision and its implementation evidence; it does not change the
+status of any OQ.
 
-1. **A named supersession target could displace the measurement (high) — FIXED
-   in this change.** When a document named a `supersedesOperationId` that did
-   **not** overlap it, the capacity/entitlement measurement ran only against
-   that named version and the L-05 continuation baseline was not computed at all
-   (`supersedes !== null` skipped rule 6c). Reproduced with ordinary imports
-   only: `V_low` (org limit 5) → adjacent `V_high` (org limit 50) → `D`
-   (org limit 6) naming `V_low`, with 40 organizations in use: the document was
-   **applied**, while the same document without `supersedesOperationId` was
-   refused `reduction-requires-resolution`. This contradicted the in-code §8.6
-   text and design §F-8 ("a changed licenseId must not bypass the control"), so
-   it was treated as the pure defect it is rather than as policy. Rule **6b′**
-   now measures the deterministic continuation baseline as well whenever it
-   exists and differs from the named target, refuses with that baseline named as
-   `predecessorVersionId`, records it as the resolution subject when an explicit
-   resolution authorizes the reduction. Exactly ONE predecessor is measured and
-   named, and it is the same version the resolution is consumed against, so one
-   operator confirmation can never authorize a reduction the operator was not
-   shown; a change relative to a version that never governed the window is not a
-   reduction. Regression tests construct the exact timeline above (the refusal
-   naming the real grant, the resolution, the no-conflict counter-case, and the
-   correction of an expired version), and all 76 domain cases and 88
-   import-service cases pass.
+### 4.1 Rule 6b′ — named target cannot displace the measurement (fixed)
 
-2. **The post-gap recovery path is still unmeasured — Product Owner decision
-   required.** PDR-13 §4.2 states that the reduction guard "runs on the recovery
-   path exactly as on every other path". It does not: `continuationBaselineFor`
-   requires a retained effective window ending exactly at the candidate's
-   `validFrom`, while a post-gap candidate starts strictly *after* the
-   installation's coverage end, so nothing is measured and a reducing recovery
-   (for example org limit 50 with 40 in use → limit 2, entitlement removed) is
-   applied. Three labelled characterisation tests in `license-version.spec.ts`
-   pin that state as evidence.
-   **Why it cannot be enabled on its own:** the dedicated recovery route
-   (`POST /api/v1/license/gap-recovery`) carries only the recovery intent, and
-   the dedicated resolution route (`POST /api/v1/license/reduction-resolution`)
-   carries only the resolution intent — a post-gap candidate on that route is
-   refused by `post-gap-recovery-requires-dedicated-operation` *before* any
-   reduction rule runs. Enabling the guard without a resolution-capable recovery
-   operation would therefore make a legitimate reducing recovery permanently
-   inapplicable (a deadlock, pinned by the third characterisation test).
-   **Decision needed:** may the dedicated recovery operation carry an explicit
-   reduction resolution — i.e. require BOTH `Licensing.Installation.RecoverAfterGap`
-   and `Licensing.License.ResolveReduction` for a reducing recovery — or must a
-   reducing recovery stay terminally refused? The first option is the only one
-   that satisfies PDR-13 §4.2 without inventing a new authority; it widens the
-   permission set of one route and must be an Owner decision.
-   **Also open, smaller:** a retires-nothing candidate that is not exactly
-   adjacent (interior gap fill, backdated prefix) is unmeasured too, which
-   `docs/licensing/version-model-and-file-exchange.md` records as in scope for
-   L-05 while PDR-11 §8.6 states an unconditional trigger. Extending the baseline
-   to "the retained version with the greatest effective end ≤ the candidate's
-   start" would cover recovery, gap fill and backdated prefix with one rule, but
-   it changes which version a signed document is measured against, so it needs
-   the Owner's decision as well.
+When a document named a `supersedesOperationId` that did **not** overlap it,
+the earlier implementation measured only that named version and skipped the
+L-05 continuation baseline. Reproduction: `V_low` (org limit 5) → adjacent
+`V_high` (org limit 50) → `D` (org limit 6) naming `V_low`, with 40
+organizations in use. `D` applied, while the same document without
+`supersedesOperationId` was refused `reduction-requires-resolution`. Rule 6b′
+measures the deterministic continuation baseline when it exists and differs
+from the named target, names that baseline in the refusal, and uses that same
+single version as the resolution subject. The expired/scheduled target remains
+validated and retired as declared; one confirmation cannot authorize a grant
+the operator was not shown.
 
----
+### 4.2 C10 — post-gap recovery measurement (implemented in PR #171; OD-LIC-05 accepted)
+
+**Evidence.** `continuationBaselineFor` requires an effective retained window to
+end exactly at the candidate's `validFrom`. A post-gap candidate starts
+strictly *after* all retained coverage, so there is no adjacency baseline and a
+reducing recovery was not measured. The old labelled characterisation tests
+pinned that bypass. The reduction-resolution route cannot solve it: it carries
+only resolution intent and the post-gap guard correctly rejects the candidate
+before it can apply. The recovery route carried only recovery intent, so simply
+enabling the check would have made a conflicting recovery permanently
+inapplicable.
+
+**Accepted OD-LIC-05 (Option 1, combined operation; Product Owner approval
+2026-10-17).** Measure a genuine post-gap recovery against the retained version
+whose effective coverage ended last, using `lapsedCoverageVersion` (latest
+effective end; ties by latest `importedAt`, then `versionId`; `null` if nothing
+is retained or any effective window is perpetual). `lapsedLicenseContext`
+delegates to that helper and preserves its exact current result semantics,
+including perpetual → `null`. The gate runs before rule 4/5. The dedicated
+recovery endpoint may carry an optional `reductionResolutionReason` (3–500
+chars); if present, all three permissions are required: Activate +
+RecoverAfterGap + ResolveReduction. The new version plus both typed audit events
+(`license.import.recovered` and `license.import.reduction-resolved`) are
+committed in one transaction. The resolution event records actual conflict
+objects recomputed under the transaction locks. The lapsed version is the
+resolution subject but is never superseded or stamped.
+
+| Request / state | Contract |
+|---|---|
+| Ordinary import of a post-gap candidate | 409 `post-gap-recovery-requires-dedicated-operation`; unchanged |
+| Separate reduction-resolution route with a post-gap candidate | Still refused by the post-gap gate; unchanged |
+| Recovery with a non-conflicting grant and no resolution reason | Applies through the existing recovery operation |
+| Recovery with a conflicting reduction but no resolution reason | 409 `reduction-requires-resolution`, with the lapsed predecessor and concrete conflicts |
+| Same recovery with a resolution reason and all three permissions | Applies; returns resolved predecessor/conflicts; writes both typed events atomically; does not stamp the lapsed version |
+| Post-gap recovery document declaring a supersession target | 409 `recovery-not-applicable` (the only deliberate behavior tightening: recovery retires nothing) |
+
+Conflict copy is operation-aware: it tells an operator to resolve the reduction
+on the **same recovery operation**, not to submit the post-gap document to the
+separate resolution route. The target case likewise does not tell the operator
+to use ordinary import, which would reject a genuine post-gap candidate.
+
+OD-LIC-05 is deliberately limited to C10. It does **not** expand the §8.6
+baseline to interior/backdated gap-filling candidates, change renewal-gap
+precedence, alter non-post-gap recovery behavior, add schema/migrations, or
+close OQ-87. C11 remains a separate open decision. PDR-13 §8 and accepted
+ADR-0050 record the approval; implementation and CI status remain separate from
+product acceptance.
+
+### 4.3 C11 — interior/backdated gap fills (still open)
+
+A retires-nothing candidate that is not exactly adjacent (interior gap fill or
+backdated prefix) remains unmeasured. Extending the baseline to the retained
+version with the greatest effective end less than or equal to the candidate's
+start would cover recovery, gap fill and backdated prefix with one rule, but it
+would change which grant a signed document is measured against. No such change
+is included here; C11 remains open for an explicit Owner decision.
 
 ## 5. What this brief does not do
 
-It does not close OQ-76 or OQ-78, does not create or amend an OQ row, does not
-promote ADR-0049, and does not authorise any of the changes above. It is the
-input for the Owner's decision on sections 1–4.
+It does not close OQ-76, OQ-78, OQ-87 or any other OQ. The OQ-87 registry row
+records the accepted OD-LIC-05 C10 policy as an evidence/decision note only; its
+status is unchanged. ADR-0050 is accepted for OD-LIC-05 Option 1. PR #171 carries
+the implementation and remains open/unmerged for review; product acceptance is
+not merge authorization. No other decision or OQ status is changed by this brief.

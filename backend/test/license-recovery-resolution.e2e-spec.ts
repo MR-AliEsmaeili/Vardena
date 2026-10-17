@@ -1,11 +1,14 @@
 /**
- * The two dedicated licensing operations over the real HTTP pipeline (L-04,
+ * The dedicated licensing operations over the real HTTP pipeline (L-04, L-07,
  * OQ-87 Option B / PDR-13):
  *
  * - `POST /api/v1/license/gap-recovery` — the ONLY path that may apply a new
- *   license identity after the retained coverage has ended;
- * - `POST /api/v1/license/reduction-resolution` — the ONLY path that may
- *   apply a version whose reduction conflicts with current usage.
+ *   license identity after retained coverage ends; for a conflicting §8.6
+ *   reduction it can carry an explicit resolution and requires all three
+ *   permissions on that combined request;
+ * - `POST /api/v1/license/reduction-resolution` — the ONLY path for other
+ *   reductions that conflict with current usage; it still cannot carry a
+ *   post-gap candidate.
  *
  * The whole application boots through the production pipeline; only the
  * repositories are in memory. Nothing weakens authentication or RBAC: the
@@ -150,14 +153,19 @@ describe('License gap recovery and reduction resolution (e2e)', () => {
   /** A real second operator holding ACTIVATE plus one dedicated permission. */
   async function createOperatorWith(
     username: string,
-    permission: string,
+    permission: string | readonly string[],
   ): Promise<ReturnType<typeof request.agent>> {
     const user = await app
       .get(UsersService)
       .createUser({ username, password: PASSWORD });
+    const additionalPermissions =
+      typeof permission === 'string' ? [permission] : [...permission];
     const role = await app.get(RolesService).createRole({
       name: `${username} role`,
-      permissionCodes: [LICENSING_PERMISSIONS.LICENSE_ACTIVATE, permission],
+      permissionCodes: [
+        LICENSING_PERMISSIONS.LICENSE_ACTIVATE,
+        ...additionalPermissions,
+      ],
     });
     await app.get(UserRolesService).assignRoleToUser(role.id, user.id);
     return login(username);
@@ -424,6 +432,152 @@ describe('License gap recovery and reduction resolution (e2e)', () => {
         (event) => event.eventType === 'license.import.recovered',
       ),
     ).toHaveLength(1);
+  });
+
+  it('resolves a post-gap reduction on the recovery route with all three permissions and two atomic audit events', async () => {
+    const operator = await app
+      .get(UsersService)
+      .createUser({ username: 'license-operator', password: PASSWORD });
+    const operatorRole = await app.get(RolesService).createRole({
+      name: 'License operator',
+      permissionCodes: [LICENSING_PERMISSIONS.LICENSE_ACTIVATE],
+    });
+    await app
+      .get(UserRolesService)
+      .assignRoleToUser(operatorRole.id, operator.id);
+    const agent = await login('license-operator');
+    const importAs = importDocument(agent);
+    const installationId = (await state(agent)).installationId as string;
+
+    const lapsed = licenseFile({
+      installationId,
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      validUntil: LAPSE_END,
+      organizationLimit: 50,
+      userLimit: 20,
+    });
+    await importAs(lapsed.file).expect(200);
+    await createOperatorWith(
+      'recovery-without-resolve',
+      LICENSING_PERMISSIONS.INSTALLATION_RECOVER_AFTER_GAP,
+    );
+    await createOperatorWith('recovery-with-resolution', [
+      LICENSING_PERMISSIONS.INSTALLATION_RECOVER_AFTER_GAP,
+      LICENSING_PERMISSIONS.LICENSE_RESOLVE_REDUCTION,
+    ]);
+    await seedUsage(5, 0);
+
+    vi.setSystemTime(AFTER_LAPSE);
+    const lateRecoveryOnly = await login('recovery-without-resolve');
+    const lateCombined = await login('recovery-with-resolution');
+    const recovery = licenseFile({
+      installationId,
+      licenseId: RECOVERY_LICENSE,
+      validFrom: AFTER_LAPSE,
+      validUntil: new Date('2029-01-01T00:00:00.000Z'),
+      organizationLimit: 2,
+      userLimit: 20,
+    });
+
+    const body = { document: recovery.file, reason: RECOVERY_REASON };
+    // The ordinary recovery permission pair is insufficient once a combined
+    // reduction resolution is requested: ResolveReduction is checked by the
+    // application service before document processing or any write.
+    const denied = await lateRecoveryOnly
+      .post('/api/v1/license/gap-recovery')
+      .send({ ...body, reductionResolutionReason: RESOLUTION_REASON })
+      .expect(403);
+    expect(denied.body.code).toBe('PermissionDenied');
+    expect(licensing.versions).toHaveLength(1);
+
+    // Without the optional resolution, the recovery route explains the exact
+    // conflict and does not direct the operator to the separate route, which
+    // intentionally refuses post-gap candidates.
+    const refused = await lateCombined
+      .post('/api/v1/license/gap-recovery')
+      .send(body)
+      .expect(409);
+    expect(refused.body.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        predecessorVersionId: licensing.versions[0]?.versionId,
+        conflicts: [
+          { kind: 'organization-capacity', limit: 2, currentUsage: 5 },
+        ],
+      },
+    });
+    expect(String(refused.body.message)).toMatch(/gap-recovery operation/);
+    expect(String(refused.body.message)).toMatch(/reductionResolutionReason/);
+    expect(String(refused.body.message)).toMatch(/do not submit/i);
+    expect(String(refused.body.message)).not.toMatch(
+      /use (?:the )?separate reduction-resolution route/i,
+    );
+    expect(licensing.versions).toHaveLength(1);
+    expect(
+      licensing.auditEvents.some(
+        (event) =>
+          event.eventType === 'license.import.recovered' ||
+          event.eventType === 'license.import.reduction-resolved',
+      ),
+    ).toBe(false);
+
+    await lateCombined
+      .post('/api/v1/license/gap-recovery')
+      .send({ ...body, reductionResolutionReason: 'ab' })
+      .expect(400);
+    expect(licensing.versions).toHaveLength(1);
+
+    const applied = await lateCombined
+      .post('/api/v1/license/gap-recovery')
+      .send({
+        ...body,
+        reductionResolutionReason: RESOLUTION_REASON,
+      })
+      .expect(200);
+    expect(applied.body).toMatchObject({
+      outcome: 'APPLIED',
+      changed: true,
+      lapsedLicenseId: LICENSE,
+      coverageEnd: LAPSE_END.toISOString(),
+      resolvedPredecessorVersionId: licensing.versions[0]?.versionId,
+      resolvedConflicts: [
+        { kind: 'organization-capacity', limit: 2, currentUsage: 5 },
+      ],
+    });
+    expect(licensing.versions).toHaveLength(2);
+    expect(licensing.versions[0]?.supersededAt).toBeNull();
+
+    const appliedEvents = licensing.auditEvents.filter(
+      (event) =>
+        event.operationId === recovery.payload.operationId &&
+        event.outcome === 'APPLIED',
+    );
+    expect(appliedEvents.map((event) => event.eventType).sort()).toEqual([
+      'license.import.recovered',
+      'license.import.reduction-resolved',
+    ]);
+    const recovered = appliedEvents.find(
+      (event) => event.eventType === 'license.import.recovered',
+    );
+    const resolved = appliedEvents.find(
+      (event) => event.eventType === 'license.import.reduction-resolved',
+    );
+    expect(recovered).toMatchObject({
+      operationId: recovery.payload.operationId,
+      licenseId: RECOVERY_LICENSE,
+      versionId: licensing.versions[1]?.versionId,
+      previousLicenseId: LICENSE,
+    });
+    expect(resolved).toMatchObject({
+      operationId: recovery.payload.operationId,
+      licenseId: RECOVERY_LICENSE,
+      versionId: licensing.versions[1]?.versionId,
+    });
+    expect(String(recovered?.detail)).toContain(RECOVERY_REASON);
+    expect(String(resolved?.detail)).toContain(RESOLUTION_REASON);
+    expect(String(resolved?.detail)).toContain(
+      'conflicts=[{"kind":"organization-capacity","limit":2,"currentUsage":5}]',
+    );
   });
 
   it('walks the full resolution flow: explained 409, route 403, applied 200 with the authorized conflicts', async () => {

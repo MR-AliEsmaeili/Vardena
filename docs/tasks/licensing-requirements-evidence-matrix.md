@@ -1,13 +1,16 @@
 # Licensing requirements-to-evidence matrix
 
-**Baseline:** `main` `c715a64cdfcbc866fe65613a0375a118e0024a8b` (PR #167 merge).
-**Branch under review:** `arena/oq45-readonly-completion-vardena` (PR #168), which is
-**not merged**; the matrix therefore describes the code **with** that branch applied.
-**Date:** 2026-10-16 · **Owner:** Ali Esmaeili (product decisions) · **Agent:** implementation.
+**Baseline:** `main` `af68fd8eea5e5163d7827fa7b21d4bea85388e32` (PR #169 merge; PR #168 is merged).
+**Implementation branch:** `arena/9619675c-vardena` (L-07 / C10 implementation in PR #171; OD-LIC-05 Option 1 accepted 2026-10-17; PR remains open/unmerged).
+**Concurrent PR:** #170 was **closed without merging** on 2026-10-17 at head `ff2f4df1cc97b9fd974f0d73e197074727829af3`; its migration-safety work is not assumed to be on `main` and is not included in this matrix baseline.
+**Date:** 2026-10-17 · **Owner:** Ali Esmaeili (product decisions) · **Agent:** implementation.
 
 Status legend: **Implemented** (in code, with tests) · **Partial** (implemented for the
 approved slice, with a named gap) · **Open — decision** (needs a Product Owner decision
-before code may exist) · **Open — implementation** (approved, not written yet).
+before code may exist) · **Open — implementation** (approved, not written yet) ·
+**Implemented in open PR** (code is on an unmerged branch; decision acceptance,
+exact-head CI and merge status are recorded separately; no OQ closure or broader
+subsystem completion is implied).
 
 CI job names below are the ones the workflow actually runs
 (`.github/workflows/ci.yml`): `classify`, `docs`, `backend`, `frontend`,
@@ -53,7 +56,7 @@ CI job names below are the ones the workflow actually runs
 | C7 | One operator resolution authorizes exactly the predecessor and conflicts it was shown | Implemented | rule 6b′ single subject; `resolutionSubject` receipt | `license-version.spec.ts`, `license-import.service.spec.ts` | `backend` |
 | C8 | Same-licenseId and changed-licenseId renewals measured against the same baseline | Implemented (F-8 non-bypass) | `continuationBaselineFor` | `license-version.spec.ts` (F-8 cases) | `backend` |
 | C9 | Post-gap recovery only through the dedicated, authorized, audited operation | Implemented (PDR-13 / OD-LIC-02) | `postGapGuard`, `license-gap-recovery.controller.ts`, `license.import.recovered` event | `license-import.service.spec.ts`, `test/license-recovery-resolution.e2e-spec.ts`, live suite | `backend` |
-| C10 | The §8.6 reduction guard also runs **on the recovery path** | **Open — decision** (PDR-13 §4.2 requires it; no predecessor exists today) | characterisation only | `license-version.spec.ts` "post-gap recovery and the §8.6 reduction guard (characterisation)" (3 cases) | `backend` |
+| C10 | The §8.6 reduction guard also runs **on the recovery path** | Implemented in open PR #171; OD-LIC-05 Option 1 accepted by Product Owner (2026-10-17); OQ-87 remains open | `lapsedCoverageVersion`; same-route optional resolution with all three permissions; exact in-transaction conflicts in dual typed audit events; no migration | `license-version.spec.ts` contract cases; `license-import.service.spec.ts`; `test/license-recovery-resolution.e2e-spec.ts`; live PostgreSQL atomicity case (CI-only) | Exact-current-head GitHub Actions run and job conclusions are linked in PR #171; prior-SHA runs are not final-head evidence |
 | C11 | Interior/backdated gap-fill candidates are measured | **Open — decision** | — | — | — |
 | C12 | Signed receipts for ordinary activation | Closed as a product question (OQ-84, 2026-10-15): not required | existing activation audit suffices | live suite audit assertions | `backend` |
 
@@ -156,21 +159,26 @@ CI job names below are the ones the workflow actually runs
 | L2 | Two non-UTC process timezones exercised for date contracts | Implemented | `backend` job steps with `TZ=Asia/Tehran` and `TZ=America/Los_Angeles` |
 | L3 | Secret/production-artifact hygiene | Implemented | `scripts/check-production-artifacts.py`, `scripts/check-owner-isolation.py` |
 | L4 | Documentation links resolve | Implemented | `scripts/check-docs-links.py` in the `docs` job |
-| L5 | Every claim in this matrix is CI-verified on the exact PR head | **Pending** until the head is green | see the PR's final run |
+| L5 | Every claim in this matrix is CI-verified on the exact PR head | Live GitHub Actions checks are authoritative; compare their tested SHA to the current PR #171 head | Exact-head run and job conclusions are linked in PR #171; never substitute an earlier SHA |
 
 ---
 
 ## Summary of what is not done
 
-- **Decision required:** C10/C11 (reduction guard on no-baseline paths, incl. the
-  recovery/resolution capability question), E8 (does Grace permit device operations),
-  F2–F5 (revocation/recovery instrument and semantics), G3–G5 (time-integrity evidence
-  model and unlock), H5 (audit retention), J2 (Owner role matrix/operational acceptance).
-- **Implementation required after the decision:** the above, each with its own migration,
-  API contract, tests and operational documentation.
+- **Decision/acceptance required:** C11 (interior/backdated gap-fill measurement); E8
+  (does Grace permit device operations); F2–F5 (revocation/recovery instrument and
+  semantics); G3–G5 (time-integrity evidence model and unlock); H5 (audit retention);
+  J2 (Owner role matrix/operational acceptance). OD-LIC-05 Option 1 for C10 is
+  accepted; OQ-87 remains open under the registry convention and is not closed.
+- **Implementation / delivery still pending:** the remaining open items above,
+  each with its own contract, tests and operational documentation. C10 is
+  implemented in open PR #171 but is not merged/delivered; its exact-head CI is
+  tracked from the live PR checks. C10 has no schema change or migration, and this
+  narrow acceptance does not imply broader licensing completion.
 - **Open product questions that block nothing implemented here:** OQ-45 contract-termination
   strictness, OQ-86, OQ-79, OQ-77.
 
-This matrix is a description of the **implemented slice plus the corrective slices** on the
-PR branch. It does not close any OQ, does not promote ADR-0049 (still Proposed) and does not
-replace Product Owner acceptance.
+This matrix describes the **implemented slice plus corrective slices** on the PR
+branch; it does not close any OQ, promote ADR-0049 (still Proposed), or claim the
+licensing subsystem/roadmap is complete. OD-LIC-05 acceptance is limited to the
+C10 policy and does not authorize merging PR #171.

@@ -129,7 +129,7 @@ export interface paths {
         put?: never;
         /**
          * Recover this installation after a license coverage lapse with a signed license document.
-         * @description Verifies the signed document, then — under the installation lock — applies the new license identity that covers a lapsed coverage window, together with a typed audit event recording the lapsed license, its coverage end, the operation, the actor, the source, the instant and the supplied reason, in one transaction. Only valid when coverage has actually lapsed; every other licensing rule (signature, binding, overlap, term rules) is unchanged.
+         * @description Verifies the signed document, then — under the installation lock — applies the new license identity that covers a lapsed coverage window, together with a typed audit event recording the lapsed license, its coverage end, the operation, the actor, the source, the instant and the supplied reason, in one transaction. When a capacity or entitlement reduction conflicts with the lapsed grant or current usage, the caller may provide reductionResolutionReason; the application service then additionally requires Licensing.License.ResolveReduction and records the resolution as a second typed audit event in the same transaction. Only valid when coverage has actually lapsed; every other licensing rule (signature, binding, overlap, term rules) is unchanged.
          */
         post: operations["LicenseGapRecoveryController_recover_v1"];
         delete?: never;
@@ -3924,6 +3924,35 @@ export interface components {
              * @example Renewal order 2026-1182 arrived after the previous contract had already expired.
              */
             reason: string;
+            /**
+             * @description Optional explicit resolution reason for a capacity or entitlement reduction that conflicts with the lapsed grant or current usage. When supplied, this same recovery operation requires Licensing.License.ResolveReduction in addition to Activate and RecoverAfterGap, and records both typed audit events atomically. It cannot authorize an open-end closure or an unavailable usage count.
+             * @example The customer approved the lower limit after confirming that the excess organizations were retired.
+             */
+            reductionResolutionReason?: string;
+        };
+        ReductionConflictEntitlementDto: {
+            /** @description Entitlement kind of the removed grant. */
+            kind: string;
+            /** @description Entitlement code of the removed grant. */
+            code: string;
+        };
+        ReductionConflictDto: {
+            /**
+             * @description organization-capacity / user-capacity / device-capacity: the new finite limit is below current usage. Under PDR-15 §2.15, device conflicts may be resolved by explicitly deactivating devices or using the existing authorized, audited reduction-resolution flow; that flow never auto-deactivates, and new enrollment remains blocked while active usage is at or above the finite limit. device-entitlement-removed: the signed version removes device capacity while devices remain registered. entitlement-removed: the retired version grants an entitlement the new one does not. open-end-closed: a perpetual version would be handed over to a time-limited one (never operator-resolvable). usage-unavailable: current usage could not be counted, so the check fails closed.
+             * @enum {string}
+             */
+            kind: "organization-capacity" | "user-capacity" | "device-capacity" | "device-entitlement-removed" | "entitlement-removed" | "open-end-closed" | "usage-unavailable";
+            /** @description The new (lower) limit, for a capacity conflict. */
+            limit?: number | null;
+            /** @description Current counted usage the new limit would fall below. */
+            currentUsage?: number;
+            /** @description The removed entitlement, for an entitlement conflict. */
+            entitlement?: components["schemas"]["ReductionConflictEntitlementDto"] | null;
+            /**
+             * @description Which count was unavailable, for a usage-unavailable conflict.
+             * @enum {string|null}
+             */
+            scope?: "organizations" | "active-users" | "devices" | null;
         };
         GapRecoveryResultDto: {
             /** @description Whether an installation license is evaluated. */
@@ -3975,6 +4004,10 @@ export interface components {
             lapsedLicenseId: string | null;
             /** @description When that coverage ended; the recovery started strictly after it (ISO instant). */
             coverageEnd: string | null;
+            /** @description Present only when this recovery also resolved a §8.6 reduction; names the lapsed predecessor whose grant was measured. */
+            resolvedPredecessorVersionId?: string;
+            /** @description Present only for a combined recovery and reduction resolution; the concrete conflicts the resolution authorized. */
+            resolvedConflicts?: components["schemas"]["ReductionConflictDto"][];
         };
         ResolveReductionDto: {
             /**
@@ -3987,30 +4020,6 @@ export interface components {
              * @example Customer confirmed the user-count reduction; three unused seats were revoked before the new version applies.
              */
             reason: string;
-        };
-        ReductionConflictEntitlementDto: {
-            /** @description Entitlement kind of the removed grant. */
-            kind: string;
-            /** @description Entitlement code of the removed grant. */
-            code: string;
-        };
-        ReductionConflictDto: {
-            /**
-             * @description organization-capacity / user-capacity / device-capacity: the new finite limit is below current usage. Under PDR-15 §2.15, device conflicts may be resolved by explicitly deactivating devices or using the existing authorized, audited reduction-resolution flow; that flow never auto-deactivates, and new enrollment remains blocked while active usage is at or above the finite limit. device-entitlement-removed: the signed version removes device capacity while devices remain registered. entitlement-removed: the retired version grants an entitlement the new one does not. open-end-closed: a perpetual version would be handed over to a time-limited one (never operator-resolvable). usage-unavailable: current usage could not be counted, so the check fails closed.
-             * @enum {string}
-             */
-            kind: "organization-capacity" | "user-capacity" | "device-capacity" | "device-entitlement-removed" | "entitlement-removed" | "open-end-closed" | "usage-unavailable";
-            /** @description The new (lower) limit, for a capacity conflict. */
-            limit?: number | null;
-            /** @description Current counted usage the new limit would fall below. */
-            currentUsage?: number;
-            /** @description The removed entitlement, for an entitlement conflict. */
-            entitlement?: components["schemas"]["ReductionConflictEntitlementDto"] | null;
-            /**
-             * @description Which count was unavailable, for a usage-unavailable conflict.
-             * @enum {string|null}
-             */
-            scope?: "organizations" | "active-users" | "devices" | null;
         };
         ReductionResolutionResultDto: {
             /** @description Whether an installation license is evaluated. */
@@ -9103,7 +9112,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The document is authentic but conflicts with retained state: coverage has not lapsed (import it instead), the license identifier belongs to another customer or installation, a renewal would leave a gap, the version overlaps retained history, or it reduces entitlements without an authorized resolution. */
+            /** @description The document is authentic but conflicts with retained state: coverage has not lapsed, the license identifier belongs to another customer or installation, a renewal would leave a gap, the version overlaps retained history, or a recovery reduction needs an explicit resolution. For a post-gap reduction, supply reductionResolutionReason on this route and hold Activate, RecoverAfterGap, and ResolveReduction; the separate reduction-resolution route cannot apply a post-gap document. */
             409: {
                 headers: {
                     [name: string]: unknown;

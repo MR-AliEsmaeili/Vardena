@@ -1017,12 +1017,13 @@ export class LicensesRepository {
             ]
           : [...command.auditEvents];
 
-      // A dedicated operation's APPLIED event is built HERE, inside the
+      // Dedicated-operation APPLIED events are built HERE, inside the
       // transaction, from the facts only the lock guarantees — exactly like
-      // the transfer event above. The service deliberately does not build it:
-      // the retained list the pre-check read may already have moved by the
-      // time the lock was granted, and the audit row must describe the
-      // retirement/lapse as the transaction found it.
+      // the transfer event above. A combined recovery/resolution writes both
+      // typed events independently. The service deliberately does not build
+      // them: the retained list the pre-check read may already have moved by
+      // the time the lock was granted, and the audit rows must describe the
+      // lapse and resolution as the transaction found them.
       let recoveryReceipt: ImportVersionResult['recovery'] = null;
       let resolutionReceipt: ImportVersionResult['resolution'] = null;
       if (command.gapRecovery !== null) {
@@ -1032,15 +1033,16 @@ export class LicensesRepository {
           coverageEnd: lapsed?.coverageEnd ?? null,
         };
         auditEvents.push(recoveryAuditEvent(command, lapsed));
-      } else if (command.reductionResolution !== null) {
+      }
+      if (command.reductionResolution !== null) {
         // The evaluation's resolution subject is the version whose grant the
         // resolution authorized reducing: the retired predecessor on a
-        // hand-over path, or — L-05 — the deterministic continuation baseline
-        // of a renewal that retires nothing. The baseline is audited and
-        // reported but deliberately NOT stamped: nothing below retires it,
-        // because the stamp above runs only for `supersedes` and a resolution
-        // authorizes a reduction, it does not retire the version it is
-        // measured against.
+        // hand-over path, the L-05 continuation baseline of a renewal that
+        // retires nothing, or the L-07 latest lapsed version for a recovery.
+        // The subject is audited and reported but deliberately NOT stamped
+        // unless it is independently the actual `supersedes` target; a
+        // resolution authorizes a reduction, it does not itself retire the
+        // version it is measured against.
         const predecessor = evaluation.resolutionSubject;
         // Reaching this point means the evaluation applied the resolution to
         // real conflicts (the domain rule refuses an unused resolution), so
@@ -1493,6 +1495,10 @@ export function resolutionAuditEvent(
     .map((conflict) => conflict.kind)
     .sort()
     .join('+');
+  // The event keeps the full server-recomputed conflict facts (not client input):
+  // limits, usage, scopes, and removed entitlements remain independently
+  // auditable alongside the stable kind summary.
+  const conflictFacts = JSON.stringify(conflicts);
   return {
     installationId: command.installationId,
     eventType: 'license.import.reduction-resolved',
@@ -1506,7 +1512,8 @@ export function resolutionAuditEvent(
     reason: null,
     detail:
       `resolved reduction of version ${predecessorVersionId}` +
-      ` [${summary}]${reason === '' ? '' : `: ${reason}`}`,
+      ` [${summary}] conflicts=${conflictFacts}` +
+      `${reason === '' ? '' : `: ${reason}`}`,
     occurredAt: command.now,
   };
 }

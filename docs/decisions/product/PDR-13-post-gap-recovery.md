@@ -1,7 +1,8 @@
 # PDR-13: Post-gap recovery through a dedicated audited operation (OQ-87 Option B)
 
 - **Type:** PDR (Product Decision Record) · decision id **OD-LIC-02**
-- **Status:** **Decided — Final Owner Decision** (2026-10-12)
+- **Status:** **Decided — Final Owner Decision** (OD-LIC-02, 2026-10-12)
+- **Additional decision:** OD-LIC-05 Option 1 accepted by Product Owner Ali Esmaeili on 2026-10-17; see the narrowly scoped C10 addendum in §8.
 - **Decided by:** Product Owner (Ali Esmaeili)
 - **Registry row:** [`docs/open-questions.md`](../../open-questions.md) — **OQ-87** (decision recorded in the registry row; status per the registry's own convention)
 - **Recording baseline:** branch `arena/8904ef31-vardena` (base `main` @ `f4c2e84f7af734c356e035dabc69bb8acfa81a05`, the merge commit of PR #141)
@@ -111,9 +112,13 @@ a permitted post-gap recovery path.**
 1. Recovery must not bypass, weaken or re-interpret signature verification,
    installation binding, customer binding, identity/precedence rules or
    retained-history preservation (PDR-11 §3, ADR-0046).
-2. Recovery must not reduce capacity or entitlements relative to what the §8.6
-   guard requires of ANY applied version: the reduction guard runs on the
-   recovery path exactly as on every other path.
+2. Recovery must not bypass or weaken the PDR-11 §8.6 reduction guard. For a
+   genuine post-gap recovery, accepted OD-LIC-05 Option 1 (§8) permits a
+   conflicting capacity/entitlement reduction only after comparison with the
+   deterministically selected latest lapsed coverage version and explicit
+   resolution on that same authorized recovery operation. The guard, usage
+   checks, fail-closed behavior and authorization remain mandatory; this is not
+   a general reduction permission or a change to other import/renewal paths.
 3. Recovery must not change the installation's customer (that is Q4's
    transfer operation, separately authorized and audited).
 4. Recovery must not be expressible as an ordinary import, a legacy code, a
@@ -141,17 +146,23 @@ decision. This change implements that flow:
   `reduction-requires-resolution` and a structured explain payload
   (`reduction.predecessorVersionId` + per-conflict kind/limit/usage/
   entitlement) — nothing is written.
-- The ONLY way to apply such a version is the dedicated
+- For reductions outside the narrow post-gap recovery case, the dedicated
   `POST /api/v1/license/reduction-resolution` operation under
-  `Licensing.License.ResolveReduction` (+ `Licensing.License.Activate`) with a
-  required reason, which applies the import AND the audited resolution in ONE
-  transaction, recording the conflicts it actually authorized (recomputed
-  under the locks) as the typed `license.import.reduction-resolved` event with
-  a receipt carrying the same facts. A resolution whose document does not
-  conflict is refused (`resolution-not-applicable`); retrying a document or
-  naming a version is never a resolution (PDR-12 unchanged: an open end is
-  closable ONLY by an explicit signed supersession and is never
-  operator-resolvable).
+  `Licensing.License.ResolveReduction` (+ `Licensing.License.Activate`) remains
+  the only resolution path. It requires a reason and applies the import AND
+  audited resolution in ONE transaction. The transaction recomputes the
+  conflicts under the locks and records those actual facts in the typed
+  `license.import.reduction-resolved` event and receipt; no client-supplied
+  conflict list is trusted.
+- **Narrow post-gap exception (accepted OD-LIC-05 Option 1, §8):** a conflicting
+  reduction on a genuine post-gap recovery can be resolved only by supplying a
+  valid `reductionResolutionReason` on that same `POST /api/v1/license/gap-recovery`
+  request, with Activate, RecoverAfterGap and ResolveReduction permissions.
+  Ordinary import and the separate resolution route still cannot apply a
+  post-gap candidate. A resolution whose document does not conflict is refused
+  (`resolution-not-applicable`); retrying a document or naming a version is
+  never a resolution (PDR-12 unchanged: an open end is closable ONLY by an
+  explicit signed supersession and is never operator-resolvable).
 
 ## 6. Implementation references (recorded, not acceptance)
 
@@ -190,7 +201,96 @@ decision. This change implements that flow:
   absence does not make the API less authoritative.
 - **Retention of audit events** (OQ-77) — the recovery event follows the
   existing audit retention regime.
-- The decision does **not** authorize: importing around the recovery controls;
-  reducing capacity/entitlements by recovery; bypassing signature, binding,
-  identity, precedence, retained-history or audit rules; weakening VLIC1's
-  restrictions; or changing OQ-80/OQ-86/Q3/Q4/PDR-12.
+- The decision does **not** authorize importing around the recovery controls,
+  bypassing signature, binding, identity, precedence, retained-history or audit
+  rules, weakening VLIC1's restrictions, or changing OQ-80/OQ-86/Q3/Q4/PDR-12.
+  The only permitted recovery reduction is the measured, explicitly resolved
+  post-gap exception accepted in §8 under OD-LIC-05; no other recovery path may
+  reduce capacity or entitlements outside the §8.6 guard.
+
+## 8. Addendum (2026-10-17) — accepted OD-LIC-05 Option 1: §8.6 reduction control on recovery
+
+**Status:** Product Owner Ali Esmaeili expressly approved OD-LIC-05 Option 1 on
+2026-10-17. This is an accepted product decision, not an implementation-based
+inference. The addendum addresses C10 only; it preserves OD-LIC-02 and the rest
+of §§1–7 except for the explicitly scoped wording reconciliation above, and it
+does not close OQ-87.
+
+### 8.1 Evidence and question
+
+PDR-13 §4.2 requires the §8.6 guard to run on recovery, but the current
+`continuationBaselineFor` selects only a retained effective window ending
+exactly at the candidate's `validFrom`. A post-gap candidate starts strictly
+after the installation-wide retained coverage end, so that baseline is always
+absent. A capacity/entitlement reduction on recovery could consequently be
+applied without measurement. The existing reduction-resolution route cannot
+resolve the defect: it does not carry recovery intent and the post-gap guard
+rejects the candidate there.
+
+### 8.2 Accepted Owner decision — OD-LIC-05 (Option 1; 2026-10-17)
+
+A dedicated post-gap recovery may reduce capacity or entitlements only after the
+§8.6 check measures the candidate against the retained version whose effective
+coverage ended last, and any resulting resolvable conflicts are explicitly
+resolved on **the same recovery operation**. This accepted combined
+recovery-and-resolution policy does not terminally refuse every reducing
+recovery; it authorizes only the narrow, guarded behavior set out below.
+
+1. `lapsedCoverageVersion(versions)` selects the retained version with the
+   greatest effective end, with ties broken by latest `importedAt` and then
+   `versionId`. It returns `null` if there are no retained versions or if any
+   effective coverage window is perpetual. `lapsedLicenseContext` delegates to
+   this helper and preserves its existing public result exactly: perpetual
+   coverage still yields `null`.
+2. For a candidate that is both a post-gap recovery candidate and carries the
+   dedicated recovery intent, the domain evaluates `reductionConflicts` against
+   this lapsed version **before overlap/precedence rules 4/5**. A conflicting
+   recovery without an explicit resolution is refused as
+   `reduction-requires-resolution` (409), with
+   `reduction.predecessorVersionId` naming the lapsed version and the concrete
+   conflicts. Usage that cannot be counted and every other non-resolvable arm
+   remain fail-closed.
+3. `POST /api/v1/license/gap-recovery` may additionally receive the optional
+   `reductionResolutionReason` (3–500 characters). When supplied, the
+   application service requires all three permissions:
+   `Licensing.License.Activate`,
+   `Licensing.Installation.RecoverAfterGap`, and
+   `Licensing.License.ResolveReduction`. A resolution with no actual conflict
+   remains `resolution-not-applicable`.
+4. Applying the combined operation creates the license version and writes both
+   `license.import.recovered` and `license.import.reduction-resolved` typed audit
+   events in the existing transaction, with the same operation/version identity.
+   The resolution event records the actual conflict objects recomputed inside
+   that transaction under the installation/allocation locks (including capacity
+   limits, counted usage, unavailable scopes and removed entitlements), not a
+   client-supplied conflict list. The lapsed version is the reduction-resolution
+   subject and appears in the receipt/audit facts, but is **not** a supersession
+   target: recovery retires nothing and does not stamp the lapsed row. No schema
+   or migration change is required.
+5. Any post-gap recovery document that declares a supersession target is refused
+   as `recovery-not-applicable`; recovery cannot silently retire a retained
+   version. The ordinary import and the separate
+   `POST /api/v1/license/reduction-resolution` operation continue to refuse
+   post-gap candidates. Renewal-gap precedence for a retained identity,
+   signature/binding/overlap/term rules, legacy `VLIC1` restrictions, and all
+   non-post-gap recovery behavior remain unchanged.
+
+The accepted decision is recorded in [ADR-0050](../../adr/0050-post-gap-recovery-reduction-guard.md).
+OD-LIC-05 Option 1 rejects terminal refusal of every reducing recovery; it
+permits only the measured and explicitly resolved combined operation described
+here. Recovery refusal copy must remain operation-aware and must not direct the
+operator to the separate resolution route, which continues to reject post-gap
+candidates.
+
+### 8.3 Boundaries and status
+
+This addendum addresses C10 only. C11 (measuring interior/backdated gap-fill
+candidates) remains open and unchanged. OQ-87 remains open under the registry's
+existing convention: accepting OD-LIC-05 decides the C10 reduction policy but
+does not close or otherwise change OQ-87 or any other OQ. The final §7
+non-authorization bullet is narrowly qualified only for the post-gap reduction
+measured and explicitly resolved on the dedicated recovery route as specified
+here. All other PDR-13 §7 non-goals, OQ-79/OQ-82/OQ-83/OQ-84/OQ-77 boundaries,
+and the distinct OD-LIC-02 decision remain unchanged. Implementation and
+exact-head CI delivery status are tracked separately; this acceptance is not a
+merge authorization. PR #171 remains open and unmerged for Product Owner review.

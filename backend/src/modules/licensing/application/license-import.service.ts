@@ -119,6 +119,10 @@ export interface LicenseGapRecoveryResult extends LicenseImportResult {
   lapsedLicenseId: string | null;
   /** When that coverage ended; the recovery starts strictly after it. */
   coverageEnd: string | null;
+  /** Present only when this recovery also resolved a §8.6 reduction. */
+  resolvedPredecessorVersionId?: string;
+  /** The concrete conflicts authorized by the combined recovery operation. */
+  resolvedConflicts?: ReductionConflict[];
 }
 
 /**
@@ -166,14 +170,18 @@ interface LicenseImportExecution extends LicenseImportResult {
  *   never a post-gap recovery path.
  * - `reductionResolution` — the explicit reduction resolution (PDR-11 §8.6,
  *   L-04); without it a reduction that conflicts with current usage or the
- *   retained grant is refused with its concrete conflicts. A document, a
- *   retry or a supersession name is never this resolution.
+ *   retained grant is refused with its concrete conflicts. It may accompany
+ *   `gapRecovery` only through `recoverAfterGap` (L-07 / OD-LIC-05), where the
+ *   same operation requires ResolveReduction as a third permission. A
+ *   document, a retry or a supersession name is never this resolution.
  */
 export interface LicenseImportOptions {
   customerTransfer?: CustomerTransferIntent | null;
   gapRecovery?: GapRecoveryIntent | null;
   reductionResolution?: ReductionResolutionIntent | null;
 }
+
+type ConflictOperation = 'import' | 'recovery' | 'resolution';
 
 /**
  * One rejection reason, surfaced to the API as exactly one message and stored
@@ -332,38 +340,63 @@ export class LicenseImportService {
    * actor, the source, the instant and the operator's reason) together with
    * the version, so a failure leaves the retained state untouched.
    *
+   * A post-gap reduction is measured against the version whose effective
+   * coverage ended last. If it conflicts, the caller may supply a third,
+   * explicit `reductionResolutionReason`; this invokes the existing
+   * ResolveReduction permission check in addition to Activate and
+   * RecoverAfterGap, and both typed applied events are written atomically.
+   * The lapsed predecessor is measured and audited but never superseded by the
+   * recovery. A supersession target is not applicable to a post-gap recovery.
+   *
    * Everything else is unchanged on purpose: the document must verify, be
    * bound to THIS installation and its current customer (a recovery never
-   * transfers), pass every overlap/identity/binding/reduction rule, and a
-   * legacy `VLIC1` code is refused (`recovery-requires-signed-document`) — a
-   * recovery is a capability of the signed document exchange, exactly like a
-   * customer transfer.
+   * transfers), pass every overlap/identity/binding rule, and a legacy `VLIC1`
+   * code is refused (`recovery-requires-signed-document`) — a recovery is a
+   * capability of the signed document exchange, exactly like a customer
+   * transfer.
    */
   async recoverAfterGap(
     rawDocument: string,
     reason: string,
+    reductionResolutionReason?: string,
   ): Promise<LicenseGapRecoveryResult> {
     assertOperationReason(reason, 'recovery');
+    if (reductionResolutionReason !== undefined) {
+      assertOperationReason(reductionResolutionReason, 'resolution');
+    }
     const execution = await this.runImport(rawDocument, {
       gapRecovery: { reason },
+      reductionResolution:
+        reductionResolutionReason === undefined
+          ? null
+          : { reason: reductionResolutionReason },
     });
+    const resolution = execution.resolution;
     return {
       changed: execution.changed,
       outcome: execution.outcome,
       license: execution.license,
       lapsedLicenseId: execution.recovery?.lapsedLicenseId ?? null,
       coverageEnd: execution.recovery?.coverageEnd?.toISOString() ?? null,
+      ...(resolution === null || resolution === undefined
+        ? {}
+        : {
+            resolvedPredecessorVersionId: resolution.predecessorVersionId,
+            resolvedConflicts: [...resolution.conflicts],
+          }),
     };
   }
 
   /**
    * The explicit reduction-resolution operation (PDR-11 §8.6, L-04).
    *
-   * This is the ONLY path that may apply a version whose capacity or
+   * This is the standard path for applying a version whose capacity or
    * entitlement reduction conflicts with current usage or the retained grant.
-   * The caller has seen the explained conflicts (the ordinary import answers
-   * 409 `reduction-requires-resolution` with the concrete limits, current
-   * usage and removed entitlements); supplying an authorized, reasoned
+   * The accepted OD-LIC-05 exception is limited to a genuine post-gap recovery,
+   * which carries its resolution on that same recovery request instead.
+   * Otherwise the caller has seen the explained conflicts (the ordinary import
+   * answers 409 `reduction-requires-resolution` with the concrete limits,
+   * current usage and removed entitlements); supplying an authorized, reasoned
    * resolution here applies the document AND the resolution in ONE
    * transaction, which audits the resolution as the typed
    * `license.import.reduction-resolved` event with the conflicts it actually
@@ -599,7 +632,7 @@ export class LicenseImportService {
           source: transport.transport,
           documentHash,
         },
-        documentConflictMessage(precheck.conflict),
+        documentConflictMessage(precheck.conflict, conflictOperation(options)),
         precheck.conflict.overlapping,
         precheck.conflict.reduction,
       );
@@ -649,7 +682,9 @@ export class LicenseImportService {
         supersededVersionId: supersedes?.versionId ?? null,
         operation:
           options.gapRecovery != null
-            ? 'gap-recovery'
+            ? options.reductionResolution != null
+              ? 'gap-recovery-with-reduction-resolution'
+              : 'gap-recovery'
             : options.reductionResolution != null
               ? 'reduction-resolution'
               : 'import',
@@ -1001,10 +1036,11 @@ export class LicenseImportService {
     // records that it was the precedence rule, not a signed instruction.
     const implicitPrecedence =
       context.supersession.kind === 'none' && context.supersedes !== null;
-    // A dedicated operation's APPLIED event is built by the transaction from
+    // Dedicated operation APPLIED events are built by the transaction from
     // the locked state (the lapsed license for a recovery, the resolved
-    // conflicts for a resolution), so the service supplies no applied event on
-    // those paths — only the supersession stamp it can already name.
+    // conflicts for a resolution). A combined recovery/resolution writes both
+    // typed events there. The service supplies no generic applied event on
+    // these paths — only a supersession stamp it can already name.
     const dedicated =
       context.gapRecovery !== null || context.reductionResolution !== null;
     try {
@@ -1085,7 +1121,15 @@ export class LicenseImportService {
             source: context.source,
             now: context.now,
           },
-          conflictLostRaceMessage(error.conflict, legacy),
+          conflictLostRaceMessage(
+            error.conflict,
+            legacy,
+            context.gapRecovery !== null
+              ? 'recovery'
+              : context.reductionResolution !== null
+                ? 'resolution'
+                : 'import',
+          ),
           error.conflict.overlapping,
           error.conflict.reduction,
         );
@@ -1389,6 +1433,13 @@ function operationReasonLength(value: string): number {
   return value.length - presentationSequences.length - surrogatePairs.length;
 }
 
+/** The human-facing conflict context, kept distinct for combined operations. */
+function conflictOperation(options: LicenseImportOptions): ConflictOperation {
+  if (options.gapRecovery != null) return 'recovery';
+  if (options.reductionResolution != null) return 'resolution';
+  return 'import';
+}
+
 /** The audit event type of an applied import, by operation kind. */
 function executionEventType(options: LicenseImportOptions): string {
   if (options.gapRecovery != null) return 'license.import.recovered';
@@ -1492,7 +1543,10 @@ function legacyInactiveMessage(
  * wording: the frontend maps the machine-readable `reason`, operators read the
  * message.
  */
-function documentConflictMessage(conflict: ImportConflict): string {
+function documentConflictMessage(
+  conflict: ImportConflict,
+  operation: ConflictOperation,
+): string {
   switch (conflict.reason) {
     case 'duplicate-operation':
       return 'This license version has already been imported.';
@@ -1513,12 +1567,21 @@ function documentConflictMessage(conflict: ImportConflict): string {
     case 'renewal-gap':
       return 'This renewal would start after the license it renews has ended, leaving a gap in coverage. Issue the renewal to start at or before the end of the version it follows.';
     case 'reduction-requires-resolution':
+      if (operation === 'recovery') {
+        return 'This post-gap recovery reduces capacity or entitlements in conflict with current usage or the lapsed grant; the concrete conflicts are in the response details. Nothing was changed. To authorize this reduction, retry the same dedicated gap-recovery operation with a reductionResolutionReason and hold Activate, RecoverAfterGap, and ResolveReduction permissions. Do not submit this post-gap document to the separate reduction-resolution route.';
+      }
       return 'This version reduces the modules or capacity of the version it retires or takes over, and the reduction conflicts with current usage or the retained grant — the concrete limits, usage and entitlements are in the conflict details. Nothing was changed. A reduction may be applied only through the dedicated resolution operation (its own permission, a recorded reason); an open end is never operator-resolvable.';
     case 'post-gap-recovery-requires-dedicated-operation':
       return "This license document carries a new license identity and would start after this installation's license coverage has already ended, which makes it a post-gap recovery. Post-gap recovery is permitted only through the dedicated recovery operation, which requires its own permission and a recorded reason. Nothing was changed.";
     case 'recovery-not-applicable':
+      if (operation === 'recovery') {
+        return 'This document cannot be applied as a post-gap recovery in the current retained state. A recovery requires a new license identity, a start strictly after ended coverage, and no supersession target; correct and reissue the signed document. If coverage has not lapsed, use ordinary import instead. Nothing was changed.';
+      }
       return RECOVERY_NOT_APPLICABLE_MESSAGE;
     case 'resolution-not-applicable':
+      if (operation === 'recovery') {
+        return 'This recovery has no capacity or entitlement conflict to resolve. Retry the dedicated gap-recovery operation without a reductionResolutionReason. Nothing was changed.';
+      }
       return RESOLUTION_NOT_APPLICABLE_MESSAGE;
   }
 }
@@ -1610,6 +1673,7 @@ function legacyConflictMessage(conflict: ImportConflict): string {
 function conflictLostRaceMessage(
   conflict: ImportConflict,
   legacy: boolean,
+  operation: ConflictOperation,
 ): string {
   if (conflict.reason === 'duplicate-operation') {
     return legacy
@@ -1635,6 +1699,9 @@ function conflictLostRaceMessage(
     return 'This renewal would start after the license it renews has ended, leaving a gap in coverage. Issue the renewal to start at or before the end of the version it follows.';
   }
   if (conflict.reason === 'reduction-requires-resolution') {
+    if (operation === 'recovery') {
+      return 'The transaction found a capacity or entitlement reduction conflict while applying this post-gap recovery. Nothing was changed. Retry the same dedicated gap-recovery operation with a reductionResolutionReason and the Activate, RecoverAfterGap, and ResolveReduction permissions; do not use the separate reduction-resolution route for this post-gap document.';
+    }
     return legacy
       ? 'This license code would reduce the modules or capacity of the version it replaces, and the reduction conflicts with current usage or the retained grant — the concrete limits, usage and entitlements are in the conflict details. Nothing was changed.'
       : 'This version reduces the modules or capacity of the version it retires or takes over, and the reduction conflicts with current usage or the retained grant — the concrete limits, usage and entitlements are in the conflict details. Nothing was changed.';
@@ -1643,10 +1710,14 @@ function conflictLostRaceMessage(
     return 'This license document would cover a lapse with a new license identity. Post-gap recovery is permitted only through the dedicated recovery operation, which requires its own permission and a recorded reason. Nothing was changed.';
   }
   if (conflict.reason === 'recovery-not-applicable') {
-    return RECOVERY_NOT_APPLICABLE_MESSAGE;
+    return operation === 'recovery'
+      ? 'The transaction found that this document is not applicable as a post-gap recovery. Recovery requires a new identity after ended coverage and cannot retire a supersession target. Nothing was changed; review the current license state and issue a document for the correct operation.'
+      : RECOVERY_NOT_APPLICABLE_MESSAGE;
   }
   if (conflict.reason === 'resolution-not-applicable') {
-    return RESOLUTION_NOT_APPLICABLE_MESSAGE;
+    return operation === 'recovery'
+      ? 'The transaction found no capacity or entitlement conflict for this recovery, so there is no reduction to resolve. Nothing was changed; retry gap recovery without a reductionResolutionReason.'
+      : RESOLUTION_NOT_APPLICABLE_MESSAGE;
   }
   if (conflict.reason === 'backdated-supersession') {
     // Not a race: the temporal rule is evaluated against the locked state, so

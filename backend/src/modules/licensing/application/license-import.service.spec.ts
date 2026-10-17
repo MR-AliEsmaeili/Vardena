@@ -2362,7 +2362,9 @@ describe('dedicated post-gap recovery (OQ-87 Option B, PDR-13)', () => {
    * imported while active, then the clock moves past its end so the
    * installation has lapsed coverage.
    */
-  async function importLapsed(): Promise<void> {
+  async function importLapsed(
+    overrides: Partial<Parameters<typeof issueLicenseFile>[0]> = {},
+  ): Promise<void> {
     vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
     await harness.service.importDocument(
       issuedFile({
@@ -2370,6 +2372,7 @@ describe('dedicated post-gap recovery (OQ-87 Option B, PDR-13)', () => {
         validUntil: LAPSE_END,
         organizationLimit: 3,
         userLimit: 10,
+        ...overrides,
       }),
     );
     vi.setSystemTime(AFTER_LAPSE);
@@ -2447,6 +2450,186 @@ describe('dedicated post-gap recovery (OQ-87 Option B, PDR-13)', () => {
     // lapsed license established (the recovery document names the same
     // customer, and a different one is refused below).
     expect(harness.stores.self()?.customerId).toBe(CUSTOMER);
+  });
+
+  it('refuses a recovery reduction against the latest lapsed grant with an operation-aware message', async () => {
+    harness = buildHarness({ usage: { organizations: 40 } });
+    await importLapsed({
+      organizationLimit: 50,
+      moduleEntitlements: ['accounting'],
+    });
+
+    const rejection = await rejectionOf(
+      harness.service.recoverAfterGap(
+        recoveryDocument({
+          organizationLimit: 2,
+          moduleEntitlements: [],
+        }),
+        RECOVERY_REASON,
+      ),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        predecessorVersionId: harness.stores.versions[0]?.versionId,
+        conflicts: [
+          { kind: 'organization-capacity', limit: 2, currentUsage: 40 },
+          {
+            kind: 'entitlement-removed',
+            entitlement: { kind: 'MODULE', code: 'accounting' },
+          },
+        ],
+      },
+    });
+    expect(rejection.message).toMatch(/dedicated gap-recovery operation/);
+    expect(rejection.message).toMatch(/reductionResolutionReason/);
+    expect(rejection.message).not.toMatch(
+      /use the dedicated resolution operation/,
+    );
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) =>
+          event.eventType === 'license.import.recovered' ||
+          event.eventType === 'license.import.reduction-resolved',
+      ),
+    ).toBe(false);
+  });
+
+  it('keeps the transaction-race reduction message operation-aware for recovery', async () => {
+    harness = buildHarness({ usage: { organizations: 40 } });
+    await importLapsed({
+      organizationLimit: 50,
+      moduleEntitlements: ['accounting'],
+    });
+    const lapsedVersion = harness.stores.versions[0];
+    if (lapsedVersion === undefined) throw new Error('missing lapsed version');
+
+    // The read-side pass sees a non-reducing increase; the locked transaction
+    // then reports the reduction conflict, as it would after a concurrent
+    // change to the authoritative retained state/usage.
+    vi.spyOn(harness.stores.licenses, 'importVersion').mockRejectedValue(
+      new ImportConflictError({
+        reason: 'reduction-requires-resolution',
+        overlapping: 1,
+        reduction: {
+          predecessorVersionId: lapsedVersion.versionId,
+          conflicts: [
+            { kind: 'organization-capacity', limit: 2, currentUsage: 40 },
+          ],
+        },
+      }),
+    );
+
+    const rejection = await rejectionOf(
+      harness.service.recoverAfterGap(
+        recoveryDocument({
+          organizationLimit: 60,
+          moduleEntitlements: ['accounting'],
+        }),
+        RECOVERY_REASON,
+      ),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.message).toMatch(
+      /retry the same dedicated gap-recovery operation/i,
+    );
+    expect(rejection.message).toMatch(
+      /do not use the separate reduction-resolution route/,
+    );
+    expect(rejection.message).not.toMatch(/use the dedicated resolution route/);
+    expect(harness.stores.versions).toHaveLength(1);
+  });
+
+  it('applies a combined recovery and reduction resolution with two typed events and no supersession stamp', async () => {
+    harness = buildHarness({ usage: { organizations: 40 } });
+    await importLapsed({
+      organizationLimit: 50,
+      moduleEntitlements: ['accounting'],
+    });
+    const lapsedVersion = harness.stores.versions[0];
+    if (lapsedVersion === undefined) throw new Error('missing lapsed version');
+
+    const result = await harness.service.recoverAfterGap(
+      recoveryDocument({
+        organizationLimit: 2,
+        moduleEntitlements: [],
+      }),
+      RECOVERY_REASON,
+      'Customer approved the lower grant after reviewing current usage.',
+    );
+
+    expect(result).toMatchObject({
+      outcome: 'APPLIED',
+      changed: true,
+      lapsedLicenseId: LICENSE,
+      coverageEnd: LAPSE_END.toISOString(),
+      resolvedPredecessorVersionId: lapsedVersion.versionId,
+      resolvedConflicts: [
+        { kind: 'organization-capacity', limit: 2, currentUsage: 40 },
+        {
+          kind: 'entitlement-removed',
+          entitlement: { kind: 'MODULE', code: 'accounting' },
+        },
+      ],
+    });
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(lapsedVersion.supersededAt).toBeNull();
+    expect(lapsedVersion.governsUntil).toBeNull();
+
+    const recovered = harness.stores.auditEvents.find(
+      (event) => event.eventType === 'license.import.recovered',
+    );
+    const resolved = harness.stores.auditEvents.find(
+      (event) => event.eventType === 'license.import.reduction-resolved',
+    );
+    expect(recovered).toMatchObject({
+      outcome: 'APPLIED',
+      operationId: harness.stores.versions[1]?.operationId,
+      licenseId: RECOVERY_LICENSE,
+      versionId: harness.stores.versions[1]?.versionId,
+      previousLicenseId: LICENSE,
+    });
+    expect(recovered?.detail).toContain(RECOVERY_REASON);
+    expect(resolved).toMatchObject({
+      outcome: 'APPLIED',
+      operationId: recovered?.operationId,
+      licenseId: RECOVERY_LICENSE,
+      versionId: recovered?.versionId,
+    });
+    expect(resolved?.detail).toContain(lapsedVersion.versionId);
+    expect(resolved?.detail).toContain('organization-capacity');
+    expect(resolved?.detail).toContain('entitlement-removed');
+    expect(resolved?.detail).toContain(
+      'conflicts=[{"kind":"organization-capacity","limit":2,"currentUsage":40},{"kind":"entitlement-removed","entitlement":{"kind":"MODULE","code":"accounting"}}]',
+    );
+    expect(resolved?.detail).toContain(
+      'Customer approved the lower grant after reviewing current usage.',
+    );
+  });
+
+  it('validates the optional reduction-resolution reason before persisting a recovery', async () => {
+    harness = buildHarness({ usage: { organizations: 40 } });
+    await importLapsed({ organizationLimit: 50 });
+
+    const rejection = await rejectionOf(
+      harness.service.recoverAfterGap(
+        recoveryDocument({ organizationLimit: 2 }),
+        RECOVERY_REASON,
+        'ab',
+      ),
+    );
+
+    expect(rejection.status).toBe(400);
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.recovered',
+      ),
+    ).toBe(false);
   });
 
   it('requires a validated reason (400), and writes nothing', async () => {

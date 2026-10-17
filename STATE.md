@@ -2596,3 +2596,80 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   `EBADF`, `ENOTSUP`, or unclassified errors); customer-side
   `licensing.license_audit_events` archiving and Product Owner acceptance remain
   open under `OQ-77`.
+
+## 48. L-07 / C10 — §8.6 guard on post-gap recovery (2026-10-17; OD-LIC-05 accepted)
+
+- **Baseline and live PRs:** this work is on the fixed branch
+  `arena/9619675c-vardena`, based on `origin/main` at
+  `af68fd8eea5e5163d7827fa7b21d4bea85388e32` (PR #169 merge). PR #170 is
+  **CLOSED, not merged**, at head `ff2f4df1cc97b9fd974f0d73e197074727829af3`;
+  its changes are not treated as delivered to `main` or included in this work.
+  PR #171 must remain OPEN and unmerged; no merge or auto-merge is authorized.
+  Its pre-change head was `3154b453926a83025c974028b660513d2f70b2f0`.
+- **Decision and boundaries:** on 2026-10-17 the Product Owner expressly
+  accepted **OD-LIC-05 Option 1**, limited to C10. OQ-87 remains OPEN under the
+  registry convention; C11 (interior/backdated gap-fill measurement) remains
+  open and outside this decision. No OQ is closed or otherwise changed. This is
+  not acceptance of the broader licensing roadmap or authorization to merge.
+- **Domain contract:** for a genuine post-gap candidate on the dedicated
+  recovery route, §8.6 measures against `lapsedCoverageVersion` (latest
+  effective coverage end; ties by latest `importedAt`, then `versionId`; `null`
+  when coverage is absent or perpetual). It runs before overlap/precedence
+  rules 4/5. A conflicting reduction without a valid same-request resolution
+  remains `reduction-requires-resolution`; unavailable usage and every other
+  non-resolvable conflict remain fail-closed even when a reason is supplied.
+  The optional 3–500 character `reductionResolutionReason` invokes all three
+  permissions: `Licensing.License.Activate`,
+  `Licensing.Installation.RecoverAfterGap`, and
+  `Licensing.License.ResolveReduction`. A reason with no actual conflict is
+  rejected as `resolution-not-applicable`. Any recovery declaring a
+  supersession target, including an unknown target, is
+  `recovery-not-applicable` before target resolution: recovery retires nothing.
+- **Atomicity, audit, and unchanged safeguards:** the new version and both
+  typed events (`license.import.recovered` and
+  `license.import.reduction-resolved`) commit in one transaction. Conflict
+  objects are recomputed inside that transaction under the existing
+  installation/allocation locks; the resolution event records those actual
+  server-computed facts, not client input. The lapsed version is the resolution
+  subject, not a supersession target, and is never stamped by resolution.
+  Ordinary import and the separate reduction-resolution route still reject
+  post-gap candidates. Signature, binding, identity, authorization, replay,
+  retained-history, audit, fail-closed and locking safeguards remain in force;
+  renewal-gap precedence and other non-post-gap behavior are unchanged. No
+  schema or migration change was made.
+- **Implementation and regression coverage:** the domain now classifies a
+  post-gap recovery before resolving explicit targets; tests cover an unknown
+  target and fail-closed unavailable usage. Service/e2e/live assertions verify
+  serialized conflict facts in the resolution audit detail. The live PostgreSQL
+  and HTTP e2e changes are CI-only and were not run locally. The gap-recovery
+  request DTO adds optional `reductionResolutionReason`; its response DTO adds
+  optional `resolvedPredecessorVersionId` and `resolvedConflicts` for a combined
+  recovery/resolution. `frontend/src/api/generated/vardena-api.d.ts` was updated
+  to match the new OpenAPI request/response contract. These API/client contract
+  changes do not add or change database schema, and no migration was added.
+- **Decision-record synchronization:** PDR-13 §8, ADR-0050 and their indexes,
+  the OQ-87 registry evidence, licensing decision brief, requirements/evidence
+  matrix, technical licensing design and this `STATE.md` now distinguish the
+  accepted C10 policy from implementation/merge status. OQ-87 and C11 remain
+  open; PR #170 remains closed/unmerged and its work is not presumed on `main`.
+- **FAST-LOCAL verification:** targeted Vitest for
+  `license-version.spec.ts`, `license-import.service.spec.ts`, and
+  `license-openapi.contract.spec.ts`: **173/173 passed**; backend and frontend
+  `npm run typecheck`: passed; targeted `oxlint` on seven changed backend source
+  and test files: passed; Prettier check on those seven files: passed;
+  `git diff --check`: passed; documentation links: **315 Markdown files / 1,005
+  relative links / 0 broken**; cross-project date-contract guard: passed.
+  Prettier's Markdown check reports the same pre-existing nonconformance at
+  `HEAD` for all seven touched documentation files; no repository-wide
+  reformatting was applied. No build, full suite, HTTP e2e, live PostgreSQL,
+  migration rehearsal, Docker, load/performance or other heavy local checks
+  were run, per instruction.
+- **CI evidence and handoff:** prior PR run
+  [`39024073818`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39024073818)
+  was green on the starting SHA `3154b453926a83025c974028b660513d2f70b2f0`
+  (`classify`, `docs`, `backend`, `frontend`, `generated-api-client`,
+  `ci-gate`); it is historical and does **not** certify these changes. After
+  pushing the completed change, compare the live PR #171 head SHA with the
+  completed GitHub Actions run and every required job conclusion. The exact
+  final-head CI evidence is recorded on PR #171; do not substitute any earlier
+  run. PR #171 remains open and unmerged.
