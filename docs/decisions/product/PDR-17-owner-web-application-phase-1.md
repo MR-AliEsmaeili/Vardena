@@ -323,3 +323,14 @@ activates, then perform an atomic quota-neutral one-for-one swap. It is separate
 from server replacement and ordinary activation receipts. Existing implementation
 must be assessed against this superseding policy; this documentation change does
 not alter runtime behavior.
+
+
+## Product Owner decision update — activation dates and server replacement (2026-10-17)
+
+See [PDR-18](PDR-18-licensing-contract-and-activation-policy.md) for the complete binding policy.
+
+- Owner-side commercial contract dates must be stored and displayed separately from activation validity dates. On issue, activation start is populated from the current issuance date and is not editable; past and future starts are prohibited. The issuer sets the end date independently.
+- Server replacement uses a limited one-time Owner authorization and may activate the new server before the old server is manually decommissioned. Owner Admin records customer/authorized representative approval with approver name, time, reason, and evidence reference. Do not claim remote shutdown or remote control.
+- Engineering must propose a design that preserves license-to-Installation binding and handles activation failure, retries, pending/finalization consistency, and recovery before implementation. Existing period/timeout and evidence details not superseded by PDR-18 remain subject to the current PDR-17/OQ-82 record and require reconciliation rather than inference.
+
+These are product decisions, not implementation claims. OQ-82 remains open for specification/evidence until the conflict-safe replacement protocol is reviewed.
