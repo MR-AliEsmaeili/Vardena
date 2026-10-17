@@ -190,6 +190,128 @@ async function resetToMigration002() {
   });
 }
 
+describe("Owner migration ledger integrity", () => {
+  it("rejects holes, unknown history and checksum drift without changing populated data through either entry point", async () => {
+    for (const corruption of [
+      "hole",
+      "interior-hole",
+      "unknown",
+      "checksum",
+    ] as const) {
+      await resetToMigration002();
+      await migrate(db);
+      const uid = ulid();
+      await db.pool.query(
+        "INSERT INTO owner.users(id,username,password_hash,role) VALUES($1,'ledger_fixture','$argon2id$fixture','OWNER_ADMIN')",
+        [uid],
+      );
+      await db.pool.query(
+        "INSERT INTO owner.customers(id,customer_code,display_name,created_by,updated_by) VALUES($1,'LEDGER-1','Retained customer',$2,$2)",
+        [ulid(), uid],
+      );
+      await insertAudit({
+        actor: uid,
+        type: "USER_BOOTSTRAPPED",
+        targetType: "User",
+        targetId: uid,
+        occurredAt: "2026-10-15T00:00:00.000Z",
+      });
+      const originalLedger = (
+        await db.pool.query(
+          "SELECT * FROM public.owner_migrations ORDER BY name",
+        )
+      ).rows;
+      if (corruption === "hole" || corruption === "interior-hole") {
+        await db.pool.query(
+          "DELETE FROM public.owner_migrations WHERE name=$1",
+          [
+            corruption === "hole"
+              ? "001-foundation.sql"
+              : "003-two-role-authorization.sql",
+          ],
+        );
+      } else if (corruption === "unknown") {
+        await db.pool.query(
+          "INSERT INTO public.owner_migrations(name,checksum) VALUES('999-unknown.sql',$1)",
+          ["0".repeat(64)],
+        );
+      } else {
+        await db.pool.query(
+          "UPDATE public.owner_migrations SET checksum=$1 WHERE name='004-audit-retention-archive.sql'",
+          ["0".repeat(64)],
+        );
+      }
+      const snapshot = async () => ({
+        ledger: (
+          await db.pool.query(
+            "SELECT * FROM public.owner_migrations ORDER BY name",
+          )
+        ).rows,
+        users: (await db.pool.query("SELECT * FROM owner.users ORDER BY id"))
+          .rows,
+        customers: (
+          await db.pool.query("SELECT * FROM owner.customers ORDER BY id")
+        ).rows,
+        audit: (
+          await db.pool.query(
+            "SELECT * FROM owner.audit_events ORDER BY sequence",
+          )
+        ).rows,
+      });
+      const before = await snapshot();
+      const message =
+        corruption === "hole" || corruption === "interior-hole"
+          ? "Applied migration ledger is not a contiguous prefix."
+          : corruption === "unknown"
+            ? "Missing applied migration."
+            : "Applied migration checksum mismatch.";
+      await expect(migrate(db)).rejects.toThrow(message);
+      expect(await snapshot()).toEqual(before);
+      // Invalid plan proves history validation precedes role remediation/its early return.
+      await expect(remediateLegacyRolesAndMigrate(db, {})).rejects.toThrow(
+        message,
+      );
+      expect(await snapshot()).toEqual(before);
+
+      // Restore only known disposable fixture history, not a production repair recipe.
+      await db.transaction(async (tx) => {
+        await tx.query("DELETE FROM public.owner_migrations");
+        for (const row of originalLedger) {
+          await tx.query(
+            "INSERT INTO public.owner_migrations(name,checksum,applied_at) VALUES($1,$2,$3)",
+            [row.name, row.checksum, row.applied_at],
+          );
+        }
+      });
+      await Promise.all([migrate(db), migrate(db)]);
+      await migrate(db);
+      expect(await snapshot()).toEqual({ ...before, ledger: originalLedger });
+    }
+  });
+
+  it("serializes concurrent deploys from a valid partial history and remains repeatable", async () => {
+    await resetToMigration002();
+    await Promise.all([migrate(db), migrate(db)]);
+    const before = (
+      await db.pool.query("SELECT * FROM public.owner_migrations ORDER BY name")
+    ).rows;
+    expect(before.map((row) => row.name)).toEqual([
+      "001-foundation.sql",
+      "002-manual-operations.sql",
+      "003-two-role-authorization.sql",
+      "004-audit-retention-archive.sql",
+    ]);
+    await migrate(db);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT * FROM public.owner_migrations ORDER BY name",
+        )
+      ).rows,
+    ).toEqual(before);
+  });
+});
+
 describe("Owner migration 003 existing-database compatibility, rollback, and retry", () => {
   it("fails closed and rolls back cleanly for each populated legacy role while denying runtime login/session access", async () => {
     const pw = "Disposable_legacy_45";

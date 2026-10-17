@@ -1,5 +1,17 @@
 # Vardena Project State
 
+> **Owner migration ledger safety, 2026-10-17 (proposed for review):** starting
+> remote `main` = `af68fd8eea5e5163d7827fa7b21d4bea85388e32` (PR #169 merged;
+> final prior head `08aea0eb87249b646375998934f93b7b3f1b8ab3`; no open PRs
+> at inspection). Both Owner migration entry points now validate a contiguous
+> applied history and all checksums before migration/remediation writes, using
+> the existing transaction/advisory lock and SQL chain. Populated PostgreSQL
+> refusal/preservation, repair/retry and concurrent-upgrade regressions added to
+> the existing CI suite; no applied migration or product-policy change. Local
+> heavy suites are prohibited; exact-head CI evidence belongs to the PR, not
+> this implementation claim. Production backup/restore remains unverified.
+
+
 > **OQ-45 Grace/Read-Only, 2026-10-16 (unmerged implementation for review):**
 > starting `main` = `74079fe83c6f0023e0ade10ca0d39c02246bf1fa` (merge of PR
 > #166; live-verified, no open PRs at start). Implements natural-expiry

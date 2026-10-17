@@ -141,6 +141,32 @@ triggers and ledger commit together on a fresh database. Re-running validates
 checksums. Back up the Owner database including audit/ledger independently.
 No destructive rollback or audit purge command is supplied.
 
+Both `migrate` and `migrate:remediate-roles` validate the **entire** packaged chain
+under the same advisory lock before running migration SQL or changing accounts.
+Applied ledger names must form a contiguous prefix of the sorted numbered SQL
+files. An empty ledger and a valid older prefix remain supported; a hole followed
+by an applied later file fails closed, even if that historical SQL would happen
+to be repeatable. Unknown applied names and any applied checksum mismatch also
+fail before role-remediation's already-applied return. The validated SQL is read
+once and the same bytes are executed/checksummed.
+
+On refusal, stop deployment and compare the installed immutable migration files
+and ledger with the verified release and pre-upgrade backup. Do not delete ledger
+rows, recompute checksums, or rerun historical SQL to bypass the refusal. Restore
+a consistent backup/release or obtain a reviewed repair based on the actual
+schema and history, then retry. Failed attempts roll back; committed upgrades
+remain forward-only and require the documented backup restore for reversal.
+The CLI intentionally emits a sanitized error rather than database details.
+
+Regression coverage in `backend/test/api.test.ts` uses disposable PostgreSQL to
+exercise first/interior ledger holes, unknown history, latest-file checksum drift
+through both entry points, unchanged populated user/customer/audit rows and
+ledger on refusal, fixture-history restoration/retry, and concurrent upgrades
+from `002` followed by an unchanged repeat deployment. These tests run in the
+existing CI backend job, not locally; fixture recovery is not a production
+repair procedure or proof of customer-data safety.
+
+
 `owner.users`, opaque hashed `sessions`, shared login throttling, customers with
 case-sensitive unique business code (PDR-14 grammar), and append-only audit.
 Customer ID and code cannot be updated, including direct SQL updates (trigger).

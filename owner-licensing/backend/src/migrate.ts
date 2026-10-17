@@ -1,9 +1,9 @@
 import "dotenv/config";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { Database } from "./db.js";
 import { config } from "./config.js";
-import { digest } from "./domain.js";
+import { validatedMigrationChain } from "./migration-ledger.js";
 import {
   RoleUpgradeError,
   preflightRoleUpgrade,
@@ -46,25 +46,14 @@ export async function migrate(db: Database) {
     await tx.query(
       "CREATE TABLE IF NOT EXISTS public.owner_migrations(name text PRIMARY KEY, checksum char(64) NOT NULL, applied_at timestamptz NOT NULL DEFAULT clock_timestamp())",
     );
-    const folder = fileURLToPath(new URL("../migrations/", import.meta.url));
-    const files = (await readdir(folder))
-      .filter((n) => /^\d+.*\.sql$/.test(n))
-      .sort();
-    const ledger = await tx.query<{ name: string; checksum: string }>(
-      "SELECT name,checksum FROM public.owner_migrations",
-    );
-    if (ledger.rows.some((r) => !files.includes(r.name)))
-      throw new Error("Missing applied migration.");
-    for (const name of files) {
-      const sql = await readFile(`${folder}/${name}`, "utf8");
-      const previous = ledger.rows.find((r) => r.name === name);
-      if (previous && previous.checksum !== digest(sql))
-        throw new Error("Applied migration checksum mismatch.");
+    const { chain, ledger } = await validatedMigrationChain(tx);
+    for (const { name, sql, checksum } of chain) {
+      const previous = ledger.find((r) => r.name === name);
       if (!previous) {
         await tx.query(sql);
         await tx.query(
           "INSERT INTO public.owner_migrations(name,checksum) VALUES($1,$2)",
-          [name, digest(sql)],
+          [name, checksum],
         );
       }
     }

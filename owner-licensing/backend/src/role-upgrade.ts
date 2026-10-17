@@ -1,5 +1,4 @@
-import { readFile, readdir } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { validatedMigrationChain } from "./migration-ledger.js";
 import type { PoolClient } from "pg";
 import { Database, audit } from "./db.js";
 import { digest, isRole, roles, type Role } from "./domain.js";
@@ -1040,21 +1039,12 @@ export async function remediateLegacyRolesAndMigrate(
     await tx.query(
       "CREATE TABLE IF NOT EXISTS public.owner_migrations(name text PRIMARY KEY, checksum char(64) NOT NULL, applied_at timestamptz NOT NULL DEFAULT clock_timestamp())",
     );
-    const folder = fileURLToPath(new URL("../migrations/", import.meta.url));
-    const files = (await readdir(folder))
-      .filter((n) => /^\d+.*\.sql$/.test(n))
-      .sort();
-    const ledger = await tx.query<{ name: string; checksum: string }>(
-      "SELECT name,checksum FROM public.owner_migrations",
-    );
-    if (ledger.rows.some((r) => !files.includes(r.name)))
-      throw new Error("Missing applied migration.");
+    const { chain, ledger } = await validatedMigrationChain(tx);
 
     // Ensure pre-003 migrations (001, 002) are verified/applied first.
-    for (const name of files) {
+    for (const { name, sql } of chain) {
       if (name >= "003-two-role-authorization.sql") break;
-      const sql = await readFile(`${folder}/${name}`, "utf8");
-      const previous = ledger.rows.find((r) => r.name === name);
+      const previous = ledger.find((r) => r.name === name);
       if (previous && previous.checksum !== digest(sql))
         throw new Error("Applied migration checksum mismatch.");
       if (!previous) {
@@ -1068,11 +1058,10 @@ export async function remediateLegacyRolesAndMigrate(
 
     const users = await querySafeUsersForUpgrade(tx, true);
     const legacyUsers = users.filter((u) => !isRole(u.role));
-    const sql003 = await readFile(
-      `${folder}/003-two-role-authorization.sql`,
-      "utf8",
-    );
-    const prev003 = ledger.rows.find(
+    const sql003 = chain.find(
+      (migration) => migration.name === "003-two-role-authorization.sql",
+    )!.sql;
+    const prev003 = ledger.find(
       (r) => r.name === "003-two-role-authorization.sql",
     );
     if (prev003 && prev003.checksum !== digest(sql003))
@@ -1146,10 +1135,9 @@ export async function remediateLegacyRolesAndMigrate(
       await options.beforeMigration003Hook(tx);
     }
 
-    for (const name of files) {
+    for (const { name, sql } of chain) {
       if (name < "003-two-role-authorization.sql") continue;
-      const sql = await readFile(`${folder}/${name}`, "utf8");
-      const previous = ledger.rows.find((r) => r.name === name);
+      const previous = ledger.find((r) => r.name === name);
       if (previous && previous.checksum !== digest(sql))
         throw new Error("Applied migration checksum mismatch.");
       if (!previous) {

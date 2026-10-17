@@ -162,3 +162,16 @@ runtime `NODE_ENV` check; and the canonical byte contract is implicit in Node's
   condition already shown to be unsafe); an "Owner mode" of the customer
   application (violates the approved direction and puts the signer adjacent to
   customer data); a customer→Owner network callback (violates §11.1 and G-7).
+
+
+## Implementation clarification — Owner migration history (2026-10-17)
+
+The independent Owner SQL/checksum ledger remains the sole Owner schema-upgrade
+mechanism (not the customer Prisma chain). Both deployment entry points validate
+all applied checksums and require a contiguous applied prefix before executing
+pending SQL or role-remediation writes, under the existing transaction-scoped
+advisory lock. SQL is loaded once for validation and execution. Corrupt or
+incomplete history is a deployment refusal, never permission to replay an older
+migration out of order. No applied SQL, product policy, customer schema, signing
+format, or deployment topology changes. Recovery and CI-only PostgreSQL regression
+coverage are documented in the [Owner runbook](../../owner-licensing/README.md#persistence-and-migration-discipline).
