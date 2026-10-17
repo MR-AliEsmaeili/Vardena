@@ -106,9 +106,15 @@ nginx sample proxies `/api/` to an internal service named `owner-api` on port 30
 this is deployment composition, not a customer endpoint. No new microservice.
 Terminate HTTPS at the Owner ingress. Set `NODE_ENV=production`,
 `OWNER_PUBLIC_ORIGIN=https://<owner-host>`, `OWNER_DATABASE_URL` from a secret store,
-and `OWNER_AUDIT_ARCHIVE_DIR=/var/lib/vardena-owner/audit-archive` mounted on an
-independent persistent volume outside the PostgreSQL data directory and backup
-lifecycle. Never place these credentials in the UI's `VITE_*` variables or customer `.env`.
+and `OWNER_AUDIT_ARCHIVE_DIR=/var/lib/vardena-owner/audit-archive` mounted on a
+dedicated durable volume outside the PostgreSQL data directory and backup
+lifecycle. A different filesystem path alone does **not** guarantee physical
+storage independence, hardware WORM immutability, or protection against a
+compromised OS `root`; because this repository does not ship an Owner production
+infrastructure manifest or external volume backup/restore runbook, provisioning
+and verifying the dedicated volume mount and its independent backup/restore
+procedure remains a deployment-owner operational requirement. Never place these
+credentials in the UI's `VITE_*` variables or customer `.env`.
 
 Use separate migration and application credentials. The migration role owns schemas
 `owner` and `owner_audit_archive` plus `public.owner_migrations`. Grant runtime only

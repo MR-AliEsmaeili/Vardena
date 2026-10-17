@@ -2874,6 +2874,57 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     expect(statusBeforeRecovery.body.integrity.verified).toBe(false);
     expect(statusBeforeRecovery.body.integrity.recoveryRequired).toBe(true);
 
+    // 8a. Conflicting source event detection during recovery:
+    //     If an existing source row at an archived id/sequence has divergent content,
+    //     POST /api/v1/audit-archive/recover rejects with 409 ArchiveIntegrityViolation and rolls back
+    await db.transaction(async (tx) => {
+      await tx.query(
+        "ALTER TABLE owner.audit_events DISABLE TRIGGER retain_audit",
+      );
+      await tx.query(
+        `INSERT INTO owner.audit_events (
+           id, actor_id, event_type, target_type, target_id,
+           occurred_at, outcome, reason, before_state, after_state
+         )
+         VALUES (
+           $1, $2, 'CUSTOMER_CREATED', 'Customer', '01ARZ3NDEKTSV4RRFFQ69G5FAA',
+           '2025-10-17T12:00:00.001Z'::timestamptz, 'SUCCESS',
+           'CONFLICTING_DIVERGENT_RESTORE_EVENT', NULL, '{"customerCode":"CUST-CONFLICT"}'::jsonb
+         )`,
+        [youngerEventId, adminId],
+      );
+      await tx.query(
+        "ALTER TABLE owner.audit_events ENABLE TRIGGER retain_audit",
+      );
+    });
+
+    const conflictingRecoverRes = await write(
+      "post",
+      "/audit-archive/recover",
+      adminCookie,
+    ).send({
+      reason: "Attempt recovery while conflicting source event exists",
+    });
+    expect(conflictingRecoverRes.status).toBe(409);
+    expect(conflictingRecoverRes.body.code).toBe("ArchiveIntegrityViolation");
+
+    // Clean up the injected conflicting row and also rewind the audit_events identity sequence to 1
+    // to verify that recovery synchronizes the sequence before emitting new audit events
+    await db.transaction(async (tx) => {
+      await tx.query(
+        "ALTER TABLE owner.audit_events DISABLE TRIGGER retain_audit",
+      );
+      await tx.query("DELETE FROM owner.audit_events WHERE id = $1", [
+        youngerEventId,
+      ]);
+      await tx.query(
+        "ALTER TABLE owner.audit_events ENABLE TRIGGER retain_audit",
+      );
+      await tx.query(
+        "SELECT setval(pg_get_serial_sequence('owner.audit_events', 'sequence'), 1, true)",
+      );
+    });
+
     // Execute POST /api/v1/audit-archive/recover to restore missing source events and DB archive ledger from the independent durable store
     const recoverRes = await write(
       "post",
@@ -2894,6 +2945,19 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     expect(recoverRes.body.recoveredLedgerEventCount).toBeGreaterThanOrEqual(
       15,
     );
+
+    // Verify sequence synchronization allows subsequent normal audit writes without collision
+    const postRecoverCustomerRes = await write(
+      "post",
+      "/customers",
+      adminCookie,
+    ).send({
+      customerCode: "CUST-POST-RECOVER",
+      displayName: "Post Recover Verification Clinic",
+      status: "ACTIVE",
+      reason: "Verify sequence synchronization after archive recovery",
+    });
+    expect(postRecoverCustomerRes.status).toBe(201);
 
     const statusAfterRecovery = await request(app)
       .get("/api/v1/audit-archive/status")

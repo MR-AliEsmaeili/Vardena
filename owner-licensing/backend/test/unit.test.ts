@@ -1,11 +1,14 @@
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
+import { open as fsOpen } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -32,6 +35,7 @@ import {
 } from "../src/migrate.js";
 import {
   FilesystemAuditArchiveStore,
+  TOLERATED_DIRECTORY_SYNC_ERROR_CODES,
   canonicalAuditRetentionPolicy,
   computeArchiveBatchDigest,
   computeArchiveBundleDigest,
@@ -1026,5 +1030,370 @@ describe("Customer field allowlist for the two-role model", () => {
     } finally {
       rmSync(tmpArchiveDir, { recursive: true, force: true });
     }
+
+    // Supported-filesystem directory sync policy:
+    // - Only EINVAL from dirHandle.sync() is tolerated
+    // - Fatal directory sync errors (EIO, ENOSPC, EDQUOT, EROFS, EACCES, EPERM, EBADF, ENOTSUP, unclassified)
+    //   fail closed with 503 ArchiveStorageUnavailable, clean up partial artifacts, and never leak paths
+    // - Directory open() failures and regular file fh.sync() failures are never tolerated
+    expect([...TOLERATED_DIRECTORY_SYNC_ERROR_CODES]).toEqual(["EINVAL"]);
+
+    const syncPolicyDir = mkdtempSync(
+      path.join(os.tmpdir(), "vardena-archive-sync-policy-"),
+    );
+    try {
+      const makeErrno = (code: string, msg: string) =>
+        Object.assign(new Error(msg), { code });
+
+      // 1. Tolerated EINVAL on directory descriptor sync succeeds cleanly
+      let dirSyncCalls = 0;
+      const einvalDirStore = new FilesystemAuditArchiveStore(syncPolicyDir, {
+        open: (async (
+          targetPath: Parameters<typeof fsOpen>[0],
+          flags: any,
+          mode?: any,
+        ) => {
+          const handle = await fsOpen(targetPath, flags, mode);
+          if (flags === "r") {
+            return new Proxy(handle, {
+              get(target, prop, receiver) {
+                if (prop === "sync") {
+                  return async () => {
+                    dirSyncCalls += 1;
+                    throw makeErrno(
+                      "EINVAL",
+                      `EINVAL: invalid argument, fsync '${String(targetPath)}'`,
+                    );
+                  };
+                }
+                const val = Reflect.get(target, prop, receiver);
+                return typeof val === "function" ? val.bind(target) : val;
+              },
+            });
+          }
+          return handle;
+        }) as typeof fsOpen,
+      });
+
+      const einvalPersisted = await einvalDirStore.persistBatch(validBundle);
+      expect(dirSyncCalls).toBe(2); // batches/ directory sync + rootDir manifest directory sync
+      expect(
+        (await einvalDirStore.verifyStore()).manifest.batches,
+      ).toHaveLength(1);
+      await einvalPersisted.rollback();
+      expect(
+        (await einvalDirStore.verifyStore()).manifest.batches,
+      ).toHaveLength(0);
+
+      // 2. Fatal directory sync error codes fail closed (503 ArchiveStorageUnavailable),
+      //    remove linked batch file on failure, and do not leak filesystem paths
+      for (const fatalCode of [
+        "EIO",
+        "ENOSPC",
+        "EDQUOT",
+        "EROFS",
+        "EACCES",
+        "EPERM",
+        "EBADF",
+        "ENOTSUP",
+      ]) {
+        const fatalDirStore = new FilesystemAuditArchiveStore(syncPolicyDir, {
+          open: (async (
+            targetPath: Parameters<typeof fsOpen>[0],
+            flags: any,
+            mode?: any,
+          ) => {
+            const handle = await fsOpen(targetPath, flags, mode);
+            if (flags === "r") {
+              return new Proxy(handle, {
+                get(target, prop, receiver) {
+                  if (prop === "sync") {
+                    return async () => {
+                      throw makeErrno(
+                        fatalCode,
+                        `${fatalCode}: sync failure at ${String(targetPath)}`,
+                      );
+                    };
+                  }
+                  const val = Reflect.get(target, prop, receiver);
+                  return typeof val === "function" ? val.bind(target) : val;
+                },
+              });
+            }
+            return handle;
+          }) as typeof fsOpen,
+        });
+
+        let caught: unknown;
+        try {
+          await fatalDirStore.persistBatch(validBundle);
+        } catch (err) {
+          caught = err;
+        }
+        expect(caught).toMatchObject({
+          status: 503,
+          code: "ArchiveStorageUnavailable",
+        });
+        expect((caught as Error).message).not.toContain(syncPolicyDir);
+        expect(
+          readdirSync(path.join(syncPolicyDir, "batches")).filter(
+            (f) => !f.startsWith("."),
+          ),
+        ).toEqual([]);
+        expect(existsSync(path.join(syncPolicyDir, "manifest.json"))).toBe(
+          false,
+        );
+      }
+
+      // 3. Unclassified directory sync error (no error code) also fails closed
+      const unclassifiedDirStore = new FilesystemAuditArchiveStore(
+        syncPolicyDir,
+        {
+          open: (async (
+            targetPath: Parameters<typeof fsOpen>[0],
+            flags: any,
+            mode?: any,
+          ) => {
+            const handle = await fsOpen(targetPath, flags, mode);
+            if (flags === "r") {
+              return new Proxy(handle, {
+                get(target, prop, receiver) {
+                  if (prop === "sync") {
+                    return async () => {
+                      throw new Error(
+                        `Unexpected disk failure at ${String(targetPath)}`,
+                      );
+                    };
+                  }
+                  const val = Reflect.get(target, prop, receiver);
+                  return typeof val === "function" ? val.bind(target) : val;
+                },
+              });
+            }
+            return handle;
+          }) as typeof fsOpen,
+        },
+      );
+      await expect(
+        unclassifiedDirStore.persistBatch(validBundle),
+      ).rejects.toMatchObject({
+        status: 503,
+        code: "ArchiveStorageUnavailable",
+      });
+
+      // 4. Directory sync failure during manifest.json write (second syncDirectory call)
+      //    rolls back both manifest.json and the newly written batch file
+      let dirSyncCount = 0;
+      const failOnManifestSyncStore = new FilesystemAuditArchiveStore(
+        syncPolicyDir,
+        {
+          open: (async (
+            targetPath: Parameters<typeof fsOpen>[0],
+            flags: any,
+            mode?: any,
+          ) => {
+            const handle = await fsOpen(targetPath, flags, mode);
+            if (flags === "r") {
+              return new Proxy(handle, {
+                get(target, prop, receiver) {
+                  if (prop === "sync") {
+                    return async () => {
+                      dirSyncCount += 1;
+                      if (dirSyncCount === 2) {
+                        throw makeErrno(
+                          "EIO",
+                          `EIO on manifest dir ${String(targetPath)}`,
+                        );
+                      }
+                    };
+                  }
+                  const val = Reflect.get(target, prop, receiver);
+                  return typeof val === "function" ? val.bind(target) : val;
+                },
+              });
+            }
+            return handle;
+          }) as typeof fsOpen,
+        },
+      );
+      await expect(
+        failOnManifestSyncStore.persistBatch(validBundle),
+      ).rejects.toMatchObject({
+        status: 503,
+        code: "ArchiveStorageUnavailable",
+      });
+      expect(
+        (await einvalDirStore.verifyStore()).manifest.batches,
+      ).toHaveLength(0);
+
+      // 5. Directory open(dirPath, "r") failure (even with EINVAL) is NEVER tolerated
+      const dirOpenFailStore = new FilesystemAuditArchiveStore(syncPolicyDir, {
+        open: (async (
+          targetPath: Parameters<typeof fsOpen>[0],
+          flags: any,
+          mode?: any,
+        ) => {
+          if (flags === "r") {
+            throw makeErrno(
+              "EINVAL",
+              `Cannot open directory ${String(targetPath)}`,
+            );
+          }
+          return fsOpen(targetPath, flags, mode);
+        }) as typeof fsOpen,
+      });
+      await expect(
+        dirOpenFailStore.persistBatch(validBundle),
+      ).rejects.toMatchObject({
+        status: 503,
+        code: "ArchiveStorageUnavailable",
+      });
+
+      // 6. Regular file fh.sync() failure (even with EINVAL) is NEVER tolerated
+      const fileSyncFailStore = new FilesystemAuditArchiveStore(syncPolicyDir, {
+        open: (async (
+          targetPath: Parameters<typeof fsOpen>[0],
+          flags: any,
+          mode?: any,
+        ) => {
+          const handle = await fsOpen(targetPath, flags, mode);
+          if (flags === "wx") {
+            return new Proxy(handle, {
+              get(target, prop, receiver) {
+                if (prop === "sync") {
+                  return async () => {
+                    throw makeErrno(
+                      "EINVAL",
+                      `Regular file fsync failed on ${String(targetPath)}`,
+                    );
+                  };
+                }
+                const val = Reflect.get(target, prop, receiver);
+                return typeof val === "function" ? val.bind(target) : val;
+              },
+            });
+          }
+          return handle;
+        }) as typeof fsOpen,
+      });
+      await expect(
+        fileSyncFailStore.persistBatch(validBundle),
+      ).rejects.toMatchObject({
+        status: 503,
+        code: "ArchiveStorageUnavailable",
+      });
+    } finally {
+      rmSync(syncPolicyDir, { recursive: true, force: true });
+    }
+
+    // Error sanitization in getAuditArchiveStatus: non-ApiError exceptions from store or DB
+    // never leak raw filesystem paths, SQL queries, or credentials in integrity.issueMessage
+    const leakingStore = {
+      rootDir: "/var/lib/secret-archive-mount",
+      verifyStore: async () => {
+        throw new Error(
+          "EACCES: permission denied, open '/var/lib/secret-archive-mount/manifest.json' with postgres://admin:supersecret@db/owner",
+        );
+      },
+      persistBatch: async () => {
+        throw new Error("unreachable");
+      },
+    };
+    const fakeStatusTx = {
+      query: async (sql: string) => {
+        if (sql.includes("ORDER BY batch_number ASC")) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              total_source_events: "0",
+              within_minimum_window_count: "0",
+              past_minimum_floor_count: "0",
+              unresolved_incident_count: "0",
+              past_floor_incident_hold_count: "0",
+              archived_event_count: "0",
+              unarchived_eligible_count: "0",
+              db_batch_count: "0",
+            },
+          ],
+        };
+      },
+    } as unknown as Parameters<typeof getAuditArchiveStatus>[0];
+
+    const sanitizedStatus = await getAuditArchiveStatus(
+      fakeStatusTx,
+      adminActor,
+      {},
+      leakingStore,
+    );
+    expect(sanitizedStatus.integrity.verified).toBe(false);
+    expect(sanitizedStatus.integrity.durableStoreVerified).toBe(false);
+    expect(sanitizedStatus.integrity.issueMessage).toBe(
+      "Independent durable archive store failed verification.",
+    );
+    expect(sanitizedStatus.integrity.issueMessage).not.toContain(
+      "/var/lib/secret-archive-mount",
+    );
+    expect(sanitizedStatus.integrity.issueMessage).not.toContain("supersecret");
+
+    const okEmptyStore = {
+      rootDir: "/var/lib/clean-archive",
+      verifyStore: async () => ({
+        verified: true as const,
+        manifest: {
+          format: "vardena-owner-audit-archive-manifest" as const,
+          formatVersion: 1 as const,
+          updatedAt: "2026-10-17T00:00:00.000Z",
+          latestBatchId: null,
+          latestBatchNumber: 0,
+          latestBatchDigestSha256: null,
+          lastArchivedSequence: null,
+          batches: [],
+          manifestDigestSha256: "0".repeat(64),
+        },
+        bundles: [],
+      }),
+      persistBatch: async () => {
+        throw new Error("unreachable");
+      },
+    };
+    const leakingDbTx = {
+      query: async (sql: string) => {
+        if (sql.includes("ORDER BY batch_number ASC")) {
+          throw new Error(
+            "SELECT * FROM owner_audit_archive.archive_batches failed on postgres://admin:dbsecret@10.0.0.5:5432/owner",
+          );
+        }
+        return {
+          rows: [
+            {
+              total_source_events: "0",
+              within_minimum_window_count: "0",
+              past_minimum_floor_count: "0",
+              unresolved_incident_count: "0",
+              past_floor_incident_hold_count: "0",
+              archived_event_count: "0",
+              unarchived_eligible_count: "0",
+              db_batch_count: "0",
+            },
+          ],
+        };
+      },
+    } as unknown as Parameters<typeof getAuditArchiveStatus>[0];
+
+    const sanitizedDbStatus = await getAuditArchiveStatus(
+      leakingDbTx,
+      adminActor,
+      {},
+      okEmptyStore,
+    );
+    expect(sanitizedDbStatus.integrity.verified).toBe(false);
+    expect(sanitizedDbStatus.integrity.dbLedgerVerified).toBe(false);
+    expect(sanitizedDbStatus.integrity.issueMessage).toBe(
+      "PostgreSQL archive ledger failed verification.",
+    );
+    expect(sanitizedDbStatus.integrity.issueMessage).not.toContain("dbsecret");
+    expect(sanitizedDbStatus.integrity.issueMessage).not.toContain("10.0.0.5");
   });
 });

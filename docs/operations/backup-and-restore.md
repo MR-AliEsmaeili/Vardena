@@ -167,8 +167,26 @@ with an independent durable filesystem archive store (`OWNER_AUDIT_ARCHIVE_DIR`)
     `owner.audit_events` (preserving exact original `id`, `sequence`, timestamps,
     and digests) and missing batches/events into `owner_audit_archive`, and logs
     `AUDIT_ARCHIVE_RECOVERED`.
-- **Deployment prerequisite vs. implemented guarantee:** mounting
-  `OWNER_AUDIT_ARCHIVE_DIR` on a dedicated persistent volume/disk separate from
-  the PostgreSQL data volume with its own backup/snapshot lifecycle is a
-  deployment prerequisite; cryptographic hardware WORM / HSM is not implemented
-  in Phase 1.
+- **Deployment prerequisite vs. implemented guarantee (unresolved operational requirement):**
+  - `OWNER_AUDIT_ARCHIVE_DIR` must be mounted on a dedicated durable volume
+    outside the PostgreSQL data directory and its backup/snapshot lifecycle.
+  - Configuring a different filesystem path inside the container or host OS
+    alone does **not** guarantee physical storage independence (if both paths
+    reside on the same underlying disk/filesystem), hardware WORM immutability,
+    or protection against a compromised OS `root` or PostgreSQL superuser.
+  - Under the supported-filesystem durability policy
+    (`TOLERATED_DIRECTORY_SYNC_ERROR_CODES = new Set(["EINVAL"])`),
+    `FilesystemAuditArchiveStore` enforces mandatory regular-file `fsync`
+    (`fh.sync()`) and directory `open(dirPath, "r")`, and on `dirHandle.sync()`
+    tolerates only `EINVAL` (when a virtual/tmpfs mount does not implement
+    directory-descriptor `fsync` after file `fsync` succeeded) while failing
+    closed (`503 ArchiveStorageUnavailable`) on `EIO`, `ENOSPC`, `EDQUOT`,
+    `EROFS`, `EACCES`, `EPERM`, `EBADF`, `ENOTSUP`, or any unclassified error.
+  - Because this repository does not define a production infrastructure
+    manifest, storage vendor, or external volume backup/restore runbook for
+    `OWNER_AUDIT_ARCHIVE_DIR`, provisioning the dedicated volume mount, its
+    independent backup/snapshot schedule, and host/storage-level volume recovery
+    procedure remains an **unresolved operational requirement** to be verified in
+    the target Owner deployment (alongside customer-side
+    `licensing.license_audit_events` archiving, incident-resolution workflow,
+    and Product Owner acceptance under `OQ-77`).

@@ -175,11 +175,14 @@ cleanup authority or incident-resolution semantics:
   digests provide application-role append-only enforcement, cross-store
   tamper-evidence on verification, and deterministic recovery after a PostgreSQL
   restore (`POST /api/v1/audit-archive/recover`), not hardware WORM against a
-  compromised OS root or PostgreSQL superuser. Mounting `OWNER_AUDIT_ARCHIVE_DIR`
-  on a dedicated volume outside the PostgreSQL data directory is a deployment
-  prerequisite. Customer-side `licensing.license_audit_events` archiving,
-  incident-resolution lifecycle, and Product Owner acceptance remain open under
-  OQ-77.
+  compromised OS root or PostgreSQL superuser. `OWNER_AUDIT_ARCHIVE_DIR` must be
+  mounted on a dedicated durable volume outside the PostgreSQL data directory
+  (a different path alone does not guarantee physical storage independence,
+  hardware WORM, or protection against a compromised OS `root`, and provisioning
+  the dedicated volume mount and external backup/restore procedure remains an
+  unresolved operational requirement in target deployments). Customer-side
+  `licensing.license_audit_events` archiving, incident-resolution lifecycle, and
+  Product Owner acceptance remain open under OQ-77.
 
 ## Licensing restrictions, recovery and dates — product cross-reference
 

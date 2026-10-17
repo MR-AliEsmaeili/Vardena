@@ -2581,10 +2581,18 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
 - **Explicit non-goals and open boundaries:**
   no destructive purge or automatic deletion job (`cleanupEligibleEventCount = 0`);
   no invented incident-resolution workflow to clear security-incident holds;
-  mounting `OWNER_AUDIT_ARCHIVE_DIR` on a dedicated volume outside the
-  PostgreSQL data directory is a deployment prerequisite; database triggers,
-  write-once `0o444` `fsync`ed bundle files, and SHA-256 digests provide
-  application-role append-only enforcement, cross-store tamper-evidence, and
-  post-restore recovery, not hardware WORM against a compromised OS root or
-  PostgreSQL superuser; customer-side `licensing.license_audit_events`
-  archiving and Product Owner acceptance remain open under `OQ-77`.
+  `OWNER_AUDIT_ARCHIVE_DIR` must be mounted on a dedicated durable volume
+  outside the PostgreSQL data directory (a different path alone does not
+  guarantee physical storage independence, hardware WORM, or protection against
+  a compromised OS `root` or PostgreSQL superuser, and provisioning/verifying
+  the dedicated volume mount and its external backup/restore procedure in
+  production remains an unresolved operational requirement because the
+  repository does not define production infrastructure manifests); under the
+  supported-filesystem durability policy (`TOLERATED_DIRECTORY_SYNC_ERROR_CODES =
+  new Set(["EINVAL"])`), `FilesystemAuditArchiveStore` enforces mandatory
+  regular-file `fsync` and directory `open` and tolerates only `EINVAL` on
+  `dirHandle.sync()` while failing closed (`503 ArchiveStorageUnavailable`) on
+  all other sync errors (`EIO`, `ENOSPC`, `EDQUOT`, `EROFS`, `EACCES`, `EPERM`,
+  `EBADF`, `ENOTSUP`, or unclassified errors); customer-side
+  `licensing.license_audit_events` archiving and Product Owner acceptance remain
+  open under `OQ-77`.

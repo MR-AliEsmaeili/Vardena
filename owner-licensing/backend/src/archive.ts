@@ -1129,12 +1129,59 @@ export function computeArchiveBundleDigest(bundle: {
   return verifyExportedArchiveBundle(bundle).bundleDigestSha256;
 }
 
+/**
+ * Supported-filesystem directory synchronization policy for the independent
+ * durable audit archive store (`OWNER_AUDIT_ARCHIVE_DIR`):
+ *
+ * - Regular file synchronization (`fh.sync()`) is mandatory and NEVER tolerates
+ *   any error code.
+ * - Opening the parent directory (`open(dirPath, "r")`) is mandatory and NEVER
+ *   tolerates any error code.
+ * - Synchronizing the open directory descriptor (`dirHandle.sync()`) only
+ *   tolerates `EINVAL`, which POSIX `fsync(2)` specifies when a directory file
+ *   descriptor refers to a virtual/tmpfs/overlay mount that does not implement
+ *   directory-descriptor synchronization even though file-level `fsync`
+ *   succeeded.
+ * - Any other error code (`EIO`, `ENOSPC`, `EDQUOT`, `EROFS`, `EACCES`, `EPERM`,
+ *   `EBADF`, `ENOTSUP`, or any unclassified error without a tolerated code)
+ *   fails closed with `503 ArchiveStorageUnavailable`.
+ */
+export const TOLERATED_DIRECTORY_SYNC_ERROR_CODES: ReadonlySet<string> =
+  new Set(["EINVAL"]);
+
+export interface FilesystemArchiveOps {
+  chmod: typeof chmod;
+  link: typeof link;
+  mkdir: typeof mkdir;
+  open: typeof open;
+  readFile: typeof readFile;
+  readdir: typeof readdir;
+  rename: typeof rename;
+  rm: typeof rm;
+  stat: typeof stat;
+  unlink: typeof unlink;
+}
+
+const defaultFilesystemArchiveOps: FilesystemArchiveOps = {
+  chmod,
+  link,
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  unlink,
+};
+
 export class FilesystemAuditArchiveStore implements AuditArchiveStore {
   public readonly rootDir: string;
   private readonly batchesDir: string;
   private readonly manifestPath: string;
+  private readonly fs: FilesystemArchiveOps;
 
-  constructor(rootDir: string) {
+  constructor(rootDir: string, fsOps: Partial<FilesystemArchiveOps> = {}) {
     if (
       typeof rootDir !== "string" ||
       rootDir.trim().length === 0 ||
@@ -1154,46 +1201,102 @@ export class FilesystemAuditArchiveStore implements AuditArchiveStore {
     this.rootDir = resolved;
     this.batchesDir = path.join(this.rootDir, "batches");
     this.manifestPath = path.join(this.rootDir, "manifest.json");
+    this.fs = { ...defaultFilesystemArchiveOps, ...fsOps };
   }
 
   private async syncDirectory(dirPath: string): Promise<void> {
-    let dirHandle;
+    let dirHandle: Awaited<ReturnType<typeof open>> | undefined;
     try {
-      dirHandle = await open(dirPath, "r");
-      await dirHandle.sync();
+      dirHandle = await this.fs.open(dirPath, "r");
     } catch {
-      // Directory fsync may return EINVAL on some virtual filesystems; file fsync is always enforced.
+      fail(
+        503,
+        "ArchiveStorageUnavailable",
+        "Failed to open durable archive directory for synchronization.",
+      );
+    }
+    try {
+      await dirHandle.sync();
+    } catch (err) {
+      const code = (err as { code?: unknown } | null)?.code;
+      if (
+        typeof code !== "string" ||
+        !TOLERATED_DIRECTORY_SYNC_ERROR_CODES.has(code)
+      ) {
+        fail(
+          503,
+          "ArchiveStorageUnavailable",
+          "Failed to synchronize durable archive directory to storage.",
+        );
+      }
     } finally {
-      if (dirHandle) await dirHandle.close();
+      try {
+        await dirHandle.close();
+      } catch {
+        // ignore close error after sync outcome has been evaluated
+      }
+    }
+  }
+
+  private async restoreFileBestEffort(
+    targetPath: string,
+    content: string,
+  ): Promise<void> {
+    const parentDir = path.dirname(targetPath);
+    const restoreTmpPath = path.join(
+      parentDir,
+      `.tmp-restore-${path.basename(targetPath)}-${process.pid}-${ulid()}`,
+    );
+    let fh: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      fh = await this.fs.open(restoreTmpPath, "wx", 0o600);
+      await fh.writeFile(Buffer.from(content, "utf8"));
+      await fh.sync();
+      await fh.close();
+      fh = undefined;
+      await this.fs.rename(restoreTmpPath, targetPath);
+    } catch {
+      if (fh) {
+        await fh.close().catch(() => {});
+      }
+      await this.fs.rm(restoreTmpPath, { force: true }).catch(() => {});
     }
   }
 
   private async writeAtomicFsync(
     targetPath: string,
     content: string,
-    options: { exclusive: boolean; mode?: number },
+    options: {
+      exclusive: boolean;
+      mode?: number;
+      restoreContentOnFailure?: string | null;
+    },
   ): Promise<void> {
     const parentDir = path.dirname(targetPath);
-    await mkdir(parentDir, { recursive: true });
     const tmpPath = path.join(
       parentDir,
       `.tmp-${path.basename(targetPath)}-${process.pid}-${ulid()}`,
     );
-    let fh;
+    let fh: Awaited<ReturnType<typeof open>> | undefined;
+    let linkedExclusiveTarget = false;
+    let renamedTarget = false;
     try {
-      fh = await open(tmpPath, "wx", 0o600);
+      await this.fs.mkdir(parentDir, { recursive: true });
+      fh = await this.fs.open(tmpPath, "wx", 0o600);
       await fh.writeFile(Buffer.from(content, "utf8"));
       await fh.sync();
       await fh.close();
       fh = undefined;
       if (options.mode !== undefined) {
-        await chmod(tmpPath, options.mode);
+        await this.fs.chmod(tmpPath, options.mode);
       }
       if (options.exclusive) {
-        await link(tmpPath, targetPath);
-        await unlink(tmpPath);
+        await this.fs.link(tmpPath, targetPath);
+        linkedExclusiveTarget = true;
+        await this.fs.unlink(tmpPath);
       } else {
-        await rename(tmpPath, targetPath);
+        await this.fs.rename(tmpPath, targetPath);
+        renamedTarget = true;
       }
       await this.syncDirectory(parentDir);
     } catch (err) {
@@ -1204,8 +1307,25 @@ export class FilesystemAuditArchiveStore implements AuditArchiveStore {
           // ignore close error
         }
       }
-      await rm(tmpPath, { force: true }).catch(() => {});
-      const code = (err as { code?: string }).code;
+      await this.fs.rm(tmpPath, { force: true }).catch(() => {});
+      if (linkedExclusiveTarget) {
+        await this.fs.chmod(targetPath, 0o600).catch(() => {});
+        await this.fs.rm(targetPath, { force: true }).catch(() => {});
+      } else if (
+        renamedTarget &&
+        options.restoreContentOnFailure !== undefined
+      ) {
+        if (options.restoreContentOnFailure === null) {
+          await this.fs.rm(targetPath, { force: true }).catch(() => {});
+        } else {
+          await this.restoreFileBestEffort(
+            targetPath,
+            options.restoreContentOnFailure,
+          );
+        }
+      }
+      if (err instanceof ApiError) throw err;
+      const code = (err as { code?: string } | null)?.code;
       if (code === "EEXIST") {
         fail(
           409,
@@ -1223,10 +1343,10 @@ export class FilesystemAuditArchiveStore implements AuditArchiveStore {
 
   private async fileExists(targetPath: string): Promise<boolean> {
     try {
-      const st = await stat(targetPath);
+      const st = await this.fs.stat(targetPath);
       return st.isFile();
     } catch (err) {
-      if ((err as { code?: string }).code === "ENOENT") return false;
+      if ((err as { code?: string } | null)?.code === "ENOENT") return false;
       fail(
         503,
         "ArchiveStorageUnavailable",
@@ -1242,10 +1362,10 @@ export class FilesystemAuditArchiveStore implements AuditArchiveStore {
   }> {
     let batchFilesOnDisk: string[] = [];
     try {
-      const entries = await readdir(this.batchesDir);
+      const entries = await this.fs.readdir(this.batchesDir);
       batchFilesOnDisk = entries.filter((f) => !f.startsWith(".")).sort();
     } catch (err) {
-      if ((err as { code?: string }).code !== "ENOENT") {
+      if ((err as { code?: string } | null)?.code !== "ENOENT") {
         fail(
           503,
           "ArchiveStorageUnavailable",
@@ -1283,7 +1403,7 @@ export class FilesystemAuditArchiveStore implements AuditArchiveStore {
     let rawManifestText = "";
     let rawManifestObj: Record<string, unknown>;
     try {
-      rawManifestText = await readFile(this.manifestPath, "utf8");
+      rawManifestText = await this.fs.readFile(this.manifestPath, "utf8");
       rawManifestObj = object(JSON.parse(rawManifestText), [
         "format",
         "formatVersion",
@@ -1447,7 +1567,7 @@ export class FilesystemAuditArchiveStore implements AuditArchiveStore {
       let rawBundleText = "";
       let rawBundle: unknown;
       try {
-        rawBundleText = await readFile(filePath, "utf8");
+        rawBundleText = await this.fs.readFile(filePath, "utf8");
         rawBundle = JSON.parse(rawBundleText);
       } catch {
         fail(
@@ -1559,7 +1679,15 @@ export class FilesystemAuditArchiveStore implements AuditArchiveStore {
 
     let priorManifestRaw: string | null = null;
     if (await this.fileExists(this.manifestPath)) {
-      priorManifestRaw = await readFile(this.manifestPath, "utf8");
+      try {
+        priorManifestRaw = await this.fs.readFile(this.manifestPath, "utf8");
+      } catch {
+        fail(
+          503,
+          "ArchiveStorageUnavailable",
+          "Failed to read durable archive manifest.json before batch update.",
+        );
+      }
     }
 
     const batchFilePath = path.join(this.batchesDir, verified.durableFileName);
@@ -1587,16 +1715,19 @@ export class FilesystemAuditArchiveStore implements AuditArchiveStore {
 
     // Read back from disk and verify before updating manifest.json
     try {
-      const readBackText = await readFile(batchFilePath, "utf8");
+      const readBackText = await this.fs.readFile(batchFilePath, "utf8");
       const readBackVerified = verifyExportedArchiveBundle(
         JSON.parse(readBackText),
       );
-      if (readBackVerified.bundleDigestSha256 !== verified.bundleDigestSha256) {
+      if (
+        readBackVerified.bundleDigestSha256 !== verified.bundleDigestSha256 ||
+        readBackText.trim() !== canonicalJson(bundleFile)
+      ) {
         throw new Error("Read-back bundle digest mismatch");
       }
     } catch (err) {
-      await chmod(batchFilePath, 0o600).catch(() => {});
-      await rm(batchFilePath, { force: true }).catch(() => {});
+      await this.fs.chmod(batchFilePath, 0o600).catch(() => {});
+      await this.fs.rm(batchFilePath, { force: true }).catch(() => {});
       if (err instanceof ApiError) throw err;
       fail(
         503,
@@ -1629,19 +1760,34 @@ export class FilesystemAuditArchiveStore implements AuditArchiveStore {
       batches: nextEntries,
       manifestDigestSha256: computeManifestDigest(nextEntries),
     };
+    const serializedManifest = `${canonicalJson(nextManifest)}\n`;
 
     try {
-      await this.writeAtomicFsync(
+      await this.writeAtomicFsync(this.manifestPath, serializedManifest, {
+        exclusive: false,
+        restoreContentOnFailure: priorManifestRaw,
+      });
+      const readBackManifest = await this.fs.readFile(
         this.manifestPath,
-        `${canonicalJson(nextManifest)}\n`,
-        {
-          exclusive: false,
-        },
+        "utf8",
       );
+      if (readBackManifest.trim() !== canonicalJson(nextManifest)) {
+        throw new Error("Read-back manifest verification failed");
+      }
     } catch (err) {
-      await chmod(batchFilePath, 0o600).catch(() => {});
-      await rm(batchFilePath, { force: true }).catch(() => {});
-      throw err;
+      if (priorManifestRaw === null) {
+        await this.fs.rm(this.manifestPath, { force: true }).catch(() => {});
+      } else {
+        await this.restoreFileBestEffort(this.manifestPath, priorManifestRaw);
+      }
+      await this.fs.chmod(batchFilePath, 0o600).catch(() => {});
+      await this.fs.rm(batchFilePath, { force: true }).catch(() => {});
+      if (err instanceof ApiError) throw err;
+      fail(
+        503,
+        "ArchiveStorageUnavailable",
+        "Durable archive manifest read-back verification failed.",
+      );
     }
 
     return {
@@ -1649,15 +1795,15 @@ export class FilesystemAuditArchiveStore implements AuditArchiveStore {
       rollback: async () => {
         try {
           if (priorManifestRaw === null) {
-            await rm(this.manifestPath, { force: true });
+            await this.fs.rm(this.manifestPath, { force: true });
           } else {
             await this.writeAtomicFsync(this.manifestPath, priorManifestRaw, {
               exclusive: false,
             });
           }
         } finally {
-          await chmod(batchFilePath, 0o600).catch(() => {});
-          await rm(batchFilePath, { force: true }).catch(() => {});
+          await this.fs.chmod(batchFilePath, 0o600).catch(() => {});
+          await this.fs.rm(batchFilePath, { force: true }).catch(() => {});
         }
       },
     };
@@ -2051,7 +2197,7 @@ export async function getAuditArchiveStatus(
       issueCode =
         err instanceof ApiError ? err.code : "ArchiveIntegrityViolation";
       issueMessage =
-        err instanceof Error
+        err instanceof ApiError
           ? err.message
           : "Independent durable archive store failed verification.";
     }
@@ -2068,7 +2214,7 @@ export async function getAuditArchiveStatus(
       issueCode =
         err instanceof ApiError ? err.code : "ArchiveIntegrityViolation";
       issueMessage =
-        err instanceof Error
+        err instanceof ApiError
           ? err.message
           : "PostgreSQL archive ledger failed verification.";
     }
@@ -2240,38 +2386,26 @@ export async function listAuditArchiveBatches(
   const p = parsePage(q.page);
   const pageSize = 50;
 
-  if (store) {
-    const durable = await store.verifyStore();
-    if (durable.bundles.length > 0) {
-      const sorted = [...durable.bundles]
-        .map((b) => b.batch)
-        .sort((a, b) => b.batchNumber - a.batchNumber);
-      const offset = (p - 1) * pageSize;
-      const slice = sorted.slice(offset, offset + pageSize + 1);
-      return {
-        items: slice.slice(0, pageSize),
-        page: p,
-        pageSize,
-        hasNext: slice.length > pageSize,
-      };
-    }
+  if (!store) {
+    return {
+      items: [],
+      page: p,
+      pageSize,
+      hasNext: false,
+    };
   }
 
-  const rows = await tx.query<ArchiveBatchRow>(
-    `SELECT id, batch_number, created_by, created_at, reason,
-            first_sequence, last_sequence, event_count, retention_cutoff_at,
-            previous_batch_digest, batch_digest_sha256,
-            durable_file_name, durable_bundle_sha256
-     FROM owner_audit_archive.archive_batches
-     ORDER BY batch_number DESC
-     LIMIT $1 OFFSET $2`,
-    [pageSize + 1, (p - 1) * pageSize],
-  );
+  const durable = await store.verifyStore();
+  const sorted = [...durable.bundles]
+    .map((b) => b.batch)
+    .sort((a, b) => b.batchNumber - a.batchNumber);
+  const offset = (p - 1) * pageSize;
+  const slice = sorted.slice(offset, offset + pageSize + 1);
   return {
-    items: rows.rows.slice(0, pageSize).map(mapBatchRow),
+    items: slice.slice(0, pageSize),
     page: p,
     pageSize,
-    hasNext: rows.rows.length > pageSize,
+    hasNext: slice.length > pageSize,
   };
 }
 
@@ -2989,63 +3123,79 @@ export async function recoverAuditArchiveService(
     }
   }
 
-  if (recoveredSourceEventCount > 0) {
+  const maxSeqRes = await tx.query<{ max_seq: string | null }>(
+    "SELECT MAX(sequence)::text AS max_seq FROM owner.audit_events",
+  );
+  const maxSeq = maxSeqRes.rows[0]?.max_seq
+    ? Number(maxSeqRes.rows[0].max_seq)
+    : 0;
+  if (maxSeq > 0) {
     await tx.query(
       `SELECT setval(
          pg_get_serial_sequence('owner.audit_events', 'sequence'),
-         GREATEST((SELECT COALESCE(MAX(sequence), 1) FROM owner.audit_events), 1),
+         $1,
          true
        )`,
+      [maxSeq],
     );
   }
 
   // 2. If PostgreSQL ledger has verified batches beyond the durable store (e.g. replaced archive volume),
   // verify them against source and rehydrate the missing durable batch files.
-  if (dbBatches.length > durable.bundles.length) {
-    const dbVerified = await verifyDbLedgerOnly(tx);
-    for (let i = durable.bundles.length; i < dbVerified.batches.length; i++) {
-      const item = dbVerified.batches[i]!;
-      await durableStore.persistBatch({
-        batch: item.batch,
-        events: item.events,
-      });
-      rehydratedDurableBatchCount += 1;
+  const persistedRollbacks: (() => Promise<void>)[] = [];
+  try {
+    if (dbBatches.length > durable.bundles.length) {
+      const dbVerified = await verifyDbLedgerOnly(tx);
+      for (let i = durable.bundles.length; i < dbVerified.batches.length; i++) {
+        const item = dbVerified.batches[i]!;
+        const persisted = await durableStore.persistBatch({
+          batch: item.batch,
+          events: item.events,
+        });
+        persistedRollbacks.push(persisted.rollback);
+        rehydratedDurableBatchCount += 1;
+      }
     }
-  }
 
-  const finalVerify = await verifyArchiveLedgerInternal(tx, durableStore);
+    const finalVerify = await verifyArchiveLedgerInternal(tx, durableStore);
 
-  await audit(tx, {
-    actor: actor.id,
-    type: "AUDIT_ARCHIVE_RECOVERED",
-    targetType: "AuditArchiveBatch",
-    targetId: finalVerify.latestBatchId ?? "EMPTY_ARCHIVE",
-    reason: recoveryReason,
-    after: {
-      archiveBatchId: finalVerify.latestBatchId,
+    await audit(tx, {
+      actor: actor.id,
+      type: "AUDIT_ARCHIVE_RECOVERED",
+      targetType: "AuditArchiveBatch",
+      targetId: finalVerify.latestBatchId ?? "EMPTY_ARCHIVE",
+      reason: recoveryReason,
+      after: {
+        archiveBatchId: finalVerify.latestBatchId,
+        recoveredBatchCount,
+        recoveredSourceEventCount,
+        recoveredLedgerEventCount,
+        rehydratedDurableBatchCount,
+        archivedCount: finalVerify.verifiedEventCount,
+        lastSequence: finalVerify.lastArchivedSequence,
+        batchDigestSha256: finalVerify.latestBatchDigestSha256,
+        bundleDigestSha256: finalVerify.latestBundleDigestSha256,
+        archiveVerified: true,
+      },
+    });
+
+    return {
+      verified: true,
       recoveredBatchCount,
       recoveredSourceEventCount,
       recoveredLedgerEventCount,
       rehydratedDurableBatchCount,
-      archivedCount: finalVerify.verifiedEventCount,
-      lastSequence: finalVerify.lastArchivedSequence,
-      batchDigestSha256: finalVerify.latestBatchDigestSha256,
-      bundleDigestSha256: finalVerify.latestBundleDigestSha256,
-      archiveVerified: true,
-    },
-  });
-
-  return {
-    verified: true,
-    recoveredBatchCount,
-    recoveredSourceEventCount,
-    recoveredLedgerEventCount,
-    rehydratedDurableBatchCount,
-    batchCount: finalVerify.batchCount,
-    verifiedEventCount: finalVerify.verifiedEventCount,
-    latestBatchId: finalVerify.latestBatchId,
-    latestBatchDigestSha256: finalVerify.latestBatchDigestSha256,
-    latestBundleDigestSha256: finalVerify.latestBundleDigestSha256,
-    lastArchivedSequence: finalVerify.lastArchivedSequence,
-  };
+      batchCount: finalVerify.batchCount,
+      verifiedEventCount: finalVerify.verifiedEventCount,
+      latestBatchId: finalVerify.latestBatchId,
+      latestBatchDigestSha256: finalVerify.latestBatchDigestSha256,
+      latestBundleDigestSha256: finalVerify.latestBundleDigestSha256,
+      lastArchivedSequence: finalVerify.lastArchivedSequence,
+    };
+  } catch (err) {
+    for (const rollback of persistedRollbacks.reverse()) {
+      await rollback().catch(() => {});
+    }
+    throw err;
+  }
 }
