@@ -2955,7 +2955,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       customerCode: "CUST-POST-RECOVER",
       displayName: "Post Recover Verification Clinic",
       status: "ACTIVE",
-      reason: "Verify sequence synchronization after archive recovery",
+      contractReference: "REF-POST-RECOVER",
     });
     expect(postRecoverCustomerRes.status).toBe(201);
 
