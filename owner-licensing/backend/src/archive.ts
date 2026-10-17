@@ -66,7 +66,7 @@ export interface CanonicalArchiveEventPayload {
   actorId: string | null;
   eventType: string;
   targetType: string;
-  targetId: string;
+  targetId: string | null;
   occurredAt: string;
   minimumRetainedUntil: string;
   outcome: "SUCCESS" | "DENIED" | "FAILED";
@@ -83,7 +83,7 @@ export interface RetentionEvaluatedEventInput {
   actorId: string | null;
   eventType: string;
   targetType: string;
-  targetId: string;
+  targetId: string | null;
   occurredAt: Date | string;
   minimumRetainedUntil?: Date | string | null;
   outcome: string;
@@ -343,10 +343,11 @@ export function computeArchivedEventDigest(
     invalid("Archived event targetType is required.");
   }
   if (
-    typeof payload.targetId !== "string" ||
-    payload.targetId.trim().length === 0
+    payload.targetId !== null &&
+    (typeof payload.targetId !== "string" ||
+      payload.targetId.trim().length === 0)
   ) {
-    invalid("Archived event targetId is required.");
+    invalid("Archived event targetId must be a non-empty string or null.");
   }
   const occurredIso = utcInstant(payload.occurredAt, "occurredAt");
   const minRetainedIso = utcInstant(
@@ -767,7 +768,7 @@ export function verifyExportedArchiveBundle(rawBundle: unknown): {
       actorId: item.actorId === null ? null : String(item.actorId ?? ""),
       eventType: String(item.eventType ?? ""),
       targetType: String(item.targetType ?? ""),
-      targetId: String(item.targetId ?? ""),
+      targetId: item.targetId === null ? null : String(item.targetId ?? ""),
       occurredAt: String(item.occurredAt ?? ""),
       minimumRetainedUntil: String(item.minimumRetainedUntil ?? ""),
       outcome: String(item.outcome ?? "") as "SUCCESS" | "DENIED" | "FAILED",
@@ -850,7 +851,7 @@ interface ArchivedEventRow {
   actor_id: string | null;
   event_type: string;
   target_type: string;
-  target_id: string;
+  target_id: string | null;
   occurred_at: Date;
   minimum_retained_until: Date;
   outcome: "SUCCESS" | "DENIED" | "FAILED";
@@ -869,7 +870,7 @@ interface SourceAuditRow {
   actor_id: string | null;
   event_type: string;
   target_type: string;
-  target_id: string;
+  target_id: string | null;
   occurred_at: Date;
   minimum_retained_until: Date;
   outcome: "SUCCESS" | "DENIED" | "FAILED";

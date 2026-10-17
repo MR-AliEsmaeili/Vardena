@@ -94,9 +94,9 @@ CREATE INDEX IF NOT EXISTS audit_events_retention_floor_idx
 CREATE SCHEMA IF NOT EXISTS owner_audit_archive;
 
 CREATE TABLE IF NOT EXISTS owner_audit_archive.archive_batches (
-  id CHAR(26) PRIMARY KEY CHECK (id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'),
+  id VARCHAR(26) PRIMARY KEY CHECK (id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'),
   batch_number BIGSERIAL UNIQUE NOT NULL CHECK (batch_number >= 1),
-  created_by CHAR(26) NOT NULL REFERENCES owner.users(id),
+  created_by VARCHAR(26) NOT NULL REFERENCES owner.users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
   reason VARCHAR(500) NOT NULL CHECK (
     length(btrim(reason)) BETWEEN 1 AND 500
@@ -106,22 +106,22 @@ CREATE TABLE IF NOT EXISTS owner_audit_archive.archive_batches (
   last_sequence BIGINT NOT NULL CHECK (last_sequence >= first_sequence),
   event_count INTEGER NOT NULL CHECK (event_count >= 1),
   retention_cutoff_at TIMESTAMPTZ NOT NULL,
-  previous_batch_digest CHAR(64) CHECK (
+  previous_batch_digest VARCHAR(64) CHECK (
     previous_batch_digest IS NULL OR previous_batch_digest ~ '^[0-9a-f]{64}$'
   ),
-  batch_digest_sha256 CHAR(64) NOT NULL UNIQUE CHECK (
+  batch_digest_sha256 VARCHAR(64) NOT NULL UNIQUE CHECK (
     batch_digest_sha256 ~ '^[0-9a-f]{64}$'
   )
 );
 
 CREATE TABLE IF NOT EXISTS owner_audit_archive.archived_audit_events (
-  id CHAR(26) PRIMARY KEY CHECK (id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'),
-  batch_id CHAR(26) NOT NULL REFERENCES owner_audit_archive.archive_batches(id),
+  id VARCHAR(26) PRIMARY KEY CHECK (id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'),
+  batch_id VARCHAR(26) NOT NULL REFERENCES owner_audit_archive.archive_batches(id),
   sequence BIGINT UNIQUE NOT NULL CHECK (sequence >= 1),
-  actor_id CHAR(26) CHECK (actor_id IS NULL OR actor_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'),
-  event_type VARCHAR(64) NOT NULL,
+  actor_id VARCHAR(26) CHECK (actor_id IS NULL OR actor_id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'),
+  event_type VARCHAR(120) NOT NULL,
   target_type VARCHAR(64) NOT NULL,
-  target_id VARCHAR(128) NOT NULL,
+  target_id VARCHAR(128) CHECK (target_id IS NULL OR length(btrim(target_id)) > 0),
   occurred_at TIMESTAMPTZ NOT NULL,
   minimum_retained_until TIMESTAMPTZ NOT NULL,
   outcome VARCHAR(16) NOT NULL CHECK (outcome IN ('SUCCESS', 'DENIED', 'FAILED')),
@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS owner_audit_archive.archived_audit_events (
     )
   ),
   archived_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
-  record_sha256 CHAR(64) NOT NULL CHECK (record_sha256 ~ '^[0-9a-f]{64}$'),
+  record_sha256 VARCHAR(64) NOT NULL CHECK (record_sha256 ~ '^[0-9a-f]{64}$'),
   CONSTRAINT archived_audit_events_retention_floor_check CHECK (
     minimum_retained_until = owner.compute_minimum_retained_until(occurred_at)
   )
@@ -262,7 +262,7 @@ BEGIN
      OR v_src.actor_id IS DISTINCT FROM NEW.actor_id
      OR v_src.event_type <> NEW.event_type
      OR v_src.target_type <> NEW.target_type
-     OR v_src.target_id <> NEW.target_id
+     OR v_src.target_id IS DISTINCT FROM NEW.target_id
      OR v_src.occurred_at <> NEW.occurred_at
      OR v_src.minimum_retained_until <> NEW.minimum_retained_until
      OR v_src.outcome <> NEW.outcome

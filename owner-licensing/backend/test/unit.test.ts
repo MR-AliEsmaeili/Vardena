@@ -801,6 +801,51 @@ describe("Customer field allowlist for the two-role model", () => {
       false,
     );
 
+    // Events with nullable actorId and nullable targetId (e.g. AUTH_LOGIN_FAILED on unknown username)
+    // compute deterministic digests and verify cleanly in archive bundles
+    const nullTargetEvent = {
+      ...baseEvent,
+      actorId: null,
+      eventType: "AUTH_LOGIN_FAILED",
+      targetType: "User",
+      targetId: null,
+      outcome: "DENIED" as const,
+      securityIncident: true,
+      incidentStatus: "UNRESOLVED" as const,
+      afterState: null,
+    };
+    const nullTargetDigest = computeArchivedEventDigest(nullTargetEvent);
+    expect(nullTargetDigest).toMatch(/^[0-9a-f]{64}$/);
+    const nullTargetBatchDigest = computeArchiveBatchDigest({
+      batchId,
+      firstSequence: 1,
+      lastSequence: 1,
+      eventCount: 1,
+      retentionCutoffAt: nullTargetEvent.occurredAt,
+      previousBatchDigest: null,
+      recordDigests: [nullTargetDigest],
+    });
+    expect(
+      verifyExportedArchiveBundle({
+        batch: {
+          ...validBundle.batch,
+          firstSequence: 1,
+          lastSequence: 1,
+          eventCount: 1,
+          retentionCutoffAt: nullTargetEvent.occurredAt,
+          batchDigestSha256: nullTargetBatchDigest,
+        },
+        events: [
+          {
+            ...nullTargetEvent,
+            batchId,
+            archivedAt: "2026-10-17T12:05:00.000Z",
+            recordSha256: nullTargetDigest,
+          },
+        ],
+      }).verified,
+    ).toBe(true);
+
     // Service-layer authorization guards on archive operations reject LICENSE_OPERATOR before DB access
     const fakeTx = {} as Parameters<typeof getAuditArchiveStatus>[0];
     const operatorActor = {
