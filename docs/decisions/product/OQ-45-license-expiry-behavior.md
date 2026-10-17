@@ -1,12 +1,15 @@
 # OQ-45: License expiry — 14-day UTC Grace then Read-Only
 
 - **Type:** OQ (product/business + operational policy)
-- **Status:** **Partially decided (2026-10-16); OQ remains OPEN** for separate contract-termination strictness and implementation/verification. Natural-subscription-expiry Grace boundary is decided; cancellation transition details remain under OQ-78.
+- **Status:** **Product policy decided (2026-10-17); OQ remains OPEN** for implementation/verification and lifecycle protocol evidence. Natural-subscription-expiry Grace boundary is decided; cancellation transition details remain under OQ-78.
 - **Owner / authority:** Product Owner Ali Esmaeili, explicit licensing decision instructions (2026-10-15 and 2026-10-16).
 - **Created:** 2026-09-22 · Shape decided: 2026-10-05 · Current decisions: 2026-10-16.
 - **Canonical requirements:** [PDR-11 §§9–10 and §21](PDR-11-vardena-licensing-product-requirements.md), [registry](../../open-questions.md), [date/time foundation](../../datetime.md) §0.
 
 ## Current Product Owner decision
+
+**2026-10-17 update:** Contract termination follows the natural subscription-expiry operational policy: 14×24 hours UTC Grace from the applicable expiry instant, then Read-Only. Intentional subscription cancellation, license cancellation/revocation, and emergency revocation share the operational outcome `inactive` and do not automatically receive expiry Grace; event reasons and audit records remain distinct. See [PDR-18](PDR-18-licensing-contract-and-activation-policy.md). This resolves the product-policy question about termination strictness; it does not claim lifecycle enforcement is implemented.
+
 
 For **natural subscription expiry only**: **Active → Grace (14×24 hours in UTC) →
 Read-Only**, under existing authoritative license-time semantics. Display the
@@ -32,11 +35,7 @@ the automatic 14-day natural-subscription-expiry Grace. PDR-11 §10 requires act
 administrator recovery, approved backup access, and valid applicable Owner-signed
 restoration; ordinary renewal, restart or clock repair never bypasses it. Remaining
 security/session/protocol details stay tracked under OQ-78, not fabricated here.
-The distinct contract-termination trigger/strictness question remains **OPEN**:
-these instructions do not decide whether termination alone mandates a stricter
-policy. Do not infer such a trigger or equate termination with a validated Owner
-emergency stop. This residual product question, and implementation/verification,
-are why the OQ-45 registry row remains open.
+The distinct contract-termination policy is decided by the 2026-10-17 update above. Implementation/verification and OQ-78 lifecycle protocol work remain open, so OQ-45 stays open for evidence rather than for the product-policy choice.
 
 ## Exact Grace deadline — final Product Owner decision (2026-10-16)
 
