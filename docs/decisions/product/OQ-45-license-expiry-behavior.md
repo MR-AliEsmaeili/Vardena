@@ -8,7 +8,7 @@
 
 ## Current Product Owner decision
 
-**2026-10-17 update:** Contract termination follows the natural subscription-expiry operational policy: 14×24 hours UTC Grace from the applicable expiry instant, then Read-Only. Intentional subscription cancellation, license cancellation/revocation, and emergency revocation share the operational outcome `inactive` and do not automatically receive expiry Grace; event reasons and audit records remain distinct. See [PDR-18](PDR-18-licensing-contract-and-activation-policy.md). This resolves the product-policy question about termination strictness; it does not claim lifecycle enforcement is implemented.
+**2026-10-17 update:** Contract termination follows the natural subscription-expiry operational policy: 14×24 hours UTC Grace from the applicable expiry instant, then Read-Only. Intentional subscription cancellation, license cancellation/revocation, and emergency revocation share the operational outcome `inactive` and do not automatically receive expiry Grace; event reasons and audit records remain distinct. See [PDR-18](PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md). This resolves the product-policy question about termination strictness; it does not claim lifecycle enforcement is implemented.
 
 
 For **natural subscription expiry only**: **Active → Grace (14×24 hours in UTC) →
