@@ -294,3 +294,10 @@ here. All other PDR-13 §7 non-goals, OQ-79/OQ-82/OQ-83/OQ-84/OQ-77 boundaries,
 and the distinct OD-LIC-02 decision remain unchanged. Implementation and
 exact-head CI delivery status are tracked separately; this acceptance is not a
 merge authorization. PR #171 remains open and unmerged for Product Owner review.
+
+
+## 9. Product Owner decision — C11 and activation dates (2026-10-17)
+
+Per [PDR-18](PDR-18-licensing-contract-and-activation-policy.md), MVP does not introduce a special C11/interior-gap/backdated-gap-fill operation. A newly issued activation license must start on its issuance date; past and future start dates are prohibited, and contract dates are independent. C10 and OD-LIC-05 Option 1 in ADR-0050 remain in force. Engineering must reconcile this issue-today rule with existing renewal-gap/supersession conflict semantics before changing implementation; this addendum does not bypass those guards.
+
+The C11 product policy is decided (no special path), but OQ-87 and other OQs remain open under their existing registry conventions for implementation, evidence, or separate unresolved lifecycle questions. This section makes no implementation or CI claim.
