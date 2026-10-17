@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isBusinessDay } from '@/lib/date-time';
 import { o } from '@/lib/owner-i18n';
 
 const ulid = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/, o.invalidId);
@@ -22,11 +23,23 @@ const evidence = z
   .refine((value) => value === '' || !unsafeEvidence(value), o.evidenceHint);
 const acknowledged = z.boolean().refine((value) => value, o.confirmRequired);
 
+/**
+ * PDR-18 §1.2: the activation-validity START is the authoritative issuance day
+ * and is asserted by the server. There is deliberately no `activationValidFrom`
+ * field here — the issuer cannot select, backdate or future-date that start.
+ * Only the issuer-supplied, EXCLUSIVE end is collected.
+ */
+const activationValidUntil = z
+  .string()
+  .trim()
+  .refine((value) => value === '' || isBusinessDay(value), o.invalidDay);
+
 export const licenseObservationSchema = z.object({
   customerId: ulid,
   installationReference: installation,
   reason,
   evidenceReference: evidence,
+  activationValidUntil,
   acknowledged,
 });
 export const activationObservationSchema = z.object({

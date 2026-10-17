@@ -34,6 +34,9 @@ export interface CustomerIdentity {
 }
 export interface Customer extends CustomerIdentity {
   contractReference: string;
+  /** PDR-18 §1: commercial contract dates, independent of activation validity. */
+  contractStartDate: string | null;
+  contractEndDate: string | null;
   createdAt: string;
   updatedAt: string;
   createdBy: string;
@@ -45,6 +48,8 @@ export interface CustomerInput {
   displayName: string;
   status: 'ACTIVE' | 'INACTIVE';
   contractReference: string;
+  contractStartDate?: string;
+  contractEndDate?: string;
 }
 export interface OperationTransition {
   id: string;
@@ -72,6 +77,13 @@ export interface OperationalRecord {
   replacementObservedState: string | null;
   emergencyOldServerLost: boolean;
   replacesRecordId: string | null;
+  /**
+   * PDR-18 §1: the recorded activation-validity window of the license.
+   * `activationValidFrom` is the authoritative issuance day asserted by the
+   * server; `activationValidUntil` is issuer-supplied and exclusive.
+   */
+  activationValidFrom: string | null;
+  activationValidUntil: string | null;
   evidenceBasis: 'OPERATOR_OBSERVED';
   cryptographicVerification: 'NOT_IMPLEMENTED';
   signedArtifactProduced: false;

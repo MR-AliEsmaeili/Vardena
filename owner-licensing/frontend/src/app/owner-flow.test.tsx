@@ -42,6 +42,8 @@ const record = {
   displayName: 'مشتری',
   status: 'ACTIVE' as const,
   contractReference: '',
+  contractStartDate: null,
+  contractEndDate: null,
   createdAt: '2026-10-15T00:00:00.000Z',
   updatedAt: '2026-10-15T00:00:00.000Z',
   createdBy: admin.id,
@@ -120,8 +122,25 @@ describe('Owner browser vertical slice (mocked API boundary, CI)', () => {
       displayName: 'مشتری',
       status: 'ACTIVE',
       contractReference: '',
+      contractStartDate: '',
+      contractEndDate: '',
     });
     expect(await screen.findByText(o.immutable)).toBeInTheDocument();
+  });
+  // PDR-18 §1: contract dates are stored and shown as their own pair, separate
+  // from any activation-validity window, and they may precede issuance.
+  it('renders the commercial contract dates on the customer detail and submits them independently', async () => {
+    vi.mocked(api.customer).mockResolvedValue({
+      ...record,
+      contractStartDate: '2026-10-02',
+      contractEndDate: '2027-10-02',
+    });
+    mount(`/app/customers/${record.id}`);
+    expect(await screen.findByText(o.contractStartDate)).toBeInTheDocument();
+    // Jalali-first rendering with the canonical Gregorian day alongside.
+    expect(screen.getByText('۱۴۰۵/۰۷/۱۰ (2026-10-02)')).toBeInTheDocument();
+    expect(screen.getByText('۱۴۰۶/۰۷/۱۰ (2027-10-02)')).toBeInTheDocument();
+    expect(api.createCustomer).not.toHaveBeenCalled();
   });
   it('shows an empty customer list and a retryable error instead of pretending success', async () => {
     vi.mocked(api.customers).mockRejectedValue(

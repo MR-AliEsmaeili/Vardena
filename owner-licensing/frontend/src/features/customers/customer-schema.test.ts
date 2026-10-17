@@ -7,6 +7,8 @@ describe('Owner customer form contract', () => {
     displayName: 'نام',
     status: 'ACTIVE',
     contractReference: '',
+    contractStartDate: '',
+    contractEndDate: '',
     reason: '',
   };
   it('preserves code case and validates the approved PDR-14 grammar', () => {
@@ -21,6 +23,35 @@ describe('Owner customer form contract', () => {
       expect(customerSchema.safeParse({ ...valid, displayName }).success).toBe(
         false,
       );
+  });
+  // PDR-18 §1: contract dates are commercial and independent of the technical
+  // activation-validity window, so they may precede issuance and may be absent.
+  it('accepts contract dates that precede issuance and rejects an inverted pair', () => {
+    expect(
+      customerSchema.safeParse({
+        ...valid,
+        contractStartDate: '2026-09-02',
+        contractEndDate: '2027-09-02',
+      }).success,
+    ).toBe(true);
+    expect(
+      customerSchema.safeParse({
+        ...valid,
+        contractStartDate: '2026-09-02',
+        contractEndDate: '2026-09-02',
+      }).success,
+    ).toBe(true);
+    for (const contractStartDate of ['2026-13-01', '2026-02-30', 'not-a-day'])
+      expect(
+        customerSchema.safeParse({ ...valid, contractStartDate }).success,
+      ).toBe(false);
+    expect(
+      customerSchema.safeParse({
+        ...valid,
+        contractStartDate: '2027-01-01',
+        contractEndDate: '2026-01-01',
+      }).success,
+    ).toBe(false);
   });
   it('rejects cross-origin redirect destinations', () => {
     expect(safeReturnPath('//evil.test')).toBe('/app');

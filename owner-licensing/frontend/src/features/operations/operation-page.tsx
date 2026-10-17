@@ -1,4 +1,4 @@
-import { formatOwnerInstant } from '@/lib/date-time';
+import { formatOwnerBusinessDay, formatOwnerInstant } from '@/lib/date-time';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, type UseFormReturn } from 'react-hook-form';
@@ -239,6 +239,23 @@ export function OperationPage() {
           [o.notVerified, o.notVerified],
           [o.noArtifact, o.noArtifact],
           [o.noContact, o.noContact],
+          // PDR-18 §1: the recorded activation-validity window. Distinct from
+          // the customer's commercial contract dates, which live on the
+          // customer record and are never mixed in here.
+          ...(record.kind === 'LICENSE'
+            ? ([
+                [
+                  o.activationValidFrom,
+                  formatOwnerBusinessDay(record.activationValidFrom),
+                  record.activationValidFrom,
+                ],
+                [
+                  o.activationValidUntil,
+                  formatOwnerBusinessDay(record.activationValidUntil),
+                  record.activationValidUntil,
+                ],
+              ] as [string, string, string | null][])
+            : []),
           [o.id, record.id],
           [o.actor, record.createdBy],
           [o.created, formatOwnerInstant(record.createdAt), record.createdAt],

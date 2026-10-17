@@ -2673,3 +2673,93 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   completed GitHub Actions run and every required job conclusion. The exact
   final-head CI evidence is recorded on PR #171; do not substitute any earlier
   run. PR #171 remains open and unmerged.
+
+## 49. PDR-18 §1 — contract dates versus activation-validity dates (2026-10-17)
+
+- **Baseline and branch:** starting `main`
+  `7fa9ff3ba460eb023b657db216c6a6488cc2af87` (PR #172 merge; **no open pull
+  requests** at the start of this work). Implemented on the branch
+  `arena/195e235b-vardena`; the pull request is opened against `main` and must
+  stay OPEN and unmerged — no merge or Product Owner acceptance is implied.
+- **Verified starting state (source evidence, not prose):** OQ-45's Grace /
+  Read-Only runtime slice is **already implemented on `main`** (PR #167 merge
+  `c715a64cdfcbc866fe65613a0375a118e0024a8b`, completion PR #168) and was
+  **not** rewritten: `LICENSE_GRACE_DURATION_MS` and `graceEndsAtFor` in
+  `backend/src/modules/licensing/domain/license.ts`, `accessMode`
+  `GRACE`/`READ_ONLY` derived at `now >= validUntil + 14×24h` in UTC without
+  mutating signed validity, the single central filter
+  `LicensingService.filterLicensedPermissions` behind both the HTTP guard and
+  `AuthorizationService.requireAllPermissions` (which also refuses mutation
+  codes in `READ_ONLY` in system/worker context), and the customer UI notice
+  through the shared date foundation. What was missing is PDR-18 §1: the Owner
+  side had **no** contract dates (`owner.customers` carried only
+  `contract_reference`), **no** activation-validity dates anywhere, and no
+  issuance-day rule.
+- **Implemented (Owner side, PDR-18 §1.1–§1.5):**
+  - Additive migration `owner-licensing/backend/migrations/005-contract-and-activation-dates.sql`:
+    `owner.customers.contract_start_date` / `contract_end_date` (commercial,
+    may precede issuance, order-checked only) and
+    `owner.operational_records.activation_valid_from` /
+    `activation_valid_until` (technical, half-open `[from, until)` with a
+    strictly later exclusive end; a `SERVER_REPLACEMENT` record carries no
+    window; a `LICENSE` record always has a start). All four are PostgreSQL
+    `date` (canonical BusinessDate). The migration backfills
+    `activation_valid_from` for pre-existing `LICENSE` rows from the UTC
+    calendar day of their own issuance-observation instant and invents **no**
+    end date; no applied migration is edited.
+  - `recordLicenseObservation` does not accept `activationValidFrom`: the
+    request allowlist refuses any other field with `400 ValidationFailed`, and
+    the start is inserted by PostgreSQL as
+    `(clock_timestamp() AT TIME ZONE 'UTC')::date` — the authoritative
+    server/database clock, never a browser or client value.
+  - `persistedBusinessDay` in `owner-licensing/backend/src/domain.ts` is the
+    single place that undoes node-postgres' local-midnight materialization of a
+    `date`, so a process east or west of UTC cannot shift a recorded day.
+  - The API, the audit-state allowlist and the Owner UI expose the two pairs
+    under separate names and separate Persian labels, rendered Jalali-first
+    through the staged shared date foundation; the UI offers **no** input for
+    the activation-validity start.
+- **Deliberately blocked:**
+  - **OQ-88 (registered 2026-10-17, engineering).** PDR-18 §1.2/§1.6 forbids a
+    past or future activation-validity start, but the approved version model
+    keeps a *future-dated* renewal (OQ-80 Option B hand-over; matrix C2) and
+    the committed conformance vectors carry `issuedAt 2026-10-11` with
+    `validFrom 2027-01-01`. Rejecting such artifacts at import would invalidate
+    already-signed licenses and would weaken the approved overlap/gap/
+    supersession controls, so **no** verification-path or signed-format
+    behaviour was changed.
+  - **PDR-18 §4 (contract termination, cancellation, revocation).** Decided
+    policy, no instrument: the signed version payload carries only
+    `ACTIVE`/`EXPIRED`/`SUSPENDED` and there is no signed termination or
+    cancellation artifact (OQ-78; matrix F2–F5). No status semantics were
+    changed and no Grace was widened.
+  - **WORM** is not an MVP requirement (PDR-18 §3); nothing was added and the
+    append-only audit, three-year retention floor, unresolved-incident hold and
+    separate durable archive are untouched.
+- **Tests:** `owner-licensing/backend/test/unit.test.ts` (UTC-day derivation
+  from two offsets, canonical-day validation, local-midnight round-trip,
+  half-open interval, contract-date ordering, response pair) and
+  `owner-licensing/backend/test/api.test.ts` (contract dates that precede
+  issuance, inverted and malformed pairs, partial update, server-asserted
+  issuance day present in both the response and the stored row, a refused
+  client-supplied start, a refused end before the start, refused malformed ends,
+  and no activation window on a server-replacement record). Owner UI:
+  `owner-flow.test.tsx`, `operations-flow.test.tsx`, `customer-schema.test.ts`,
+  `operation-schema.test.ts`.
+- **FAST-LOCAL verification:** `owner-licensing/backend` `tsc --noEmit`,
+  `oxlint src test`, `prettier --check src test *.json`, and the three unit
+  suites (`unit.test.ts`, `domain-operations.test.ts`, `audit-query.test.ts`):
+  **61/61 passed**. `owner-licensing/frontend` `tsc --noEmit` (after
+  `npm run dates:stage`), `oxlint .`, `prettier --check .` and the full Vitest
+  suite: **159/159 passed**. Repository-wide `scripts/check-docs-links.py`
+  (**317 Markdown files / 1,031 relative links / 0 broken**) and
+  `scripts/check-date-contract.py` (PASS). No heavy suite, PostgreSQL
+  integration suite, migration rehearsal, E2E, Docker build or full
+  backend/frontend build was run locally, per instruction.
+- **CI evidence and handoff:** the applicable GitHub Actions jobs run on the
+  exact final PR head; the run id, job conclusions and verified head SHA are
+  recorded in the PR description and in
+  [`docs/tasks/pdr-18-contract-and-activation-dates-implementation.md`](docs/tasks/pdr-18-contract-and-activation-dates-implementation.md)
+  §6. An earlier run or a single green job is never substituted for the
+  final-head result. Product Owner acceptance remains a separate, outstanding
+  status.

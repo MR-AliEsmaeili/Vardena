@@ -117,6 +117,24 @@ export const o = {
   name: 'نام نمایشی *',
   status: 'وضعیت',
   reference: 'مرجع قرارداد (اختیاری)',
+  // PDR-18 §1: contract dates and activation-validity dates are separate
+  // concepts, so they carry separate labels everywhere they appear.
+  contractStartDate: 'تاریخ شروع قرارداد (تجاری، اختیاری)',
+  contractEndDate: 'تاریخ پایان قرارداد (تجاری، اختیاری)',
+  contractDatesHelp:
+    'تاریخ‌های قرارداد فقط اطلاعات تجاری و اداری هستند و اعتبار فنی فعال‌سازی مجوز را تعیین یا تغییر نمی‌دهند. شروع قرارداد می‌تواند پیش از صدور باشد.',
+  activationValidFrom: 'شروع اعتبار فعال‌سازی (تاریخ صدور معتبر)',
+  activationValidUntil: 'پایان اعتبار فعال‌سازی (اختیاری، نیمه‌باز)',
+  activationValidityHelp:
+    'شروع اعتبار فعال‌سازی برابر روز صدور معتبر است و توسط سرور تعیین می‌شود؛ امکان انتخاب، عقب‌گرد یا جلوکِشی آن وجود ندارد. تاریخ پایان توسط صادرکننده تعیین می‌شود و نسبت به بازهٔ امضاشده (نیمه‌باز) خودِ آن روز شامل نیست.',
+  activationValidityTitle: 'اعتبار فعال‌سازی (فنی)',
+  contractDatesTitle: 'تاریخ‌های قرارداد (تجاری)',
+  notRecorded: 'ثبت نشده',
+  invalidDay: 'تاریخ باید یک روز معتبر باشد.',
+  contractEndBeforeStart:
+    'تاریخ پایان قرارداد نمی‌تواند پیش از تاریخ شروع باشد.',
+  activationEndNotAfterStart:
+    'پایان اعتبار فعال‌سازی باید پس از تاریخ شروع اعتبار باشد.',
   reason: 'دلیل تغییر *',
   active: 'فعال',
   inactive: 'غیرفعال',

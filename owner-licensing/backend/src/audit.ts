@@ -119,6 +119,12 @@ const auditStateKeys = new Set([
   "displayName",
   "status",
   "contractReference",
+  // PDR-18 §1: commercial contract dates and the recorded activation-validity
+  // window are separate, attributable lifecycle facts.
+  "contractStartDate",
+  "contractEndDate",
+  "activationValidFrom",
+  "activationValidUntil",
   "username",
   "role",
   "isActive",

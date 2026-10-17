@@ -109,6 +109,8 @@ beforeEach(() => {
     replacementObservedState: null,
     emergencyOldServerLost: false,
     replacesRecordId: null,
+    activationValidFrom: '2026-10-15',
+    activationValidUntil: '2027-10-15',
     evidenceBasis: 'OPERATOR_OBSERVED',
     cryptographicVerification: 'NOT_IMPLEMENTED',
     signedArtifactProduced: false,
@@ -192,6 +194,27 @@ describe('manual operations UI', () => {
       screen.getAllByText('۱۴۰۵/۰۷/۲۳ ۰۳:۳۰:۰۰ Asia/Tehran (UTC+03:30)'),
     ).toHaveLength(2);
     expect(api.recordLicenseObservation).not.toHaveBeenCalled();
+  });
+  // PDR-18 §1: the recorded activation-validity window is displayed as its own
+  // pair, separate from the customer's commercial contract dates. The start is
+  // server-asserted; the UI never offers a control for it.
+  it('renders the recorded activation-validity window as a distinct pair on a license record', async () => {
+    const record = await api.recordLicenseObservation(
+      {} as Parameters<typeof api.recordLicenseObservation>[0],
+    );
+    vi.mocked(api.operationalRecord).mockResolvedValue({
+      ...record,
+      activationValidFrom: '2026-10-15',
+      activationValidUntil: '2027-10-15',
+    });
+    vi.mocked(api.recordLicenseObservation).mockClear();
+    mount(`/app/operations/${record.id}`);
+    expect(await screen.findByText(o.activationValidFrom)).toBeInTheDocument();
+    expect(screen.getByText('۱۴۰۵/۰۷/۲۳ (2026-10-15)')).toBeInTheDocument();
+    expect(screen.getByText('۱۴۰۶/۰۷/۲۳ (2027-10-15)')).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(o.activationValidFrom),
+    ).not.toBeInTheDocument();
   });
   it('denies operational records when operations.view is not granted', async () => {
     vi.mocked(identity.getEffectivePermissions).mockResolvedValue({

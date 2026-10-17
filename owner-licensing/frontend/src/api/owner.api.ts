@@ -76,6 +76,8 @@ export const recordLicenseObservation = (body: {
   installationReference: string;
   reason: string;
   evidenceReference?: string;
+  /** Issuer-supplied EXCLUSIVE end of the activation-validity window. */
+  activationValidUntil?: string;
 }) =>
   apiPost<OperationalRecord>('/operational-records/license-observations', body);
 export const recordActivationObservation = (

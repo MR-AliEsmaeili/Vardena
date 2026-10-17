@@ -13,18 +13,24 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  assertActivationValidityInterval,
   assertActiveAuthorizedActor,
+  assertContractDateOrder,
   assertPermission,
+  businessDay,
   customerCode,
   customerResponse,
   isRole,
   object,
+  optionalBusinessDay,
   password,
   permissions,
+  persistedBusinessDay,
   role,
   roles,
   safeUser,
   text,
+  utcCalendarDay,
 } from "../src/domain.js";
 import {
   RoleUpgradeError,
@@ -1395,5 +1401,117 @@ describe("Customer field allowlist for the two-role model", () => {
     );
     expect(sanitizedDbStatus.integrity.issueMessage).not.toContain("dbsecret");
     expect(sanitizedDbStatus.integrity.issueMessage).not.toContain("10.0.0.5");
+  });
+});
+
+describe("PDR-18 §1 — contract dates versus activation-validity dates", () => {
+  it("derives the UTC calendar day of an authoritative instant, never a local day", () => {
+    // One instant expressed in two offsets is the same UTC day; a process
+    // timezone must never change the issuance day.
+    expect(utcCalendarDay(new Date("2026-10-17T00:00:00.000Z"))).toBe(
+      "2026-10-17",
+    );
+    expect(utcCalendarDay(new Date("2026-10-17T23:59:59.999Z"))).toBe(
+      "2026-10-17",
+    );
+    expect(utcCalendarDay(new Date("2026-10-17T03:30:00.000+03:30"))).toBe(
+      "2026-10-17",
+    );
+    expect(utcCalendarDay(new Date("2026-10-16T20:00:00.000-04:00"))).toBe(
+      "2026-10-17",
+    );
+  });
+  it("accepts only real canonical calendar days", () => {
+    expect(businessDay("2028-02-29", "contractStartDate")).toBe("2028-02-29");
+    for (const value of [
+      "2027-02-29",
+      "2027-13-01",
+      "2027-1-1",
+      "1405/07/23",
+      "2027-01-01T00:00:00Z",
+      "",
+    ])
+      expect(() => businessDay(value, "contractStartDate")).toThrow(
+        /contractStartDate/,
+      );
+  });
+  it("treats an omitted value as not recorded, never as a defaulted day", () => {
+    expect(optionalBusinessDay(undefined, "contractEndDate")).toBeNull();
+    expect(optionalBusinessDay(null, "contractEndDate")).toBeNull();
+    expect(optionalBusinessDay("", "contractEndDate")).toBeNull();
+    expect(optionalBusinessDay("2027-01-01", "contractEndDate")).toBe(
+      "2027-01-01",
+    );
+  });
+  it("reads a PostgreSQL date back without a timezone shift", () => {
+    // node-postgres materializes `date` as a LOCAL-midnight JS Date, so the
+    // value must be read through its UTC date components.
+    expect(persistedBusinessDay(null)).toBeNull();
+    expect(persistedBusinessDay(undefined)).toBeNull();
+    expect(persistedBusinessDay(new Date(2026, 9, 17))).toBe("2026-10-17");
+    expect(persistedBusinessDay(new Date(2026, 0, 1))).toBe("2026-01-01");
+    expect(persistedBusinessDay(new Date(2026, 11, 31))).toBe("2026-12-31");
+    expect(persistedBusinessDay("2026-10-17")).toBe("2026-10-17");
+  });
+  it("keeps the activation-validity interval half-open", () => {
+    expect(() =>
+      assertActivationValidityInterval("2026-10-17", "2026-10-17"),
+    ).toThrow(/activationValidUntil/);
+    expect(() =>
+      assertActivationValidityInterval("2026-10-17", "2026-10-16"),
+    ).toThrow(/activationValidUntil/);
+    expect(() =>
+      assertActivationValidityInterval("2026-10-17", "2026-10-18"),
+    ).not.toThrow();
+    // No recorded end is allowed; it is not the same as an unlimited grant.
+    expect(() =>
+      assertActivationValidityInterval("2026-10-17", null),
+    ).not.toThrow();
+  });
+  it("allows contract dates that precede issuance and a single-day contract", () => {
+    expect(() =>
+      assertContractDateOrder("2020-03-20", "2021-03-21"),
+    ).not.toThrow();
+    expect(() =>
+      assertContractDateOrder("2027-05-05", "2027-05-05"),
+    ).not.toThrow();
+    expect(() => assertContractDateOrder("2027-01-02", "2027-01-01")).toThrow(
+      /contractEndDate/,
+    );
+    expect(() => assertContractDateOrder(null, "2027-01-01")).not.toThrow();
+    expect(() => assertContractDateOrder("2027-01-01", null)).not.toThrow();
+  });
+  it("exposes contract dates as their own pair in the customer response", () => {
+    const body = customerResponse(
+      {
+        id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        customer_code: "Acme.01",
+        display_name: "Acme",
+        status: "ACTIVE",
+        contract_reference: "REF-1",
+        contract_start_date: new Date(2026, 9, 2),
+        contract_end_date: new Date(2027, 9, 2),
+        created_at: new Date(),
+        updated_at: new Date(),
+        created_by: "u1",
+        updated_by: "u1",
+      },
+      "OWNER_ADMIN",
+    );
+    expect(body.contractStartDate).toBe("2026-10-02");
+    expect(body.contractEndDate).toBe("2027-10-02");
+    // A role without customers.view still cannot read the record at all.
+    expect(() =>
+      customerResponse(
+        {
+          id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          customer_code: "Acme.01",
+          display_name: "Acme",
+          status: "ACTIVE",
+          contract_reference: "REF-1",
+        },
+        "LICENSE_OPERATOR",
+      ),
+    ).not.toThrow();
   });
 });

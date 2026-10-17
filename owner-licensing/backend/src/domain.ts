@@ -130,6 +130,92 @@ export function status(value: unknown): string {
   if (value !== "ACTIVE" && value !== "INACTIVE") invalid("Invalid status.");
   return value;
 }
+
+// ---------------------------------------------------------------------------
+// PDR-18 §1 — contract dates and activation-validity dates
+//
+// Both pairs are canonical BusinessDate calendar days (`YYYY-MM-DD`,
+// docs/datetime.md, AR-32). They are deliberately separate: contract dates are
+// commercial/administrative and may precede issuance, while activation validity
+// is the technical window of the license and starts on the authoritative
+// issuance day. Nothing here accepts a client clock or a browser-supplied date.
+// ---------------------------------------------------------------------------
+
+const BUSINESS_DAY_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+
+/** The UTC calendar day of an authoritative instant (never a local day). */
+export function utcCalendarDay(at: Date): string {
+  const month = String(at.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(at.getUTCDate()).padStart(2, "0");
+  return `${String(at.getUTCFullYear()).padStart(4, "0")}-${month}-${day}`;
+}
+
+/** Validate one supplied canonical calendar day. */
+export function businessDay(value: unknown, field: string): string {
+  if (typeof value !== "string" || !BUSINESS_DAY_PATTERN.test(value))
+    invalid(`${field} must be a canonical YYYY-MM-DD calendar day.`);
+  const at = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(at.getTime()) || utcCalendarDay(at) !== value)
+    invalid(`${field} is not a real calendar day.`);
+  return value;
+}
+
+/** An omitted, null or empty value is "not recorded", never a default day. */
+export function optionalBusinessDay(
+  value: unknown,
+  field: string,
+): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  return businessDay(value, field);
+}
+
+/**
+ * Read a PostgreSQL `date` column back as a canonical calendar day.
+ *
+ * node-postgres materializes `date` as a JS `Date` at LOCAL midnight, so the
+ * value must be read through its UTC date components or a process running east
+ * or west of UTC would silently shift the day. This is the only place that
+ * conversion happens (persistence carrier; AR-32).
+ */
+export function persistedBusinessDay(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    const year = value.getFullYear();
+    const month = value.getMonth();
+    const day = value.getDate();
+    return utcCalendarDay(new Date(Date.UTC(year, month, day)));
+  }
+  if (typeof value === "string") return value.slice(0, 10);
+  fail(500, "InternalError", "The operation failed. Please retry.");
+}
+
+/**
+ * The activation-validity interval convention: half-open
+ * `[activationValidFrom, activationValidUntil)` — the end is exclusive and must
+ * be later than the start. `null` end means no recorded end.
+ */
+export function assertActivationValidityInterval(
+  start: string | null,
+  end: string | null,
+): void {
+  if (start !== null && end !== null && end <= start)
+    invalid(
+      "activationValidUntil must be later than the activation validity start.",
+    );
+}
+
+/**
+ * Contract dates are commercial: either side may be unrecorded, they may lie in
+ * the past (issuance is allowed to follow the contract start), and the end may
+ * equal the start (a single-day contract).
+ */
+export function assertContractDateOrder(
+  start: string | null,
+  end: string | null,
+): void {
+  if (start !== null && end !== null && end < start)
+    invalid("contractEndDate must not be earlier than contractStartDate.");
+}
 export function page(value: unknown): number {
   if (value === undefined) return 1;
   if (typeof value !== "string" || !/^[1-9][0-9]{0,5}$/.test(value))
@@ -177,6 +263,10 @@ export function customerResponse(c: Record<string, unknown>, actorRole: Role) {
     displayName: c.display_name,
     status: c.status,
     contractReference: c.contract_reference,
+    // PDR-18 §1: commercial contract dates, separate from and never rewritten
+    // by any activation-validity window.
+    contractStartDate: persistedBusinessDay(c.contract_start_date),
+    contractEndDate: persistedBusinessDay(c.contract_end_date),
     createdAt: c.created_at,
     updatedAt: c.updated_at,
     createdBy: c.created_by,
@@ -418,6 +508,12 @@ export function operationResponse(
     replacementObservedState: row.replacement_observed_state,
     emergencyOldServerLost: row.emergency_old_server_lost,
     replacesRecordId: row.replaces_record_id,
+    // PDR-18 §1: the recorded activation-validity window of the license. The
+    // start is the authoritative issuance day asserted by the server; the end is
+    // issuer-supplied and exclusive. Operator-observed administrative data, not
+    // a cryptographic fact about a signed artifact.
+    activationValidFrom: persistedBusinessDay(row.activation_valid_from),
+    activationValidUntil: persistedBusinessDay(row.activation_valid_until),
     evidenceBasis: "OPERATOR_OBSERVED",
     cryptographicVerification: "NOT_IMPLEMENTED",
     signedArtifactProduced: false,

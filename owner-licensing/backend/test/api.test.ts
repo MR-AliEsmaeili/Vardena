@@ -60,6 +60,8 @@ async function login(username: string, password: string) {
   const r = await write("post", "/auth/login").send({ username, password });
   return { r, cookie: r.headers["set-cookie"]?.[0]?.split(";")[0] as string };
 }
+/** A unique, installation-reference-safe token for one test. */
+const uniq = (prefix: string) => `${prefix}-${ulid()}`;
 async function customer(cookie = adminCookie, code = `C-${ulid()}`) {
   return write("post", "/customers", cookie).send({
     customerCode: code,
@@ -1253,6 +1255,172 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     );
     expect(JSON.stringify(history.body)).not.toContain("PRIVATE KEY");
     expect(JSON.stringify(history.body)).not.toContain("password_hash");
+  });
+  it("PDR-18 §1: keeps commercial contract dates separate from the server-asserted activation validity", async () => {
+    const code = (prefix: string) => `${prefix}-${ulid()}`;
+    // Contract dates are commercial and administrative: they may precede
+    // issuance and are never validated as activation-validity dates.
+    const past = await write("post", "/customers", adminCookie).send({
+      customerCode: code("PDR18-PAST"),
+      displayName:
+        "\u0645\u0634\u062a\u0631\u06cc \u0642\u0631\u0627\u0631\u062f\u0627\u062f",
+      contractStartDate: "2020-03-20",
+      contractEndDate: "2021-03-21",
+    });
+    expect(past.status).toBe(201);
+    expect(past.body.contractStartDate).toBe("2020-03-20");
+    expect(past.body.contractEndDate).toBe("2021-03-21");
+    expect(
+      (
+        await write("post", "/customers", adminCookie).send({
+          customerCode: code("PDR18-OPEN"),
+          displayName: "Open contract",
+          contractStartDate: "2027-01-01",
+        })
+      ).body.contractEndDate,
+    ).toBeNull();
+    // A single-day contract is valid; an inverted pair is refused.
+    expect(
+      (
+        await write("post", "/customers", adminCookie).send({
+          customerCode: code("PDR18-SAME"),
+          displayName: "Single day",
+          contractStartDate: "2027-05-05",
+          contractEndDate: "2027-05-05",
+        })
+      ).status,
+    ).toBe(201);
+    expect(
+      (
+        await write("post", "/customers", adminCookie).send({
+          customerCode: code("PDR18-INV"),
+          displayName: "Inverted",
+          contractStartDate: "2027-01-02",
+          contractEndDate: "2027-01-01",
+        })
+      ).status,
+    ).toBe(400);
+    for (const contractStartDate of ["2027-13-01", "2027-02-30", "not-a-day"])
+      expect(
+        (
+          await write("post", "/customers", adminCookie).send({
+            customerCode: code("PDR18-BAD"),
+            displayName: "Malformed",
+            contractStartDate,
+          })
+        ).status,
+      ).toBe(400);
+    // A partial update keeps the recorded pair and still refuses an inversion.
+    expect(
+      (
+        await write("patch", `/customers/${past.body.id}`, adminCookie).send({
+          contractEndDate: "2020-03-19",
+          reason: "Inverted partial update",
+        })
+      ).status,
+    ).toBe(400);
+    const moved = await write(
+      "patch",
+      `/customers/${past.body.id}`,
+      adminCookie,
+    ).send({ contractEndDate: "2022-03-21", reason: "Extended contract" });
+    expect(moved.status).toBe(200);
+    expect(moved.body.contractStartDate).toBe("2020-03-20");
+    expect(moved.body.contractEndDate).toBe("2022-03-21");
+
+    // The activation-validity end is issuer-supplied and exclusive; the START
+    // is the authoritative issuance day asserted by the server.
+    const end = new Date();
+    end.setUTCDate(end.getUTCDate() + 365);
+    const endDay = `${end.getUTCFullYear()}-${String(end.getUTCMonth() + 1).padStart(2, "0")}-${String(end.getUTCDate()).padStart(2, "0")}`;
+    const issued = await write(
+      "post",
+      "/operational-records/license-observations",
+      adminCookie,
+    ).send({
+      customerId: past.body.id,
+      installationReference: code("PDR18-INST"),
+      reason: "External issuance observed outside this application",
+      activationValidUntil: endDay,
+    });
+    expect(issued.status).toBe(201);
+    expect(issued.body.activationValidUntil).toBe(endDay);
+    const stored = await db.pool.query<{
+      activation_valid_from: string;
+      activation_valid_until: string;
+    }>(
+      "SELECT to_char(activation_valid_from,'YYYY-MM-DD') AS activation_valid_from, to_char(activation_valid_until,'YYYY-MM-DD') AS activation_valid_until FROM owner.operational_records WHERE id=$1",
+      [issued.body.id],
+    );
+    expect(stored.rows[0]!.activation_valid_from).toBe(
+      issued.body.activationValidFrom,
+    );
+    expect(stored.rows[0]!.activation_valid_until).toBe(endDay);
+
+    // The issuer cannot select, backdate or future-date the start.
+    const withStart = await write(
+      "post",
+      "/operational-records/license-observations",
+      adminCookie,
+    ).send({
+      customerId: past.body.id,
+      installationReference: code("PDR18-INST"),
+      reason: "Issuer must not choose the activation start",
+      activationValidFrom: "2020-01-01",
+    });
+    expect(withStart.status).toBe(400);
+    // The interval convention: the exclusive end must be later than the start.
+    const beforeStart = await write(
+      "post",
+      "/operational-records/license-observations",
+      adminCookie,
+    ).send({
+      customerId: past.body.id,
+      installationReference: code("PDR18-INST"),
+      reason: "End precedes the issuance day",
+      activationValidUntil: "2020-01-01",
+    });
+    expect(beforeStart.status).toBe(400);
+    // A malformed end is refused, never silently normalized.
+    for (const activationValidUntil of ["2027-13-45", "tomorrow", "1405/07/23"])
+      expect(
+        (
+          await write(
+            "post",
+            "/operational-records/license-observations",
+            adminCookie,
+          ).send({
+            customerId: past.body.id,
+            installationReference: code("PDR18-INST"),
+            reason: "Malformed activation validity end",
+            activationValidUntil,
+          })
+        ).status,
+      ).toBe(400);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT count(*)::int AS n FROM owner.operational_records WHERE installation_reference LIKE 'PDR18-INST-%'",
+        )
+      ).rows[0]!.n,
+    ).toBe(1);
+  });
+  it("PDR-18 §1: a server-replacement record carries no activation-validity window", async () => {
+    const made = await customer(adminCookie, uniq("PDR18-REP"));
+    const replacement = await write(
+      "post",
+      "/operational-records/server-replacements",
+      adminCookie,
+    ).send({
+      customerId: made.body.id,
+      oldInstallationReference: uniq("PDR18-OLD"),
+      replacementInstallationReference: uniq("PDR18-NEW"),
+      emergencyOldServerLost: false,
+      reason: "Owner authorized replacement",
+    });
+    expect(replacement.status).toBe(201);
+    expect(replacement.body.activationValidFrom).toBeNull();
+    expect(replacement.body.activationValidUntil).toBeNull();
   });
   it("enforces the manual server-replacement sequence, same customer, and concurrency", async () => {
     const first = await customer(adminCookie, `Rep-A-${ulid()}`);

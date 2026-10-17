@@ -2,6 +2,7 @@ import { ulid } from "ulid";
 import type { PoolClient } from "pg";
 import { audit } from "./db.js";
 import {
+  assertActivationValidityInterval,
   assertPermission,
   evidenceReference,
   fail,
@@ -15,8 +16,10 @@ import {
   operationKindFilter,
   operationResponse,
   operationStatusFilter,
+  optionalBusinessDay,
   optionalId,
   page,
+  persistedBusinessDay,
   queryText,
   reasonText,
   replacementCreate,
@@ -29,7 +32,9 @@ const columns = `r.id, r.customer_id, c.customer_code, c.display_name, r.kind,
   r.observation_category, r.observed_status, r.installation_reference,
   r.old_installation_reference, r.replacement_installation_reference,
   r.old_server_observed_state, r.replacement_observed_state,
-  r.emergency_old_server_lost, r.replaces_record_id, r.created_at, r.updated_at,
+  r.emergency_old_server_lost, r.replaces_record_id,
+  r.activation_valid_from, r.activation_valid_until,
+  r.created_at, r.updated_at,
   r.created_by, r.updated_by`;
 
 async function lockCustomer(tx: PoolClient, customerId: string) {
@@ -107,6 +112,10 @@ function snapshot(row: Record<string, unknown>, evidence: string | null) {
     replacementObservedState: row.replacement_observed_state,
     emergencyOldServerLost: row.emergency_old_server_lost,
     replacesRecordId: row.replaces_record_id,
+    // PDR-18 §1: the recorded activation-validity window, distinct from the
+    // customer's commercial contract dates.
+    activationValidFrom: persistedBusinessDay(row.activation_valid_from),
+    activationValidUntil: persistedBusinessDay(row.activation_valid_until),
     evidenceReference: evidence,
     evidenceBasis: "OPERATOR_OBSERVED",
   };
@@ -263,11 +272,16 @@ export async function recordLicenseObservation(
   body: unknown,
 ) {
   assertOperationPermission(role, "operations.record");
+  // `activationValidFrom` is deliberately NOT in the allowlist: the activation
+  // validity start is the authoritative issuance day and is asserted by the
+  // server, never selected, backdated or future-dated by the issuer
+  // (PDR-18 §1.2). An unknown field is refused by `object`.
   const input = object(body, [
     "customerId",
     "installationReference",
     "reason",
     "evidenceReference",
+    "activationValidUntil",
   ]);
   const customerId = id(input.customerId);
   const installation = installationReference(
@@ -276,6 +290,12 @@ export async function recordLicenseObservation(
   );
   const reason = reasonText(input.reason);
   const evidence = evidenceReference(input.evidenceReference);
+  // The activation-validity end is issuer-supplied and EXCLUSIVE, following the
+  // half-open signed-license interval convention. A null end records no end.
+  const activationValidUntil = optionalBusinessDay(
+    input.activationValidUntil,
+    "activationValidUntil",
+  );
   const plan = licenseObservationCreate();
   await lockCustomer(tx, customerId);
   const existing = await tx.query(
@@ -290,20 +310,31 @@ export async function recordLicenseObservation(
       "An operation already exists for this installation.",
     );
   const recordId = ulid();
-  await tx.query(
+  // The issuance day is the UTC calendar day of the authoritative database
+  // clock. It is asserted here, after the end is validated, so the half-open
+  // interval `[issuance day, activationValidUntil)` can be checked exactly.
+  const issued = await tx.query<{ activation_valid_from: Date | string }>(
     `INSERT INTO owner.operational_records(
       id, customer_id, kind, observed_status, observation_category,
-      installation_reference, created_by, updated_by)
-    VALUES ($1,$2,'LICENSE',$3,$4,$5,$6,$6)`,
+      installation_reference, activation_valid_from, activation_valid_until,
+      created_by, updated_by)
+    VALUES ($1,$2,'LICENSE',$3,$4,$5,
+      (clock_timestamp() AT TIME ZONE 'UTC')::date, $6, $7,$7)
+    RETURNING activation_valid_from`,
     [
       recordId,
       customerId,
       plan.observedStatus,
       plan.observationCategory,
       installation,
+      activationValidUntil,
       actorId,
     ],
   );
+  const activationValidFrom = persistedBusinessDay(
+    issued.rows[0]!.activation_valid_from,
+  )!;
+  assertActivationValidityInterval(activationValidFrom, activationValidUntil);
   await writeTransition(
     tx,
     recordId,
