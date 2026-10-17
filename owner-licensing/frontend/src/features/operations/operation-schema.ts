@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isBusinessDay } from '@/lib/date-time';
 import { o } from '@/lib/owner-i18n';
 
 const ulid = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/, o.invalidId);
@@ -22,11 +23,24 @@ const evidence = z
   .refine((value) => value === '' || !unsafeEvidence(value), o.evidenceHint);
 const acknowledged = z.boolean().refine((value) => value, o.confirmRequired);
 
+/**
+ * PDR-18 §1.2 + PDR-17: the day an observation was recorded is derived by the
+ * server from the immutable record instant. There is deliberately no
+ * `recordedOn` field here — an operator can never select, backdate or
+ * future-date it. Only the operator-recorded, EXCLUSIVE validity end is
+ * collected, and an empty value records "no end was recorded".
+ */
+const observedValidityEnd = z
+  .string()
+  .trim()
+  .refine((value) => value === '' || isBusinessDay(value), o.invalidDay);
+
 export const licenseObservationSchema = z.object({
   customerId: ulid,
   installationReference: installation,
   reason,
   evidenceReference: evidence,
+  observedValidityEnd,
   acknowledged,
 });
 export const activationObservationSchema = z.object({

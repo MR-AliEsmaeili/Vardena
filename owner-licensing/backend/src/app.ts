@@ -22,6 +22,7 @@ import { Database, audit } from "./db.js";
 import {
   ApiError,
   assertActiveAuthorizedActor,
+  assertContractDateOrder,
   customerCode,
   customerResponse,
   digest,
@@ -31,9 +32,11 @@ import {
   invalid,
   isRole,
   object,
+  optionalBusinessDay,
   page,
   password,
   permissions,
+  persistedBusinessDay,
   role,
   safeUser,
   status,
@@ -257,6 +260,8 @@ export async function createCustomerService(
     "displayName",
     "status",
     "contractReference",
+    "contractStartDate",
+    "contractEndDate",
   ]);
   const uid = ulid(),
     code = customerCode(input.customerCode, uid),
@@ -266,11 +271,23 @@ export async function createCustomerService(
     input.contractReference === undefined || input.contractReference === ""
       ? ""
       : text(input.contractReference, "contractReference", 1, 200);
+  // PDR-18 §1: contract dates are commercial. They may precede the recording
+  // and are never validated as if they were technical validity dates.
+  const contractStart = optionalBusinessDay(
+    input.contractStartDate,
+    "contractStartDate",
+  );
+  const contractEnd = optionalBusinessDay(
+    input.contractEndDate,
+    "contractEndDate",
+  );
+  assertContractDateOrder(contractStart, contractEnd);
   const c = (
     await tx.query(
-      `INSERT INTO owner.customers(id,customer_code,display_name,status,contract_reference,created_by,updated_by)
-      VALUES($1,$2,$3,$4,$5,$6,$6) RETURNING *`,
-      [uid, code, name, state, reference, actor.id],
+      `INSERT INTO owner.customers(id,customer_code,display_name,status,contract_reference,
+        contract_start_date,contract_end_date,created_by,updated_by)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8) RETURNING *`,
+      [uid, code, name, state, reference, contractStart, contractEnd, actor.id],
     )
   ).rows[0];
   await audit(tx, {
@@ -283,6 +300,8 @@ export async function createCustomerService(
       displayName: name,
       status: state,
       contractReference: reference,
+      contractStartDate: contractStart,
+      contractEndDate: contractEnd,
     },
   });
   return customerResponse(c, actorRole);
@@ -300,6 +319,8 @@ export async function updateCustomerService(
       "displayName",
       "status",
       "contractReference",
+      "contractStartDate",
+      "contractEndDate",
       "reason",
     ]);
   const reason = text(input.reason, "reason", 1, 500);
@@ -320,10 +341,24 @@ export async function updateCustomerService(
       : input.contractReference === ""
         ? ""
         : text(input.contractReference, "contractReference", 1, 200);
+  // An omitted contract date keeps the recorded one; an empty string clears it.
+  // The pair is re-checked after the merge so a partial update cannot leave an
+  // end that precedes the start.
+  const beforeContractStart = persistedBusinessDay(c.contract_start_date);
+  const beforeContractEnd = persistedBusinessDay(c.contract_end_date);
+  const contractStart =
+    input.contractStartDate === undefined
+      ? beforeContractStart
+      : optionalBusinessDay(input.contractStartDate, "contractStartDate");
+  const contractEnd =
+    input.contractEndDate === undefined
+      ? beforeContractEnd
+      : optionalBusinessDay(input.contractEndDate, "contractEndDate");
+  assertContractDateOrder(contractStart, contractEnd);
   const updated = (
     await tx.query(
-      "UPDATE owner.customers SET display_name=$1,status=$2,contract_reference=$3,updated_by=$4,updated_at=clock_timestamp() WHERE id=$5 RETURNING *",
-      [name, state, reference, actor.id, uid],
+      "UPDATE owner.customers SET display_name=$1,status=$2,contract_reference=$3,contract_start_date=$4,contract_end_date=$5,updated_by=$6,updated_at=clock_timestamp() WHERE id=$7 RETURNING *",
+      [name, state, reference, contractStart, contractEnd, actor.id, uid],
     )
   ).rows[0];
   await audit(tx, {
@@ -336,11 +371,15 @@ export async function updateCustomerService(
       displayName: c.display_name,
       status: c.status,
       contractReference: c.contract_reference,
+      contractStartDate: beforeContractStart,
+      contractEndDate: beforeContractEnd,
     },
     after: {
       displayName: name,
       status: state,
       contractReference: reference,
+      contractStartDate: contractStart,
+      contractEndDate: contractEnd,
     },
   });
   return customerResponse(updated, actorRole);
