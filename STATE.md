@@ -2641,9 +2641,12 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   post-gap recovery before resolving explicit targets; tests cover an unknown
   target and fail-closed unavailable usage. Service/e2e/live assertions verify
   serialized conflict facts in the resolution audit detail. The live PostgreSQL
-  and HTTP e2e changes are CI-only and were not run locally. No request/response
-  schema or generated-client artifact changed in this pass (the applied audit
-  detail now records full conflict facts); no migration was added.
+  and HTTP e2e changes are CI-only and were not run locally. The gap-recovery
+  request DTO adds optional `reductionResolutionReason`; its response DTO adds
+  optional `resolvedPredecessorVersionId` and `resolvedConflicts` for a combined
+  recovery/resolution. `frontend/src/api/generated/vardena-api.d.ts` was updated
+  to match the new OpenAPI request/response contract. These API/client contract
+  changes do not add or change database schema, and no migration was added.
 - **Decision-record synchronization:** PDR-13 §8, ADR-0050 and their indexes,
   the OQ-87 registry evidence, licensing decision brief, requirements/evidence
   matrix, technical licensing design and this `STATE.md` now distinguish the
