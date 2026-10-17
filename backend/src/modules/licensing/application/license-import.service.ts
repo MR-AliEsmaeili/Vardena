@@ -390,11 +390,13 @@ export class LicenseImportService {
   /**
    * The explicit reduction-resolution operation (PDR-11 §8.6, L-04).
    *
-   * This is the ONLY path that may apply a version whose capacity or
+   * This is the standard path for applying a version whose capacity or
    * entitlement reduction conflicts with current usage or the retained grant.
-   * The caller has seen the explained conflicts (the ordinary import answers
-   * 409 `reduction-requires-resolution` with the concrete limits, current
-   * usage and removed entitlements); supplying an authorized, reasoned
+   * The accepted OD-LIC-05 exception is limited to a genuine post-gap recovery,
+   * which carries its resolution on that same recovery request instead.
+   * Otherwise the caller has seen the explained conflicts (the ordinary import
+   * answers 409 `reduction-requires-resolution` with the concrete limits,
+   * current usage and removed entitlements); supplying an authorized, reasoned
    * resolution here applies the document AND the resolution in ONE
    * transaction, which audits the resolution as the typed
    * `license.import.reduction-resolved` event with the conflicts it actually

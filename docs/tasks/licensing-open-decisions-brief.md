@@ -1,11 +1,10 @@
 # Licensing — open decisions brief (OQ-76, OQ-78, device lifecycle vs Grace)
 
-**Type:** decision brief (decision status is explicit in each section) · **Date:** 2026-10-16 ·
+**Type:** decision brief (decision status is explicit in each section) · **Date:** 2026-10-17 ·
 **Original audit baseline:** `main` `c715a64cdfcbc866fe65613a0375a118e0024a8b` (PR #167 merge).
-**Current source-of-truth baseline (2026-10-17):** `main` `af68fd8eea5e5163d7827fa7b21d4bea85388e32` (PR #169 merge); PR #170 remains open on its separate head.
-**Update:** 2026-10-17 — C10 implementation proposal and evidence added to §4; OQ-87 remains open.
-**Authority:** only the Product Owner decides. Every item below is recorded as
-**OPEN**; nothing in this document changes a registry status, a PDR or an ADR.
+**Current source-of-truth baseline (2026-10-17):** `main` `af68fd8eea5e5163d7827fa7b21d4bea85388e32` (PR #169 merge); PR #170 is **closed without merging** at head `ff2f4df1cc97b9fd974f0d73e197074727829af3` and its work is not assumed to be on `main`.
+**Update:** 2026-10-17 — Product Owner expressly accepted OD-LIC-05 Option 1 for C10; OQ-87 and C11 remain open.
+**Authority:** only the Product Owner decides. Open questions in §§1–3 and C11 remain **OPEN**; OD-LIC-05 is accepted and recorded in PDR-13 §8 / ADR-0050. This brief is supporting evidence and does not change any registry OQ status.
 
 This brief exists because a licensing audit of the merged OQ-45/device work
 found behaviours that the approved documents do not settle. Each section states
@@ -163,11 +162,12 @@ Until either exists, the standing risk in `docs/tasks/licensing-owner-side-phase
 
 ---
 
-## 4. Reduction-guard findings and C10 proposal (updated 2026-10-17)
+## 4. Reduction-guard findings and accepted C10 decision (updated 2026-10-17)
 
 The renewal/supersession audit re-checked L-05 and the post-gap recovery flow.
-This section preserves the original defect evidence and records the C10
-implementation proposal; it does not change the status of an OQ.
+This section preserves the original defect evidence and records the accepted
+OD-LIC-05 decision and its implementation evidence; it does not change the
+status of any OQ.
 
 ### 4.1 Rule 6b′ — named target cannot displace the measurement (fixed)
 
@@ -183,7 +183,7 @@ single version as the resolution subject. The expired/scheduled target remains
 validated and retired as declared; one confirmation cannot authorize a grant
 the operator was not shown.
 
-### 4.2 C10 — post-gap recovery measurement (implemented for review; proposed OD-LIC-05)
+### 4.2 C10 — post-gap recovery measurement (implemented in PR #171; OD-LIC-05 accepted)
 
 **Evidence.** `continuationBaselineFor` requires an effective retained window to
 end exactly at the candidate's `validFrom`. A post-gap candidate starts
@@ -195,18 +195,20 @@ before it can apply. The recovery route carried only recovery intent, so simply
 enabling the check would have made a conflicting recovery permanently
 inapplicable.
 
-**Proposed OD-LIC-05 (Option 1, combined operation).** Measure a genuine
-post-gap recovery against the retained version whose effective coverage ended
-last, using `lapsedCoverageVersion` (latest effective end; ties by latest
-`importedAt`, then `versionId`; `null` if nothing is retained or any effective
-window is perpetual). `lapsedLicenseContext` delegates to that helper and
-preserves its exact current result semantics, including perpetual → `null`.
-The gate runs before rule 4/5. The dedicated recovery endpoint may carry an
-optional `reductionResolutionReason` (3–500 chars); if present, all three
-permissions are required: Activate + RecoverAfterGap + ResolveReduction. The
-new version plus both typed audit events (`license.import.recovered` and
-`license.import.reduction-resolved`) are committed in one transaction. The
-lapsed version is the resolution subject but is never superseded or stamped.
+**Accepted OD-LIC-05 (Option 1, combined operation; Product Owner approval
+2026-10-17).** Measure a genuine post-gap recovery against the retained version
+whose effective coverage ended last, using `lapsedCoverageVersion` (latest
+effective end; ties by latest `importedAt`, then `versionId`; `null` if nothing
+is retained or any effective window is perpetual). `lapsedLicenseContext`
+delegates to that helper and preserves its exact current result semantics,
+including perpetual → `null`. The gate runs before rule 4/5. The dedicated
+recovery endpoint may carry an optional `reductionResolutionReason` (3–500
+chars); if present, all three permissions are required: Activate +
+RecoverAfterGap + ResolveReduction. The new version plus both typed audit events
+(`license.import.recovered` and `license.import.reduction-resolved`) are
+committed in one transaction. The resolution event records actual conflict
+objects recomputed under the transaction locks. The lapsed version is the
+resolution subject but is never superseded or stamped.
 
 | Request / state | Contract |
 |---|---|
@@ -222,11 +224,12 @@ on the **same recovery operation**, not to submit the post-gap document to the
 separate resolution route. The target case likewise does not tell the operator
 to use ordinary import, which would reject a genuine post-gap candidate.
 
-This proposal does **not** expand the §8.6 baseline to interior/backdated
-gap-filling candidates, change renewal-gap precedence, alter non-post-gap
-recovery behavior, add schema/migrations, or close OQ-87. C11 remains a separate
-open decision. PDR-13 §8 and proposed ADR-0050 record the implementation shape;
-Product Owner acceptance remains a separate status from implementation and CI.
+OD-LIC-05 is deliberately limited to C10. It does **not** expand the §8.6
+baseline to interior/backdated gap-filling candidates, change renewal-gap
+precedence, alter non-post-gap recovery behavior, add schema/migrations, or
+close OQ-87. C11 remains a separate open decision. PDR-13 §8 and accepted
+ADR-0050 record the approval; implementation and CI status remain separate from
+product acceptance.
 
 ### 4.3 C11 — interior/backdated gap fills (still open)
 
@@ -240,7 +243,7 @@ is included here; C11 remains open for an explicit Owner decision.
 ## 5. What this brief does not do
 
 It does not close OQ-76, OQ-78, OQ-87 or any other OQ. The OQ-87 registry row
-is synchronized with the §4 proposal as an evidence/note update only; its status
-is unchanged. ADR-0050 remains Proposed, and the C10 implementation is presented
-for Product Owner review rather than claimed as acceptance. No other decision or
-OQ status is changed by this brief update.
+records the accepted OD-LIC-05 C10 policy as an evidence/decision note only; its
+status is unchanged. ADR-0050 is accepted for OD-LIC-05 Option 1. PR #171 carries
+the implementation and remains open/unmerged for review; product acceptance is
+not merge authorization. No other decision or OQ status is changed by this brief.

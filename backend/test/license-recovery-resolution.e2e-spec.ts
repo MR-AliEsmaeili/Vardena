@@ -575,7 +575,9 @@ describe('License gap recovery and reduction resolution (e2e)', () => {
     });
     expect(String(recovered?.detail)).toContain(RECOVERY_REASON);
     expect(String(resolved?.detail)).toContain(RESOLUTION_REASON);
-    expect(String(resolved?.detail)).toContain('organization-capacity');
+    expect(String(resolved?.detail)).toContain(
+      'conflicts=[{"kind":"organization-capacity","limit":2,"currentUsage":5}]',
+    );
   });
 
   it('walks the full resolution flow: explained 409, route 403, applied 200 with the authorized conflicts', async () => {

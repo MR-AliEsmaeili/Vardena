@@ -2152,6 +2152,13 @@ describe.skipIf(DATABASE_URL === undefined)(
         )?.detail,
       ).toContain('user-capacity');
       expect(
+        events.find(
+          (event) => event.event_type === 'license.import.reduction-resolved',
+        )?.detail,
+      ).toContain(
+        `conflicts=[{"kind":"user-capacity","limit":1,"currentUsage":${activeUserCount}}]`,
+      );
+      expect(
         await query<{ superseded_at: Date | null; governs_until: Date | null }>(
           `SELECT "superseded_at", "governs_until" FROM "licensing"."license_versions"
             WHERE "operation_id" = $1`,

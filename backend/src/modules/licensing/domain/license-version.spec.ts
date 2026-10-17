@@ -2563,8 +2563,8 @@ describe('continuation baseline of a renewal that retires nothing (L-05)', () =>
 });
 
 /**
- * Contract tests for the post-gap recovery reduction guard (L-07, proposed
- * OD-LIC-05 / ADR-0050). A post-gap start is never adjacent to retained
+ * Contract tests for the post-gap recovery reduction guard (L-07, accepted
+ * OD-LIC-05 Option 1 / ADR-0050). A post-gap start is never adjacent to retained
  * coverage, so the §8.6 comparison is against the latest lapsed coverage
  * version, and any resolution is carried by the dedicated recovery operation.
  */
@@ -2777,6 +2777,57 @@ describe('post-gap recovery and the §8.6 reduction guard (contract)', () => {
     expect(refused.conflict).toEqual({
       reason: 'recovery-not-applicable',
       overlapping: 0,
+    });
+
+    // Even an unknown declared target cannot turn a post-gap recovery into
+    // ordinary supersession validation; recovery retires nothing.
+    const unknownTarget = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'explicit', operationId: 'unknown-operation-id' },
+      versions: [lapsed],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+      gapRecovery: { reason: 'Operator confirmed the recovery.' },
+    });
+    expect(unknownTarget.conflict).toEqual({
+      reason: 'recovery-not-applicable',
+      overlapping: 0,
+    });
+  });
+
+  it('fails closed when post-gap usage is unavailable, even with a resolution reason', () => {
+    const lapsed = lapsedVersion();
+    const candidate = recoveryCandidate();
+    const refused = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'none' },
+      versions: [lapsed],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage: null,
+      gapRecovery: { reason: 'Operator confirmed the recovery.' },
+      reductionResolution: { reason: 'Customer approved the lower grant.' },
+    });
+
+    expect(refused.conflict).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        predecessorVersionId: lapsed.versionId,
+        conflicts: [
+          { kind: 'usage-unavailable', scope: 'organizations' },
+          {
+            kind: 'entitlement-removed',
+            entitlement: { kind: 'MODULE', code: 'accounting' },
+          },
+        ],
+      },
     });
   });
 });

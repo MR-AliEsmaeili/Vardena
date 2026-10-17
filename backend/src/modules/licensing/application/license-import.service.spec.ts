@@ -2604,6 +2604,9 @@ describe('dedicated post-gap recovery (OQ-87 Option B, PDR-13)', () => {
     expect(resolved?.detail).toContain('organization-capacity');
     expect(resolved?.detail).toContain('entitlement-removed');
     expect(resolved?.detail).toContain(
+      'conflicts=[{"kind":"organization-capacity","limit":2,"currentUsage":40},{"kind":"entitlement-removed","entitlement":{"kind":"MODULE","code":"accounting"}}]',
+    );
+    expect(resolved?.detail).toContain(
       'Customer approved the lower grant after reviewing current usage.',
     );
   });

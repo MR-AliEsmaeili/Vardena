@@ -1,6 +1,7 @@
 # ADR-0050: Measure reducing post-gap recoveries against lapsed coverage
 
-Status: Proposed — implemented for Product Owner review
+Status: Accepted by the Product Owner — OD-LIC-05 Option 1 (2026-10-17)
+Accepted by: Product Owner (Ali Esmaeili)
 Date: 2026-10-17
 
 ## Context
@@ -22,26 +23,36 @@ route previously had no resolution intent. See OQ-87, C10, and PDR-13 §8.
    changing its existing receipt semantics.
 2. Before overlap/precedence rules 4/5, measure an actual post-gap candidate on
    the dedicated recovery path against that lapsed version using
-   `reductionConflicts`. A conflicting reduction is refused with the lapsed
-   `predecessorVersionId` and structured conflicts unless the recovery operation
-   also carries an explicit resolution reason. A supplied resolution requires
+   `reductionConflicts`, including counted capacity usage and retained-grant
+   entitlements. A conflicting reduction is refused with the lapsed
+   `predecessorVersionId` and structured conflicts unless the SAME recovery
+   request also carries a valid 3–500-character `reductionResolutionReason`.
+   The combined request requires
    `Licensing.License.Activate`,
    `Licensing.Installation.RecoverAfterGap`, and
-   `Licensing.License.ResolveReduction`.
+   `Licensing.License.ResolveReduction`, checked before protected document
+   processing or writes. Non-resolvable conflicts (including unavailable usage)
+   remain fail-closed; a resolution with no conflict is refused.
 3. Commit the new version and both typed events — `license.import.recovered` and
    `license.import.reduction-resolved` — in the existing import transaction.
-   The lapsed version is the resolution subject, but recovery retires no prior
-   version: it is not superseded or stamped. A post-gap recovery document that
-   declares a supersession target is refused as `recovery-not-applicable`.
+   The resolution event records the actual conflicts recomputed under the
+   installation/allocation locks, including their concrete facts; no client
+   conflict list is accepted. Both events share the recovery operation/version
+   identity. The lapsed version is the resolution subject, but recovery retires
+   no prior version: it is not superseded or stamped. A post-gap recovery
+   document that declares a supersession target is refused as
+   `recovery-not-applicable`.
 4. Keep ordinary import and the separate reduction-resolution route unable to
-   apply a post-gap candidate. Preserve renewal-gap precedence and all
-   non-post-gap behavior. No schema or migration change is required. C11
-   (interior/backdated gap-fill measurement) remains outside this decision.
+   apply a post-gap candidate. Preserve renewal-gap precedence, all
+   non-post-gap behavior, signature/binding/identity/replay/audit controls, and
+   transaction/locking safeguards. No schema or migration change is required.
+   C11 (interior/backdated gap-fill measurement) remains outside this decision.
 
-This proposed decision selects the combined-operation option in the
-2026-10-16 licensing brief §4. It does not select terminal refusal of reducing
-recoveries, does not close OQ-87 or any other OQ, and remains subject to explicit
-Product Owner review/acceptance.
+The Product Owner explicitly approved OD-LIC-05 Option 1 on 2026-10-17. This
+accepted decision selects the combined-operation option in the 2026-10-16
+licensing brief §4 and rejects terminal refusal of every reducing recovery. It
+does not close OQ-87 or any other OQ; OQ-87 remains open under the registry's
+convention and C11 remains open.
 
 ## Consequences
 
@@ -50,8 +61,10 @@ Product Owner review/acceptance.
   latest lapsed grant; usage-unavailable and other non-resolvable conflicts
   remain fail-closed.
 - Audit and response receipts expose both the lapsed coverage facts and the
-  resolved predecessor/conflicts without a second write pipeline.
+  resolved predecessor plus the exact in-transaction conflict facts, without a
+  second write pipeline.
 - The recovery route's optional resolution field, operation-aware refusal
   messages, generated OpenAPI client, and domain/service/HTTP/live-PostgreSQL
-  contract tests must evolve together.
-- OQ-87 remains open pending acceptance; no other OQ is closed or changed.
+  contract tests evolve together.
+- OD-LIC-05 is accepted, but OQ-87 remains open under the registry convention;
+  C11 remains open and no OQ is closed or changed by this decision.

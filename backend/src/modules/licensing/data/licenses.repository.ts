@@ -1037,12 +1037,12 @@ export class LicensesRepository {
       if (command.reductionResolution !== null) {
         // The evaluation's resolution subject is the version whose grant the
         // resolution authorized reducing: the retired predecessor on a
-        // hand-over path, or — L-05 — the deterministic continuation baseline
-        // of a renewal that retires nothing. The baseline is audited and
-        // reported but deliberately NOT stamped: nothing below retires it,
-        // because the stamp above runs only for `supersedes` and a resolution
-        // authorizes a reduction, it does not retire the version it is
-        // measured against.
+        // hand-over path, the L-05 continuation baseline of a renewal that
+        // retires nothing, or the L-07 latest lapsed version for a recovery.
+        // The subject is audited and reported but deliberately NOT stamped
+        // unless it is independently the actual `supersedes` target; a
+        // resolution authorizes a reduction, it does not itself retire the
+        // version it is measured against.
         const predecessor = evaluation.resolutionSubject;
         // Reaching this point means the evaluation applied the resolution to
         // real conflicts (the domain rule refuses an unused resolution), so
@@ -1495,6 +1495,10 @@ export function resolutionAuditEvent(
     .map((conflict) => conflict.kind)
     .sort()
     .join('+');
+  // The event keeps the full server-recomputed conflict facts (not client input):
+  // limits, usage, scopes, and removed entitlements remain independently
+  // auditable alongside the stable kind summary.
+  const conflictFacts = JSON.stringify(conflicts);
   return {
     installationId: command.installationId,
     eventType: 'license.import.reduction-resolved',
@@ -1508,7 +1512,8 @@ export function resolutionAuditEvent(
     reason: null,
     detail:
       `resolved reduction of version ${predecessorVersionId}` +
-      ` [${summary}]${reason === '' ? '' : `: ${reason}`}`,
+      ` [${summary}] conflicts=${conflictFacts}` +
+      `${reason === '' ? '' : `: ${reason}`}`,
     occurredAt: command.now,
   };
 }
