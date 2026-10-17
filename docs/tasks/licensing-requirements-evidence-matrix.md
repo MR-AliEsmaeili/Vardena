@@ -1,7 +1,7 @@
 # Licensing requirements-to-evidence matrix
 
-**Baseline:** `main` `af68fd8eea5e5163d7827fa7b21d4bea85388e32` (PR #169 merge; PR #168 is merged).
-**Implementation branch:** `arena/9619675c-vardena` (L-07 / C10 implementation in PR #171; OD-LIC-05 Option 1 accepted 2026-10-17; PR remains open/unmerged).
+**Historical baseline:** `main` `af68fd8eea5e5163d7827fa7b21d4bea85388e32` (pre-PR #171).
+**Status reconciliation (2026-10-17):** PR #171 is merged at `53a9d4e31855e71e02360d7f2e8a746a5b28b7b3`; the branch-specific implementation entries below are historical evidence and must not be read as an unmerged PR claim. Product decisions from PDR-18 are recorded separately from implementation status.
 **Concurrent PR:** #170 was **closed without merging** on 2026-10-17 at head `ff2f4df1cc97b9fd974f0d73e197074727829af3`; its migration-safety work is not assumed to be on `main` and is not included in this matrix baseline.
 **Date:** 2026-10-17 · **Owner:** Ali Esmaeili (product decisions) · **Agent:** implementation.
 
@@ -73,7 +73,7 @@ CI job names below are the ones the workflow actually runs
 | D7 | No auto-extension from restart, repeated reads or provider outage | Implemented | pure evaluation from signed instants; fail-closed provider errors | `licensing-grace.spec.ts`, `license-grace.spec.ts` | `backend` |
 | D8 | Printing/report/export capability reported honestly | Implemented as *no independent permission exists* | `Print` is a document-lifecycle action with no RBAC code/endpoint; `Export` unregistered | `permission-read-classification.spec.ts` (catalog guard) | `backend` |
 | D9 | Customer UI notice with the deadline in the shared date foundation and accessible status semantics | Implemented | `frontend/src/app/layouts/license-gate.tsx` (`<output aria-live="polite">` + `formatDateTime`) | `frontend/src/app/layouts/license-gate.test.tsx` (15 cases) | `frontend` |
-| D10 | OQ-45 closed | **Open** | contract-termination strictness + Product Owner acceptance remain | — | — |
+| D10 | OQ-45 policy decision | **Product policy decided (PDR-18, 2026-10-17); implementation/evidence open** | Exact UTC enforcement, Read-Only boundary, restoration and lifecycle verification remain | — | — |
 
 ## E. Client devices (OQ-83 / PDR-15)
 
