@@ -2777,3 +2777,48 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   [`docs/tasks/pdr-18-contract-and-activation-dates-implementation.md`](docs/tasks/pdr-18-contract-and-activation-dates-implementation.md)
   §6. Product Owner acceptance remains a separate, outstanding status; CI
   success is not acceptance and does not authorize a merge.
+
+### 50. PDR-18 §1 — renewal/reissuance flow compatibility proposal (2026-10-17)
+
+The final bullet of PDR-18 §1 asks engineering to **propose** a renewal/reissuance
+flow compatible with the issue-today activation rule, and forbids implementing a
+workaround or inferring that a newly issued license may override a governing
+version without passing the existing conflict authority. That proposal is
+delivered as
+[`docs/tasks/pdr-18-renewal-reissuance-flow-proposal.md`](docs/tasks/pdr-18-renewal-reissuance-flow-proposal.md)
+— **analysis only: no runtime change, no migration, no regenerated vector, no
+test, and no decision.**
+
+- **Nine facts verified against the current code** (recorded as V1–V9 in the
+  proposal, each with a file/line citation): the retained version model carries
+  no `issuedAt` and precedence is `validFrom` → `importedAt` → `versionId`, so
+  the issuance timestamp cannot override the governing version (V1);
+  `assertLicenseVersionPayload` relates `validFrom` to nothing but `validUntil`
+  (V2); overlap is refused rather than stacked (V3); OQ-80 Option B hands over at
+  the successor's own `validFrom` (V4); backdated hand-over is refused while an
+  already-ended target is stampable (V5); G2 forbids a renewal gap (V6); a
+  post-gap start needs the dedicated recovery operation (V7); §8.6 measures a
+  hand-over under 6b and a contiguous renewal under 6c (V8); and the issuance CLI
+  always mints a new `licenseId` (V9).
+- **Three consequences of applying issue-today to renewals verbatim**, none of
+  which any record has decided: an early renewal consumes the term the customer
+  already paid for (nothing is stacked, V4); a renewal sold even one day after
+  coverage end — including inside the 14-day Grace — becomes a PDR-13 post-gap
+  **recovery** operation (V7 + V9); and the §8.6 measurement moves from rule 6c
+  to rule 6b.
+- **Four options** are presented with their costs, plus the invariants that must
+  hold under any of them — `evaluateImportConflicts` stays the single conflict
+  authority, the four refusal reasons stay, §8.6 stays, already-signed artifacts
+  keep verifying (any new rule must be scoped to newly issued documents, never
+  retroactive on VLIC2 verification), `issuedAt` never becomes a precedence
+  input, and no C11 path appears.
+- **Engineering recommendation (not a decision):** Option 2 — issue-today on the
+  signed artifact with a deferred effective start. Option 4 is the safe interim
+  if the smallest change is preferred. Options 1 and 3 are not recommended
+  without an explicit decision on truncated term and on late renewals becoming
+  recoveries.
+- **Blocked:** [OQ-88](docs/open-questions.md) remains open and is the blocking
+  question. Evidence-matrix row **L-18.9** records this proposal; row **L-18.7**
+  (activation-validity start on the signed artifact) stays blocked by OQ-88, and
+  **L-18.8** (PDR-18 §4 termination/cancellation) stays blocked by OQ-78. No
+  Product Owner acceptance is claimed and nothing here authorizes a merge.
