@@ -128,7 +128,7 @@ describe('Owner browser vertical slice (mocked API boundary, CI)', () => {
     expect(await screen.findByText(o.immutable)).toBeInTheDocument();
   });
   // PDR-18 §1: contract dates are stored and shown as their own pair, separate
-  // from any activation-validity window, and they may precede issuance.
+  // from any technical validity value, and they may precede the recording.
   it('renders the commercial contract dates on the customer detail and submits them independently', async () => {
     vi.mocked(api.customer).mockResolvedValue({
       ...record,

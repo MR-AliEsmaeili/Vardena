@@ -119,8 +119,9 @@ const auditStateKeys = new Set([
   "displayName",
   "status",
   "contractReference",
-  // PDR-18 §1: commercial contract dates and the recorded activation-validity
-  // window are separate, attributable lifecycle facts.
+  // PDR-18 §1 + PDR-17: commercial contract dates and the Owner-side
+  // observation/recording metadata are separate, attributable lifecycle facts
+  // (recordedOn is the recording day, not an issuance date).
   "contractStartDate",
   "contractEndDate",
   "recordedOn",

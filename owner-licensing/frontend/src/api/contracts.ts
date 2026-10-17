@@ -34,7 +34,7 @@ export interface CustomerIdentity {
 }
 export interface Customer extends CustomerIdentity {
   contractReference: string;
-  /** PDR-18 §1: commercial contract dates, independent of activation validity. */
+  /** PDR-18 §1: commercial contract dates, independent of technical validity. */
   contractStartDate: string | null;
   contractEndDate: string | null;
   createdAt: string;

@@ -132,17 +132,20 @@ export function status(value: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
-// PDR-18 §1 — contract dates and activation-validity dates
+// PDR-18 §1 — three separate date concepts
 //
-// Both pairs are canonical BusinessDate calendar days (`YYYY-MM-DD`,
-// docs/datetime.md, AR-32). They are deliberately separate: contract dates are
-// commercial/administrative and may precede issuance, while activation validity
-// Owner-side observation metadata: the day an operator RECORDED an observation,
-// derived on read from the immutable `created_at` instant, and the validity end
-// the operator recorded having seen. Neither is an attested property of a
-// signed artifact — PDR-17 records cryptographic issuance and verification as
-// not implemented, and every response states
-// `cryptographicVerification = NOT_IMPLEMENTED`.
+// Both stored day values are canonical BusinessDate calendar days
+// (`YYYY-MM-DD`, docs/datetime.md, AR-32). They are deliberately separate:
+//
+//   contract dates      — commercial/administrative, may precede the recording.
+//   Owner-side metadata — the day an operator RECORDED an observation (derived
+//                         on read from the immutable `created_at` instant) and
+//                         the validity end the operator recorded having seen.
+//   signed-license validity — owned by the customer runtime; not modelled here.
+//
+// The Owner-side pair is never an attested property of a signed artifact:
+// PDR-17 records cryptographic issuance and verification as not implemented,
+// and every response states `cryptographicVerification = NOT_IMPLEMENTED`.
 //
 // Nothing here accepts a client clock or a browser-supplied date: the recording
 // day is derived from a server-generated, immutable `timestamptz` column.
@@ -290,7 +293,7 @@ export function customerResponse(c: Record<string, unknown>, actorRole: Role) {
     status: c.status,
     contractReference: c.contract_reference,
     // PDR-18 §1: commercial contract dates, separate from and never rewritten
-    // by any activation-validity window.
+    // by, or derived from, any technical validity value.
     contractStartDate: persistedBusinessDay(c.contract_start_date),
     contractEndDate: persistedBusinessDay(c.contract_end_date),
     createdAt: c.created_at,

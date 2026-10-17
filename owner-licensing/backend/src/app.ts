@@ -271,8 +271,8 @@ export async function createCustomerService(
     input.contractReference === undefined || input.contractReference === ""
       ? ""
       : text(input.contractReference, "contractReference", 1, 200);
-  // PDR-18 §1: contract dates are commercial. They may precede issuance and are
-  // never validated as if they were activation-validity dates.
+  // PDR-18 §1: contract dates are commercial. They may precede the recording
+  // and are never validated as if they were technical validity dates.
   const contractStart = optionalBusinessDay(
     input.contractStartDate,
     "contractStartDate",

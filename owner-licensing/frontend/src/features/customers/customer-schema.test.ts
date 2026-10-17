@@ -25,7 +25,7 @@ describe('Owner customer form contract', () => {
       );
   });
   // PDR-18 §1: contract dates are commercial and independent of the technical
-  // activation-validity window, so they may precede issuance and may be absent.
+  // technical validity value, so they may precede the recording and may be absent.
   it('accepts contract dates that precede issuance and rejects an inverted pair', () => {
     expect(
       customerSchema.safeParse({
