@@ -18,6 +18,7 @@ export const auditTargetTypes: readonly AuditTargetType[] = [
   'Customer',
   'OperationalRecord',
   'User',
+  'AuditArchiveBatch',
 ];
 export const auditOutcomes: readonly AuditOutcome[] = ['SUCCESS', 'DENIED'];
 
@@ -30,6 +31,7 @@ export const knownAuditEventTypes = [
   'PASSWORD_RESET',
   'USER_CREATED',
   'USER_ACCESS_CHANGED',
+  'USER_LEGACY_ROLE_REMEDIATED',
   'CUSTOMER_CREATED',
   'CUSTOMER_UPDATED',
   'OPERATION_MUTATION_DENIED',
@@ -38,6 +40,9 @@ export const knownAuditEventTypes = [
   'SERVER_REPLACEMENT_AUTHORIZED',
   'SERVER_REPLACEMENT_OLD_STATE_RECORDED',
   'SERVER_REPLACEMENT_RECORDED',
+  'AUDIT_ARCHIVE_BATCH_CREATED',
+  'AUDIT_ARCHIVE_VERIFIED',
+  'AUDIT_ARCHIVE_ACCESS_DENIED',
 ] as const;
 
 /** Events that record an operator observation (never cryptographic confirmation). */

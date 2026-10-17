@@ -117,7 +117,7 @@ CI job names below are the ones the workflow actually runs
 | H2 | Two-role MVP model with backend-enforced permissions on every licensing route | Implemented (PR #166) | `api/*.controller.ts` `@RequirePermission` + `AuthorizationGuard` fail-closed | `client-devices.controller.spec.ts`, `license-openapi.contract.spec.ts`, Owner API suite | `backend` |
 | H3 | No wildcard, no fallback, no privileged-service bypass | Implemented | `rbac/domain/service-authority.ts` (named authority + initiating permission re-read), `PLATFORM_MODULE_CODES` is a closed constant | `service-authority` users' specs, `authorization.service.spec.ts` | `backend` |
 | H4 | Sensitive operations are auditable | Implemented | typed `licensing.license_audit_events` (`license.import.*`, `license.device.*`, transfer/recovery/resolution) | live suite audit assertions | `backend` |
-| H5 | Audit retention/archive and read API | **Open — decision** (OQ-77) | — | — | — |
+| H5 | Audit retention/archive and read API | **Partial** (Owner-side implemented; customer-side `licensing.license_audit_events` archive and incident-resolution workflow remain open under OQ-77) | `owner-licensing/backend/migrations/004-audit-retention-archive.sql`, `owner-licensing/backend/src/audit.ts`, `owner-licensing/backend/src/archive.ts`, `owner-licensing/frontend/src/features/audit/audit-page.tsx` | `owner-licensing/backend/test/unit.test.ts`, `audit-query.test.ts`, `api.test.ts`, `audit-page.test.tsx` | `backend`, `frontend` |
 
 ## I. Persistence, migrations and recovery
 

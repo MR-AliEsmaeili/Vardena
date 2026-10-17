@@ -19,7 +19,7 @@ supplied". `page` is strict: when present it must match the table, so `page=` is
 | `page` | `1`–`999999` | page number, 50 rows per page |
 | `eventType` | `^[A-Z][A-Z0-9_]{0,119}$` | exact |
 | `actorId` | ULID | exact |
-| `targetType` | `Customer`, `OperationalRecord`, `User` | exact |
+| `targetType` | `Customer`, `OperationalRecord`, `User`, `AuditArchiveBatch` | exact |
 | `targetId` | ULID | exact |
 | `outcome` | `SUCCESS`, `DENIED` | exact |
 | `occurredFrom` | `YYYY-MM-DDTHH:MM:SS` + optional 1–3 digit fraction + `Z` | inclusive lower bound |
@@ -43,13 +43,29 @@ offset are also rejected.
 - The response is `{ items, page, pageSize: 50, hasNext }`. `hasNext` comes from
   fetching 51 rows. There is no total count.
 - Each item is `{ id, actorId, eventType, targetType, targetId, occurredAt,
-  outcome, reason, beforeState, afterState }`. The two state objects pass through
-  a 22-key allowlist, keeping scalars and string arrays only. Hashes, tokens and
-  unknown keys are never returned.
-- Indexes: no new index. The existing `audit_target(target_type, target_id,
-  sequence DESC)` serves exact target trails. Any future index needs a new
-  additive migration; `001` and `002` are not edited.
+  minimumRetainedUntil, securityIncident, incidentStatus, archived,
+  archiveBatchId, outcome, reason, beforeState, afterState }`. The two state
+  objects pass through an explicit allowlist, keeping scalars and string arrays
+  only. Hashes, tokens and unknown keys are never returned.
+- Indexes: `audit_target(target_type, target_id, sequence DESC)` serves exact
+  target trails, and `004-audit-retention-archive.sql` adds
+  `audit_events_retention_floor_idx(minimum_retained_until, sequence DESC)` and
+  the separate `owner_audit_archive` schema (`archive_batches` and
+  `archived_audit_events`). `001`, `002`, and `003` are not edited.
+- Archive and retention management (`audit.archive`, `OWNER_ADMIN` only):
+  `GET /api/v1/audit-archive/status` (optional `asOf` UTC instant),
+  `GET /api/v1/audit-archive/batches`, `GET /api/v1/audit-archive/batches/:id`
+  (returns a SHA-256 verified portable archive bundle),
+  `POST /api/v1/audit-archive/batches` (idempotent batch creation with mandatory
+  `reason`, optional `maxEvents` 1..500 and `upToOccurredAt`), and
+  `POST /api/v1/audit-archive/verify` (verifies SHA-256 record/batch digests and
+  source consistency and records `AUDIT_ARCHIVE_VERIFIED`). Unauthorized attempts
+  by `LICENSE_OPERATOR` record `AUDIT_ARCHIVE_ACCESS_DENIED` (`security_incident =
+  true`, `incident_status = 'UNRESOLVED'`) and return 403 `PermissionDenied`.
 
-Implementation: `src/audit.ts` (parsing, projection, parameterized list) and the
-route in `src/app.ts`. Tests: `test/audit-query.test.ts` (pure, in `npm test`)
-and the explorer cases in `test/api.test.ts` (PostgreSQL, `test:integration`).
+Implementation: `src/audit.ts` (parsing, projection, parameterized list),
+`src/archive.ts` (OQ-77 3-year retention evaluator, incident hold validation,
+separate archive batching, and SHA-256 verification), and the routes in
+`src/app.ts`. Tests: `test/unit.test.ts` and `test/audit-query.test.ts` (pure,
+in `npm test`) and the explorer/archive cases in `test/api.test.ts` (PostgreSQL,
+`test:integration`).

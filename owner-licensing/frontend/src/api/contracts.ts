@@ -82,8 +82,10 @@ export interface OperationalRecord {
   updatedBy: string;
   transitions?: OperationTransition[];
 }
-export type AuditTargetType = 'Customer' | 'OperationalRecord' | 'User';
+export type AuditTargetType =
+  'Customer' | 'OperationalRecord' | 'User' | 'AuditArchiveBatch';
 export type AuditOutcome = 'SUCCESS' | 'DENIED';
+export type AuditIncidentStatus = 'NONE' | 'UNRESOLVED';
 export interface AuditEvent {
   id: string;
   actorId: string | null;
@@ -91,6 +93,11 @@ export interface AuditEvent {
   targetType: string;
   targetId: string | null;
   occurredAt: string;
+  minimumRetainedUntil?: string;
+  securityIncident?: boolean;
+  incidentStatus?: AuditIncidentStatus;
+  archived?: boolean;
+  archiveBatchId?: string | null;
   outcome: AuditOutcome;
   reason: string | null;
   beforeState: Record<string, unknown> | null;
@@ -115,4 +122,66 @@ export interface AuditPage {
   page: number;
   pageSize: number;
   hasNext: boolean;
+}
+export interface ArchiveBatchSummary {
+  id: string;
+  batchNumber: number;
+  createdBy: string;
+  createdAt: string;
+  reason: string;
+  firstSequence: number;
+  lastSequence: number;
+  eventCount: number;
+  retentionCutoffAt: string;
+  previousBatchDigest: string | null;
+  batchDigestSha256: string;
+}
+export interface AuditArchiveBatchPage {
+  items: ArchiveBatchSummary[];
+  page: number;
+  pageSize: number;
+  hasNext: boolean;
+}
+export interface AuditArchiveStatusReport {
+  asOf: string;
+  policy: {
+    appendOnly: true;
+    minimumRetentionYears: 3;
+    threeYearMinimumIsPurgeDate: false;
+    unresolvedSecurityIncidentsExcludedFromCleanup: true;
+    permanentSeparateArchiveInForce: true;
+    automaticDestructivePurgeEnabled: false;
+    archiveStorageBoundary: 'SEPARATE_POSTGRES_SCHEMA_AND_EXPORTABLE_BUNDLE';
+    cryptographicHardwareWormImplemented: false;
+  };
+  counts: {
+    totalSourceEvents: number;
+    withinMinimumRetentionWindowCount: number;
+    pastMinimumRetentionFloorCount: number;
+    unresolvedSecurityIncidentCount: number;
+    pastFloorUnresolvedIncidentHoldCount: number;
+    archivedEventCount: number;
+    unarchivedEligibleEventCount: number;
+    archiveBatchCount: number;
+    cleanupEligibleEventCount: 0;
+  };
+  integrity: {
+    verified: boolean;
+    latestBatchId: string | null;
+    latestBatchDigestSha256: string | null;
+    lastArchivedSequence: number | null;
+  };
+}
+export interface CreateAuditArchiveBatchResult {
+  status: 'ARCHIVED' | 'NO_ELIGIBLE_EVENTS';
+  archivedCount: number;
+  batch: ArchiveBatchSummary | null;
+}
+export interface VerifyAuditArchiveResult {
+  verified: true;
+  batchCount: number;
+  verifiedEventCount: number;
+  latestBatchId: string | null;
+  latestBatchDigestSha256: string | null;
+  lastArchivedSequence: number | null;
 }

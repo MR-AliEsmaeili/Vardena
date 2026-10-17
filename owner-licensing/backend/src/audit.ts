@@ -15,10 +15,68 @@ export const auditTargetTypes = [
   "Customer",
   "OperationalRecord",
   "User",
+  "AuditArchiveBatch",
 ] as const;
 export const auditOutcomes = ["SUCCESS", "DENIED"] as const;
 export type AuditTargetType = (typeof auditTargetTypes)[number];
 export type AuditOutcome = (typeof auditOutcomes)[number];
+export type AuditIncidentStatus = "NONE" | "UNRESOLVED";
+
+export const MINIMUM_AUDIT_RETENTION_YEARS = 3;
+
+export const securityIncidentEventTypes = [
+  "AUTH_LOGIN_FAILED",
+  "OPERATION_MUTATION_DENIED",
+  "AUDIT_ARCHIVE_ACCESS_DENIED",
+  "AUDIT_RETENTION_VIOLATION_BLOCKED",
+] as const;
+
+function isUtcLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
+/**
+ * Computes the exact 3-year minimum retention timestamp in UTC, matching
+ * PostgreSQL `(((occurred_at AT TIME ZONE 'UTC') + INTERVAL '3 years') AT TIME ZONE 'UTC')`.
+ * Feb 29 in a leap year clamps to Feb 28 in a non-leap target year (+3 years).
+ */
+export function computeMinimumRetainedUntil(occurredAt: Date | string): Date {
+  const d =
+    typeof occurredAt === "string"
+      ? new Date(utcInstant(occurredAt, "occurredAt"))
+      : new Date(occurredAt.getTime());
+  if (Number.isNaN(d.getTime()) || d.getUTCFullYear() < 1000) {
+    invalid("occurredAt must be a valid UTC instant in year 1000 or later.");
+  }
+  const targetYear = d.getUTCFullYear() + MINIMUM_AUDIT_RETENTION_YEARS;
+  const month = d.getUTCMonth();
+  let day = d.getUTCDate();
+  if (month === 1 && day === 29 && !isUtcLeapYear(targetYear)) {
+    day = 28;
+  }
+  return new Date(
+    Date.UTC(
+      targetYear,
+      month,
+      day,
+      d.getUTCHours(),
+      d.getUTCMinutes(),
+      d.getUTCSeconds(),
+      d.getUTCMilliseconds(),
+    ),
+  );
+}
+
+export function isInherentSecurityIncident(
+  eventType: string,
+  outcome: string,
+): boolean {
+  return (
+    outcome === "DENIED" ||
+    outcome === "FAILED" ||
+    (securityIncidentEventTypes as readonly string[]).includes(eventType)
+  );
+}
 
 const filterNames = [
   "page",
@@ -79,6 +137,12 @@ const auditStateKeys = new Set([
   "evidenceReference",
   "evidenceBasis",
   "milestones",
+  "archiveBatchId",
+  "archivedCount",
+  "firstSequence",
+  "lastSequence",
+  "batchDigestSha256",
+  "archiveVerified",
 ]);
 
 function singleValue(
@@ -238,30 +302,67 @@ export async function listAuditEvents(
     target_type: string;
     target_id: string | null;
     occurred_at: Date;
+    minimum_retained_until?: Date;
+    security_incident?: boolean;
+    incident_status?: string;
+    archive_batch_id?: string | null;
     outcome: string;
     reason: string | null;
     before_state: unknown;
     after_state: unknown;
   }>(
     `SELECT id, actor_id, event_type, target_type, target_id, occurred_at,
+      minimum_retained_until,
+      COALESCE(security_incident, owner.is_security_incident_event(event_type, outcome)) AS security_incident,
+      COALESCE(
+        incident_status,
+        CASE
+          WHEN COALESCE(security_incident, owner.is_security_incident_event(event_type, outcome))
+          THEN 'UNRESOLVED'
+          ELSE 'NONE'
+        END
+      ) AS incident_status,
+      (SELECT a.batch_id FROM owner_audit_archive.archived_audit_events a WHERE a.id = owner.audit_events.id) AS archive_batch_id,
       outcome, reason, before_state, after_state
     FROM owner.audit_events ${clause}
     ORDER BY sequence DESC LIMIT ${limit} OFFSET ${offset}`,
     values,
   );
   return {
-    items: rows.rows.slice(0, auditPageSize).map((row) => ({
-      id: row.id,
-      actorId: row.actor_id,
-      eventType: row.event_type,
-      targetType: row.target_type,
-      targetId: row.target_id,
-      occurredAt: row.occurred_at.toISOString(),
-      outcome: row.outcome,
-      reason: row.reason,
-      beforeState: auditState(row.before_state),
-      afterState: auditState(row.after_state),
-    })),
+    items: rows.rows.slice(0, auditPageSize).map((row) => {
+      const minimumRetainedUntil = (
+        row.minimum_retained_until ??
+        computeMinimumRetainedUntil(row.occurred_at)
+      ).toISOString();
+      const securityIncident =
+        typeof row.security_incident === "boolean"
+          ? row.security_incident
+          : isInherentSecurityIncident(row.event_type, row.outcome);
+      const incidentStatus: AuditIncidentStatus =
+        row.incident_status === "UNRESOLVED" || row.incident_status === "NONE"
+          ? row.incident_status
+          : securityIncident
+            ? "UNRESOLVED"
+            : "NONE";
+      const archiveBatchId = row.archive_batch_id ?? null;
+      return {
+        id: row.id,
+        actorId: row.actor_id,
+        eventType: row.event_type,
+        targetType: row.target_type,
+        targetId: row.target_id,
+        occurredAt: row.occurred_at.toISOString(),
+        minimumRetainedUntil,
+        securityIncident,
+        incidentStatus,
+        archived: archiveBatchId !== null,
+        archiveBatchId,
+        outcome: row.outcome,
+        reason: row.reason,
+        beforeState: auditState(row.before_state),
+        afterState: auditState(row.after_state),
+      };
+    }),
     page: filters.page,
     pageSize: auditPageSize,
     hasNext: rows.rows.length > auditPageSize,

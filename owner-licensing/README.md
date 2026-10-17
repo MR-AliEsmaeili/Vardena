@@ -106,14 +106,16 @@ Terminate HTTPS at the Owner ingress. Set `NODE_ENV=production`,
 `OWNER_PUBLIC_ORIGIN=https://<owner-host>`, `OWNER_DATABASE_URL` from a secret store.
 Never place these credentials in the UI's `VITE_*` variables or customer `.env`.
 
-Use separate migration and application credentials. The migration role owns schema
-`owner` and `public.owner_migrations`. Grant runtime only schema USAGE, SELECT /
-INSERT / UPDATE on `owner.users`, `owner.sessions`, `owner.login_limits`,
-`owner.customers` and `owner.operational_records`; SELECT / INSERT on
-`owner.audit_events` and `owner.operational_transitions`; USAGE / SELECT on
-their identity sequences. Do **not** grant runtime DDL, audit or transition
-UPDATE / DELETE / TRUNCATE, operational-record DELETE, or writes to the
-migration ledger. No SQL role name is invented here.
+Use separate migration and application credentials. The migration role owns schemas
+`owner` and `owner_audit_archive` plus `public.owner_migrations`. Grant runtime only
+schema USAGE on `owner` and `owner_audit_archive`, SELECT / INSERT / UPDATE on
+`owner.users`, `owner.sessions`, `owner.login_limits`, `owner.customers` and
+`owner.operational_records`; SELECT / INSERT on `owner.audit_events`,
+`owner.operational_transitions`, `owner_audit_archive.archive_batches`, and
+`owner_audit_archive.archived_audit_events`; USAGE / SELECT on their identity
+sequences. Do **not** grant runtime DDL, audit or archive or transition UPDATE /
+DELETE / TRUNCATE, operational-record DELETE, or writes to the migration ledger.
+No SQL role name is invented here.
 Verify role grants, ingress policy, backups, restore drills and capacity in your
 Owner deployment before production use. `/api/v1/health` probes database access.
 No key custody or U-1 compromise response is implemented. No production signer is
@@ -153,6 +155,10 @@ row, or extra transition is rejected. No cancellation state exists.
 `owner.users.role` (`CHECK (role IN ('OWNER_ADMIN', 'LICENSE_OPERATOR'))`) after
 refusing to run (`ERRCODE = '23514'`, listing the distinct legacy roles found)
 if any superseded four-role user row exists.
+`004-audit-retention-archive.sql` implements OQ-77 audit retention and separate
+archive controls:
+- Adds `minimum_retained_until` (`GENERATED ALWAYS AS (((occurred_at AT TIME ZONE 'UTC') + INTERVAL '3 years') AT TIME ZONE 'UTC') STORED NOT NULL`), `security_incident`, and `incident_status` (`'NONE'` or `'UNRESOLVED'`) on `owner.audit_events`, enforced by `BEFORE INSERT` trigger `enforce_audit_retention_metadata` and `audit_events_incident_metadata_check`.
+- Creates the separate archive schema `owner_audit_archive` (`owner_audit_archive.archive_batches` and `owner_audit_archive.archived_audit_events`) with `BEFORE UPDATE OR DELETE` append-only triggers (`retain_archive_batches`, `retain_archived_events`), batch hash-chain validation (`validate_archive_batch_insert`), and source-matching verification (`verify_archived_event_matches_source`).
 
 ### Legacy-role compatibility matrix and upgrade runbook (`002` → `003`)
 
@@ -164,7 +170,7 @@ if any superseded four-role user row exists.
 | `SUPPORT_SPECIALIST` | `customers.view` (with `customerResponse()` in `1a982323db7f:src/domain.ts` lines 86–97 omitting `contractReference`, `createdBy`, `updatedBy`; no `audit.view`, `operations.view`, or writes) | Denied (`403 PermissionDenied`) on all operational and mutation endpoints. | `DEACTIVATE` → `isActive: false`, `LICENSE_OPERATOR`; `ELEVATE_PRIVILEGE` → active `LICENSE_OPERATOR` or `OWNER_ADMIN` (`allowPrivilegeElevation: true`) | `DEACTIVATE`: **Reduces** (zero active permissions; preserves user ID and audit history) · `ELEVATE_PRIVILEGE`: **Increases** (`+customers.view` full projection, `+audit.view`, `+operations.view`, `+operations.record`) | No | Deactivate (`DEACTIVATE`, `isActive: false`) to preserve least privilege, or explicitly authorize elevation (`ELEVATE_PRIVILEGE`, `allowPrivilegeElevation: true`). |
 
 - **Fresh installation (automatic schema migration + bootstrap):**
-  1. Run `npm --prefix owner-licensing/backend run migrate` (or `node dist/migrate.js` in the production container). On an empty database, `001-foundation.sql`, `002-manual-operations.sql`, and `003-two-role-authorization.sql` apply in one transaction.
+  1. Run `npm --prefix owner-licensing/backend run migrate` (or `node dist/migrate.js` in the production container). On an empty database, `001-foundation.sql`, `002-manual-operations.sql`, `003-two-role-authorization.sql`, and `004-audit-retention-archive.sql` apply in one transaction.
   2. Run `OWNER_BOOTSTRAP_USERNAME=<admin> OWNER_BOOTSTRAP_PASSWORD=<initial-secret> npm --prefix owner-licensing/backend run bootstrap` (or `node dist/bootstrap.js`) to create the initial `OWNER_ADMIN` account with `must_change_password = true`.
 - **Upgrading an existing populated database (`001`–`002` → `003`):**
   1. **Backup (required before production upgrade):** create a logical backup of the dedicated Owner PostgreSQL database before running remediation or migration:
@@ -215,18 +221,34 @@ if any superseded four-role user row exists.
 - Role policy: PDR-17 / OQ-75 two-role MVP model (`Owner Admin` and `License
   Operator`, superseding the historical four-role model). `Owner Admin` holds
   `customers.view`, `customers.write`, `users.manage`, `audit.view`,
-  `operations.view`, `operations.record`, and `replacements.authorize`. `License
-  Operator` holds `customers.view`, `audit.view`, `operations.view`, and
-  `operations.record`. Server-replacement authorization and emergency
-  old-server-lost handling require `replacements.authorize` (`Owner Admin` only).
-  Unknown operations and superseded four-role identifiers deny; no wildcard
-  expansion and no dual control. Audit is durable and append-only to application
-  operations, **not tamper-proof against database owners**. No general audit
-  deletion API.
-- OQ-77 retention policy (decided 2026-10-16): append-only retention for at least
-  three years from each event's occurrence, unresolved security incidents
-  excluded from automatic deletion, and permanent retention in a separate archive.
-  No automatic purge or archival job is executed in Phase 1 runtime.
+  `audit.archive`, `operations.view`, `operations.record`, and
+  `replacements.authorize`. `License Operator` holds `customers.view`,
+  `audit.view`, `operations.view`, and `operations.record`. Server-replacement
+  authorization (`replacements.authorize`) and audit-archive management
+  (`audit.archive`) are restricted to `Owner Admin`. Unknown operations and
+  superseded four-role identifiers deny; no wildcard expansion and no dual
+  control. Audit and `owner_audit_archive` are durable, append-only to
+  application operations, and SHA-256 digest-verified on archive read/verify,
+  **not hardware WORM or cryptographically tamper-proof against a compromised
+  database superuser** unless exported bundles are stored on external immutable
+  media per the backup runbook. No audit or archive deletion API exists.
+- OQ-77 retention and archive controls (policy decided 2026-10-16; implemented
+  in `004-audit-retention-archive.sql` and `src/archive.ts`):
+  - Append-only retention with a deterministic three-year minimum active floor
+    from each event's occurrence (`minimum_retained_until = occurred_at + 3 years`
+    in UTC).
+  - Unresolved security incidents (`outcome IN ('DENIED', 'FAILED')` or security
+    denial event types) are classified with `security_incident = true` and
+    `incident_status = 'UNRESOLVED'` and protected from automatic retention
+    cleanup (`UNRESOLVED_SECURITY_INCIDENT_HOLD`).
+  - Permanent separate archive in `owner_audit_archive` (`archive_batches` and
+    `archived_audit_events`) with allowlist state minimization, per-record
+    SHA-256 digests (`record_sha256`), chained batch digests
+    (`previous_batch_digest` → `batch_digest_sha256`), and portable bundle
+    verification (`GET /api/v1/audit-archive/batches/:id`,
+    `POST /api/v1/audit-archive/verify`). Three years is a minimum active window,
+    not an automatic purge date; `cleanupEligibleEventCount` is always `0` and
+    no destructive purge job is enabled.
 
 ## API summary
 
@@ -241,9 +263,17 @@ unknown fields reject. Lists: page size 50, `page`, literal `search` up to 100 c
 `users/:id/reset-password` POST password/reason. New/reset accounts must change
 password. `audit-events` GET (`audit.view`; granted to `Owner Admin` and
 `License Operator`): exact-match
-`eventType`, `actorId`, `targetType`, `targetId`, `outcome`, and UTC
+`eventType`, `actorId`, `targetType` (`Customer`, `OperationalRecord`, `User`,
+`AuditArchiveBatch`), `targetId`, `outcome`, and UTC
 `occurredFrom`/`occurredBefore` (half-open); AND semantics; 50-row pages with
-`hasNext`; unknown, repeated, malformed or wildcard input is 400. Full contract:
+`hasNext`; unknown, repeated, malformed or wildcard input is 400. Each item
+includes `minimumRetainedUntil`, `securityIncident`, `incidentStatus`,
+`archived`, and `archiveBatchId`.
+`audit-archive/status` GET, `audit-archive/batches` GET/POST,
+`audit-archive/batches/:id` GET, and `audit-archive/verify` POST require
+`audit.archive` (`Owner Admin` only; denied attempts by `License Operator` write
+`AUDIT_ARCHIVE_ACCESS_DENIED` with `security_incident = true` and return 403).
+Full contract:
 [backend README](backend/README.md#audit-explorer-contract). Calendar and
 instant rules: [task record](../docs/tasks/licensing-owner-side-phase-1-1-audit-explorer.md).
 `operational-records` GET with `page`, literal `search`, optional `kind`,
@@ -271,11 +301,11 @@ checks run in GitHub Actions. No heavy E2E/live-DB test was executed locally
 unless explicitly authorized (none was authorized for this task).
 
 CI backend steps: Owner lint/format/typecheck/unit/build; fresh dedicated
-`owner_test` PostgreSQL database; migration idempotence (`001`–`003`), HTTP
+`owner_test` PostgreSQL database; migration idempotence (`001`–`004`), HTTP
 authentication, password-change concurrency/rollback, disabled users, both MVP
 roles (`OWNER_ADMIN` and `LICENSE_OPERATOR`) plus rejection of superseded
 four-role values, direct API forbidden access, customer uniqueness/identity,
-audit rollback/retention/secrecy, logout and login throttle. Frontend steps:
+audit rollback/retention/archive/secrecy, logout and login throttle. Frontend steps:
 Owner lint/format/typecheck, schema and observable React flow tests, production
 build. Existing customer checks and published protocol vectors remain untouched.
 See the [Phase 1 task record](../docs/tasks/licensing-owner-side-phase-1.md).

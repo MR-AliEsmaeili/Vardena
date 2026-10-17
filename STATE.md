@@ -2519,3 +2519,57 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   revocation artifact flow (OQ-78); no changes to customer `backend/` or
   `frontend/` packages or migrations. No OQ is closed by this implementation
   increment.
+
+## 47. Owner Phase 1.4 — Audit Retention and Separate Archive Controls (OQ-77 / PDR-17, 2026-10-17)
+
+- **Scope:** Implements the approved Owner-side audit retention and separate
+  archive controls from **PDR-11 §12.7–§12.8, §20.2 G, §20.5, §20.6, §21** and
+  **PDR-17 ("Audit and OQ-77")** across the standalone Owner Licensing
+  application (`owner-licensing/backend`, `owner-licensing/frontend`), additive
+  forward-only SQL migration `004-audit-retention-archive.sql`, and operational
+  documentation.
+- **Delivered changes:**
+  - **Forward-only SQL migration (`owner-licensing/backend/migrations/004-audit-retention-archive.sql`)**:
+    preserves the immutable SHA-256 checksums of `001-foundation.sql`,
+    `002-manual-operations.sql`, and `003-two-role-authorization.sql`. Adds
+    `minimum_retained_until` (`GENERATED ALWAYS AS (((occurred_at AT TIME ZONE 'UTC') + INTERVAL '3 years') AT TIME ZONE 'UTC') STORED NOT NULL`),
+    `security_incident`, and `incident_status` (`'NONE'` or `'UNRESOLVED'`) on
+    `owner.audit_events` with `BEFORE INSERT` trigger
+    `enforce_audit_retention_metadata` and constraint
+    `audit_events_incident_metadata_check`. Creates the separate archive schema
+    `owner_audit_archive` (`owner_audit_archive.archive_batches` and
+    `owner_audit_archive.archived_audit_events`) with `BEFORE UPDATE OR DELETE`
+    append-only triggers (`retain_archive_batches`, `retain_archived_events`),
+    batch hash-chain validation (`validate_archive_batch_insert`), and
+    source-matching verification (`verify_archived_event_matches_source`).
+  - **Domain retention evaluator & archive service (`owner-licensing/backend/src/archive.ts`, `src/audit.ts`, `src/domain.ts`, `src/app.ts`)**:
+    - Enforces the 3-year minimum active retention window in UTC
+      (`computeMinimumRetainedUntil`, `evaluateAuditEventRetention`), unresolved
+      security-incident protection hold (`UNRESOLVED_SECURITY_INCIDENT_HOLD`),
+      and permanent retention (`PERMANENT_RETENTION_POLICY_NO_PURGE`,
+      `cleanupEligible: false`).
+    - Grants `audit.archive` exclusively to `OWNER_ADMIN`; `LICENSE_OPERATOR`
+      retains `audit.view` for read-only audit explorer viewing and is denied
+      privileged archive operations (`GET /api/v1/audit-archive/status`,
+      `GET /api/v1/audit-archive/batches`, `GET /api/v1/audit-archive/batches/:id`,
+      `POST /api/v1/audit-archive/batches`, `POST /api/v1/audit-archive/verify`)
+      at both route and service boundaries (`403 PermissionDenied`), recording
+      an attributable `AUDIT_ARCHIVE_ACCESS_DENIED` security-incident audit row.
+    - Enforces idempotent batch archiving with allowlist state minimization,
+      per-record SHA-256 digests (`record_sha256`), chained batch digests
+      (`previous_batch_digest` → `batch_digest_sha256`), portable bundle
+      verification (`verifyExportedArchiveBundle`), and protection against
+      recursive self-archiving on repeated runs.
+  - **Owner Frontend (`owner-licensing/frontend/src/features/audit/audit-page.tsx`, `audit-filters.ts`, `api/contracts.ts`, `api/owner.api.ts`, `lib/owner-i18n.ts`)**:
+    displays per-event 3-year retention floor timestamps in Persian/Jalali
+    Tehran format (`formatOwnerInstant`), unresolved security-incident hold
+    badges, and separate-archive badges for `audit.view` holders, and renders
+    the `OWNER_ADMIN`-only (`audit.archive`) archive management and integrity
+    verification panel on `/app/audit`.
+- **Explicit non-goals and open boundaries:**
+  no destructive purge or automatic deletion job (`cleanupEligibleEventCount = 0`);
+  no invented incident-resolution workflow to clear security-incident holds;
+  database triggers and SHA-256 digests provide application-role append-only
+  enforcement and tamper-evidence on verification, not hardware WORM against a
+  compromised PostgreSQL superuser; customer-side `licensing.license_audit_events`
+  archiving and Product Owner acceptance remain open under `OQ-77`.

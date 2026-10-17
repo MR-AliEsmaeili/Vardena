@@ -121,3 +121,26 @@ Business Export (Excel) and Technical Backup (full backup) must remain
 distinct concepts in product, documentation, contracts and tests; no test or
 feature may treat the Excel export as a recovery mechanism or the technical
 backup as the data-portability answer.
+
+## 8. Standalone Owner Licensing audit archive continuity (`OQ-77`)
+
+The standalone Owner Licensing application (`owner-licensing/`) maintains its
+own isolated PostgreSQL database (`owner`, `owner_audit_archive`, and
+`public.owner_migrations`), separate from customer Vardena installations:
+- Active audit events in `owner.audit_events` are append-only with a mandatory
+  three-year minimum retention window (`minimum_retained_until = occurred_at +
+  3 years` in UTC) and an unresolved security-incident hold
+  (`security_incident = true`, `incident_status = 'UNRESOLVED'`).
+- Permanent separate archive batches in `owner_audit_archive.archive_batches`
+  and `owner_audit_archive.archived_audit_events` are append-only, minimized
+  via the 28-key state allowlist, and protected by per-record SHA-256 digests
+  (`record_sha256`) and chained batch digests (`previous_batch_digest` →
+  `batch_digest_sha256`).
+- Operators holding `OWNER_ADMIN` (`audit.archive`) create archive batches via
+  `POST /api/v1/audit-archive/batches`, export portable verified batch bundles
+  via `GET /api/v1/audit-archive/batches/:id`, and verify ledger/source
+  consistency via `POST /api/v1/audit-archive/verify` (including after a logical
+  database restore). Database triggers and SHA-256 digests enforce application-role
+  append-only invariants and tamper-evidence on verification; storing exported
+  bundles on external immutable media remains an infrastructure deployment
+  procedure.

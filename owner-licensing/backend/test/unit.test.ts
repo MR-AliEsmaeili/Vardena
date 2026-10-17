@@ -21,6 +21,21 @@ import {
   validateRoleUpgradePlan,
   type SafeUserUpgradeRow,
 } from "../src/migrate.js";
+import {
+  canonicalAuditRetentionPolicy,
+  computeArchiveBatchDigest,
+  computeArchivedEventDigest,
+  computeMinimumRetainedUntil,
+  createAuditArchiveBatch,
+  evaluateAuditEventRetention,
+  getAuditArchiveBatch,
+  getAuditArchiveStatus,
+  isInherentSecurityIncident,
+  listAuditArchiveBatches,
+  validateAndNormalizeIncidentMetadata,
+  verifyAuditArchiveIntegrity,
+  verifyExportedArchiveBundle,
+} from "../src/archive.js";
 import { config } from "../src/config.js";
 
 describe("Owner deny-by-default policy and input boundary", () => {
@@ -31,6 +46,7 @@ describe("Owner deny-by-default policy and input boundary", () => {
       "customers.write",
       "users.manage",
       "audit.view",
+      "audit.archive",
       "operations.view",
       "operations.record",
       "replacements.authorize",
@@ -465,9 +481,15 @@ describe("Customer field allowlist for the two-role model", () => {
     expect(assertPermission("OWNER_ADMIN", "replacements.authorize")).toBe(
       "OWNER_ADMIN",
     );
+    expect(assertPermission("OWNER_ADMIN", "audit.archive")).toBe(
+      "OWNER_ADMIN",
+    );
     expect(() =>
       assertPermission("LICENSE_OPERATOR", "replacements.authorize"),
     ).toThrow("You do not have permission.");
+    expect(() => assertPermission("LICENSE_OPERATOR", "audit.archive")).toThrow(
+      "You do not have permission.",
+    );
     expect(() =>
       assertActiveAuthorizedActor(
         {
@@ -490,5 +512,317 @@ describe("Customer field allowlist for the two-role model", () => {
         "users.manage",
       ),
     ).toThrow("Initial password must be changed first.");
+  });
+
+  it("enforces OQ-77 3-year retention boundary, unresolved incident hold, archive integrity digests, and safe failure on invalid metadata", async () => {
+    const eventId = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+    const batchId = "01BX5ZZKBKACTAV9WEVGEMMVRZ";
+    const actorId = "01ARZ3NDEKTSV4RRFFQ69G5FA1";
+
+    expect(canonicalAuditRetentionPolicy).toEqual({
+      appendOnly: true,
+      minimumRetentionYears: 3,
+      threeYearMinimumIsPurgeDate: false,
+      unresolvedSecurityIncidentsExcludedFromCleanup: true,
+      permanentSeparateArchiveInForce: true,
+      automaticDestructivePurgeEnabled: false,
+      archiveStorageBoundary: "SEPARATE_POSTGRES_SCHEMA_AND_EXPORTABLE_BUNDLE",
+      cryptographicHardwareWormImplemented: false,
+    });
+
+    // Exact 3-year calendar calculation in UTC including leap-day clamping (2024-02-29 -> 2027-02-28)
+    expect(
+      computeMinimumRetainedUntil("2023-10-17T12:34:56.789Z").toISOString(),
+    ).toBe("2026-10-17T12:34:56.789Z");
+    expect(
+      computeMinimumRetainedUntil("2024-02-29T23:59:59.500Z").toISOString(),
+    ).toBe("2027-02-28T23:59:59.500Z");
+
+    const baseEvent = {
+      sequence: 1,
+      id: eventId,
+      actorId,
+      eventType: "CUSTOMER_CREATED",
+      targetType: "Customer",
+      targetId: eventId,
+      occurredAt: "2023-10-17T12:00:00.000Z",
+      minimumRetainedUntil: "2026-10-17T12:00:00.000Z",
+      outcome: "SUCCESS" as const,
+      securityIncident: false,
+      incidentStatus: "NONE" as const,
+      reason: "Created customer",
+      beforeState: null,
+      afterState: { customerCode: "ACME-1", displayName: "Acme" },
+    };
+    const recordDigest = computeArchivedEventDigest(baseEvent);
+
+    // 1ms before 3-year boundary: within minimum retention window
+    const beforeBoundary = evaluateAuditEventRetention(
+      baseEvent,
+      "2026-10-17T11:59:59.999Z",
+    );
+    expect(beforeBoundary.withinMinimumRetentionWindow).toBe(true);
+    expect(beforeBoundary.pastMinimumRetentionFloor).toBe(false);
+    expect(beforeBoundary.cleanupEligible).toBe(false);
+    expect(beforeBoundary.retentionDisposition).toBe(
+      "RETAIN_ACTIVE_WITHIN_MINIMUM_WINDOW",
+    );
+    expect(beforeBoundary.cleanupProtectionReasons).toEqual([
+      "WITHIN_THREE_YEAR_MINIMUM_RETENTION",
+      "UNARCHIVED_SOURCE_EVIDENCE",
+      "PERMANENT_RETENTION_POLICY_NO_PURGE",
+    ]);
+
+    // Exact 3-year boundary (+0ms) unarchived: past floor, awaiting archive
+    const atBoundaryUnarchived = evaluateAuditEventRetention(
+      baseEvent,
+      "2026-10-17T12:00:00.000Z",
+    );
+    expect(atBoundaryUnarchived.withinMinimumRetentionWindow).toBe(false);
+    expect(atBoundaryUnarchived.pastMinimumRetentionFloor).toBe(true);
+    expect(atBoundaryUnarchived.archiveVerified).toBe(false);
+    expect(atBoundaryUnarchived.cleanupEligible).toBe(false);
+    expect(atBoundaryUnarchived.retentionDisposition).toBe(
+      "RETAIN_PAST_FLOOR_AWAITING_ARCHIVE",
+    );
+    expect(atBoundaryUnarchived.cleanupProtectionReasons).toEqual([
+      "UNARCHIVED_SOURCE_EVIDENCE",
+      "PERMANENT_RETENTION_POLICY_NO_PURGE",
+    ]);
+
+    // Beyond 3-year boundary (+1ms) and verified in separate archive: permanently retained
+    const pastBoundaryArchived = evaluateAuditEventRetention(
+      {
+        ...baseEvent,
+        archived: true,
+        archiveBatchId: batchId,
+        recordSha256: recordDigest,
+      },
+      "2026-10-17T12:00:00.001Z",
+    );
+    expect(pastBoundaryArchived.withinMinimumRetentionWindow).toBe(false);
+    expect(pastBoundaryArchived.pastMinimumRetentionFloor).toBe(true);
+    expect(pastBoundaryArchived.archiveVerified).toBe(true);
+    expect(pastBoundaryArchived.cleanupEligible).toBe(false);
+    expect(pastBoundaryArchived.retentionDisposition).toBe(
+      "RETAIN_PAST_FLOOR_ARCHIVED_PERMANENTLY",
+    );
+    expect(pastBoundaryArchived.cleanupProtectionReasons).toEqual([
+      "PERMANENT_RETENTION_POLICY_NO_PURGE",
+    ]);
+
+    // Unresolved security incidents are protected both within and beyond the 3-year floor
+    const incidentPayload = {
+      ...baseEvent,
+      sequence: 2,
+      eventType: "AUTH_LOGIN_FAILED",
+      targetType: "User",
+      outcome: "DENIED" as const,
+      securityIncident: true,
+      incidentStatus: "UNRESOLVED" as const,
+      reason: "Invalid credentials",
+      afterState: null,
+    };
+    const incidentDigest = computeArchivedEventDigest(incidentPayload);
+
+    const incidentWithinWindow = evaluateAuditEventRetention(
+      incidentPayload,
+      "2026-10-17T11:59:59.999Z",
+    );
+    expect(incidentWithinWindow.securityIncident).toBe(true);
+    expect(incidentWithinWindow.incidentProtected).toBe(true);
+    expect(incidentWithinWindow.retentionDisposition).toBe(
+      "RETAIN_ACTIVE_WITHIN_WINDOW_AND_INCIDENT_HOLD",
+    );
+    expect(incidentWithinWindow.cleanupProtectionReasons).toContain(
+      "UNRESOLVED_SECURITY_INCIDENT_HOLD",
+    );
+
+    const incidentPastWindowArchived = evaluateAuditEventRetention(
+      {
+        ...incidentPayload,
+        archived: true,
+        archiveBatchId: batchId,
+        recordSha256: incidentDigest,
+      },
+      "2030-01-01T00:00:00.000Z",
+    );
+    expect(incidentPastWindowArchived.pastMinimumRetentionFloor).toBe(true);
+    expect(incidentPastWindowArchived.incidentProtected).toBe(true);
+    expect(incidentPastWindowArchived.archiveVerified).toBe(true);
+    expect(incidentPastWindowArchived.cleanupEligible).toBe(false);
+    expect(incidentPastWindowArchived.retentionDisposition).toBe(
+      "RETAIN_PAST_FLOOR_INCIDENT_HOLD",
+    );
+    expect(incidentPastWindowArchived.cleanupProtectionReasons).toEqual([
+      "UNRESOLVED_SECURITY_INCIDENT_HOLD",
+      "PERMANENT_RETENTION_POLICY_NO_PURGE",
+    ]);
+
+    // Verify exported archive bundle validation and tamper rejection
+    const batchDigest = computeArchiveBatchDigest({
+      batchId,
+      firstSequence: 1,
+      lastSequence: 2,
+      eventCount: 2,
+      retentionCutoffAt: "2023-10-17T12:00:00.000Z",
+      previousBatchDigest: null,
+      recordDigests: [recordDigest, incidentDigest],
+    });
+    const validBundle = {
+      batch: {
+        id: batchId,
+        batchNumber: 1,
+        createdBy: actorId,
+        createdAt: "2026-10-17T12:00:00.000Z",
+        reason: "Initial archive bundle",
+        firstSequence: 1,
+        lastSequence: 2,
+        eventCount: 2,
+        retentionCutoffAt: "2023-10-17T12:00:00.000Z",
+        previousBatchDigest: null,
+        batchDigestSha256: batchDigest,
+      },
+      events: [
+        {
+          ...baseEvent,
+          batchId,
+          archivedAt: "2026-10-17T12:00:00.000Z",
+          recordSha256: recordDigest,
+        },
+        {
+          ...incidentPayload,
+          batchId,
+          archivedAt: "2026-10-17T12:00:00.000Z",
+          recordSha256: incidentDigest,
+        },
+      ],
+    };
+    expect(verifyExportedArchiveBundle(validBundle)).toEqual({
+      verified: true,
+      batchId,
+      eventCount: 2,
+      firstSequence: 1,
+      lastSequence: 2,
+      batchDigestSha256: batchDigest,
+    });
+
+    // Invalid, missing, or inconsistent incident/archive metadata fails safely
+    expect(() =>
+      validateAndNormalizeIncidentMetadata({
+        eventType: "AUTH_LOGIN_FAILED",
+        outcome: "DENIED",
+        securityIncident: false,
+      }),
+    ).toThrow(/must have securityIncident = true/);
+    expect(() =>
+      validateAndNormalizeIncidentMetadata({
+        eventType: "AUTH_LOGIN_FAILED",
+        outcome: "DENIED",
+        incidentStatus: "RESOLVED",
+      }),
+    ).toThrow(/cannot be marked RESOLVED/);
+    expect(() =>
+      validateAndNormalizeIncidentMetadata({
+        eventType: "AUTH_LOGIN_FAILED",
+        outcome: "DENIED",
+        incidentStatus: "NONE",
+      }),
+    ).toThrow(/must have incidentStatus = UNRESOLVED/);
+    expect(() =>
+      validateAndNormalizeIncidentMetadata({
+        eventType: "CUSTOMER_CREATED",
+        outcome: "SUCCESS",
+        securityIncident: false,
+        incidentStatus: "UNRESOLVED",
+      }),
+    ).toThrow(/must have incidentStatus = NONE/);
+    expect(() =>
+      evaluateAuditEventRetention(
+        {
+          ...baseEvent,
+          minimumRetainedUntil: "2025-10-17T12:00:00.000Z",
+        },
+        "2026-10-17T12:00:00.000Z",
+      ),
+    ).toThrow(/contradicts occurredAt \+ 3 years/);
+    expect(() =>
+      evaluateAuditEventRetention(
+        {
+          ...baseEvent,
+          archived: true,
+          archiveBatchId: null,
+          recordSha256: recordDigest,
+        },
+        "2026-10-17T12:00:00.000Z",
+      ),
+    ).toThrow(/valid 26-character ULID archiveBatchId/);
+    expect(() =>
+      evaluateAuditEventRetention(
+        {
+          ...baseEvent,
+          archived: true,
+          archiveBatchId: batchId,
+          recordSha256: "0".repeat(64),
+        },
+        "2026-10-17T12:00:00.000Z",
+      ),
+    ).toThrow(/recordSha256 mismatch/);
+    expect(() =>
+      evaluateAuditEventRetention(
+        {
+          ...baseEvent,
+          archived: false,
+          archiveBatchId: batchId,
+        },
+        "2026-10-17T12:00:00.000Z",
+      ),
+    ).toThrow(/Unarchived audit event cannot carry archiveBatchId/);
+    expect(() =>
+      computeArchivedEventDigest({
+        ...baseEvent,
+        afterState: { password_hash: "$argon2id$secret" },
+      }),
+    ).toThrow(/forbidden secret/);
+    expect(() =>
+      verifyExportedArchiveBundle({
+        ...validBundle,
+        batch: { ...validBundle.batch, batchDigestSha256: "f".repeat(64) },
+      }),
+    ).toThrow(/batchDigestSha256 mismatch/);
+
+    expect(isInherentSecurityIncident("AUTH_LOGIN_FAILED", "DENIED")).toBe(
+      true,
+    );
+    expect(
+      isInherentSecurityIncident("AUDIT_ARCHIVE_ACCESS_DENIED", "DENIED"),
+    ).toBe(true);
+    expect(isInherentSecurityIncident("CUSTOMER_CREATED", "SUCCESS")).toBe(
+      false,
+    );
+
+    // Service-layer authorization guards on archive operations reject LICENSE_OPERATOR before DB access
+    const fakeTx = {} as Parameters<typeof getAuditArchiveStatus>[0];
+    const operatorActor = {
+      id: actorId,
+      role: "LICENSE_OPERATOR" as const,
+      is_active: true,
+      must_change_password: false,
+    };
+    await expect(
+      getAuditArchiveStatus(fakeTx, operatorActor),
+    ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+    await expect(
+      listAuditArchiveBatches(fakeTx, operatorActor),
+    ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+    await expect(
+      getAuditArchiveBatch(fakeTx, operatorActor, batchId),
+    ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+    await expect(
+      createAuditArchiveBatch(fakeTx, operatorActor, { reason: "test" }),
+    ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+    await expect(
+      verifyAuditArchiveIntegrity(fakeTx, operatorActor, { reason: "test" }),
+    ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
   });
 });
