@@ -178,7 +178,7 @@ reconcile it in an authorized implementation change.
 
 ## 7. Product Owner decision — customer-side client deactivation (2026-10-17)
 
-This later decision in [PDR-18](PDR-18-licensing-contract-and-activation-policy.md) supersedes the conflicting Owner-Admin-managed client replacement policy in §6 only for **ordinary client-device deactivation and quota transfer**:
+This later decision in [PDR-18](PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) supersedes the conflicting Owner-Admin-managed client replacement policy in §6 only for **ordinary client-device deactivation and quota transfer**:
 
 1. The customer's Vardena System Administrator can manually deactivate an active client device from the customer dashboard when the device has failed, is unavailable, or is no longer needed.
 2. Its quota slot can be transferred to another client by one atomic operation. The active-device limit remains enforced under concurrency, and no partial transfer may strand quota or exceed the signed limit.
