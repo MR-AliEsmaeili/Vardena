@@ -327,7 +327,7 @@ not alter runtime behavior.
 
 ## Product Owner decision update — activation dates and server replacement (2026-10-17)
 
-See [PDR-18](PDR-18-licensing-contract-and-activation-policy.md) for the complete binding policy.
+See [PDR-18](PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) for the complete binding policy.
 
 - Owner-side commercial contract dates must be stored and displayed separately from activation validity dates. On issue, activation start is populated from the current issuance date and is not editable; past and future starts are prohibited. The issuer sets the end date independently.
 - Server replacement uses a limited one-time Owner authorization and may activate the new server before the old server is manually decommissioned. Owner Admin records customer/authorized representative approval with approver name, time, reason, and evidence reference. Do not claim remote shutdown or remote control.
