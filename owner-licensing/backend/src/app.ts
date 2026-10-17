@@ -7,6 +7,16 @@ import { randomUUID } from "node:crypto";
 import { ulid } from "ulid";
 import type { PoolClient } from "pg";
 import type { Config } from "./config.js";
+import {
+  FilesystemAuditArchiveStore,
+  createAuditArchiveBatch,
+  getAuditArchiveBatch,
+  getAuditArchiveStatus,
+  getVerifiedDurableBatchIds,
+  listAuditArchiveBatches,
+  recoverAuditArchiveService,
+  verifyAuditArchiveIntegrity,
+} from "./archive.js";
 import { listAuditEvents } from "./audit.js";
 import { Database, audit } from "./db.js";
 import {
@@ -789,6 +799,9 @@ export async function createApp(db: Database, cfg: Config) {
       );
     },
   );
+  const archiveStore = cfg.archiveDir
+    ? new FilesystemAuditArchiveStore(cfg.archiveDir)
+    : undefined;
   // Read-only explorer. Authorization is the route permission; the query never
   // supplies or changes the authenticated actor.
   route(
@@ -797,9 +810,127 @@ export async function createApp(db: Database, cfg: Config) {
     "audit.view",
     true,
     async (tx, _a, req, res) => {
+      const verifiedDurableBatchIds = await getVerifiedDurableBatchIds(
+        tx,
+        archiveStore,
+      );
       res.locals.body = await listAuditEvents(
         tx,
         req.query as Record<string, unknown>,
+        { verifiedDurableBatchIds },
+      );
+    },
+  );
+  const archiveAuthorized = async (
+    tx: PoolClient,
+    actor: Principal,
+    res: Response,
+    targetId: string | null,
+  ) => {
+    if (permissions(actor.user.role).includes("audit.archive")) return true;
+    await audit(tx, {
+      actor: actor.user.id,
+      type: "AUDIT_ARCHIVE_ACCESS_DENIED",
+      targetType: "AuditArchiveBatch",
+      targetId,
+      outcome: "DENIED",
+      reason: "Missing audit.archive permission.",
+    });
+    res.locals.status = 403;
+    res.locals.body = {
+      code: "PermissionDenied",
+      message: "You do not have permission.",
+      correlationId: randomUUID(),
+    };
+    return false;
+  };
+  route(
+    "get",
+    "/audit-archive/status",
+    undefined,
+    true,
+    async (tx, a, req, res) => {
+      if (!(await archiveAuthorized(tx, a, res, null))) return;
+      res.locals.body = await getAuditArchiveStatus(
+        tx,
+        a.user,
+        req.query as Record<string, unknown>,
+        archiveStore,
+      );
+    },
+  );
+  route(
+    "get",
+    "/audit-archive/batches",
+    undefined,
+    true,
+    async (tx, a, req, res) => {
+      if (!(await archiveAuthorized(tx, a, res, null))) return;
+      res.locals.body = await listAuditArchiveBatches(
+        tx,
+        a.user,
+        req.query as Record<string, unknown>,
+        archiveStore,
+      );
+    },
+  );
+  route(
+    "get",
+    "/audit-archive/batches/:id",
+    undefined,
+    true,
+    async (tx, a, req, res) => {
+      if (!(await archiveAuthorized(tx, a, res, pathTarget(req.params.id))))
+        return;
+      res.locals.body = await getAuditArchiveBatch(
+        tx,
+        a.user,
+        req.params.id,
+        archiveStore,
+      );
+    },
+  );
+  route(
+    "post",
+    "/audit-archive/batches",
+    undefined,
+    true,
+    async (tx, a, req, res) => {
+      if (!(await archiveAuthorized(tx, a, res, null))) return;
+      const result = await createAuditArchiveBatch(tx, a.user, req.body, {
+        store: archiveStore,
+      });
+      res.locals.status = result.status === "ARCHIVED" ? 201 : 200;
+      res.locals.body = result;
+    },
+  );
+  route(
+    "post",
+    "/audit-archive/verify",
+    undefined,
+    true,
+    async (tx, a, req, res) => {
+      if (!(await archiveAuthorized(tx, a, res, null))) return;
+      res.locals.body = await verifyAuditArchiveIntegrity(
+        tx,
+        a.user,
+        req.body,
+        archiveStore,
+      );
+    },
+  );
+  route(
+    "post",
+    "/audit-archive/recover",
+    undefined,
+    true,
+    async (tx, a, req, res) => {
+      if (!(await archiveAuthorized(tx, a, res, null))) return;
+      res.locals.body = await recoverAuditArchiveService(
+        tx,
+        a.user,
+        req.body,
+        archiveStore,
       );
     },
   );

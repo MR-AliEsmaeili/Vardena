@@ -1,14 +1,19 @@
 import { apiGet, apiPost, apiPatch } from './client';
 import type {
+  AuditArchiveBatchPage,
+  AuditArchiveStatusReport,
   AuditPage,
   AuditQuery,
   AuthenticatedUser,
+  CreateAuditArchiveBatchResult,
   Customer,
   CustomerRead,
   CustomerInput,
   OperationalRecord,
   Paginated,
+  RecoverAuditArchiveResult,
   Role,
+  VerifyAuditArchiveResult,
 } from './contracts';
 export const customers = (search: string, page: number, signal?: AbortSignal) =>
   apiGet<Paginated<CustomerRead>>('/customers', {
@@ -121,3 +126,23 @@ export const auditEvents = (query: AuditQuery, signal?: AbortSignal) =>
     params: query,
     ...(signal ? { signal } : {}),
   });
+export const auditArchiveStatus = (signal?: AbortSignal) =>
+  apiGet<AuditArchiveStatusReport>(
+    '/audit-archive/status',
+    signal ? { signal } : {},
+  );
+export const auditArchiveBatches = (page = 1, signal?: AbortSignal) =>
+  apiGet<AuditArchiveBatchPage>('/audit-archive/batches', {
+    params: { page },
+    ...(signal ? { signal } : {}),
+  });
+export const createAuditArchiveBatch = (body: {
+  reason: string;
+  maxEvents?: number;
+}) => apiPost<CreateAuditArchiveBatchResult>('/audit-archive/batches', body);
+export const verifyAuditArchive = (body: {
+  reason: string;
+  batchId?: string;
+}) => apiPost<VerifyAuditArchiveResult>('/audit-archive/verify', body);
+export const recoverAuditArchive = (body: { reason: string }) =>
+  apiPost<RecoverAuditArchiveResult>('/audit-archive/recover', body);

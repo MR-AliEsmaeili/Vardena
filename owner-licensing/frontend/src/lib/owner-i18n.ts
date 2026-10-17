@@ -194,6 +194,7 @@ export const o = {
     Customer: 'مشتری',
     OperationalRecord: 'رکورد عملیات دستی',
     User: 'کاربر',
+    AuditArchiveBatch: 'بسته بایگانی ممیزی',
   },
   auditEventLabels: {
     AUTH_LOGIN: 'ورود کاربر',
@@ -203,6 +204,7 @@ export const o = {
     PASSWORD_RESET: 'بازنشانی گذرواژه توسط مدیر',
     USER_CREATED: 'ایجاد کاربر',
     USER_ACCESS_CHANGED: 'تغییر نقش یا وضعیت کاربر',
+    USER_LEGACY_ROLE_REMEDIATED: 'اصلاح نقش قدیمی به مدل دو نقشی',
     CUSTOMER_CREATED: 'ایجاد مشتری',
     CUSTOMER_UPDATED: 'ویرایش مشتری',
     OPERATION_MUTATION_DENIED: 'ثبت عملیات دستی رد شد (فاقد مجوز)',
@@ -215,10 +217,57 @@ export const o = {
       'مشاهده وضعیت سرور قدیم ثبت شد (مشاهده اپراتور، نه تأیید رمزنگاری)',
     SERVER_REPLACEMENT_RECORDED:
       'مشاهده نصب سرور جایگزین ثبت شد (مشاهده اپراتور، نه تأیید رمزنگاری)',
+    AUDIT_ARCHIVE_BATCH_CREATED: 'ایجاد بسته بایگانی مجزای ممیزی',
+    AUDIT_ARCHIVE_VERIFIED: 'بررسی و تأیید یکپارچگی بایگانی ممیزی',
+    AUDIT_ARCHIVE_RECOVERED:
+      'بازیابی و همگام‌سازی بایگانی از مخزن پایدار مستقل',
+    AUDIT_ARCHIVE_ACCESS_DENIED:
+      'درخواست عملیات بایگانی ممیزی رد شد (فاقد مجوز)',
   },
   auditObservedNote:
     'این رویداد مشاهده اپراتور است. رسید رمزنگاری‌شده، تأیید امضا یا تماس با سرور مشتری را نشان نمی‌دهد.',
   auditOperationLink: 'رویدادهای ممیزی این رکورد',
   auditCustomerLink: 'رویدادهای ممیزی این مشتری',
   auditBeforeAfterHint: 'فقط فیلدهای مجاز نمایش داده می‌شوند.',
+  auditRetentionFloorLabel: 'حداقل نگه‌داری فعال تا (۳ سال از وقوع)',
+  auditSecurityIncidentHoldBadge:
+    'رویداد امنیتی — محافظت‌شده در برابر پاک‌سازی خودکار (حل‌نشده)',
+  auditArchivedBadge: 'بایگانی‌شده در مخزن مجزا',
+  auditUnarchivedBadge: 'در مخزن فعال (در انتظار بایگانی)',
+  auditArchiveSectionTitle: 'مدیریت بایگانی مجزا و سیاست نگه‌داری (OQ-77)',
+  auditArchiveSectionNote:
+    'رویدادهای ممیزی فقط-افزودنی هستند، حداقل سه سال از زمان وقوع نگه‌داری می‌شوند، رخدادهای امنیتی حل‌نشده هرگز به‌صورت خودکار حذف نمی‌شوند و بسته‌های بایگانی در مخزن پایدار مستقل از پایگاه‌داده (OWNER_AUDIT_ARCHIVE_DIR) به‌همراه دفتر کل PostgreSQL نگه‌داری و صحت‌سنجی می‌شوند.',
+  auditArchiveTotalEvents: 'کل رویدادهای ممیزی',
+  auditArchiveWithinFloor: 'در بازه حداقل ۳ سال',
+  auditArchivePastFloor: 'گذشته از کف ۳ ساله',
+  auditArchiveIncidentHolds: 'رخدادهای امنیتی تحت محافظت',
+  auditArchiveArchivedCount: 'رویدادهای بایگانی‌شده (تأییدشده)',
+  auditArchivePendingCount: 'در انتظار بایگانی',
+  auditArchiveBatchCount: 'تعداد بسته‌های بایگانی',
+  auditArchiveDurableStoreBatches: 'بسته‌های مخزن پایدار مستقل',
+  auditArchiveIntegrityLabel:
+    'وضعیت یکپارچگی زنجیره بایگانی و مخزن پایدار مستقل',
+  auditArchiveIntegrityVerified:
+    'معتبر و منطبق بین مخزن پایدار مستقل، دفتر کل بایگانی و جدول منشأ (SHA-256)',
+  auditArchiveIntegrityFailed:
+    'عدم تطابق یا نیازمند بازیابی از مخزن پایدار مستقل',
+  auditArchiveReasonLabel: 'دلیل ثبت بسته بایگانی، بررسی یکپارچگی یا بازیابی',
+  auditArchiveReasonRequired:
+    'ثبت دلیل برای عملیات بایگانی، بررسی یکپارچگی یا بازیابی الزامی است.',
+  auditArchiveCreateBatch: 'ایجاد بسته بایگانی مجزا',
+  auditArchiveCreatingBatch: 'در حال ایجاد بسته بایگانی...',
+  auditArchiveVerifyButton: 'بررسی یکپارچگی بایگانی',
+  auditArchiveVerifying: 'در حال بررسی یکپارچگی...',
+  auditArchiveRecoverButton: 'بازیابی از مخزن پایدار مستقل',
+  auditArchiveRecovering: 'در حال بازیابی بایگانی...',
+  auditArchiveBatchCreatedSuccess:
+    'بسته بایگانی مجزا با موفقیت در مخزن پایدار مستقل و دفتر کل ایجاد و ثبت شد.',
+  auditArchiveNoEligibleEvents:
+    'رویداد جدیدی برای بایگانی وجود ندارد؛ تمام رویدادهای واجد شرایط قبلاً بایگانی شده‌اند.',
+  auditArchiveVerifiedSuccess:
+    'یکپارچگی مخزن پایدار مستقل، زنجیره بایگانی و تطابق با جدول منشأ تأیید شد.',
+  auditArchiveRecoveredSuccess:
+    'بازیابی و همگام‌سازی بایگانی از مخزن پایدار مستقل با موفقیت انجام و تأیید شد.',
+  auditArchiveBatchesEmpty: 'هنوز بسته بایگانی ثبت نشده است.',
+  auditArchiveBatchesHeading: 'بسته‌های بایگانی ثبت‌شده در مخزن پایدار مستقل',
 };

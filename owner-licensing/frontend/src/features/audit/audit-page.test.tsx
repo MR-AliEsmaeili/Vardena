@@ -27,6 +27,11 @@ vi.mock('@/api/identity.api', () => ({
 vi.mock('@/api/owner.api', () => ({
   customer: vi.fn(),
   auditEvents: vi.fn(),
+  auditArchiveStatus: vi.fn(),
+  auditArchiveBatches: vi.fn(),
+  createAuditArchiveBatch: vi.fn(),
+  verifyAuditArchive: vi.fn(),
+  recoverAuditArchive: vi.fn(),
 }));
 
 const ulid = '01ARZ3NDEKTSV4RRFFQ69G5FAV';
@@ -433,5 +438,222 @@ describe('customer trail link', () => {
     expect(
       screen.queryByRole('link', { name: o.auditCustomerLink }),
     ).toBeNull();
+  });
+});
+
+describe('OQ-77 audit retention display and archive controls', () => {
+  const batchId = '01BX5ZZKBKACTAV9WEVGEMMVRZ';
+  const digestHex = 'a'.repeat(64);
+  const bundleDigestHex = 'c'.repeat(64);
+  const durableFileName = `batch-000001-${batchId}.json`;
+
+  beforeEach(() => {
+    vi.mocked(api.auditArchiveStatus).mockResolvedValue({
+      asOf: '2026-10-17T12:00:00.000Z',
+      policy: {
+        appendOnly: true,
+        minimumRetentionYears: 3,
+        threeYearMinimumIsPurgeDate: false,
+        unresolvedSecurityIncidentsExcludedFromCleanup: true,
+        permanentSeparateArchiveInForce: true,
+        automaticDestructivePurgeEnabled: false,
+        archiveStorageBoundary:
+          'INDEPENDENT_DURABLE_FILESYSTEM_STORE_AND_POSTGRES_LEDGER',
+        cryptographicHardwareWormImplemented: false,
+      },
+      counts: {
+        totalSourceEvents: 4,
+        withinMinimumRetentionWindowCount: 3,
+        pastMinimumRetentionFloorCount: 1,
+        unresolvedSecurityIncidentCount: 1,
+        pastFloorUnresolvedIncidentHoldCount: 1,
+        archivedEventCount: 2,
+        unarchivedEligibleEventCount: 2,
+        archiveBatchCount: 1,
+        durableStoreBatchCount: 1,
+        durableStoreEventCount: 2,
+        cleanupEligibleEventCount: 0,
+      },
+      integrity: {
+        verified: true,
+        durableStoreConfigured: true,
+        durableStoreVerified: true,
+        dbLedgerVerified: true,
+        crossStoreConsistent: true,
+        recoveryRequired: false,
+        issueCode: null,
+        issueMessage: null,
+        latestBatchId: batchId,
+        latestBatchDigestSha256: digestHex,
+        latestBundleDigestSha256: bundleDigestHex,
+        lastArchivedSequence: 2,
+      },
+    });
+    vi.mocked(api.auditArchiveBatches).mockResolvedValue({
+      items: [
+        {
+          id: batchId,
+          batchNumber: 1,
+          createdBy: ulid,
+          createdAt: '2026-10-17T11:00:00.000Z',
+          reason: 'بایگانی دوره‌ای ممیزی',
+          firstSequence: 1,
+          lastSequence: 2,
+          eventCount: 2,
+          retentionCutoffAt: '2026-10-16T00:00:00.000Z',
+          previousBatchDigest: null,
+          batchDigestSha256: digestHex,
+          durableFileName,
+          bundleDigestSha256: bundleDigestHex,
+        },
+      ],
+      page: 1,
+      pageSize: 50,
+      hasNext: false,
+    });
+  });
+
+  it('displays 3-year retention floor, unresolved security-incident hold badge, and archive badge without exposing archive controls to License Operator', async () => {
+    grant(['customers.view', 'audit.view']);
+    vi.mocked(api.auditEvents).mockResolvedValue(
+      page([
+        event({
+          eventType: 'AUTH_LOGIN_FAILED',
+          targetType: 'User',
+          outcome: 'DENIED',
+          occurredAt: '2023-10-08T21:00:00.000Z',
+          minimumRetainedUntil: '2026-10-08T21:00:00.000Z',
+          securityIncident: true,
+          incidentStatus: 'UNRESOLVED',
+          archived: true,
+          archiveBatchId: batchId,
+        }),
+      ]),
+    );
+    mount('/app/audit');
+    expect(
+      await screen.findByText(o.auditSecurityIncidentHoldBadge),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(`${o.auditArchivedBadge} (${batchId})`),
+    ).toBeInTheDocument();
+    expect(screen.getByText(o.auditRetentionFloorLabel)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('region', { name: o.auditArchiveSectionTitle }),
+    ).toBeNull();
+    expect(api.auditArchiveStatus).not.toHaveBeenCalled();
+    expect(api.auditArchiveBatches).not.toHaveBeenCalled();
+  });
+
+  it('renders archive status and batches for Owner Admin (audit.archive) and validates reason before creating a batch, verifying integrity, or recovering from durable store', async () => {
+    const user = userEvent.setup();
+    grant(['customers.view', 'audit.view', 'audit.archive']);
+    vi.mocked(api.createAuditArchiveBatch).mockResolvedValue({
+      status: 'ARCHIVED',
+      archivedCount: 2,
+      batch: {
+        id: batchId,
+        batchNumber: 2,
+        createdBy: ulid,
+        createdAt: '2026-10-17T12:00:00.000Z',
+        reason: 'بایگانی رویدادهای جدید',
+        firstSequence: 3,
+        lastSequence: 4,
+        eventCount: 2,
+        retentionCutoffAt: '2026-10-17T10:00:00.000Z',
+        previousBatchDigest: digestHex,
+        batchDigestSha256: 'b'.repeat(64),
+        durableFileName: `batch-000002-${batchId}.json`,
+        bundleDigestSha256: 'd'.repeat(64),
+      },
+    });
+    vi.mocked(api.verifyAuditArchive).mockResolvedValue({
+      verified: true,
+      batchCount: 2,
+      verifiedEventCount: 4,
+      latestBatchId: batchId,
+      latestBatchDigestSha256: 'b'.repeat(64),
+      latestBundleDigestSha256: 'd'.repeat(64),
+      lastArchivedSequence: 4,
+    });
+    vi.mocked(api.recoverAuditArchive).mockResolvedValue({
+      verified: true,
+      recoveredBatchCount: 1,
+      recoveredSourceEventCount: 2,
+      recoveredLedgerEventCount: 2,
+      rehydratedDurableBatchCount: 0,
+      batchCount: 2,
+      verifiedEventCount: 4,
+      latestBatchId: batchId,
+      latestBatchDigestSha256: 'b'.repeat(64),
+      latestBundleDigestSha256: 'd'.repeat(64),
+      lastArchivedSequence: 4,
+    });
+
+    mount('/app/audit');
+    expect(
+      await screen.findByText(o.auditArchiveSectionTitle),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(o.auditArchiveIntegrityVerified),
+    ).toBeInTheDocument();
+    expect(screen.getByText('بایگانی دوره‌ای ممیزی')).toBeInTheDocument();
+    expect(
+      screen.getByText(`#1 — ${batchId} (${durableFileName})`),
+    ).toBeInTheDocument();
+
+    // Missing reason is rejected in Persian before calling the API
+    await user.click(
+      screen.getByRole('button', { name: o.auditArchiveCreateBatch }),
+    );
+    expect(
+      await screen.findByText(o.auditArchiveReasonRequired),
+    ).toBeInTheDocument();
+    expect(api.createAuditArchiveBatch).not.toHaveBeenCalled();
+
+    // Creating a batch with a valid reason
+    await user.type(
+      screen.getByLabelText(o.auditArchiveReasonLabel),
+      '  بایگانی رویدادهای جدید  ',
+    );
+    await user.click(
+      screen.getByRole('button', { name: o.auditArchiveCreateBatch }),
+    );
+    expect(
+      await screen.findByText(o.auditArchiveBatchCreatedSuccess),
+    ).toBeInTheDocument();
+    expect(api.createAuditArchiveBatch).toHaveBeenCalledWith({
+      reason: 'بایگانی رویدادهای جدید',
+    });
+
+    // Verifying archive integrity with a valid reason
+    await user.type(
+      screen.getByLabelText(o.auditArchiveReasonLabel),
+      'بررسی دوره‌ای یکپارچگی',
+    );
+    await user.click(
+      screen.getByRole('button', { name: o.auditArchiveVerifyButton }),
+    );
+    expect(
+      await screen.findByText(o.auditArchiveVerifiedSuccess),
+    ).toBeInTheDocument();
+    expect(api.verifyAuditArchive).toHaveBeenCalledWith({
+      reason: 'بررسی دوره‌ای یکپارچگی',
+    });
+
+    // Recovering archive from independent durable store with a valid reason
+    await user.type(
+      screen.getByLabelText(o.auditArchiveReasonLabel),
+      'بازیابی از مخزن پایدار پس از بازگردانی پایگاه‌داده',
+    );
+    await user.click(
+      screen.getByRole('button', { name: o.auditArchiveRecoverButton }),
+    );
+    expect(
+      await screen.findByText(o.auditArchiveRecoveredSuccess),
+    ).toBeInTheDocument();
+    expect(api.recoverAuditArchive).toHaveBeenCalledWith({
+      reason: 'بازیابی از مخزن پایدار پس از بازگردانی پایگاه‌داده',
+    });
   });
 });

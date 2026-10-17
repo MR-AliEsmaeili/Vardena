@@ -121,3 +121,72 @@ Business Export (Excel) and Technical Backup (full backup) must remain
 distinct concepts in product, documentation, contracts and tests; no test or
 feature may treat the Excel export as a recovery mechanism or the technical
 backup as the data-portability answer.
+
+## 8. Standalone Owner Licensing audit archive continuity (`OQ-77`)
+
+The standalone Owner Licensing application (`owner-licensing/`) maintains its
+own isolated PostgreSQL database (`owner`, `owner_audit_archive`, and
+`public.owner_migrations`), separate from customer Vardena installations, paired
+with an independent durable filesystem archive store (`OWNER_AUDIT_ARCHIVE_DIR`):
+- Active audit events in `owner.audit_events` are append-only with a mandatory
+  three-year minimum retention window (`minimum_retained_until = occurred_at +
+  3 years` in UTC) and an unresolved security-incident hold
+  (`security_incident = true`, `incident_status = 'UNRESOLVED'`).
+- Permanent separate archive persistence is enforced across two decoupled
+  boundaries so the archive does not depend exclusively on the same PostgreSQL
+  database and its backup lifecycle as the source audit records:
+  1. **Independent durable filesystem archive store (`OWNER_AUDIT_ARCHIVE_DIR`):**
+     `FilesystemAuditArchiveStore` writes write-once (`link` + `unlink`,
+     `chmod 0o444`, file and directory `fsync`), read-back-verified JSON batch
+     bundles (`batches/batch-XXXXXX-<id>.json`) and an atomic `fsync`ed
+     hash-chained `manifest.json` on an independent filesystem path/volume
+     outside the PostgreSQL data directory.
+  2. **PostgreSQL archive ledger (`owner_audit_archive.archive_batches` and
+     `owner_audit_archive.archived_audit_events`):** append-only tables recording
+     each batch's `durable_file_name`, `durable_bundle_sha256`, per-record
+     SHA-256 digests (`record_sha256`), and chained batch digests
+     (`previous_batch_digest` → `batch_digest_sha256`).
+- A downloadable JSON response or an operator instruction to save a file is never
+  treated as proof of durable archival. If `OWNER_AUDIT_ARCHIVE_DIR` is not
+  configured or the durable store write/read-back fails, `POST /api/v1/audit-archive/batches`
+  fails closed (`503 ArchiveStorageUnavailable`), rolls back both stores, and
+  never marks source events as `archived: true`.
+- Operators holding `OWNER_ADMIN` (`audit.archive`):
+  - Create durable archive batches via `POST /api/v1/audit-archive/batches`
+    (which also reconciles any pending durable batch on retry after an
+    interrupted database commit without duplicating files on disk).
+  - Retrieve and verify stored batch bundles from `OWNER_AUDIT_ARCHIVE_DIR` via
+    `GET /api/v1/audit-archive/batches/:id`.
+  - Verify 1-to-1 integrity across `OWNER_AUDIT_ARCHIVE_DIR`,
+    `owner_audit_archive`, and `owner.audit_events` via
+    `POST /api/v1/audit-archive/verify` (`409 ArchiveIntegrityViolation` on any
+    missing or tampered file or digest mismatch).
+  - Recover after a PostgreSQL rollback or point-in-time restore via
+    `POST /api/v1/audit-archive/recover`, which verifies the independent durable
+    store (`OWNER_AUDIT_ARCHIVE_DIR`), restores any missing source events into
+    `owner.audit_events` (preserving exact original `id`, `sequence`, timestamps,
+    and digests) and missing batches/events into `owner_audit_archive`, and logs
+    `AUDIT_ARCHIVE_RECOVERED`.
+- **Deployment prerequisite vs. implemented guarantee (unresolved operational requirement):**
+  - `OWNER_AUDIT_ARCHIVE_DIR` must be mounted on a dedicated durable volume
+    outside the PostgreSQL data directory and its backup/snapshot lifecycle.
+  - Configuring a different filesystem path inside the container or host OS
+    alone does **not** guarantee physical storage independence (if both paths
+    reside on the same underlying disk/filesystem), hardware WORM immutability,
+    or protection against a compromised OS `root` or PostgreSQL superuser.
+  - Under the supported-filesystem durability policy
+    (`TOLERATED_DIRECTORY_SYNC_ERROR_CODES = new Set(["EINVAL"])`),
+    `FilesystemAuditArchiveStore` enforces mandatory regular-file `fsync`
+    (`fh.sync()`) and directory `open(dirPath, "r")`, and on `dirHandle.sync()`
+    tolerates only `EINVAL` (when a virtual/tmpfs mount does not implement
+    directory-descriptor `fsync` after file `fsync` succeeded) while failing
+    closed (`503 ArchiveStorageUnavailable`) on `EIO`, `ENOSPC`, `EDQUOT`,
+    `EROFS`, `EACCES`, `EPERM`, `EBADF`, `ENOTSUP`, or any unclassified error.
+  - Because this repository does not define a production infrastructure
+    manifest, storage vendor, or external volume backup/restore runbook for
+    `OWNER_AUDIT_ARCHIVE_DIR`, provisioning the dedicated volume mount, its
+    independent backup/snapshot schedule, and host/storage-level volume recovery
+    procedure remains an **unresolved operational requirement** to be verified in
+    the target Owner deployment (alongside customer-side
+    `licensing.license_audit_events` archiving, incident-resolution workflow,
+    and Product Owner acceptance under `OQ-77`).

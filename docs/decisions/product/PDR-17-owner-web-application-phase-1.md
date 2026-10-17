@@ -133,6 +133,57 @@ storage/viewing is not proof of a separate permanent archive or tamper-proof/
 cryptographically immutable history. Manual observations remain manually
 attributable facts, not cryptographically verified operations.
 
+**Owner-side OQ-77 retention and archive implementation (2026-10-17):**
+`owner-licensing/backend/migrations/004-audit-retention-archive.sql`,
+`owner-licensing/backend/src/archive.ts`, `owner-licensing/backend/src/audit.ts`,
+and `owner-licensing/frontend/src/features/audit/audit-page.tsx` enforce the
+approved Owner-side retention and archive controls without inventing destructive
+cleanup authority or incident-resolution semantics:
+- Every event in `owner.audit_events` carries a deterministic 3-year UTC minimum
+  retention timestamp (`minimum_retained_until = occurred_at + 3 years`) and
+  validated incident metadata (`security_incident`, `incident_status` in
+  `{'NONE', 'UNRESOLVED'}`). Security denials and failures (`outcome IN ('DENIED',
+  'FAILED')` or security-denial event types) are automatically flagged
+  `security_incident = true`, `incident_status = 'UNRESOLVED'` and protected by
+  `UNRESOLVED_SECURITY_INCIDENT_HOLD`.
+- Permanent separate archive persistence is enforced across two decoupled
+  boundaries so the archive does not depend exclusively on the same PostgreSQL
+  database and its backup lifecycle as the source audit records:
+  1. **Independent durable filesystem archive store (`OWNER_AUDIT_ARCHIVE_DIR`,
+     `FilesystemAuditArchiveStore`):** persists write-once (`link` + `unlink`,
+     `chmod 0o444`, file and directory `fsync`), read-back-verified JSON batch
+     bundles (`batches/batch-XXXXXX-<id>.json`) and an atomic `fsync`ed
+     hash-chained `manifest.json` on an independent filesystem path/volume
+     outside PostgreSQL.
+  2. **Separate PostgreSQL archive ledger (`owner_audit_archive.archive_batches`
+     and `owner_audit_archive.archived_audit_events`):** stores append-only
+     archived batches with allowlisted `before_state`/`after_state` minimization,
+     `durable_file_name`, `durable_bundle_sha256`, per-record SHA-256 digests
+     (`record_sha256`), chained batch digests (`previous_batch_digest` →
+     `batch_digest_sha256`), and source-matching triggers.
+- Privileged archive-management routes (`GET /api/v1/audit-archive/status`,
+  `GET/POST /api/v1/audit-archive/batches`, `GET /api/v1/audit-archive/batches/:id`,
+  `POST /api/v1/audit-archive/verify`, `POST /api/v1/audit-archive/recover`)
+  require `audit.archive` (`OWNER_ADMIN` only); attempts by `LICENSE_OPERATOR`
+  are denied (`403 PermissionDenied`) and recorded as
+  `AUDIT_ARCHIVE_ACCESS_DENIED` security incidents. Archive writes, bundle
+  retrieval, verification, and recovery fail closed (`503 ArchiveStorageUnavailable`)
+  when `OWNER_AUDIT_ARCHIVE_DIR` is not configured, and events are only reported
+  as `archived: true` when verified in both the independent durable store and
+  the PostgreSQL ledger.
+- Database triggers, write-once `0o444` `fsync`ed bundle files, and SHA-256
+  digests provide application-role append-only enforcement, cross-store
+  tamper-evidence on verification, and deterministic recovery after a PostgreSQL
+  restore (`POST /api/v1/audit-archive/recover`), not hardware WORM against a
+  compromised OS root or PostgreSQL superuser. `OWNER_AUDIT_ARCHIVE_DIR` must be
+  mounted on a dedicated durable volume outside the PostgreSQL data directory
+  (a different path alone does not guarantee physical storage independence,
+  hardware WORM, or protection against a compromised OS `root`, and provisioning
+  the dedicated volume mount and external backup/restore procedure remains an
+  unresolved operational requirement in target deployments). Customer-side
+  `licensing.license_audit_events` archiving, incident-resolution lifecycle, and
+  Product Owner acceptance remain open under OQ-77.
+
 ## Licensing restrictions, recovery and dates — product cross-reference
 
 PDR-11 §§9–10, 12 and 20 record 14-day Grace → Read-Only after natural

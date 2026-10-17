@@ -1,5 +1,14 @@
 // CI-only. Requires an explicit disposable Owner PostgreSQL database; never skips.
-import { readFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
@@ -7,6 +16,11 @@ import { ulid } from "ulid";
 import type { Express } from "express";
 import type { PoolClient } from "pg";
 import { Database } from "../src/db.js";
+import {
+  FilesystemAuditArchiveStore,
+  createAuditArchiveBatch,
+  verifyExportedArchiveBundle,
+} from "../src/archive.js";
 import { digest, token } from "../src/domain.js";
 import {
   RoleUpgradeError,
@@ -25,7 +39,7 @@ if (!url)
     "OWNER_TEST_DATABASE_URL is required; run this suite only in CI.",
   );
 const db = new Database(url);
-let app: Express, adminCookie: string, adminId: string;
+let app: Express, adminCookie: string, adminId: string, testArchiveDir: string;
 const initial = "Disposable_initial_42";
 const changed = "Disposable_changed_43";
 const origin = "https://owner.test";
@@ -142,6 +156,9 @@ async function expectUnavailableOperations(cookie: string) {
 }
 
 afterAll(async () => {
+  if (testArchiveDir) {
+    await rm(testArchiveDir, { recursive: true, force: true }).catch(() => {});
+  }
   await db.close();
 });
 
@@ -150,7 +167,7 @@ const migrationsFolder = fileURLToPath(
 );
 async function resetToMigration002() {
   await db.pool.query(
-    "DROP SCHEMA IF EXISTS owner CASCADE; DROP TABLE IF EXISTS public.owner_migrations",
+    "DROP SCHEMA IF EXISTS owner_audit_archive CASCADE; DROP SCHEMA IF EXISTS owner CASCADE; DROP TABLE IF EXISTS public.owner_migrations",
   );
   await db.transaction(async (tx) => {
     await tx.query(
@@ -571,6 +588,7 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
       "001-foundation.sql",
       "002-manual-operations.sql",
       "003-two-role-authorization.sql",
+      "004-audit-retention-archive.sql",
     ]);
     await expect(
       db.pool.query("UPDATE owner.users SET role='SYSTEM_ADMIN' WHERE id=$1", [
@@ -642,17 +660,21 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
 describe("Owner PostgreSQL HTTP vertical slice", () => {
   beforeAll(async () => {
     await db.pool.query(
-      "DROP SCHEMA IF EXISTS owner CASCADE; DROP TABLE IF EXISTS public.owner_migrations",
+      "DROP SCHEMA IF EXISTS owner_audit_archive CASCADE; DROP SCHEMA IF EXISTS owner CASCADE; DROP TABLE IF EXISTS public.owner_migrations",
     );
     await migrate(db);
     await migrate(db); // idempotent checksummed fresh deployment
     expect(await bootstrap(db, "owner", initial)).toBe(true);
     expect(await bootstrap(db, "owner", "Another_initial_44")).toBe(false);
+    testArchiveDir = await mkdtemp(
+      path.join(os.tmpdir(), "vardena-owner-api-archive-"),
+    );
     app = await createApp(db, {
       databaseUrl: url!,
       origin,
       production: false,
       port: 3001,
+      archiveDir: testArchiveDir,
     });
   }, 30000);
   it("requires authentication, JSON, custom anti-CSRF header and same origin", async () => {
@@ -1109,6 +1131,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       "001-foundation.sql",
       "002-manual-operations.sql",
       "003-two-role-authorization.sql",
+      "004-audit-retention-archive.sql",
     ]);
     await db.pool.query("TRUNCATE owner.login_limits");
     for (let n = 0; n < 10; n++)
@@ -2128,6 +2151,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       "customers.write",
       "users.manage",
       "audit.view",
+      "audit.archive",
       "operations.view",
       "operations.record",
       "replacements.authorize",
@@ -2388,5 +2412,601 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     expect(customerTrail.body.items[0].afterState).toMatchObject({
       customerCode: created.body.customerCode,
     });
+  });
+
+  it("enforces OQ-77 3-year retention boundaries, unresolved security-incident holds, independent durable archive persistence, rollback safety, crash retry reconciliation, tamper detection, and DB restore recovery", async () => {
+    const asOf = "2026-10-17T12:00:00.000Z";
+    const youngerEventId = await insertAudit({
+      actor: adminId,
+      type: "CUSTOMER_UPDATED",
+      targetType: "Customer",
+      targetId: ulid(),
+      occurredAt: "2023-10-17T12:00:00.001Z",
+      before: { displayName: "before", password_hash: "$argon2id$secret" },
+      after: { displayName: "after", token_hash: "a".repeat(64) },
+    });
+    const exactBoundaryEventId = await insertAudit({
+      actor: adminId,
+      type: "CUSTOMER_CREATED",
+      targetType: "Customer",
+      targetId: ulid(),
+      occurredAt: "2023-10-17T12:00:00.000Z",
+    });
+    const pastFloorIncidentId = await insertAudit({
+      actor: adminId,
+      type: "AUTH_LOGIN_FAILED",
+      targetType: "User",
+      targetId: adminId,
+      occurredAt: "2021-01-15T08:30:00.000Z",
+      outcome: "DENIED",
+    });
+
+    // Verify SQL trigger rejects inconsistent incident metadata on insert
+    await expect(
+      db.pool.query(
+        `INSERT INTO owner.audit_events(id, actor_id, event_type, target_type, target_id, occurred_at, outcome, security_incident, incident_status)
+         VALUES($1, $2, 'AUTH_LOGIN_FAILED', 'User', $2, NOW(), 'DENIED', false, 'NONE')`,
+        [ulid(), adminId],
+      ),
+    ).rejects.toThrow(/must have security_incident = true/);
+    await expect(
+      db.pool.query(
+        `INSERT INTO owner.audit_events(id, actor_id, event_type, target_type, target_id, occurred_at, outcome, security_incident, incident_status)
+         VALUES($1, $2, 'AUTH_LOGIN_FAILED', 'User', $2, NOW(), 'DENIED', true, 'RESOLVED')`,
+        [ulid(), adminId],
+      ),
+    ).rejects.toThrow(/unresolved security incidents are protected/);
+
+    // 1. Verify an app instance without OWNER_AUDIT_ARCHIVE_DIR fails closed (503 ArchiveStorageUnavailable)
+    const appWithoutStore = await createApp(db, {
+      databaseUrl: url!,
+      origin,
+      production: false,
+      port: 3001,
+    });
+    const unconfStatus = await request(appWithoutStore)
+      .get("/api/v1/audit-archive/status")
+      .set("Cookie", adminCookie);
+    expect(unconfStatus.status).toBe(200);
+    expect(unconfStatus.body.integrity.durableStoreConfigured).toBe(false);
+    expect(unconfStatus.body.integrity.verified).toBe(false);
+    expect(unconfStatus.body.integrity.issueCode).toBe(
+      "ArchiveStorageUnavailable",
+    );
+    for (const unconfRes of [
+      await request(appWithoutStore)
+        .post("/api/v1/audit-archive/batches")
+        .set("Origin", origin)
+        .set("x-owner-request", "1")
+        .set("Cookie", adminCookie)
+        .send({ reason: "No durable store configured" }),
+      await request(appWithoutStore)
+        .post("/api/v1/audit-archive/verify")
+        .set("Origin", origin)
+        .set("x-owner-request", "1")
+        .set("Cookie", adminCookie)
+        .send({ reason: "No durable store configured" }),
+      await request(appWithoutStore)
+        .post("/api/v1/audit-archive/recover")
+        .set("Origin", origin)
+        .set("x-owner-request", "1")
+        .set("Cookie", adminCookie)
+        .send({ reason: "No durable store configured" }),
+    ]) {
+      expect(unconfRes.status).toBe(503);
+      expect(unconfRes.body.code).toBe("ArchiveStorageUnavailable");
+    }
+
+    // 2. Verify unauthenticated and must_change_password callers are denied archive access
+    expect(
+      (await request(app).get("/api/v1/audit-archive/status")).status,
+    ).toBe(401);
+    const pendingUser = ulid();
+    const pendingPw = "Disposable_pending_47";
+    await db.pool.query(
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'OWNER_ADMIN',true)",
+      [pendingUser, pendingUser, await hashPassword(pendingPw)],
+    );
+    const pendingSession = await login(pendingUser, pendingPw);
+    expect(
+      (
+        await request(app)
+          .get("/api/v1/audit-archive/status")
+          .set("Cookie", pendingSession.cookie)
+      ).status,
+    ).toBe(403);
+
+    // 3. Verify LICENSE_OPERATOR is denied all 6 archive-management routes and generates AUDIT_ARCHIVE_ACCESS_DENIED security incidents
+    const opUser = ulid();
+    const opPw = "Disposable_operator_47";
+    await db.pool.query(
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'LICENSE_OPERATOR',false)",
+      [opUser, opUser, await hashPassword(opPw)],
+    );
+    const opSession = await login(opUser, opPw);
+    for (const deniedRes of [
+      await request(app)
+        .get("/api/v1/audit-archive/status")
+        .set("Cookie", opSession.cookie),
+      await request(app)
+        .get("/api/v1/audit-archive/batches")
+        .set("Cookie", opSession.cookie),
+      await request(app)
+        .get(`/api/v1/audit-archive/batches/${ulid()}`)
+        .set("Cookie", opSession.cookie),
+      await write("post", "/audit-archive/batches", opSession.cookie).send({
+        reason: "Operator must not archive",
+      }),
+      await write("post", "/audit-archive/verify", opSession.cookie).send({
+        reason: "Operator must not verify archive",
+      }),
+      await write("post", "/audit-archive/recover", opSession.cookie).send({
+        reason: "Operator must not recover archive",
+      }),
+    ]) {
+      expect(deniedRes.status).toBe(403);
+      expect(deniedRes.body.code).toBe("PermissionDenied");
+    }
+
+    const deniedArchiveAudits = await explorer(adminCookie, {
+      actorId: opUser,
+      eventType: "AUDIT_ARCHIVE_ACCESS_DENIED",
+    });
+    expect(deniedArchiveAudits.status).toBe(200);
+    expect(deniedArchiveAudits.body.items).toHaveLength(6);
+    for (const item of deniedArchiveAudits.body.items) {
+      expect(item.securityIncident).toBe(true);
+      expect(item.incidentStatus).toBe("UNRESOLVED");
+      expect(item.outcome).toBe("DENIED");
+    }
+
+    const store = new FilesystemAuditArchiveStore(testArchiveDir);
+    const adminRow = (
+      await db.pool.query<{
+        id: string;
+        role: string;
+        is_active: boolean;
+        must_change_password: boolean;
+      }>(
+        "SELECT id, role, is_active, must_change_password FROM owner.users WHERE id = $1",
+        [adminId],
+      )
+    ).rows[0]!;
+
+    // 4. Verify archive failure after disk write rolls back both DB transaction and disk store cleanly
+    const countBeforeFailedArchive = Number(
+      (
+        await db.pool.query<{ c: string }>(
+          "SELECT COUNT(*)::text AS c FROM owner.audit_events",
+        )
+      ).rows[0]!.c,
+    );
+    await expect(
+      db.transaction((tx) =>
+        createAuditArchiveBatch(
+          tx,
+          adminRow,
+          { reason: "Simulated archive failure", maxEvents: 10 },
+          {
+            store,
+            afterInsertHook: () => {
+              throw new Error("Simulated archive storage failure");
+            },
+          },
+        ),
+      ),
+    ).rejects.toThrow("Simulated archive storage failure");
+
+    expect(
+      (await db.pool.query("SELECT 1 FROM owner_audit_archive.archive_batches"))
+        .rowCount,
+    ).toBe(0);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT 1 FROM owner_audit_archive.archived_audit_events",
+        )
+      ).rowCount,
+    ).toBe(0);
+    expect((await store.verifyStore()).manifest.batches).toHaveLength(0);
+    expect(
+      Number(
+        (
+          await db.pool.query<{ c: string }>(
+            "SELECT COUNT(*)::text AS c FROM owner.audit_events",
+          )
+        ).rows[0]!.c,
+      ),
+    ).toBe(countBeforeFailedArchive);
+
+    // 5. Simulate hard crash between durable disk commit and PostgreSQL transaction commit:
+    //    - durable store has Batch #1, PostgreSQL has 0 batches
+    //    - events are NOT marked archived in GET /api/v1/audit-events or status
+    //    - retry of POST /api/v1/audit-archive/batches reconciles Batch #1 without duplicating on disk
+    await expect(
+      db.transaction((tx) =>
+        createAuditArchiveBatch(
+          tx,
+          adminRow,
+          { reason: "Crash between disk commit and DB commit", maxEvents: 15 },
+          {
+            store,
+            skipDiskRollbackOnError: true,
+            afterInsertHook: () => {
+              throw new Error("Simulated DB crash after durable disk commit");
+            },
+          },
+        ),
+      ),
+    ).rejects.toThrow("Simulated DB crash after durable disk commit");
+
+    const diskAfterCrash = await store.verifyStore();
+    expect(diskAfterCrash.manifest.batches).toHaveLength(1);
+    const crashedBatchId = diskAfterCrash.manifest.batches[0]!.id;
+    expect(
+      (await db.pool.query("SELECT 1 FROM owner_audit_archive.archive_batches"))
+        .rowCount,
+    ).toBe(0);
+
+    const statusDuringCrash = await request(app)
+      .get("/api/v1/audit-archive/status")
+      .query({ asOf })
+      .set("Cookie", adminCookie);
+    expect(statusDuringCrash.status).toBe(200);
+    expect(statusDuringCrash.body.counts.archivedEventCount).toBe(0);
+    expect(statusDuringCrash.body.counts.archiveBatchCount).toBe(0);
+    expect(statusDuringCrash.body.counts.durableStoreBatchCount).toBe(1);
+    expect(statusDuringCrash.body.counts.durableStoreEventCount).toBe(15);
+    expect(statusDuringCrash.body.integrity.verified).toBe(false);
+    expect(statusDuringCrash.body.integrity.recoveryRequired).toBe(true);
+
+    // Audit explorer does NOT report any event as archived while DB ledger is uncommitted
+    const explorerDuringCrash = await explorer(adminCookie, {});
+    expect(
+      explorerDuringCrash.body.items.every(
+        (item: { archived: boolean }) => item.archived === false,
+      ),
+    ).toBe(true);
+
+    // Retry via POST /api/v1/audit-archive/batches reconciles Batch #1 and archives remaining events
+    const createdBatches: string[] = [crashedBatchId];
+    while (true) {
+      const batchRes = await write(
+        "post",
+        "/audit-archive/batches",
+        adminCookie,
+      ).send({
+        reason: "OQ-77 separate archive batch capture",
+        maxEvents: 500,
+      });
+      if (batchRes.body.status === "NO_ELIGIBLE_EVENTS") {
+        expect(batchRes.status).toBe(200);
+        expect(batchRes.body.archivedCount).toBe(0);
+        expect(batchRes.body.batch).toBeNull();
+        break;
+      }
+      expect(batchRes.status).toBe(201);
+      expect(batchRes.body.status).toBe("ARCHIVED");
+      expect(batchRes.body.batch.id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+      if (!createdBatches.includes(batchRes.body.batch.id)) {
+        createdBatches.push(batchRes.body.batch.id);
+      }
+    }
+    expect(createdBatches.length).toBeGreaterThanOrEqual(2);
+
+    // Verify on-disk durable store matches createdBatches 1-to-1 with 0o444 permissions
+    const verifiedDisk = await store.verifyStore();
+    expect(verifiedDisk.manifest.batches.map((b) => b.id)).toEqual(
+      createdBatches,
+    );
+    for (const entry of verifiedDisk.manifest.batches) {
+      const fStat = await stat(
+        path.join(testArchiveDir, "batches", entry.fileName),
+      );
+      expect(fStat.mode & 0o777).toBe(0o444);
+    }
+
+    // Immediate retry produces no duplicate archive state and no recursive AUDIT_ARCHIVE_BATCH_CREATED event
+    const batchCreatedEventsBeforeRetry = (
+      await db.pool.query(
+        "SELECT id FROM owner.audit_events WHERE event_type = 'AUDIT_ARCHIVE_BATCH_CREATED'",
+      )
+    ).rowCount;
+    const retryRes = await write(
+      "post",
+      "/audit-archive/batches",
+      adminCookie,
+    ).send({
+      reason: "Idempotent retry after archiving",
+    });
+    expect(retryRes.status).toBe(200);
+    expect(retryRes.body).toEqual({
+      status: "NO_ELIGIBLE_EVENTS",
+      archivedCount: 0,
+      batch: null,
+    });
+    expect(
+      (
+        await db.pool.query(
+          "SELECT id FROM owner.audit_events WHERE event_type = 'AUDIT_ARCHIVE_BATCH_CREATED'",
+        )
+      ).rowCount,
+    ).toBe(batchCreatedEventsBeforeRetry);
+
+    // 6. Verify status report at exact boundary timestamp asOf = 2026-10-17T12:00:00.000Z
+    const statusRes = await request(app)
+      .get("/api/v1/audit-archive/status")
+      .query({ asOf })
+      .set("Cookie", adminCookie);
+    expect(statusRes.status).toBe(200);
+    expect(statusRes.body.asOf).toBe(asOf);
+    expect(statusRes.body.policy.appendOnly).toBe(true);
+    expect(statusRes.body.policy.minimumRetentionYears).toBe(3);
+    expect(statusRes.body.policy.threeYearMinimumIsPurgeDate).toBe(false);
+    expect(
+      statusRes.body.policy.unresolvedSecurityIncidentsExcludedFromCleanup,
+    ).toBe(true);
+    expect(statusRes.body.policy.permanentSeparateArchiveInForce).toBe(true);
+    expect(statusRes.body.policy.archiveStorageBoundary).toBe(
+      "INDEPENDENT_DURABLE_FILESYSTEM_STORE_AND_POSTGRES_LEDGER",
+    );
+    expect(statusRes.body.counts.cleanupEligibleEventCount).toBe(0);
+    expect(statusRes.body.counts.unarchivedEligibleEventCount).toBe(0);
+    expect(statusRes.body.counts.durableStoreBatchCount).toBe(
+      createdBatches.length,
+    );
+    expect(statusRes.body.counts.archiveBatchCount).toBe(createdBatches.length);
+    expect(
+      statusRes.body.counts.pastFloorUnresolvedIncidentHoldCount,
+    ).toBeGreaterThanOrEqual(1);
+    expect(statusRes.body.integrity.verified).toBe(true);
+    expect(statusRes.body.integrity.durableStoreConfigured).toBe(true);
+    expect(statusRes.body.integrity.durableStoreVerified).toBe(true);
+    expect(statusRes.body.integrity.dbLedgerVerified).toBe(true);
+    expect(statusRes.body.integrity.crossStoreConsistent).toBe(true);
+    expect(statusRes.body.integrity.recoveryRequired).toBe(false);
+
+    // Inspect durable batch bundle via GET /api/v1/audit-archive/batches/:id
+    const firstBatchId = createdBatches[0]!;
+    const bundleRes = await request(app)
+      .get(`/api/v1/audit-archive/batches/${firstBatchId}`)
+      .set("Cookie", adminCookie);
+    expect(bundleRes.status).toBe(200);
+    expect(verifyExportedArchiveBundle(bundleRes.body).verified).toBe(true);
+    expect(bundleRes.body.durableStorage).toMatchObject({
+      persisted: true,
+      verified: true,
+      presentInDbLedger: true,
+    });
+    const bundleJson = JSON.stringify(bundleRes.body);
+    expect(bundleJson).not.toContain("password_hash");
+    expect(bundleJson).not.toContain("token_hash");
+    expect(bundleJson).not.toContain("$argon2id");
+
+    // 7. Verify tamper detection on durable batch file
+    const firstFileName = verifiedDisk.manifest.batches[0]!.fileName;
+    const firstFilePath = path.join(testArchiveDir, "batches", firstFileName);
+    const untamperedContent = await readFile(firstFilePath, "utf8");
+    await chmod(firstFilePath, 0o600);
+    await writeFile(
+      firstFilePath,
+      untamperedContent.replace(
+        `"batchNumber":1`,
+        `"batchNumber":1,"reason":"tampered"`,
+      ),
+      "utf8",
+    );
+    const tamperedVerifyRes = await write(
+      "post",
+      "/audit-archive/verify",
+      adminCookie,
+    ).send({
+      reason: "Detect tampered durable batch file",
+    });
+    expect(tamperedVerifyRes.status).toBe(409);
+    expect(tamperedVerifyRes.body.code).toBe("ArchiveIntegrityViolation");
+
+    const tamperedStatusRes = await request(app)
+      .get("/api/v1/audit-archive/status")
+      .set("Cookie", adminCookie);
+    expect(tamperedStatusRes.status).toBe(200);
+    expect(tamperedStatusRes.body.integrity.verified).toBe(false);
+    expect(tamperedStatusRes.body.integrity.durableStoreVerified).toBe(false);
+    expect(tamperedStatusRes.body.counts.archivedEventCount).toBe(0);
+
+    // Restore untampered file on disk
+    await writeFile(firstFilePath, untamperedContent, "utf8");
+    await chmod(firstFilePath, 0o444);
+
+    // Verify explicit integrity check endpoint records AUDIT_ARCHIVE_VERIFIED
+    const verifyRes = await write(
+      "post",
+      "/audit-archive/verify",
+      adminCookie,
+    ).send({
+      reason: "Scheduled OQ-77 archive integrity verification",
+    });
+    expect(verifyRes.status).toBe(200);
+    expect(verifyRes.body.verified).toBe(true);
+
+    // 8. Verify independent durable archive survival and recovery after PostgreSQL
+    //    archive ledger loss AND source audit_events rollback (simulating DB restore from older backup)
+    const migration004Sql = await readFile(
+      `${migrationsFolder}/004-audit-retention-archive.sql`,
+      "utf8",
+    );
+    await db.transaction(async (tx) => {
+      await tx.query("DROP SCHEMA owner_audit_archive CASCADE");
+      // Simulate PostgreSQL backup restore that lost the 3 fixture source events from owner.audit_events
+      await tx.query(
+        "ALTER TABLE owner.audit_events DISABLE TRIGGER retain_audit",
+      );
+      await tx.query(
+        "DELETE FROM owner.audit_events WHERE id = ANY($1::char(26)[])",
+        [[youngerEventId, exactBoundaryEventId, pastFloorIncidentId]],
+      );
+      await tx.query(
+        "ALTER TABLE owner.audit_events ENABLE TRIGGER retain_audit",
+      );
+      await tx.query(migration004Sql);
+    });
+
+    // While DB ledger is empty and 3 source events are missing from PostgreSQL:
+    // - GET /api/v1/audit-archive/batches/:id still serves the verified bundle from the independent durable store!
+    const bundleDuringDbLoss = await request(app)
+      .get(`/api/v1/audit-archive/batches/${firstBatchId}`)
+      .set("Cookie", adminCookie);
+    expect(bundleDuringDbLoss.status).toBe(200);
+    expect(bundleDuringDbLoss.body.durableStorage).toMatchObject({
+      persisted: true,
+      verified: true,
+      presentInDbLedger: false,
+    });
+
+    const statusBeforeRecovery = await request(app)
+      .get("/api/v1/audit-archive/status")
+      .set("Cookie", adminCookie);
+    expect(statusBeforeRecovery.status).toBe(200);
+    expect(statusBeforeRecovery.body.counts.archiveBatchCount).toBe(0);
+    expect(statusBeforeRecovery.body.counts.durableStoreBatchCount).toBe(
+      createdBatches.length,
+    );
+    expect(statusBeforeRecovery.body.integrity.verified).toBe(false);
+    expect(statusBeforeRecovery.body.integrity.recoveryRequired).toBe(true);
+
+    // 8a. Conflicting source event detection during recovery:
+    //     If an existing source row at an archived id/sequence has divergent content,
+    //     POST /api/v1/audit-archive/recover rejects with 409 ArchiveIntegrityViolation and rolls back
+    await db.transaction(async (tx) => {
+      await tx.query(
+        "ALTER TABLE owner.audit_events DISABLE TRIGGER retain_audit",
+      );
+      await tx.query(
+        `INSERT INTO owner.audit_events (
+           id, actor_id, event_type, target_type, target_id,
+           occurred_at, outcome, reason, before_state, after_state
+         )
+         VALUES (
+           $1, $2, 'CUSTOMER_CREATED', 'Customer', '01ARZ3NDEKTSV4RRFFQ69G5FAA',
+           '2025-10-17T12:00:00.001Z'::timestamptz, 'SUCCESS',
+           'CONFLICTING_DIVERGENT_RESTORE_EVENT', NULL, '{"customerCode":"CUST-CONFLICT"}'::jsonb
+         )`,
+        [youngerEventId, adminId],
+      );
+      await tx.query(
+        "ALTER TABLE owner.audit_events ENABLE TRIGGER retain_audit",
+      );
+    });
+
+    const conflictingRecoverRes = await write(
+      "post",
+      "/audit-archive/recover",
+      adminCookie,
+    ).send({
+      reason: "Attempt recovery while conflicting source event exists",
+    });
+    expect(conflictingRecoverRes.status).toBe(409);
+    expect(conflictingRecoverRes.body.code).toBe("ArchiveIntegrityViolation");
+
+    // Clean up the injected conflicting row and also rewind the audit_events identity sequence to 1
+    // to verify that recovery synchronizes the sequence before emitting new audit events
+    await db.transaction(async (tx) => {
+      await tx.query(
+        "ALTER TABLE owner.audit_events DISABLE TRIGGER retain_audit",
+      );
+      await tx.query("DELETE FROM owner.audit_events WHERE id = $1", [
+        youngerEventId,
+      ]);
+      await tx.query(
+        "ALTER TABLE owner.audit_events ENABLE TRIGGER retain_audit",
+      );
+      await tx.query(
+        "SELECT setval(pg_get_serial_sequence('owner.audit_events', 'sequence'), 1, true)",
+      );
+    });
+
+    // Execute POST /api/v1/audit-archive/recover to restore missing source events and DB archive ledger from the independent durable store
+    const recoverRes = await write(
+      "post",
+      "/audit-archive/recover",
+      adminCookie,
+    ).send({
+      reason:
+        "Restore missing source audit events and archive ledger from independent durable store after DB restore",
+    });
+    expect(recoverRes.status).toBe(200);
+    expect(recoverRes.body).toMatchObject({
+      verified: true,
+      recoveredBatchCount: createdBatches.length,
+      recoveredSourceEventCount: 3,
+      rehydratedDurableBatchCount: 0,
+      batchCount: createdBatches.length,
+    });
+    expect(recoverRes.body.recoveredLedgerEventCount).toBeGreaterThanOrEqual(
+      15,
+    );
+
+    // Verify sequence synchronization allows subsequent normal audit writes without collision
+    const postRecoverCustomerRes = await write(
+      "post",
+      "/customers",
+      adminCookie,
+    ).send({
+      customerCode: "CUST-POST-RECOVER",
+      displayName: "Post Recover Verification Clinic",
+      status: "ACTIVE",
+      contractReference: "REF-POST-RECOVER",
+    });
+    expect(postRecoverCustomerRes.status).toBe(201);
+
+    const statusAfterRecovery = await request(app)
+      .get("/api/v1/audit-archive/status")
+      .query({ asOf })
+      .set("Cookie", adminCookie);
+    expect(statusAfterRecovery.status).toBe(200);
+    expect(statusAfterRecovery.body.integrity.verified).toBe(true);
+    expect(statusAfterRecovery.body.integrity.crossStoreConsistent).toBe(true);
+    expect(statusAfterRecovery.body.integrity.recoveryRequired).toBe(false);
+
+    // Verify younger, exact-boundary, and past-floor incident events were restored into owner.audit_events with exact retention metadata
+    const checkRow = await db.pool.query<{
+      id: string;
+      minimum_retained_until: Date;
+      security_incident: boolean;
+      incident_status: string;
+    }>(
+      "SELECT id, minimum_retained_until, security_incident, incident_status FROM owner.audit_events WHERE id = ANY($1::char(26)[])",
+      [[youngerEventId, exactBoundaryEventId, pastFloorIncidentId]],
+    );
+    const byId = new Map(checkRow.rows.map((r) => [r.id, r]));
+    expect(byId.get(youngerEventId)?.minimum_retained_until.toISOString()).toBe(
+      "2026-10-17T12:00:00.001Z",
+    );
+    expect(
+      byId.get(exactBoundaryEventId)?.minimum_retained_until.toISOString(),
+    ).toBe("2026-10-17T12:00:00.000Z");
+    expect(
+      byId.get(pastFloorIncidentId)?.minimum_retained_until.toISOString(),
+    ).toBe("2024-01-15T08:30:00.000Z");
+    expect(byId.get(pastFloorIncidentId)?.security_incident).toBe(true);
+    expect(byId.get(pastFloorIncidentId)?.incident_status).toBe("UNRESOLVED");
+
+    // Verify owner_audit_archive tables are strictly append-only and reject UPDATE, DELETE, and mismatched source inserts
+    await expect(
+      db.pool.query("DELETE FROM owner_audit_archive.archived_audit_events"),
+    ).rejects.toThrow(/owner_audit_archive is append-only/);
+    await expect(
+      db.pool.query(
+        "UPDATE owner_audit_archive.archived_audit_events SET reason = 'tampered'",
+      ),
+    ).rejects.toThrow(/owner_audit_archive is append-only/);
+    await expect(
+      db.pool.query("DELETE FROM owner_audit_archive.archive_batches"),
+    ).rejects.toThrow(/owner_audit_archive is append-only/);
+    await expect(
+      db.pool.query(
+        "UPDATE owner_audit_archive.archive_batches SET reason = 'tampered'",
+      ),
+    ).rejects.toThrow(/owner_audit_archive is append-only/);
   });
 });

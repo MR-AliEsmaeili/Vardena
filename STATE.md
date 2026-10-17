@@ -2519,3 +2519,80 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   revocation artifact flow (OQ-78); no changes to customer `backend/` or
   `frontend/` packages or migrations. No OQ is closed by this implementation
   increment.
+
+## 47. Owner Phase 1.4 — Audit Retention and Separate Archive Controls (OQ-77 / PDR-17, 2026-10-17)
+
+- **Scope:** Implements the approved Owner-side audit retention and separate
+  archive controls from **PDR-11 §12.7–§12.8, §20.2 G, §20.5, §20.6, §21** and
+  **PDR-17 ("Audit and OQ-77")** across the standalone Owner Licensing
+  application (`owner-licensing/backend`, `owner-licensing/frontend`), additive
+  forward-only SQL migration `004-audit-retention-archive.sql`, and operational
+  documentation.
+- **Delivered changes:**
+  - **Forward-only SQL migration (`owner-licensing/backend/migrations/004-audit-retention-archive.sql`)**:
+    preserves the immutable SHA-256 checksums of `001-foundation.sql`,
+    `002-manual-operations.sql`, and `003-two-role-authorization.sql`. Adds
+    `minimum_retained_until` (`GENERATED ALWAYS AS (((occurred_at AT TIME ZONE 'UTC') + INTERVAL '3 years') AT TIME ZONE 'UTC') STORED NOT NULL`),
+    `security_incident`, and `incident_status` (`'NONE'` or `'UNRESOLVED'`) on
+    `owner.audit_events` with `BEFORE INSERT` trigger
+    `enforce_audit_retention_metadata` and constraint
+    `audit_events_incident_metadata_check`. Creates the separate archive schema
+    `owner_audit_archive` (`owner_audit_archive.archive_batches` and
+    `owner_audit_archive.archived_audit_events`) with `BEFORE UPDATE OR DELETE`
+    append-only triggers (`retain_archive_batches`, `retain_archived_events`),
+    batch hash-chain validation (`validate_archive_batch_insert`), and
+    source-matching verification (`verify_archived_event_matches_source`).
+  - **Domain retention evaluator & independent durable archive service (`owner-licensing/backend/src/archive.ts`, `src/audit.ts`, `src/config.ts`, `src/domain.ts`, `src/app.ts`)**:
+    - Enforces the 3-year minimum active retention window in UTC
+      (`computeMinimumRetainedUntil`, `evaluateAuditEventRetention`), unresolved
+      security-incident protection hold (`UNRESOLVED_SECURITY_INCIDENT_HOLD`),
+      and permanent retention (`PERMANENT_RETENTION_POLICY_NO_PURGE`,
+      `cleanupEligible: false`).
+    - Persists archive batches to an independent durable filesystem store
+      (`OWNER_AUDIT_ARCHIVE_DIR`, `FilesystemAuditArchiveStore`) writing
+      write-once (`link` + `unlink`, `chmod 0o444`, file and directory `fsync`),
+      read-back-verified JSON batch bundles (`batches/batch-XXXXXX-<id>.json`)
+      and an atomic `fsync`ed hash-chained `manifest.json` outside PostgreSQL,
+      paired with the PostgreSQL `owner_audit_archive` ledger (`durable_file_name`,
+      `durable_bundle_sha256`). Fails closed (`503 ArchiveStorageUnavailable`)
+      when `OWNER_AUDIT_ARCHIVE_DIR` is not configured, rolls back both stores on
+      failure, reconciles pending durable batches on retry without duplication,
+      and only reports events as `archived: true` when verified in both stores.
+    - Grants `audit.archive` exclusively to `OWNER_ADMIN`; `LICENSE_OPERATOR`
+      retains `audit.view` for read-only audit explorer viewing and is denied
+      privileged archive operations (`GET /api/v1/audit-archive/status`,
+      `GET /api/v1/audit-archive/batches`, `GET /api/v1/audit-archive/batches/:id`,
+      `POST /api/v1/audit-archive/batches`, `POST /api/v1/audit-archive/verify`,
+      `POST /api/v1/audit-archive/recover`) at both route and service boundaries
+      (`403 PermissionDenied`), recording an attributable
+      `AUDIT_ARCHIVE_ACCESS_DENIED` security-incident audit row.
+    - Provides deterministic post-restore recovery (`POST /api/v1/audit-archive/recover`)
+      that verifies the independent durable store (`OWNER_AUDIT_ARCHIVE_DIR`),
+      restores any missing source events into `owner.audit_events` (`OVERRIDING
+      SYSTEM VALUE` + sequence sync) and missing batches/events into
+      `owner_audit_archive` after a PostgreSQL backup restore, and logs
+      `AUDIT_ARCHIVE_RECOVERED`.
+  - **Owner Frontend (`owner-licensing/frontend/src/features/audit/audit-page.tsx`, `audit-filters.ts`, `api/contracts.ts`, `api/owner.api.ts`, `lib/owner-i18n.ts`)**:
+    displays per-event 3-year retention floor timestamps in Persian/Jalali
+    Tehran format (`formatOwnerInstant`), unresolved security-incident hold
+    badges, and separate-archive badges for `audit.view` holders, and renders
+    the `OWNER_ADMIN`-only (`audit.archive`) archive management, integrity
+    verification, and durable-store recovery panel on `/app/audit`.
+- **Explicit non-goals and open boundaries:**
+  no destructive purge or automatic deletion job (`cleanupEligibleEventCount = 0`);
+  no invented incident-resolution workflow to clear security-incident holds;
+  `OWNER_AUDIT_ARCHIVE_DIR` must be mounted on a dedicated durable volume
+  outside the PostgreSQL data directory (a different path alone does not
+  guarantee physical storage independence, hardware WORM, or protection against
+  a compromised OS `root` or PostgreSQL superuser, and provisioning/verifying
+  the dedicated volume mount and its external backup/restore procedure in
+  production remains an unresolved operational requirement because the
+  repository does not define production infrastructure manifests); under the
+  supported-filesystem durability policy (`TOLERATED_DIRECTORY_SYNC_ERROR_CODES =
+  new Set(["EINVAL"])`), `FilesystemAuditArchiveStore` enforces mandatory
+  regular-file `fsync` and directory `open` and tolerates only `EINVAL` on
+  `dirHandle.sync()` while failing closed (`503 ArchiveStorageUnavailable`) on
+  all other sync errors (`EIO`, `ENOSPC`, `EDQUOT`, `EROFS`, `EACCES`, `EPERM`,
+  `EBADF`, `ENOTSUP`, or unclassified errors); customer-side
+  `licensing.license_audit_events` archiving and Product Owner acceptance remain
+  open under `OQ-77`.

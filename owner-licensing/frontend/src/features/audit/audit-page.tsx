@@ -1,7 +1,7 @@
 import { formatOwnerInstant } from '@/lib/date-time';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as api from '@/api/owner.api';
@@ -51,16 +51,49 @@ function outcomeLabel(outcome: AuditEvent['outcome']): string {
 }
 
 function AuditEventCard({ event }: { event: AuditEvent }) {
+  const isSecurityIncident =
+    event.securityIncident === true || event.outcome === 'DENIED';
   const rows: [string, string | null | undefined, string?][] = [
     [o.actor, event.actorId],
     [o.target, targetText(event)],
     [o.time, formatOwnerInstant(event.occurredAt), event.occurredAt],
+    ...(event.minimumRetainedUntil
+      ? ([
+          [
+            o.auditRetentionFloorLabel,
+            formatOwnerInstant(event.minimumRetainedUntil),
+            event.minimumRetainedUntil,
+          ],
+        ] as [string, string, string][])
+      : []),
     [o.outcome, outcomeLabel(event.outcome)],
     [o.reason, event.reason],
   ];
   return (
     <li className="space-y-2 rounded border bg-white p-4">
-      <h2 className="font-semibold">{eventLabel(event.eventType)}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-semibold">{eventLabel(event.eventType)}</h2>
+        <div className="flex flex-wrap gap-2">
+          {isSecurityIncident ? (
+            <span className="rounded bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-800">
+              {o.auditSecurityIncidentHoldBadge}
+            </span>
+          ) : null}
+          {event.archived !== undefined ? (
+            <span
+              className={`rounded px-2 py-0.5 text-xs font-medium ${
+                event.archived
+                  ? 'bg-emerald-50 text-emerald-800'
+                  : 'bg-slate-100 text-slate-700'
+              }`}
+            >
+              {event.archived
+                ? `${o.auditArchivedBadge}${event.archiveBatchId ? ` (${event.archiveBatchId})` : ''}`
+                : o.auditUnarchivedBadge}
+            </span>
+          ) : null}
+        </div>
+      </div>
       <p className="code text-xs text-slate-500" dir="ltr">
         {event.eventType}
       </p>
@@ -91,6 +124,328 @@ function AuditEventCard({ event }: { event: AuditEvent }) {
         </pre>
       </details>
     </li>
+  );
+}
+
+function AuditArchiveControlSection() {
+  const queryClient = useQueryClient();
+  const [reasonText, setReasonText] = useState('');
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  const statusQuery = useQuery({
+    queryKey: queryKeys.auditArchiveStatus(),
+    queryFn: ({ signal }) => api.auditArchiveStatus(signal),
+  });
+
+  const batchesQuery = useQuery({
+    queryKey: queryKeys.auditArchiveBatches(1),
+    queryFn: ({ signal }) => api.auditArchiveBatches(1, signal),
+  });
+
+  const createBatchMutation = useMutation({
+    mutationFn: (reason: string) => api.createAuditArchiveBatch({ reason }),
+    onSuccess: async (res) => {
+      setReasonText('');
+      setReasonError(null);
+      setFeedback(
+        res.status === 'ARCHIVED'
+          ? o.auditArchiveBatchCreatedSuccess
+          : o.auditArchiveNoEligibleEvents,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.auditArchiveStatus(),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.auditArchiveBatches(1),
+        }),
+        queryClient.invalidateQueries({ queryKey: ['owner', 'audit'] }),
+      ]);
+    },
+  });
+
+  const verifyMutation = useMutation({
+    mutationFn: (reason: string) => api.verifyAuditArchive({ reason }),
+    onSuccess: async () => {
+      setReasonText('');
+      setReasonError(null);
+      setFeedback(o.auditArchiveVerifiedSuccess);
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.auditArchiveStatus(),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.auditArchiveBatches(1),
+        }),
+        queryClient.invalidateQueries({ queryKey: ['owner', 'audit'] }),
+      ]);
+    },
+  });
+
+  const recoverMutation = useMutation({
+    mutationFn: (reason: string) => api.recoverAuditArchive({ reason }),
+    onSuccess: async () => {
+      setReasonText('');
+      setReasonError(null);
+      setFeedback(o.auditArchiveRecoveredSuccess);
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.auditArchiveStatus(),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.auditArchiveBatches(1),
+        }),
+        queryClient.invalidateQueries({ queryKey: ['owner', 'audit'] }),
+      ]);
+    },
+  });
+
+  const isMutating =
+    createBatchMutation.isPending ||
+    verifyMutation.isPending ||
+    recoverMutation.isPending;
+
+  const validateReason = (): string | null => {
+    const trimmed = reasonText.trim();
+    if (!trimmed) {
+      setReasonError(o.auditArchiveReasonRequired);
+      return null;
+    }
+    setReasonError(null);
+    setFeedback(null);
+    return trimmed;
+  };
+
+  return (
+    <section
+      aria-label={o.auditArchiveSectionTitle}
+      className="space-y-4 rounded border bg-white p-4"
+    >
+      <div className="space-y-1">
+        <h2 className="text-base font-semibold">
+          {o.auditArchiveSectionTitle}
+        </h2>
+        <p className="text-xs text-slate-600">{o.auditArchiveSectionNote}</p>
+      </div>
+
+      {statusQuery.isPending ? (
+        <LoadingState />
+      ) : statusQuery.isError ? (
+        <ApiErrorAlert
+          error={statusQuery.error}
+          onRetry={() => void statusQuery.refetch()}
+        />
+      ) : (
+        <dl className="grid gap-3 text-sm sm:grid-cols-3">
+          <div className="rounded border bg-slate-50 p-3">
+            <dt className="text-xs text-slate-500">
+              {o.auditArchiveTotalEvents}
+            </dt>
+            <dd className="font-semibold">
+              {statusQuery.data.counts.totalSourceEvents}
+            </dd>
+          </div>
+          <div className="rounded border bg-slate-50 p-3">
+            <dt className="text-xs text-slate-500">
+              {o.auditArchiveWithinFloor}
+            </dt>
+            <dd className="font-semibold">
+              {statusQuery.data.counts.withinMinimumRetentionWindowCount}
+            </dd>
+          </div>
+          <div className="rounded border bg-slate-50 p-3">
+            <dt className="text-xs text-slate-500">
+              {o.auditArchivePastFloor}
+            </dt>
+            <dd className="font-semibold">
+              {statusQuery.data.counts.pastMinimumRetentionFloorCount}
+            </dd>
+          </div>
+          <div className="rounded border bg-rose-50 p-3">
+            <dt className="text-xs text-rose-700">
+              {o.auditArchiveIncidentHolds}
+            </dt>
+            <dd className="font-semibold text-rose-900">
+              {statusQuery.data.counts.unresolvedSecurityIncidentCount}
+            </dd>
+          </div>
+          <div className="rounded border bg-emerald-50 p-3">
+            <dt className="text-xs text-emerald-700">
+              {o.auditArchiveArchivedCount}
+            </dt>
+            <dd className="font-semibold text-emerald-900">
+              {statusQuery.data.counts.archivedEventCount}
+            </dd>
+          </div>
+          <div className="rounded border bg-slate-50 p-3">
+            <dt className="text-xs text-slate-500">
+              {o.auditArchivePendingCount}
+            </dt>
+            <dd className="font-semibold">
+              {statusQuery.data.counts.unarchivedEligibleEventCount}
+            </dd>
+          </div>
+          <div className="rounded border bg-slate-50 p-3">
+            <dt className="text-xs text-slate-500">
+              {o.auditArchiveDurableStoreBatches}
+            </dt>
+            <dd className="font-semibold">
+              {statusQuery.data.counts.durableStoreBatchCount} (
+              {statusQuery.data.counts.durableStoreEventCount})
+            </dd>
+          </div>
+          <div className="rounded border bg-slate-50 p-3 sm:col-span-2">
+            <dt className="text-xs text-slate-500">
+              {o.auditArchiveIntegrityLabel}
+            </dt>
+            <dd
+              className={
+                statusQuery.data.integrity.verified
+                  ? 'font-medium text-emerald-800'
+                  : 'font-medium text-rose-800'
+              }
+            >
+              {statusQuery.data.integrity.verified
+                ? o.auditArchiveIntegrityVerified
+                : (statusQuery.data.integrity.issueMessage ??
+                  o.auditArchiveIntegrityFailed)}
+              {statusQuery.data.integrity.latestBatchDigestSha256 ? (
+                <span
+                  className="ms-2 font-mono text-xs text-slate-600"
+                  dir="ltr"
+                >
+                  ({statusQuery.data.integrity.latestBatchDigestSha256})
+                </span>
+              ) : null}
+            </dd>
+          </div>
+        </dl>
+      )}
+
+      <div className="space-y-3 border-t pt-3">
+        <FormField
+          id="audit-archive-reason"
+          label={o.auditArchiveReasonLabel}
+          error={reasonError ?? undefined}
+        >
+          {(props) => (
+            <Input
+              {...props}
+              value={reasonText}
+              onChange={(e) => setReasonText(e.target.value)}
+              maxLength={500}
+              autoComplete="off"
+            />
+          )}
+        </FormField>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            disabled={isMutating}
+            onClick={() => {
+              const valid = validateReason();
+              if (valid) createBatchMutation.mutate(valid);
+            }}
+          >
+            {createBatchMutation.isPending
+              ? o.auditArchiveCreatingBatch
+              : o.auditArchiveCreateBatch}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isMutating}
+            onClick={() => {
+              const valid = validateReason();
+              if (valid) verifyMutation.mutate(valid);
+            }}
+          >
+            {verifyMutation.isPending
+              ? o.auditArchiveVerifying
+              : o.auditArchiveVerifyButton}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isMutating}
+            onClick={() => {
+              const valid = validateReason();
+              if (valid) recoverMutation.mutate(valid);
+            }}
+          >
+            {recoverMutation.isPending
+              ? o.auditArchiveRecovering
+              : o.auditArchiveRecoverButton}
+          </Button>
+        </div>
+
+        {feedback ? (
+          <output className="block rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+            {feedback}
+          </output>
+        ) : null}
+
+        {createBatchMutation.isError ? (
+          <ApiErrorAlert error={createBatchMutation.error} />
+        ) : null}
+        {verifyMutation.isError ? (
+          <ApiErrorAlert error={verifyMutation.error} />
+        ) : null}
+        {recoverMutation.isError ? (
+          <ApiErrorAlert error={recoverMutation.error} />
+        ) : null}
+      </div>
+
+      <div className="space-y-2 border-t pt-3">
+        <h3 className="text-sm font-semibold">
+          {o.auditArchiveBatchesHeading}
+        </h3>
+        {batchesQuery.isPending ? (
+          <LoadingState />
+        ) : batchesQuery.isError ? (
+          <ApiErrorAlert
+            error={batchesQuery.error}
+            onRetry={() => void batchesQuery.refetch()}
+          />
+        ) : batchesQuery.data.items.length === 0 ? (
+          <p className="text-xs text-slate-500">{o.auditArchiveBatchesEmpty}</p>
+        ) : (
+          <ul className="space-y-2 text-xs">
+            {batchesQuery.data.items.map((batch) => {
+              const createdFormatted = formatOwnerInstant(batch.createdAt);
+              const cutoffFormatted = formatOwnerInstant(
+                batch.retentionCutoffAt,
+              );
+              return (
+                <li
+                  key={batch.id}
+                  className="rounded border bg-slate-50 p-3 space-y-1"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-mono font-semibold" dir="ltr">
+                      #{batch.batchNumber} — {batch.id} ({batch.durableFileName}
+                      )
+                    </span>
+                    <span>{createdFormatted}</span>
+                  </div>
+                  <p className="text-slate-700">{batch.reason}</p>
+                  <p className="text-slate-500">
+                    {o.auditArchiveArchivedCount}: {batch.eventCount} (
+                    {batch.firstSequence}..{batch.lastSequence}) —{' '}
+                    {cutoffFormatted}
+                  </p>
+                  <p className="font-mono text-slate-500 break-all" dir="ltr">
+                    SHA-256: {batch.batchDigestSha256}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -152,6 +507,7 @@ export function AuditPage() {
     <section className="space-y-4">
       <h1 className="text-xl font-bold">{o.audit}</h1>
       <p className="text-sm text-slate-500">{o.auditNotice}</p>
+      {permissions.has('audit.archive') ? <AuditArchiveControlSection /> : null}
       <form
         aria-label={o.auditFilters}
         noValidate

@@ -246,21 +246,85 @@ describe("audit explorer read (no database)", () => {
       [
         "actorId",
         "afterState",
+        "archiveBatchId",
+        "archived",
         "beforeState",
         "eventType",
         "id",
+        "incidentStatus",
+        "minimumRetainedUntil",
         "occurredAt",
         "outcome",
         "reason",
+        "securityIncident",
         "targetId",
         "targetType",
       ].sort(),
     );
     expect(body.items[0]!.occurredAt).toBe("2026-10-15T10:00:00.000Z");
+    expect(body.items[0]!.minimumRetainedUntil).toBe(
+      "2029-10-15T10:00:00.000Z",
+    );
+    expect(body.items[0]!.securityIncident).toBe(false);
+    expect(body.items[0]!.incidentStatus).toBe("NONE");
+    expect(body.items[0]!.archived).toBe(false);
+    expect(body.items[0]!.archiveBatchId).toBeNull();
     expect(body.items[0]!.beforeState).toEqual({ displayName: "old" });
     expect(body.items[0]!.afterState).toEqual({ displayName: "new" });
     expect(JSON.stringify(body)).not.toContain("argon2");
     expect(JSON.stringify(body)).not.toContain("token_hash");
+  });
+
+  it("projects security-incident hold and archive batch attribution on archived security events", async () => {
+    const { tx } = recordingTx([
+      {
+        id: ulidA,
+        actor_id: ulidB,
+        event_type: "AUTH_LOGIN_FAILED",
+        target_type: "User",
+        target_id: ulidA,
+        occurred_at: new Date("2023-10-15T10:00:00.000Z"),
+        minimum_retained_until: new Date("2026-10-15T10:00:00.000Z"),
+        security_incident: true,
+        incident_status: "UNRESOLVED",
+        archive_batch_id: ulidB,
+        outcome: "DENIED",
+        reason: "Invalid credentials",
+        before_state: null,
+        after_state: null,
+      },
+    ]);
+    const body = await listAuditEvents(
+      tx,
+      { targetType: "User" },
+      { verifiedDurableBatchIds: new Set([ulidB]) },
+    );
+    expect(body.items[0]).toMatchObject({
+      id: ulidA,
+      occurredAt: "2023-10-15T10:00:00.000Z",
+      minimumRetainedUntil: "2026-10-15T10:00:00.000Z",
+      securityIncident: true,
+      incidentStatus: "UNRESOLVED",
+      archived: true,
+      archiveBatchId: ulidB,
+      outcome: "DENIED",
+    });
+
+    // If the batch is not verified in the independent durable store, archived is false
+    const unverifiedBody = await listAuditEvents(
+      tx,
+      { targetType: "User" },
+      { verifiedDurableBatchIds: new Set() },
+    );
+    expect(unverifiedBody.items[0]).toMatchObject({
+      id: ulidA,
+      archived: false,
+      archiveBatchId: null,
+    });
+    expect(auditFilters({ targetType: "AuditArchiveBatch" })).toEqual({
+      page: 1,
+      targetType: "AuditArchiveBatch",
+    });
   });
 
   it("drops unknown, nested and non-scalar state while keeping allowlisted milestones", () => {

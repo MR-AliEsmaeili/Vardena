@@ -1,4 +1,16 @@
-import { readFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { open as fsOpen } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   assertActiveAuthorizedActor,
@@ -21,6 +33,26 @@ import {
   validateRoleUpgradePlan,
   type SafeUserUpgradeRow,
 } from "../src/migrate.js";
+import {
+  FilesystemAuditArchiveStore,
+  TOLERATED_DIRECTORY_SYNC_ERROR_CODES,
+  canonicalAuditRetentionPolicy,
+  computeArchiveBatchDigest,
+  computeArchiveBundleDigest,
+  computeArchivedEventDigest,
+  computeMinimumRetainedUntil,
+  createAuditArchiveBatch,
+  evaluateAuditEventRetention,
+  formatDurableBatchFileName,
+  getAuditArchiveBatch,
+  getAuditArchiveStatus,
+  isInherentSecurityIncident,
+  listAuditArchiveBatches,
+  recoverAuditArchiveService,
+  validateAndNormalizeIncidentMetadata,
+  verifyAuditArchiveIntegrity,
+  verifyExportedArchiveBundle,
+} from "../src/archive.js";
 import { config } from "../src/config.js";
 
 describe("Owner deny-by-default policy and input boundary", () => {
@@ -31,6 +63,7 @@ describe("Owner deny-by-default policy and input boundary", () => {
       "customers.write",
       "users.manage",
       "audit.view",
+      "audit.archive",
       "operations.view",
       "operations.record",
       "replacements.authorize",
@@ -465,9 +498,15 @@ describe("Customer field allowlist for the two-role model", () => {
     expect(assertPermission("OWNER_ADMIN", "replacements.authorize")).toBe(
       "OWNER_ADMIN",
     );
+    expect(assertPermission("OWNER_ADMIN", "audit.archive")).toBe(
+      "OWNER_ADMIN",
+    );
     expect(() =>
       assertPermission("LICENSE_OPERATOR", "replacements.authorize"),
     ).toThrow("You do not have permission.");
+    expect(() => assertPermission("LICENSE_OPERATOR", "audit.archive")).toThrow(
+      "You do not have permission.",
+    );
     expect(() =>
       assertActiveAuthorizedActor(
         {
@@ -490,5 +529,871 @@ describe("Customer field allowlist for the two-role model", () => {
         "users.manage",
       ),
     ).toThrow("Initial password must be changed first.");
+  });
+
+  it("enforces OQ-77 3-year retention boundary, unresolved incident hold, archive integrity digests, and safe failure on invalid metadata", async () => {
+    const eventId = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+    const batchId = "01BX5ZZKBKACTAV9WEVGEMMVRZ";
+    const actorId = "01ARZ3NDEKTSV4RRFFQ69G5FA1";
+
+    expect(canonicalAuditRetentionPolicy).toEqual({
+      appendOnly: true,
+      minimumRetentionYears: 3,
+      threeYearMinimumIsPurgeDate: false,
+      unresolvedSecurityIncidentsExcludedFromCleanup: true,
+      permanentSeparateArchiveInForce: true,
+      automaticDestructivePurgeEnabled: false,
+      archiveStorageBoundary:
+        "INDEPENDENT_DURABLE_FILESYSTEM_STORE_AND_POSTGRES_LEDGER",
+      cryptographicHardwareWormImplemented: false,
+    });
+
+    // Exact 3-year calendar calculation in UTC including leap-day clamping (2024-02-29 -> 2027-02-28)
+    expect(
+      computeMinimumRetainedUntil("2023-10-17T12:34:56.789Z").toISOString(),
+    ).toBe("2026-10-17T12:34:56.789Z");
+    expect(
+      computeMinimumRetainedUntil("2024-02-29T23:59:59.500Z").toISOString(),
+    ).toBe("2027-02-28T23:59:59.500Z");
+
+    const baseEvent = {
+      sequence: 1,
+      id: eventId,
+      actorId,
+      eventType: "CUSTOMER_CREATED",
+      targetType: "Customer",
+      targetId: eventId,
+      occurredAt: "2023-10-17T12:00:00.000Z",
+      minimumRetainedUntil: "2026-10-17T12:00:00.000Z",
+      outcome: "SUCCESS" as const,
+      securityIncident: false,
+      incidentStatus: "NONE" as const,
+      reason: "Created customer",
+      beforeState: null,
+      afterState: { customerCode: "ACME-1", displayName: "Acme" },
+    };
+    const recordDigest = computeArchivedEventDigest(baseEvent);
+
+    // 1ms before 3-year boundary: within minimum retention window
+    const beforeBoundary = evaluateAuditEventRetention(
+      baseEvent,
+      "2026-10-17T11:59:59.999Z",
+    );
+    expect(beforeBoundary.withinMinimumRetentionWindow).toBe(true);
+    expect(beforeBoundary.pastMinimumRetentionFloor).toBe(false);
+    expect(beforeBoundary.cleanupEligible).toBe(false);
+    expect(beforeBoundary.retentionDisposition).toBe(
+      "RETAIN_ACTIVE_WITHIN_MINIMUM_WINDOW",
+    );
+    expect(beforeBoundary.cleanupProtectionReasons).toEqual([
+      "WITHIN_THREE_YEAR_MINIMUM_RETENTION",
+      "UNARCHIVED_SOURCE_EVIDENCE",
+      "PERMANENT_RETENTION_POLICY_NO_PURGE",
+    ]);
+
+    // Exact 3-year boundary (+0ms) unarchived: past floor, awaiting archive
+    const atBoundaryUnarchived = evaluateAuditEventRetention(
+      baseEvent,
+      "2026-10-17T12:00:00.000Z",
+    );
+    expect(atBoundaryUnarchived.withinMinimumRetentionWindow).toBe(false);
+    expect(atBoundaryUnarchived.pastMinimumRetentionFloor).toBe(true);
+    expect(atBoundaryUnarchived.archiveVerified).toBe(false);
+    expect(atBoundaryUnarchived.cleanupEligible).toBe(false);
+    expect(atBoundaryUnarchived.retentionDisposition).toBe(
+      "RETAIN_PAST_FLOOR_AWAITING_ARCHIVE",
+    );
+    expect(atBoundaryUnarchived.cleanupProtectionReasons).toEqual([
+      "UNARCHIVED_SOURCE_EVIDENCE",
+      "PERMANENT_RETENTION_POLICY_NO_PURGE",
+    ]);
+
+    // Beyond 3-year boundary (+1ms) and verified in separate archive: permanently retained
+    const pastBoundaryArchived = evaluateAuditEventRetention(
+      {
+        ...baseEvent,
+        archived: true,
+        archiveBatchId: batchId,
+        recordSha256: recordDigest,
+      },
+      "2026-10-17T12:00:00.001Z",
+    );
+    expect(pastBoundaryArchived.withinMinimumRetentionWindow).toBe(false);
+    expect(pastBoundaryArchived.pastMinimumRetentionFloor).toBe(true);
+    expect(pastBoundaryArchived.archiveVerified).toBe(true);
+    expect(pastBoundaryArchived.cleanupEligible).toBe(false);
+    expect(pastBoundaryArchived.retentionDisposition).toBe(
+      "RETAIN_PAST_FLOOR_ARCHIVED_PERMANENTLY",
+    );
+    expect(pastBoundaryArchived.cleanupProtectionReasons).toEqual([
+      "PERMANENT_RETENTION_POLICY_NO_PURGE",
+    ]);
+
+    // Unresolved security incidents are protected both within and beyond the 3-year floor
+    const incidentPayload = {
+      ...baseEvent,
+      sequence: 2,
+      eventType: "AUTH_LOGIN_FAILED",
+      targetType: "User",
+      outcome: "DENIED" as const,
+      securityIncident: true,
+      incidentStatus: "UNRESOLVED" as const,
+      reason: "Invalid credentials",
+      afterState: null,
+    };
+    const incidentDigest = computeArchivedEventDigest(incidentPayload);
+
+    const incidentWithinWindow = evaluateAuditEventRetention(
+      incidentPayload,
+      "2026-10-17T11:59:59.999Z",
+    );
+    expect(incidentWithinWindow.securityIncident).toBe(true);
+    expect(incidentWithinWindow.incidentProtected).toBe(true);
+    expect(incidentWithinWindow.retentionDisposition).toBe(
+      "RETAIN_ACTIVE_WITHIN_WINDOW_AND_INCIDENT_HOLD",
+    );
+    expect(incidentWithinWindow.cleanupProtectionReasons).toContain(
+      "UNRESOLVED_SECURITY_INCIDENT_HOLD",
+    );
+
+    const incidentPastWindowArchived = evaluateAuditEventRetention(
+      {
+        ...incidentPayload,
+        archived: true,
+        archiveBatchId: batchId,
+        recordSha256: incidentDigest,
+      },
+      "2030-01-01T00:00:00.000Z",
+    );
+    expect(incidentPastWindowArchived.pastMinimumRetentionFloor).toBe(true);
+    expect(incidentPastWindowArchived.incidentProtected).toBe(true);
+    expect(incidentPastWindowArchived.archiveVerified).toBe(true);
+    expect(incidentPastWindowArchived.cleanupEligible).toBe(false);
+    expect(incidentPastWindowArchived.retentionDisposition).toBe(
+      "RETAIN_PAST_FLOOR_INCIDENT_HOLD",
+    );
+    expect(incidentPastWindowArchived.cleanupProtectionReasons).toEqual([
+      "UNRESOLVED_SECURITY_INCIDENT_HOLD",
+      "PERMANENT_RETENTION_POLICY_NO_PURGE",
+    ]);
+
+    // Verify exported archive bundle validation and tamper rejection
+    const batchDigest = computeArchiveBatchDigest({
+      batchId,
+      firstSequence: 1,
+      lastSequence: 2,
+      eventCount: 2,
+      retentionCutoffAt: "2023-10-17T12:00:00.000Z",
+      previousBatchDigest: null,
+      recordDigests: [recordDigest, incidentDigest],
+    });
+    const durableFileName = formatDurableBatchFileName(1, batchId);
+    const validBundleBase = {
+      batch: {
+        id: batchId,
+        batchNumber: 1,
+        createdBy: actorId,
+        createdAt: "2026-10-17T12:00:00.000Z",
+        reason: "Initial archive bundle",
+        firstSequence: 1,
+        lastSequence: 2,
+        eventCount: 2,
+        retentionCutoffAt: "2023-10-17T12:00:00.000Z",
+        previousBatchDigest: null,
+        batchDigestSha256: batchDigest,
+        durableFileName,
+      },
+      events: [
+        {
+          ...baseEvent,
+          batchId,
+          archivedAt: "2026-10-17T12:00:00.000Z",
+          recordSha256: recordDigest,
+        },
+        {
+          ...incidentPayload,
+          batchId,
+          archivedAt: "2026-10-17T12:00:00.000Z",
+          recordSha256: incidentDigest,
+        },
+      ],
+    };
+    const bundleDigest = computeArchiveBundleDigest(validBundleBase);
+    const validBundle = {
+      ...validBundleBase,
+      batch: {
+        ...validBundleBase.batch,
+        bundleDigestSha256: bundleDigest,
+      },
+    };
+    expect(verifyExportedArchiveBundle(validBundle)).toEqual({
+      verified: true,
+      batchId,
+      batchNumber: 1,
+      eventCount: 2,
+      firstSequence: 1,
+      lastSequence: 2,
+      batchDigestSha256: batchDigest,
+      bundleDigestSha256: bundleDigest,
+      durableFileName,
+    });
+
+    // Invalid, missing, or inconsistent incident/archive metadata fails safely
+    expect(() =>
+      validateAndNormalizeIncidentMetadata({
+        eventType: "AUTH_LOGIN_FAILED",
+        outcome: "DENIED",
+        securityIncident: false,
+      }),
+    ).toThrow(/must have securityIncident = true/);
+    expect(() =>
+      validateAndNormalizeIncidentMetadata({
+        eventType: "AUTH_LOGIN_FAILED",
+        outcome: "DENIED",
+        incidentStatus: "RESOLVED",
+      }),
+    ).toThrow(/cannot be marked RESOLVED/);
+    expect(() =>
+      validateAndNormalizeIncidentMetadata({
+        eventType: "AUTH_LOGIN_FAILED",
+        outcome: "DENIED",
+        incidentStatus: "NONE",
+      }),
+    ).toThrow(/must have incidentStatus = UNRESOLVED/);
+    expect(() =>
+      validateAndNormalizeIncidentMetadata({
+        eventType: "CUSTOMER_CREATED",
+        outcome: "SUCCESS",
+        securityIncident: false,
+        incidentStatus: "UNRESOLVED",
+      }),
+    ).toThrow(/must have incidentStatus = NONE/);
+    expect(() =>
+      evaluateAuditEventRetention(
+        {
+          ...baseEvent,
+          minimumRetainedUntil: "2025-10-17T12:00:00.000Z",
+        },
+        "2026-10-17T12:00:00.000Z",
+      ),
+    ).toThrow(/contradicts occurredAt \+ 3 years/);
+    expect(() =>
+      evaluateAuditEventRetention(
+        {
+          ...baseEvent,
+          archived: true,
+          archiveBatchId: null,
+          recordSha256: recordDigest,
+        },
+        "2026-10-17T12:00:00.000Z",
+      ),
+    ).toThrow(/valid 26-character ULID archiveBatchId/);
+    expect(() =>
+      evaluateAuditEventRetention(
+        {
+          ...baseEvent,
+          archived: true,
+          archiveBatchId: batchId,
+          recordSha256: "0".repeat(64),
+        },
+        "2026-10-17T12:00:00.000Z",
+      ),
+    ).toThrow(/recordSha256 mismatch/);
+    expect(() =>
+      evaluateAuditEventRetention(
+        {
+          ...baseEvent,
+          archived: false,
+          archiveBatchId: batchId,
+        },
+        "2026-10-17T12:00:00.000Z",
+      ),
+    ).toThrow(/Unarchived audit event cannot carry archiveBatchId/);
+    expect(() =>
+      computeArchivedEventDigest({
+        ...baseEvent,
+        afterState: { password_hash: "$argon2id$secret" },
+      }),
+    ).toThrow(/forbidden secret/);
+    expect(() =>
+      verifyExportedArchiveBundle({
+        ...validBundle,
+        batch: { ...validBundle.batch, batchDigestSha256: "f".repeat(64) },
+      }),
+    ).toThrow(/batchDigestSha256 mismatch/);
+
+    expect(isInherentSecurityIncident("AUTH_LOGIN_FAILED", "DENIED")).toBe(
+      true,
+    );
+    expect(
+      isInherentSecurityIncident("AUDIT_ARCHIVE_ACCESS_DENIED", "DENIED"),
+    ).toBe(true);
+    expect(isInherentSecurityIncident("CUSTOMER_CREATED", "SUCCESS")).toBe(
+      false,
+    );
+
+    // Events with nullable actorId and nullable targetId (e.g. AUTH_LOGIN_FAILED on unknown username)
+    // compute deterministic digests and verify cleanly in archive bundles
+    const nullTargetEvent = {
+      ...baseEvent,
+      actorId: null,
+      eventType: "AUTH_LOGIN_FAILED",
+      targetType: "User",
+      targetId: null,
+      outcome: "DENIED" as const,
+      securityIncident: true,
+      incidentStatus: "UNRESOLVED" as const,
+      afterState: null,
+    };
+    const nullTargetDigest = computeArchivedEventDigest(nullTargetEvent);
+    expect(nullTargetDigest).toMatch(/^[0-9a-f]{64}$/);
+    const nullTargetBatchDigest = computeArchiveBatchDigest({
+      batchId,
+      firstSequence: 1,
+      lastSequence: 1,
+      eventCount: 1,
+      retentionCutoffAt: nullTargetEvent.occurredAt,
+      previousBatchDigest: null,
+      recordDigests: [nullTargetDigest],
+    });
+    expect(
+      verifyExportedArchiveBundle({
+        batch: {
+          ...validBundleBase.batch,
+          firstSequence: 1,
+          lastSequence: 1,
+          eventCount: 1,
+          retentionCutoffAt: nullTargetEvent.occurredAt,
+          batchDigestSha256: nullTargetBatchDigest,
+        },
+        events: [
+          {
+            ...nullTargetEvent,
+            batchId,
+            archivedAt: "2026-10-17T12:05:00.000Z",
+            recordSha256: nullTargetDigest,
+          },
+        ],
+      }).verified,
+    ).toBe(true);
+
+    // Service-layer authorization guards on archive operations reject LICENSE_OPERATOR before DB access
+    const fakeTx = {} as Parameters<typeof getAuditArchiveStatus>[0];
+    const operatorActor = {
+      id: actorId,
+      role: "LICENSE_OPERATOR" as const,
+      is_active: true,
+      must_change_password: false,
+    };
+    await expect(
+      getAuditArchiveStatus(fakeTx, operatorActor),
+    ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+    await expect(
+      listAuditArchiveBatches(fakeTx, operatorActor),
+    ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+    await expect(
+      getAuditArchiveBatch(fakeTx, operatorActor, batchId),
+    ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+    await expect(
+      createAuditArchiveBatch(fakeTx, operatorActor, { reason: "test" }),
+    ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+    await expect(
+      verifyAuditArchiveIntegrity(fakeTx, operatorActor, { reason: "test" }),
+    ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+    await expect(
+      recoverAuditArchiveService(fakeTx, operatorActor, { reason: "test" }),
+    ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+
+    // Archive write, retrieve, verify, and recover fail closed (503 ArchiveStorageUnavailable)
+    // when OWNER_AUDIT_ARCHIVE_DIR / store is not configured
+    const adminActor = {
+      id: actorId,
+      role: "OWNER_ADMIN" as const,
+      is_active: true,
+      must_change_password: false,
+    };
+    await expect(
+      createAuditArchiveBatch(fakeTx, adminActor, { reason: "test" }),
+    ).rejects.toMatchObject({
+      status: 503,
+      code: "ArchiveStorageUnavailable",
+    });
+    await expect(
+      getAuditArchiveBatch(fakeTx, adminActor, batchId),
+    ).rejects.toMatchObject({
+      status: 503,
+      code: "ArchiveStorageUnavailable",
+    });
+    await expect(
+      verifyAuditArchiveIntegrity(fakeTx, adminActor, { reason: "test" }),
+    ).rejects.toMatchObject({
+      status: 503,
+      code: "ArchiveStorageUnavailable",
+    });
+    await expect(
+      recoverAuditArchiveService(fakeTx, adminActor, { reason: "test" }),
+    ).rejects.toMatchObject({
+      status: 503,
+      code: "ArchiveStorageUnavailable",
+    });
+
+    // Config validation for OWNER_AUDIT_ARCHIVE_DIR
+    expect(
+      config({
+        OWNER_DATABASE_URL: "postgresql://u:p@localhost:5432/owner",
+        OWNER_PUBLIC_ORIGIN: "https://owner.example.test",
+        OWNER_AUDIT_ARCHIVE_DIR: "/var/lib/vardena-owner/audit-archive",
+      }).archiveDir,
+    ).toBe("/var/lib/vardena-owner/audit-archive");
+    expect(() =>
+      config({
+        OWNER_DATABASE_URL: "postgresql://u:p@localhost:5432/owner",
+        OWNER_PUBLIC_ORIGIN: "https://owner.example.test",
+        OWNER_AUDIT_ARCHIVE_DIR: "relative/archive",
+      }),
+    ).toThrow(/OWNER_AUDIT_ARCHIVE_DIR must be an absolute path/);
+    expect(() =>
+      config({
+        OWNER_DATABASE_URL: "postgresql://u:p@localhost:5432/owner",
+        OWNER_PUBLIC_ORIGIN: "https://owner.example.test",
+        OWNER_AUDIT_ARCHIVE_DIR: "/",
+      }),
+    ).toThrow(/OWNER_AUDIT_ARCHIVE_DIR must not be the filesystem root/);
+
+    // FilesystemAuditArchiveStore persists write-once read-back-verified bundles,
+    // detects tampering/missing files, and cleanly rolls back on failure
+    const tmpArchiveDir = mkdtempSync(
+      path.join(os.tmpdir(), "vardena-archive-unit-"),
+    );
+    try {
+      const store = new FilesystemAuditArchiveStore(tmpArchiveDir);
+      const emptyVerify = await store.verifyStore();
+      expect(emptyVerify.verified).toBe(true);
+      expect(emptyVerify.manifest.batches).toHaveLength(0);
+
+      const persisted1 = await store.persistBatch(validBundle);
+      expect(persisted1.entry.id).toBe(batchId);
+      expect(persisted1.entry.fileName).toBe(durableFileName);
+
+      const batchFilePath = path.join(
+        tmpArchiveDir,
+        "batches",
+        durableFileName,
+      );
+      const st = statSync(batchFilePath);
+      expect(st.mode & 0o777).toBe(0o444);
+
+      const verifiedAfter1 = await store.verifyStore();
+      expect(verifiedAfter1.verified).toBe(true);
+      expect(verifiedAfter1.manifest.batches).toHaveLength(1);
+      expect(verifiedAfter1.bundles[0]?.bundleDigestSha256).toBe(bundleDigest);
+
+      // Idempotent re-persist of the same latest batch succeeds without error
+      const idempotentPersist = await store.persistBatch(validBundle);
+      expect(idempotentPersist.entry.bundleDigestSha256).toBe(bundleDigest);
+
+      // Tampering with batch file on disk is detected by verifyStore()
+      const originalBatchRaw = readFileSync(batchFilePath, "utf8");
+      chmodSync(batchFilePath, 0o600);
+      writeFileSync(
+        batchFilePath,
+        originalBatchRaw.replace("Created customer", "Tampered customer"),
+        "utf8",
+      );
+      await expect(store.verifyStore()).rejects.toMatchObject({
+        status: 409,
+        code: "ArchiveIntegrityViolation",
+      });
+      writeFileSync(batchFilePath, originalBatchRaw, "utf8");
+      chmodSync(batchFilePath, 0o444);
+      expect((await store.verifyStore()).verified).toBe(true);
+
+      // Extra unlisted file in batches/ is detected
+      const unlistedPath = path.join(
+        tmpArchiveDir,
+        "batches",
+        "batch-000002-01ARZ3NDEKTSV4RRFFQ69G5FA1.json",
+      );
+      writeFileSync(unlistedPath, "{}", "utf8");
+      await expect(store.verifyStore()).rejects.toMatchObject({
+        status: 409,
+        code: "ArchiveIntegrityViolation",
+      });
+      rmSync(unlistedPath);
+      expect((await store.verifyStore()).verified).toBe(true);
+
+      // Rollback removes uncommitted batch file and restores manifest
+      await persisted1.rollback();
+      const afterRollback = await store.verifyStore();
+      expect(afterRollback.manifest.batches).toHaveLength(0);
+      expect(afterRollback.bundles).toHaveLength(0);
+    } finally {
+      rmSync(tmpArchiveDir, { recursive: true, force: true });
+    }
+
+    // Supported-filesystem directory sync policy:
+    // - Only EINVAL from dirHandle.sync() is tolerated
+    // - Fatal directory sync errors (EIO, ENOSPC, EDQUOT, EROFS, EACCES, EPERM, EBADF, ENOTSUP, unclassified)
+    //   fail closed with 503 ArchiveStorageUnavailable, clean up partial artifacts, and never leak paths
+    // - Directory open() failures and regular file fh.sync() failures are never tolerated
+    expect([...TOLERATED_DIRECTORY_SYNC_ERROR_CODES]).toEqual(["EINVAL"]);
+
+    const syncPolicyDir = mkdtempSync(
+      path.join(os.tmpdir(), "vardena-archive-sync-policy-"),
+    );
+    try {
+      const makeErrno = (code: string, msg: string) =>
+        Object.assign(new Error(msg), { code });
+
+      // 1. Tolerated EINVAL on directory descriptor sync succeeds cleanly
+      let dirSyncCalls = 0;
+      const einvalDirStore = new FilesystemAuditArchiveStore(syncPolicyDir, {
+        open: (async (
+          targetPath: Parameters<typeof fsOpen>[0],
+          flags: any,
+          mode?: any,
+        ) => {
+          const handle = await fsOpen(targetPath, flags, mode);
+          if (flags === "r") {
+            return new Proxy(handle, {
+              get(target, prop, receiver) {
+                if (prop === "sync") {
+                  return async () => {
+                    dirSyncCalls += 1;
+                    throw makeErrno(
+                      "EINVAL",
+                      `EINVAL: invalid argument, fsync '${String(targetPath)}'`,
+                    );
+                  };
+                }
+                const val = Reflect.get(target, prop, receiver);
+                return typeof val === "function" ? val.bind(target) : val;
+              },
+            });
+          }
+          return handle;
+        }) as typeof fsOpen,
+      });
+
+      const einvalPersisted = await einvalDirStore.persistBatch(validBundle);
+      expect(dirSyncCalls).toBe(2); // batches/ directory sync + rootDir manifest directory sync
+      expect(
+        (await einvalDirStore.verifyStore()).manifest.batches,
+      ).toHaveLength(1);
+      await einvalPersisted.rollback();
+      expect(
+        (await einvalDirStore.verifyStore()).manifest.batches,
+      ).toHaveLength(0);
+
+      // 2. Fatal directory sync error codes fail closed (503 ArchiveStorageUnavailable),
+      //    remove linked batch file on failure, and do not leak filesystem paths
+      for (const fatalCode of [
+        "EIO",
+        "ENOSPC",
+        "EDQUOT",
+        "EROFS",
+        "EACCES",
+        "EPERM",
+        "EBADF",
+        "ENOTSUP",
+      ]) {
+        const fatalDirStore = new FilesystemAuditArchiveStore(syncPolicyDir, {
+          open: (async (
+            targetPath: Parameters<typeof fsOpen>[0],
+            flags: any,
+            mode?: any,
+          ) => {
+            const handle = await fsOpen(targetPath, flags, mode);
+            if (flags === "r") {
+              return new Proxy(handle, {
+                get(target, prop, receiver) {
+                  if (prop === "sync") {
+                    return async () => {
+                      throw makeErrno(
+                        fatalCode,
+                        `${fatalCode}: sync failure at ${String(targetPath)}`,
+                      );
+                    };
+                  }
+                  const val = Reflect.get(target, prop, receiver);
+                  return typeof val === "function" ? val.bind(target) : val;
+                },
+              });
+            }
+            return handle;
+          }) as typeof fsOpen,
+        });
+
+        let caught: unknown;
+        try {
+          await fatalDirStore.persistBatch(validBundle);
+        } catch (err) {
+          caught = err;
+        }
+        expect(caught).toMatchObject({
+          status: 503,
+          code: "ArchiveStorageUnavailable",
+        });
+        expect((caught as Error).message).not.toContain(syncPolicyDir);
+        expect(
+          readdirSync(path.join(syncPolicyDir, "batches")).filter(
+            (f) => !f.startsWith("."),
+          ),
+        ).toEqual([]);
+        expect(existsSync(path.join(syncPolicyDir, "manifest.json"))).toBe(
+          false,
+        );
+      }
+
+      // 3. Unclassified directory sync error (no error code) also fails closed
+      const unclassifiedDirStore = new FilesystemAuditArchiveStore(
+        syncPolicyDir,
+        {
+          open: (async (
+            targetPath: Parameters<typeof fsOpen>[0],
+            flags: any,
+            mode?: any,
+          ) => {
+            const handle = await fsOpen(targetPath, flags, mode);
+            if (flags === "r") {
+              return new Proxy(handle, {
+                get(target, prop, receiver) {
+                  if (prop === "sync") {
+                    return async () => {
+                      throw new Error(
+                        `Unexpected disk failure at ${String(targetPath)}`,
+                      );
+                    };
+                  }
+                  const val = Reflect.get(target, prop, receiver);
+                  return typeof val === "function" ? val.bind(target) : val;
+                },
+              });
+            }
+            return handle;
+          }) as typeof fsOpen,
+        },
+      );
+      await expect(
+        unclassifiedDirStore.persistBatch(validBundle),
+      ).rejects.toMatchObject({
+        status: 503,
+        code: "ArchiveStorageUnavailable",
+      });
+
+      // 4. Directory sync failure during manifest.json write (second syncDirectory call)
+      //    rolls back both manifest.json and the newly written batch file
+      let dirSyncCount = 0;
+      const failOnManifestSyncStore = new FilesystemAuditArchiveStore(
+        syncPolicyDir,
+        {
+          open: (async (
+            targetPath: Parameters<typeof fsOpen>[0],
+            flags: any,
+            mode?: any,
+          ) => {
+            const handle = await fsOpen(targetPath, flags, mode);
+            if (flags === "r") {
+              return new Proxy(handle, {
+                get(target, prop, receiver) {
+                  if (prop === "sync") {
+                    return async () => {
+                      dirSyncCount += 1;
+                      if (dirSyncCount === 2) {
+                        throw makeErrno(
+                          "EIO",
+                          `EIO on manifest dir ${String(targetPath)}`,
+                        );
+                      }
+                    };
+                  }
+                  const val = Reflect.get(target, prop, receiver);
+                  return typeof val === "function" ? val.bind(target) : val;
+                },
+              });
+            }
+            return handle;
+          }) as typeof fsOpen,
+        },
+      );
+      await expect(
+        failOnManifestSyncStore.persistBatch(validBundle),
+      ).rejects.toMatchObject({
+        status: 503,
+        code: "ArchiveStorageUnavailable",
+      });
+      expect(
+        (await einvalDirStore.verifyStore()).manifest.batches,
+      ).toHaveLength(0);
+
+      // 5. Directory open(dirPath, "r") failure (even with EINVAL) is NEVER tolerated
+      const dirOpenFailStore = new FilesystemAuditArchiveStore(syncPolicyDir, {
+        open: (async (
+          targetPath: Parameters<typeof fsOpen>[0],
+          flags: any,
+          mode?: any,
+        ) => {
+          if (flags === "r") {
+            throw makeErrno(
+              "EINVAL",
+              `Cannot open directory ${String(targetPath)}`,
+            );
+          }
+          return fsOpen(targetPath, flags, mode);
+        }) as typeof fsOpen,
+      });
+      await expect(
+        dirOpenFailStore.persistBatch(validBundle),
+      ).rejects.toMatchObject({
+        status: 503,
+        code: "ArchiveStorageUnavailable",
+      });
+
+      // 6. Regular file fh.sync() failure (even with EINVAL) is NEVER tolerated
+      const fileSyncFailStore = new FilesystemAuditArchiveStore(syncPolicyDir, {
+        open: (async (
+          targetPath: Parameters<typeof fsOpen>[0],
+          flags: any,
+          mode?: any,
+        ) => {
+          const handle = await fsOpen(targetPath, flags, mode);
+          if (flags === "wx") {
+            return new Proxy(handle, {
+              get(target, prop, receiver) {
+                if (prop === "sync") {
+                  return async () => {
+                    throw makeErrno(
+                      "EINVAL",
+                      `Regular file fsync failed on ${String(targetPath)}`,
+                    );
+                  };
+                }
+                const val = Reflect.get(target, prop, receiver);
+                return typeof val === "function" ? val.bind(target) : val;
+              },
+            });
+          }
+          return handle;
+        }) as typeof fsOpen,
+      });
+      await expect(
+        fileSyncFailStore.persistBatch(validBundle),
+      ).rejects.toMatchObject({
+        status: 503,
+        code: "ArchiveStorageUnavailable",
+      });
+    } finally {
+      rmSync(syncPolicyDir, { recursive: true, force: true });
+    }
+
+    // Error sanitization in getAuditArchiveStatus: non-ApiError exceptions from store or DB
+    // never leak raw filesystem paths, SQL queries, or credentials in integrity.issueMessage
+    const leakingStore = {
+      rootDir: "/var/lib/secret-archive-mount",
+      verifyStore: async () => {
+        throw new Error(
+          "EACCES: permission denied, open '/var/lib/secret-archive-mount/manifest.json' with postgres://admin:supersecret@db/owner",
+        );
+      },
+      persistBatch: async () => {
+        throw new Error("unreachable");
+      },
+    };
+    const fakeStatusTx = {
+      query: async (sql: string) => {
+        if (sql.includes("ORDER BY batch_number ASC")) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              total_source_events: "0",
+              within_minimum_window_count: "0",
+              past_minimum_floor_count: "0",
+              unresolved_incident_count: "0",
+              past_floor_incident_hold_count: "0",
+              archived_event_count: "0",
+              unarchived_eligible_count: "0",
+              db_batch_count: "0",
+            },
+          ],
+        };
+      },
+    } as unknown as Parameters<typeof getAuditArchiveStatus>[0];
+
+    const sanitizedStatus = await getAuditArchiveStatus(
+      fakeStatusTx,
+      adminActor,
+      {},
+      leakingStore,
+    );
+    expect(sanitizedStatus.integrity.verified).toBe(false);
+    expect(sanitizedStatus.integrity.durableStoreVerified).toBe(false);
+    expect(sanitizedStatus.integrity.issueMessage).toBe(
+      "Independent durable archive store failed verification.",
+    );
+    expect(sanitizedStatus.integrity.issueMessage).not.toContain(
+      "/var/lib/secret-archive-mount",
+    );
+    expect(sanitizedStatus.integrity.issueMessage).not.toContain("supersecret");
+
+    const okEmptyStore = {
+      rootDir: "/var/lib/clean-archive",
+      verifyStore: async () => ({
+        verified: true as const,
+        manifest: {
+          format: "vardena-owner-audit-archive-manifest" as const,
+          formatVersion: 1 as const,
+          updatedAt: "2026-10-17T00:00:00.000Z",
+          latestBatchId: null,
+          latestBatchNumber: 0,
+          latestBatchDigestSha256: null,
+          lastArchivedSequence: null,
+          batches: [],
+          manifestDigestSha256: "0".repeat(64),
+        },
+        bundles: [],
+      }),
+      persistBatch: async () => {
+        throw new Error("unreachable");
+      },
+    };
+    const leakingDbTx = {
+      query: async (sql: string) => {
+        if (sql.includes("ORDER BY batch_number ASC")) {
+          throw new Error(
+            "SELECT * FROM owner_audit_archive.archive_batches failed on postgres://admin:dbsecret@10.0.0.5:5432/owner",
+          );
+        }
+        return {
+          rows: [
+            {
+              total_source_events: "0",
+              within_minimum_window_count: "0",
+              past_minimum_floor_count: "0",
+              unresolved_incident_count: "0",
+              past_floor_incident_hold_count: "0",
+              archived_event_count: "0",
+              unarchived_eligible_count: "0",
+              db_batch_count: "0",
+            },
+          ],
+        };
+      },
+    } as unknown as Parameters<typeof getAuditArchiveStatus>[0];
+
+    const sanitizedDbStatus = await getAuditArchiveStatus(
+      leakingDbTx,
+      adminActor,
+      {},
+      okEmptyStore,
+    );
+    expect(sanitizedDbStatus.integrity.verified).toBe(false);
+    expect(sanitizedDbStatus.integrity.dbLedgerVerified).toBe(false);
+    expect(sanitizedDbStatus.integrity.issueMessage).toBe(
+      "PostgreSQL archive ledger failed verification.",
+    );
+    expect(sanitizedDbStatus.integrity.issueMessage).not.toContain("dbsecret");
+    expect(sanitizedDbStatus.integrity.issueMessage).not.toContain("10.0.0.5");
   });
 });

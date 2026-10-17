@@ -7,14 +7,16 @@ export type Permission =
   | "customers.write"
   | "users.manage"
   | "audit.view"
+  | "audit.archive"
   | "operations.view"
   | "operations.record"
   | "replacements.authorize";
 // PDR-17 / PDR-11 §21 (2026-10-16 OQ-75 two-role MVP model): exact grants,
 // no wildcards or prefix expansion. Superseded four-role names receive [].
 // License Operator may view customers/operations/audit and record routine
-// observations, but cannot manage users, mutate customers, or authorize
-// server replacements / emergency old-server loss decisions.
+// observations, but cannot manage users, mutate customers, perform privileged
+// audit-archive operations, or authorize server replacements / emergency
+// old-server loss decisions.
 export function permissions(role: string): Permission[] {
   if (role === "OWNER_ADMIN")
     return [
@@ -22,6 +24,7 @@ export function permissions(role: string): Permission[] {
       "customers.write",
       "users.manage",
       "audit.view",
+      "audit.archive",
       "operations.view",
       "operations.record",
       "replacements.authorize",
