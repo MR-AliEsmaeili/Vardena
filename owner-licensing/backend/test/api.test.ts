@@ -1449,15 +1449,27 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     // recorded end: the migration backfills nothing and invents no issuance or
     // activation date for existing data.
     const legacy = ulid();
-    await db.pool.query(
-      `INSERT INTO owner.operational_records(
-        id, customer_id, kind, observed_status, observation_category,
-        installation_reference, created_at, updated_at, created_by, updated_by)
-      VALUES ($1,$2,'LICENSE','ISSUED','EXTERNAL_ISSUANCE_OBSERVED',$3,
-        '2026-01-01T00:00:00.000Z'::timestamptz,
-        '2026-01-01T00:00:00.000Z'::timestamptz,$4,$4)`,
-      [legacy, made.body.id, uniq("PDR18-MIG-LEGACY"), adminId],
-    );
+    await db.transaction(async (tx) => {
+      await tx.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          installation_reference, created_at, updated_at, created_by, updated_by)
+        VALUES ($1,$2,'LICENSE','ISSUED','EXTERNAL_ISSUANCE_OBSERVED',$3,
+          '2026-01-01T00:00:00.000Z'::timestamptz,
+          '2026-01-01T00:00:00.000Z'::timestamptz,$4,$4)`,
+        [legacy, made.body.id, uniq("PDR18-MIG-LEGACY"), adminId],
+      );
+      // The append-only history guard requires the legal transition chain.
+      await insertTransition(
+        tx,
+        legacy,
+        adminId,
+        "UNRECORDED",
+        "ISSUED",
+        "row recorded before migration 005",
+        "2026-01-01T00:00:00.000Z",
+      );
+    });
     const legacyRow = await db.pool.query<{
       recorded_on: string;
       observed_validity_end: string | null;
