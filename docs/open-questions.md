@@ -1,6 +1,6 @@
 # Vardena — Open Questions
 
-**Licensing Product Owner decisions (2026-10-17):** [PDR-18](decisions/product/PDR-18-licensing-contract-and-activation-policy.md) is the canonical addendum for separate contract/activation dates, no past/future activation start, no MVP WORM requirement, C11 no-special-path policy, contract termination, replay response semantics, server replacement approval, and customer-admin client deactivation/quota transfer. Product policy decisions do not by themselves establish implementation or close registry rows where implementation/evidence remains.
+**Licensing Product Owner decisions (2026-10-17):** [PDR-18](decisions/product/PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) is the canonical addendum for separate contract/activation dates, no past/future activation start, no MVP WORM requirement, C11 no-special-path policy, contract termination, replay response semantics, server replacement approval, and customer-admin client deactivation/quota transfer. Product policy decisions do not by themselves establish implementation or close registry rows where implementation/evidence remains.
 
 **Current licensing decision reconciliation (2026-10-16, documentation only):**
 [PDR-11 §21](decisions/product/PDR-11-vardena-licensing-product-requirements.md#21-product-owner-decisions-and-traceability-update--2026-10-16)
