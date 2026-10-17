@@ -2659,8 +2659,14 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
 
 "No heavy E2E/live-DB test was executed locally unless explicitly authorized."
 
-- **Current delivery status at this entry:** implementation and documentation
-  are present on the branch; PR creation and exact-head Actions/`ci-gate`
-  verification are the remaining delivery steps. Update this section after the
-  final PR head and checks are known. CI-skipped jobs must be stated explicitly
-  and are not to be reported as passed.
+- **PR / CI status (2026-10-17):** PR [#171](https://github.com/MR-AliEsmaeili/Vardena/pull/171)
+  is OPEN and CLEAN. The initial implementation head
+  `a2a4a0a84c741aa8cd3e196503d0531fc02feb06` passed pull-request CI run
+  [`39023732229`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39023732229):
+  `classify` job `117370503221`, `docs` `117370539214`, `backend`
+  `117370539133`, `frontend` `117370539115`, `generated-api-client`
+  `117370539139`, and `ci-gate` `117371263175` all succeeded. No job was
+  skipped. The backend's failure-only log/inventory steps were skipped as
+  expected, not jobs. This result is scoped only to that SHA; any subsequent
+  head must be verified separately from the live PR checks. The PR is not
+  merged, and no merge is requested here.
