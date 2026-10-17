@@ -31,6 +31,7 @@ vi.mock('@/api/owner.api', () => ({
   auditArchiveBatches: vi.fn(),
   createAuditArchiveBatch: vi.fn(),
   verifyAuditArchive: vi.fn(),
+  recoverAuditArchive: vi.fn(),
 }));
 
 const ulid = '01ARZ3NDEKTSV4RRFFQ69G5FAV';
@@ -443,6 +444,8 @@ describe('customer trail link', () => {
 describe('OQ-77 audit retention display and archive controls', () => {
   const batchId = '01BX5ZZKBKACTAV9WEVGEMMVRZ';
   const digestHex = 'a'.repeat(64);
+  const bundleDigestHex = 'c'.repeat(64);
+  const durableFileName = `batch-000001-${batchId}.json`;
 
   beforeEach(() => {
     vi.mocked(api.auditArchiveStatus).mockResolvedValue({
@@ -455,7 +458,7 @@ describe('OQ-77 audit retention display and archive controls', () => {
         permanentSeparateArchiveInForce: true,
         automaticDestructivePurgeEnabled: false,
         archiveStorageBoundary:
-          'SEPARATE_POSTGRES_SCHEMA_AND_EXPORTABLE_BUNDLE',
+          'INDEPENDENT_DURABLE_FILESYSTEM_STORE_AND_POSTGRES_LEDGER',
         cryptographicHardwareWormImplemented: false,
       },
       counts: {
@@ -467,12 +470,22 @@ describe('OQ-77 audit retention display and archive controls', () => {
         archivedEventCount: 2,
         unarchivedEligibleEventCount: 2,
         archiveBatchCount: 1,
+        durableStoreBatchCount: 1,
+        durableStoreEventCount: 2,
         cleanupEligibleEventCount: 0,
       },
       integrity: {
         verified: true,
+        durableStoreConfigured: true,
+        durableStoreVerified: true,
+        dbLedgerVerified: true,
+        crossStoreConsistent: true,
+        recoveryRequired: false,
+        issueCode: null,
+        issueMessage: null,
         latestBatchId: batchId,
         latestBatchDigestSha256: digestHex,
+        latestBundleDigestSha256: bundleDigestHex,
         lastArchivedSequence: 2,
       },
     });
@@ -490,6 +503,8 @@ describe('OQ-77 audit retention display and archive controls', () => {
           retentionCutoffAt: '2026-10-16T00:00:00.000Z',
           previousBatchDigest: null,
           batchDigestSha256: digestHex,
+          durableFileName,
+          bundleDigestSha256: bundleDigestHex,
         },
       ],
       page: 1,
@@ -530,7 +545,7 @@ describe('OQ-77 audit retention display and archive controls', () => {
     expect(api.auditArchiveBatches).not.toHaveBeenCalled();
   });
 
-  it('renders archive status and batches for Owner Admin (audit.archive) and validates reason before creating a batch or verifying integrity', async () => {
+  it('renders archive status and batches for Owner Admin (audit.archive) and validates reason before creating a batch, verifying integrity, or recovering from durable store', async () => {
     const user = userEvent.setup();
     grant(['customers.view', 'audit.view', 'audit.archive']);
     vi.mocked(api.createAuditArchiveBatch).mockResolvedValue({
@@ -548,6 +563,8 @@ describe('OQ-77 audit retention display and archive controls', () => {
         retentionCutoffAt: '2026-10-17T10:00:00.000Z',
         previousBatchDigest: digestHex,
         batchDigestSha256: 'b'.repeat(64),
+        durableFileName: `batch-000002-${batchId}.json`,
+        bundleDigestSha256: 'd'.repeat(64),
       },
     });
     vi.mocked(api.verifyAuditArchive).mockResolvedValue({
@@ -556,6 +573,20 @@ describe('OQ-77 audit retention display and archive controls', () => {
       verifiedEventCount: 4,
       latestBatchId: batchId,
       latestBatchDigestSha256: 'b'.repeat(64),
+      latestBundleDigestSha256: 'd'.repeat(64),
+      lastArchivedSequence: 4,
+    });
+    vi.mocked(api.recoverAuditArchive).mockResolvedValue({
+      verified: true,
+      recoveredBatchCount: 1,
+      recoveredSourceEventCount: 2,
+      recoveredLedgerEventCount: 2,
+      rehydratedDurableBatchCount: 0,
+      batchCount: 2,
+      verifiedEventCount: 4,
+      latestBatchId: batchId,
+      latestBatchDigestSha256: 'b'.repeat(64),
+      latestBundleDigestSha256: 'd'.repeat(64),
       lastArchivedSequence: 4,
     });
 
@@ -567,6 +598,9 @@ describe('OQ-77 audit retention display and archive controls', () => {
       await screen.findByText(o.auditArchiveIntegrityVerified),
     ).toBeInTheDocument();
     expect(screen.getByText('بایگانی دوره‌ای ممیزی')).toBeInTheDocument();
+    expect(
+      screen.getByText(`#1 — ${batchId} (${durableFileName})`),
+    ).toBeInTheDocument();
 
     // Missing reason is rejected in Persian before calling the API
     await user.click(
@@ -605,6 +639,21 @@ describe('OQ-77 audit retention display and archive controls', () => {
     ).toBeInTheDocument();
     expect(api.verifyAuditArchive).toHaveBeenCalledWith({
       reason: 'بررسی دوره‌ای یکپارچگی',
+    });
+
+    // Recovering archive from independent durable store with a valid reason
+    await user.type(
+      screen.getByLabelText(o.auditArchiveReasonLabel),
+      'بازیابی از مخزن پایدار پس از بازگردانی پایگاه‌داده',
+    );
+    await user.click(
+      screen.getByRole('button', { name: o.auditArchiveRecoverButton }),
+    );
+    expect(
+      await screen.findByText(o.auditArchiveRecoveredSuccess),
+    ).toBeInTheDocument();
+    expect(api.recoverAuditArchive).toHaveBeenCalledWith({
+      reason: 'بازیابی از مخزن پایدار پس از بازگردانی پایگاه‌داده',
     });
   });
 });

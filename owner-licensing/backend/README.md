@@ -53,19 +53,35 @@ offset are also rejected.
   the separate `owner_audit_archive` schema (`archive_batches` and
   `archived_audit_events`). `001`, `002`, and `003` are not edited.
 - Archive and retention management (`audit.archive`, `OWNER_ADMIN` only):
-  `GET /api/v1/audit-archive/status` (optional `asOf` UTC instant),
-  `GET /api/v1/audit-archive/batches`, `GET /api/v1/audit-archive/batches/:id`
-  (returns a SHA-256 verified portable archive bundle),
-  `POST /api/v1/audit-archive/batches` (idempotent batch creation with mandatory
-  `reason`, optional `maxEvents` 1..500 and `upToOccurredAt`), and
-  `POST /api/v1/audit-archive/verify` (verifies SHA-256 record/batch digests and
-  source consistency and records `AUDIT_ARCHIVE_VERIFIED`). Unauthorized attempts
-  by `LICENSE_OPERATOR` record `AUDIT_ARCHIVE_ACCESS_DENIED` (`security_incident =
-  true`, `incident_status = 'UNRESOLVED'`) and return 403 `PermissionDenied`.
+  `GET /api/v1/audit-archive/status` (optional `asOf` UTC instant; reports
+  `durableStoreConfigured`, `durableStoreVerified`, `dbLedgerVerified`,
+  `crossStoreConsistent`, `recoveryRequired`, and verified counts),
+  `GET /api/v1/audit-archive/batches`,
+  `GET /api/v1/audit-archive/batches/:id` (reads and verifies the bundle from the
+  independent durable store `OWNER_AUDIT_ARCHIVE_DIR` and cross-checks the
+  PostgreSQL ledger),
+  `POST /api/v1/audit-archive/batches` (persists a write-once `0o444` `fsync`ed
+  `batches/batch-XXXXXX-<id>.json` bundle and hash-chained `manifest.json` in
+  `OWNER_AUDIT_ARCHIVE_DIR` together with the PostgreSQL `owner_audit_archive`
+  ledger; reconciles pending durable batches on retry and rolls back both stores
+  on failure; returns `503 ArchiveStorageUnavailable` if `OWNER_AUDIT_ARCHIVE_DIR`
+  is unconfigured),
+  `POST /api/v1/audit-archive/verify` (verifies on-disk `manifest.json` and
+  `batch-*.json` files, PostgreSQL `owner_audit_archive` ledger, 1-to-1
+  cross-store consistency, and `owner.audit_events` source records, and records
+  `AUDIT_ARCHIVE_VERIFIED`), and
+  `POST /api/v1/audit-archive/recover` (reconciles and restores missing
+  `owner.audit_events` source records and `owner_audit_archive` ledger rows from
+  the verified independent durable store after a PostgreSQL backup restore, or
+  rehydrates missing untampered durable files from verified DB state, and records
+  `AUDIT_ARCHIVE_RECOVERED`). Unauthorized attempts by `LICENSE_OPERATOR` record
+  `AUDIT_ARCHIVE_ACCESS_DENIED` (`security_incident = true`, `incident_status =
+  'UNRESOLVED'`) and return 403 `PermissionDenied`.
 
-Implementation: `src/audit.ts` (parsing, projection, parameterized list),
-`src/archive.ts` (OQ-77 3-year retention evaluator, incident hold validation,
-separate archive batching, and SHA-256 verification), and the routes in
-`src/app.ts`. Tests: `test/unit.test.ts` and `test/audit-query.test.ts` (pure,
-in `npm test`) and the explorer/archive cases in `test/api.test.ts` (PostgreSQL,
-`test:integration`).
+Implementation: `src/audit.ts` (parsing, projection, parameterized list gated by
+verified durable batches), `src/archive.ts` (OQ-77 3-year retention evaluator,
+incident hold validation, `FilesystemAuditArchiveStore` independent durable
+persistence, separate archive batching, SHA-256 verification, and recovery), and
+the routes in `src/app.ts`. Tests: `test/unit.test.ts` and
+`test/audit-query.test.ts` (pure, in `npm test`) and the explorer/archive/recovery
+cases in `test/api.test.ts` (PostgreSQL + filesystem store, `test:integration`).

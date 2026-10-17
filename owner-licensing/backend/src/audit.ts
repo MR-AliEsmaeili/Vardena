@@ -142,7 +142,13 @@ const auditStateKeys = new Set([
   "firstSequence",
   "lastSequence",
   "batchDigestSha256",
+  "bundleDigestSha256",
+  "durableFileName",
   "archiveVerified",
+  "recoveredBatchCount",
+  "recoveredSourceEventCount",
+  "recoveredLedgerEventCount",
+  "rehydratedDurableBatchCount",
 ]);
 
 function singleValue(
@@ -268,6 +274,7 @@ export function auditState(value: unknown): Record<string, unknown> | null {
 export async function listAuditEvents(
   tx: PoolClient,
   query: Record<string, unknown>,
+  options?: { verifiedDurableBatchIds?: ReadonlySet<string> },
 ) {
   const filters = auditFilters(query);
   const values: unknown[] = [];
@@ -322,7 +329,14 @@ export async function listAuditEvents(
           ELSE 'NONE'
         END
       ) AS incident_status,
-      (SELECT a.batch_id FROM owner_audit_archive.archived_audit_events a WHERE a.id = owner.audit_events.id) AS archive_batch_id,
+      (
+        SELECT a.batch_id
+        FROM owner_audit_archive.archived_audit_events a
+        JOIN owner_audit_archive.archive_batches b ON b.id = a.batch_id
+        WHERE a.id = owner.audit_events.id
+          AND b.durable_bundle_sha256 IS NOT NULL
+          AND b.durable_file_name IS NOT NULL
+      ) AS archive_batch_id,
       outcome, reason, before_state, after_state
     FROM owner.audit_events ${clause}
     ORDER BY sequence DESC LIMIT ${limit} OFFSET ${offset}`,
@@ -344,7 +358,12 @@ export async function listAuditEvents(
           : securityIncident
             ? "UNRESOLVED"
             : "NONE";
-      const archiveBatchId = row.archive_batch_id ?? null;
+      const rawBatchId = row.archive_batch_id ?? null;
+      const isDurablyArchived =
+        rawBatchId !== null &&
+        (options?.verifiedDurableBatchIds === undefined ||
+          options.verifiedDurableBatchIds.has(rawBatchId));
+      const archiveBatchId = isDurablyArchived ? rawBatchId : null;
       return {
         id: row.id,
         actorId: row.actor_id,

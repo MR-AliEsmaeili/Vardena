@@ -135,6 +135,8 @@ export interface ArchiveBatchSummary {
   retentionCutoffAt: string;
   previousBatchDigest: string | null;
   batchDigestSha256: string;
+  durableFileName: string;
+  bundleDigestSha256: string;
 }
 export interface AuditArchiveBatchPage {
   items: ArchiveBatchSummary[];
@@ -151,7 +153,7 @@ export interface AuditArchiveStatusReport {
     unresolvedSecurityIncidentsExcludedFromCleanup: true;
     permanentSeparateArchiveInForce: true;
     automaticDestructivePurgeEnabled: false;
-    archiveStorageBoundary: 'SEPARATE_POSTGRES_SCHEMA_AND_EXPORTABLE_BUNDLE';
+    archiveStorageBoundary: 'INDEPENDENT_DURABLE_FILESYSTEM_STORE_AND_POSTGRES_LEDGER';
     cryptographicHardwareWormImplemented: false;
   };
   counts: {
@@ -163,12 +165,22 @@ export interface AuditArchiveStatusReport {
     archivedEventCount: number;
     unarchivedEligibleEventCount: number;
     archiveBatchCount: number;
+    durableStoreBatchCount: number;
+    durableStoreEventCount: number;
     cleanupEligibleEventCount: 0;
   };
   integrity: {
     verified: boolean;
+    durableStoreConfigured: boolean;
+    durableStoreVerified: boolean;
+    dbLedgerVerified: boolean;
+    crossStoreConsistent: boolean;
+    recoveryRequired: boolean;
+    issueCode: string | null;
+    issueMessage: string | null;
     latestBatchId: string | null;
     latestBatchDigestSha256: string | null;
+    latestBundleDigestSha256: string | null;
     lastArchivedSequence: number | null;
   };
 }
@@ -183,5 +195,19 @@ export interface VerifyAuditArchiveResult {
   verifiedEventCount: number;
   latestBatchId: string | null;
   latestBatchDigestSha256: string | null;
+  latestBundleDigestSha256: string | null;
+  lastArchivedSequence: number | null;
+}
+export interface RecoverAuditArchiveResult {
+  verified: true;
+  recoveredBatchCount: number;
+  recoveredSourceEventCount: number;
+  recoveredLedgerEventCount: number;
+  rehydratedDurableBatchCount: number;
+  batchCount: number;
+  verifiedEventCount: number;
+  latestBatchId: string | null;
+  latestBatchDigestSha256: string | null;
+  latestBundleDigestSha256: string | null;
   lastArchivedSequence: number | null;
 }

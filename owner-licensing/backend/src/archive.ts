@@ -1,7 +1,21 @@
+import {
+  chmod,
+  link,
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  unlink,
+} from "node:fs/promises";
+import path from "node:path";
 import type { PoolClient } from "pg";
 import { ulid } from "ulid";
 import { audit } from "./db.js";
 import {
+  ApiError,
   assertActiveAuthorizedActor,
   digest,
   fail,
@@ -40,10 +54,12 @@ export {
 export const archiveMetaEventTypes = [
   "AUDIT_ARCHIVE_BATCH_CREATED",
   "AUDIT_ARCHIVE_VERIFIED",
+  "AUDIT_ARCHIVE_RECOVERED",
 ] as const;
 
 const ulidPattern = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 const sha256Pattern = /^[0-9a-f]{64}$/;
+const durableFileNamePattern = /^batch-[0-9]{6,}-[0-9A-HJKMNP-TV-Z]{26}\.json$/;
 const forbiddenArchiveValuePattern =
   /(password_hash|token_hash|sessionToken|\$argon2|BEGIN [A-Z0-9 ]*PRIVATE KEY)/i;
 
@@ -128,6 +144,8 @@ export interface ArchiveBatchSummary {
   retentionCutoffAt: string;
   previousBatchDigest: string | null;
   batchDigestSha256: string;
+  durableFileName: string;
+  bundleDigestSha256: string;
 }
 
 export interface ArchivedAuditEventRecord extends CanonicalArchiveEventPayload {
@@ -139,6 +157,63 @@ export interface ArchivedAuditEventRecord extends CanonicalArchiveEventPayload {
 export interface AuditArchiveBundle {
   batch: ArchiveBatchSummary;
   events: ArchivedAuditEventRecord[];
+  durableStorage?: {
+    persisted: true;
+    fileName: string;
+    bundleDigestSha256: string;
+    verified: true;
+    presentInDbLedger: boolean;
+  };
+}
+
+export interface DurableArchiveManifestEntry {
+  id: string;
+  batchNumber: number;
+  fileName: string;
+  firstSequence: number;
+  lastSequence: number;
+  eventCount: number;
+  retentionCutoffAt: string;
+  previousBatchDigest: string | null;
+  batchDigestSha256: string;
+  bundleDigestSha256: string;
+}
+
+export interface DurableArchiveManifest {
+  format: "vardena-owner-audit-archive-manifest";
+  formatVersion: 1;
+  updatedAt: string;
+  latestBatchId: string | null;
+  latestBatchNumber: number;
+  latestBatchDigestSha256: string | null;
+  lastArchivedSequence: number | null;
+  batches: DurableArchiveManifestEntry[];
+  manifestDigestSha256: string;
+}
+
+export interface DurableArchiveBundleFile {
+  format: "vardena-owner-audit-archive-bundle";
+  formatVersion: 1;
+  durableFileName: string;
+  bundleDigestSha256: string;
+  batch: ArchiveBatchSummary;
+  events: ArchivedAuditEventRecord[];
+}
+
+export interface AuditArchiveStore {
+  readonly rootDir: string;
+  verifyStore(): Promise<{
+    verified: true;
+    manifest: DurableArchiveManifest;
+    bundles: DurableArchiveBundleFile[];
+  }>;
+  persistBatch(bundle: {
+    batch: ArchiveBatchSummary;
+    events: ArchivedAuditEventRecord[];
+  }): Promise<{
+    entry: DurableArchiveManifestEntry;
+    rollback: () => Promise<void>;
+  }>;
 }
 
 export interface AuditRetentionPolicyContract {
@@ -148,7 +223,7 @@ export interface AuditRetentionPolicyContract {
   unresolvedSecurityIncidentsExcludedFromCleanup: true;
   permanentSeparateArchiveInForce: true;
   automaticDestructivePurgeEnabled: false;
-  archiveStorageBoundary: "SEPARATE_POSTGRES_SCHEMA_AND_EXPORTABLE_BUNDLE";
+  archiveStorageBoundary: "INDEPENDENT_DURABLE_FILESYSTEM_STORE_AND_POSTGRES_LEDGER";
   cryptographicHardwareWormImplemented: false;
 }
 
@@ -159,7 +234,8 @@ export const canonicalAuditRetentionPolicy: AuditRetentionPolicyContract = {
   unresolvedSecurityIncidentsExcludedFromCleanup: true,
   permanentSeparateArchiveInForce: true,
   automaticDestructivePurgeEnabled: false,
-  archiveStorageBoundary: "SEPARATE_POSTGRES_SCHEMA_AND_EXPORTABLE_BUNDLE",
+  archiveStorageBoundary:
+    "INDEPENDENT_DURABLE_FILESYSTEM_STORE_AND_POSTGRES_LEDGER",
   cryptographicHardwareWormImplemented: false,
 };
 
@@ -175,14 +251,38 @@ export interface AuditArchiveStatusReport {
     archivedEventCount: number;
     unarchivedEligibleEventCount: number;
     archiveBatchCount: number;
+    durableStoreBatchCount: number;
+    durableStoreEventCount: number;
     cleanupEligibleEventCount: 0;
   };
   integrity: {
     verified: boolean;
+    durableStoreConfigured: boolean;
+    durableStoreVerified: boolean;
+    dbLedgerVerified: boolean;
+    crossStoreConsistent: boolean;
+    recoveryRequired: boolean;
+    issueCode: string | null;
+    issueMessage: string | null;
     latestBatchId: string | null;
     latestBatchDigestSha256: string | null;
+    latestBundleDigestSha256: string | null;
     lastArchivedSequence: number | null;
   };
+}
+
+export interface AuditArchiveRecoveryResult {
+  verified: true;
+  recoveredBatchCount: number;
+  recoveredSourceEventCount: number;
+  recoveredLedgerEventCount: number;
+  rehydratedDurableBatchCount: number;
+  batchCount: number;
+  verifiedEventCount: number;
+  latestBatchId: string | null;
+  latestBatchDigestSha256: string | null;
+  latestBundleDigestSha256: string | null;
+  lastArchivedSequence: number | null;
 }
 
 function canonicalizeValue(value: unknown): unknown {
@@ -212,6 +312,19 @@ function canonicalizeValue(value: unknown): unknown {
 
 export function canonicalJson(value: unknown): string {
   return JSON.stringify(canonicalizeValue(value));
+}
+
+export function formatDurableBatchFileName(
+  batchNumber: number,
+  batchId: string,
+): string {
+  if (!Number.isInteger(batchNumber) || batchNumber < 1) {
+    invalid("batchNumber must be a positive integer.");
+  }
+  if (!ulidPattern.test(batchId)) {
+    invalid("batchId must be a 26-character ULID.");
+  }
+  return `batch-${String(batchNumber).padStart(6, "0")}-${batchId}.json`;
 }
 
 export function validateAndNormalizeIncidentMetadata(input: {
@@ -428,7 +541,7 @@ export function computeArchiveBatchDigest(input: {
     !Number.isInteger(input.lastSequence) ||
     input.lastSequence < input.firstSequence
   ) {
-    invalid("lastSequence must be an integer >= firstSequence.");
+    invalid("lastSequence must be >= firstSequence.");
   }
   if (
     !Number.isInteger(input.eventCount) ||
@@ -437,8 +550,8 @@ export function computeArchiveBatchDigest(input: {
   ) {
     fail(
       409,
-      "InconsistentArchiveMetadata",
-      "Archive batch eventCount must be >= 1 and match recordDigests length.",
+      "InvalidArchiveMetadata",
+      "Archive batch eventCount must be a positive integer matching recordDigests.length.",
     );
   }
   const cutoffIso = utcInstant(input.retentionCutoffAt, "retentionCutoffAt");
@@ -470,6 +583,29 @@ export function computeArchiveBatchDigest(input: {
       retentionCutoffAt: cutoffIso,
       previousBatchDigest: input.previousBatchDigest,
       recordDigests: [...input.recordDigests],
+    }),
+  );
+}
+
+export function computeManifestDigest(
+  entries: readonly DurableArchiveManifestEntry[],
+): string {
+  return digest(
+    canonicalJson({
+      format: "vardena-owner-audit-archive-manifest",
+      formatVersion: 1,
+      batches: entries.map((e) => ({
+        id: e.id,
+        batchNumber: e.batchNumber,
+        fileName: e.fileName,
+        firstSequence: e.firstSequence,
+        lastSequence: e.lastSequence,
+        eventCount: e.eventCount,
+        retentionCutoffAt: e.retentionCutoffAt,
+        previousBatchDigest: e.previousBatchDigest,
+        batchDigestSha256: e.batchDigestSha256,
+        bundleDigestSha256: e.bundleDigestSha256,
+      })),
     }),
   );
 }
@@ -652,12 +788,40 @@ export function evaluateAuditEventRetention(
 export function verifyExportedArchiveBundle(rawBundle: unknown): {
   verified: true;
   batchId: string;
+  batchNumber: number;
   eventCount: number;
   firstSequence: number;
   lastSequence: number;
   batchDigestSha256: string;
+  bundleDigestSha256: string;
+  durableFileName: string;
 } {
-  const top = object(rawBundle, ["batch", "events"]);
+  const top = object(rawBundle, [
+    "batch",
+    "events",
+    "format",
+    "formatVersion",
+    "durableFileName",
+    "bundleDigestSha256",
+    "durableStorage",
+  ]);
+  if (
+    top.format !== undefined &&
+    top.format !== "vardena-owner-audit-archive-bundle"
+  ) {
+    fail(
+      409,
+      "ArchiveIntegrityViolation",
+      "Invalid archive bundle format identifier.",
+    );
+  }
+  if (top.formatVersion !== undefined && top.formatVersion !== 1) {
+    fail(
+      409,
+      "ArchiveIntegrityViolation",
+      "Unsupported archive bundle formatVersion.",
+    );
+  }
   const rawBatch = object(top.batch, [
     "id",
     "batchNumber",
@@ -670,6 +834,8 @@ export function verifyExportedArchiveBundle(rawBundle: unknown): {
     "retentionCutoffAt",
     "previousBatchDigest",
     "batchDigestSha256",
+    "durableFileName",
+    "bundleDigestSha256",
   ]);
   if (!Array.isArray(top.events) || top.events.length === 0) {
     fail(
@@ -679,9 +845,20 @@ export function verifyExportedArchiveBundle(rawBundle: unknown): {
     );
   }
   const batchId = parseId(rawBatch.id);
-  parseId(rawBatch.createdBy);
-  utcInstant(String(rawBatch.createdAt ?? ""), "batch.createdAt");
-  parseReason(rawBatch.reason);
+  const batchNumber = Number(rawBatch.batchNumber);
+  if (!Number.isInteger(batchNumber) || batchNumber < 1) {
+    fail(
+      409,
+      "InvalidArchiveMetadata",
+      "batch.batchNumber must be a positive integer.",
+    );
+  }
+  const createdBy = parseId(rawBatch.createdBy);
+  const createdAt = utcInstant(
+    String(rawBatch.createdAt ?? ""),
+    "batch.createdAt",
+  );
+  const reason = parseReason(rawBatch.reason);
   const firstSequence = Number(rawBatch.firstSequence);
   const lastSequence = Number(rawBatch.lastSequence);
   const eventCount = Number(rawBatch.eventCount);
@@ -715,8 +892,30 @@ export function verifyExportedArchiveBundle(rawBundle: unknown): {
       "batch.batchDigestSha256 must be a 64-character hex SHA-256.",
     );
   }
+  const expectedFileName = formatDurableBatchFileName(batchNumber, batchId);
+  if (
+    rawBatch.durableFileName !== undefined &&
+    rawBatch.durableFileName !== expectedFileName
+  ) {
+    fail(
+      409,
+      "ArchiveIntegrityViolation",
+      `batch.durableFileName (${String(rawBatch.durableFileName)}) does not match expected ${expectedFileName}.`,
+    );
+  }
+  if (
+    top.durableFileName !== undefined &&
+    top.durableFileName !== expectedFileName
+  ) {
+    fail(
+      409,
+      "ArchiveIntegrityViolation",
+      `bundle.durableFileName (${String(top.durableFileName)}) does not match expected ${expectedFileName}.`,
+    );
+  }
 
   const recordDigests: string[] = [];
+  const canonicalEvents: Record<string, unknown>[] = [];
   let prevSeq: number | null = null;
   for (let i = 0; i < top.events.length; i++) {
     const item = object(top.events[i], [
@@ -745,7 +944,10 @@ export function verifyExportedArchiveBundle(rawBundle: unknown): {
         `events[${i}].batchId does not match batch.id.`,
       );
     }
-    utcInstant(String(item.archivedAt ?? ""), `events[${i}].archivedAt`);
+    const archivedAt = utcInstant(
+      String(item.archivedAt ?? ""),
+      `events[${i}].archivedAt`,
+    );
     const seq = Number(item.sequence);
     if (!Number.isInteger(seq) || seq < firstSequence || seq > lastSequence) {
       fail(
@@ -762,21 +964,44 @@ export function verifyExportedArchiveBundle(rawBundle: unknown): {
       );
     }
     prevSeq = seq;
+    const occurredAt = utcInstant(
+      String(item.occurredAt ?? ""),
+      `events[${i}].occurredAt`,
+    );
+    const minimumRetainedUntil = utcInstant(
+      String(item.minimumRetainedUntil ?? ""),
+      `events[${i}].minimumRetainedUntil`,
+    );
+    const actorId = item.actorId === null ? null : String(item.actorId ?? "");
+    const eventType = String(item.eventType ?? "");
+    const targetType = String(item.targetType ?? "");
+    const targetId =
+      item.targetId === null ? null : String(item.targetId ?? "");
+    const outcome = String(item.outcome ?? "") as
+      "SUCCESS" | "DENIED" | "FAILED";
+    const securityIncident = item.securityIncident as boolean;
+    const incidentStatus = item.incidentStatus as AuditIncidentStatus;
+    const itemReason = item.reason === null ? null : String(item.reason ?? "");
+    const beforeState =
+      (item.beforeState as Record<string, unknown> | null) ?? null;
+    const afterState =
+      (item.afterState as Record<string, unknown> | null) ?? null;
+
     const expectedRecordDigest = computeArchivedEventDigest({
       sequence: seq,
       id: String(item.id ?? ""),
-      actorId: item.actorId === null ? null : String(item.actorId ?? ""),
-      eventType: String(item.eventType ?? ""),
-      targetType: String(item.targetType ?? ""),
-      targetId: item.targetId === null ? null : String(item.targetId ?? ""),
-      occurredAt: String(item.occurredAt ?? ""),
-      minimumRetainedUntil: String(item.minimumRetainedUntil ?? ""),
-      outcome: String(item.outcome ?? "") as "SUCCESS" | "DENIED" | "FAILED",
-      securityIncident: item.securityIncident as boolean,
-      incidentStatus: item.incidentStatus as AuditIncidentStatus,
-      reason: item.reason === null ? null : String(item.reason ?? ""),
-      beforeState: (item.beforeState as Record<string, unknown> | null) ?? null,
-      afterState: (item.afterState as Record<string, unknown> | null) ?? null,
+      actorId,
+      eventType,
+      targetType,
+      targetId,
+      occurredAt,
+      minimumRetainedUntil,
+      outcome,
+      securityIncident,
+      incidentStatus,
+      reason: itemReason,
+      beforeState,
+      afterState,
     });
     if (item.recordSha256 !== expectedRecordDigest) {
       fail(
@@ -786,6 +1011,25 @@ export function verifyExportedArchiveBundle(rawBundle: unknown): {
       );
     }
     recordDigests.push(expectedRecordDigest);
+    canonicalEvents.push({
+      id: String(item.id ?? ""),
+      batchId,
+      sequence: seq,
+      actorId,
+      eventType,
+      targetType,
+      targetId,
+      occurredAt,
+      minimumRetainedUntil,
+      outcome,
+      securityIncident,
+      incidentStatus,
+      reason: itemReason,
+      beforeState,
+      afterState,
+      archivedAt,
+      recordSha256: expectedRecordDigest,
+    });
   }
 
   if (
@@ -820,14 +1064,585 @@ export function verifyExportedArchiveBundle(rawBundle: unknown): {
     );
   }
 
+  const expectedBundleDigest = digest(
+    canonicalJson({
+      format: "vardena-owner-audit-archive-bundle",
+      formatVersion: 1,
+      batch: {
+        id: batchId,
+        batchNumber,
+        createdBy,
+        createdAt,
+        reason,
+        firstSequence,
+        lastSequence,
+        eventCount,
+        retentionCutoffAt,
+        previousBatchDigest,
+        batchDigestSha256: expectedBatchDigest,
+      },
+      events: canonicalEvents,
+    }),
+  );
+
+  if (
+    rawBatch.bundleDigestSha256 !== undefined &&
+    rawBatch.bundleDigestSha256 !== expectedBundleDigest
+  ) {
+    fail(
+      409,
+      "ArchiveIntegrityViolation",
+      "Archive batch bundleDigestSha256 mismatch.",
+    );
+  }
+  if (
+    top.bundleDigestSha256 !== undefined &&
+    top.bundleDigestSha256 !== expectedBundleDigest
+  ) {
+    fail(
+      409,
+      "ArchiveIntegrityViolation",
+      "Archive bundle bundleDigestSha256 mismatch.",
+    );
+  }
+
   return {
     verified: true,
     batchId,
+    batchNumber,
     eventCount,
     firstSequence,
     lastSequence,
     batchDigestSha256: expectedBatchDigest,
+    bundleDigestSha256: expectedBundleDigest,
+    durableFileName: expectedFileName,
   };
+}
+
+export function computeArchiveBundleDigest(bundle: {
+  batch: Omit<ArchiveBatchSummary, "durableFileName" | "bundleDigestSha256"> & {
+    durableFileName?: string;
+    bundleDigestSha256?: string;
+  };
+  events: readonly ArchivedAuditEventRecord[];
+}): string {
+  return verifyExportedArchiveBundle(bundle).bundleDigestSha256;
+}
+
+export class FilesystemAuditArchiveStore implements AuditArchiveStore {
+  public readonly rootDir: string;
+  private readonly batchesDir: string;
+  private readonly manifestPath: string;
+
+  constructor(rootDir: string) {
+    if (
+      typeof rootDir !== "string" ||
+      rootDir.trim().length === 0 ||
+      rootDir.includes("\0") ||
+      !path.isAbsolute(rootDir.trim())
+    ) {
+      throw new Error(
+        "FilesystemAuditArchiveStore requires an absolute directory path.",
+      );
+    }
+    const resolved = path.resolve(rootDir.trim());
+    if (resolved === path.parse(resolved).root) {
+      throw new Error(
+        "FilesystemAuditArchiveStore rootDir must not be the filesystem root.",
+      );
+    }
+    this.rootDir = resolved;
+    this.batchesDir = path.join(this.rootDir, "batches");
+    this.manifestPath = path.join(this.rootDir, "manifest.json");
+  }
+
+  private async syncDirectory(dirPath: string): Promise<void> {
+    let dirHandle;
+    try {
+      dirHandle = await open(dirPath, "r");
+      await dirHandle.sync();
+    } catch {
+      // Directory fsync may return EINVAL on some virtual filesystems; file fsync is always enforced.
+    } finally {
+      if (dirHandle) await dirHandle.close();
+    }
+  }
+
+  private async writeAtomicFsync(
+    targetPath: string,
+    content: string,
+    options: { exclusive: boolean; mode?: number },
+  ): Promise<void> {
+    const parentDir = path.dirname(targetPath);
+    await mkdir(parentDir, { recursive: true });
+    const tmpPath = path.join(
+      parentDir,
+      `.tmp-${path.basename(targetPath)}-${process.pid}-${ulid()}`,
+    );
+    let fh;
+    try {
+      fh = await open(tmpPath, "wx", 0o600);
+      await fh.writeFile(Buffer.from(content, "utf8"));
+      await fh.sync();
+      await fh.close();
+      fh = undefined;
+      if (options.mode !== undefined) {
+        await chmod(tmpPath, options.mode);
+      }
+      if (options.exclusive) {
+        await link(tmpPath, targetPath);
+        await unlink(tmpPath);
+      } else {
+        await rename(tmpPath, targetPath);
+      }
+      await this.syncDirectory(parentDir);
+    } catch (err) {
+      if (fh) {
+        try {
+          await fh.close();
+        } catch {
+          // ignore close error
+        }
+      }
+      await rm(tmpPath, { force: true }).catch(() => {});
+      const code = (err as { code?: string }).code;
+      if (code === "EEXIST") {
+        fail(
+          409,
+          "ArchiveIntegrityViolation",
+          `Durable archive file ${path.basename(targetPath)} already exists and is write-once.`,
+        );
+      }
+      fail(
+        503,
+        "ArchiveStorageUnavailable",
+        `Failed to persist durable archive artifact ${path.basename(targetPath)}.`,
+      );
+    }
+  }
+
+  private async fileExists(targetPath: string): Promise<boolean> {
+    try {
+      const st = await stat(targetPath);
+      return st.isFile();
+    } catch (err) {
+      if ((err as { code?: string }).code === "ENOENT") return false;
+      fail(
+        503,
+        "ArchiveStorageUnavailable",
+        `Durable archive storage path is inaccessible (${path.basename(targetPath)}).`,
+      );
+    }
+  }
+
+  public async verifyStore(): Promise<{
+    verified: true;
+    manifest: DurableArchiveManifest;
+    bundles: DurableArchiveBundleFile[];
+  }> {
+    let batchFilesOnDisk: string[] = [];
+    try {
+      const entries = await readdir(this.batchesDir);
+      batchFilesOnDisk = entries.filter((f) => !f.startsWith(".")).sort();
+    } catch (err) {
+      if ((err as { code?: string }).code !== "ENOENT") {
+        fail(
+          503,
+          "ArchiveStorageUnavailable",
+          "Failed to read durable archive batches directory.",
+        );
+      }
+    }
+
+    const hasManifest = await this.fileExists(this.manifestPath);
+    if (!hasManifest) {
+      if (batchFilesOnDisk.length > 0) {
+        fail(
+          409,
+          "ArchiveIntegrityViolation",
+          "Durable archive manifest.json is missing while batch files exist on disk.",
+        );
+      }
+      return {
+        verified: true,
+        manifest: {
+          format: "vardena-owner-audit-archive-manifest",
+          formatVersion: 1,
+          updatedAt: new Date(0).toISOString(),
+          latestBatchId: null,
+          latestBatchNumber: 0,
+          latestBatchDigestSha256: null,
+          lastArchivedSequence: null,
+          batches: [],
+          manifestDigestSha256: computeManifestDigest([]),
+        },
+        bundles: [],
+      };
+    }
+
+    let rawManifestObj: Record<string, unknown>;
+    try {
+      const rawText = await readFile(this.manifestPath, "utf8");
+      rawManifestObj = object(JSON.parse(rawText), [
+        "format",
+        "formatVersion",
+        "updatedAt",
+        "latestBatchId",
+        "latestBatchNumber",
+        "latestBatchDigestSha256",
+        "lastArchivedSequence",
+        "batches",
+        "manifestDigestSha256",
+      ]);
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      fail(
+        409,
+        "ArchiveIntegrityViolation",
+        "Durable archive manifest.json is corrupted or unreadable.",
+      );
+    }
+
+    if (
+      rawManifestObj.format !== "vardena-owner-audit-archive-manifest" ||
+      rawManifestObj.formatVersion !== 1 ||
+      !Array.isArray(rawManifestObj.batches)
+    ) {
+      fail(
+        409,
+        "ArchiveIntegrityViolation",
+        "Durable archive manifest.json header is invalid.",
+      );
+    }
+    const updatedAt = utcInstant(
+      String(rawManifestObj.updatedAt ?? ""),
+      "manifest.updatedAt",
+    );
+
+    const manifestEntries: DurableArchiveManifestEntry[] = [];
+    let prevDigest: string | null = null;
+    let prevLastSeq = 0;
+
+    for (let i = 0; i < rawManifestObj.batches.length; i++) {
+      let item: Record<string, unknown>;
+      try {
+        item = object(rawManifestObj.batches[i], [
+          "id",
+          "batchNumber",
+          "fileName",
+          "firstSequence",
+          "lastSequence",
+          "eventCount",
+          "retentionCutoffAt",
+          "previousBatchDigest",
+          "batchDigestSha256",
+          "bundleDigestSha256",
+        ]);
+      } catch {
+        fail(
+          409,
+          "ArchiveIntegrityViolation",
+          `Durable archive manifest entry [${i}] is malformed.`,
+        );
+      }
+      const id = String(item.id ?? "");
+      const batchNumber = Number(item.batchNumber);
+      const fileName = String(item.fileName ?? "");
+      const firstSequence = Number(item.firstSequence);
+      const lastSequence = Number(item.lastSequence);
+      const eventCount = Number(item.eventCount);
+      const retentionCutoffAt = utcInstant(
+        String(item.retentionCutoffAt ?? ""),
+        `manifest.batches[${i}].retentionCutoffAt`,
+      );
+      const previousBatchDigest =
+        item.previousBatchDigest === null
+          ? null
+          : String(item.previousBatchDigest ?? "");
+      const batchDigestSha256 = String(item.batchDigestSha256 ?? "");
+      const bundleDigestSha256 = String(item.bundleDigestSha256 ?? "");
+
+      if (
+        !ulidPattern.test(id) ||
+        batchNumber !== i + 1 ||
+        fileName !== formatDurableBatchFileName(batchNumber, id) ||
+        !durableFileNamePattern.test(fileName) ||
+        !Number.isInteger(firstSequence) ||
+        firstSequence <= prevLastSeq ||
+        !Number.isInteger(lastSequence) ||
+        lastSequence < firstSequence ||
+        !Number.isInteger(eventCount) ||
+        eventCount < 1 ||
+        previousBatchDigest !== prevDigest ||
+        !sha256Pattern.test(batchDigestSha256) ||
+        !sha256Pattern.test(bundleDigestSha256)
+      ) {
+        fail(
+          409,
+          "ArchiveIntegrityViolation",
+          `Durable archive manifest hash chain or sequence invariant failed at batch #${i + 1}.`,
+        );
+      }
+
+      prevDigest = batchDigestSha256;
+      prevLastSeq = lastSequence;
+      manifestEntries.push({
+        id,
+        batchNumber,
+        fileName,
+        firstSequence,
+        lastSequence,
+        eventCount,
+        retentionCutoffAt,
+        previousBatchDigest,
+        batchDigestSha256,
+        bundleDigestSha256,
+      });
+    }
+
+    const expectedManifestDigest = computeManifestDigest(manifestEntries);
+    if (rawManifestObj.manifestDigestSha256 !== expectedManifestDigest) {
+      fail(
+        409,
+        "ArchiveIntegrityViolation",
+        "Durable archive manifest.json digest mismatch.",
+      );
+    }
+
+    const lastEntry = manifestEntries.at(-1) ?? null;
+    if (
+      rawManifestObj.latestBatchId !== (lastEntry ? lastEntry.id : null) ||
+      Number(rawManifestObj.latestBatchNumber) !==
+        (lastEntry ? lastEntry.batchNumber : 0) ||
+      rawManifestObj.latestBatchDigestSha256 !==
+        (lastEntry ? lastEntry.batchDigestSha256 : null) ||
+      (rawManifestObj.lastArchivedSequence === null
+        ? null
+        : Number(rawManifestObj.lastArchivedSequence)) !==
+        (lastEntry ? lastEntry.lastSequence : null)
+    ) {
+      fail(
+        409,
+        "ArchiveIntegrityViolation",
+        "Durable archive manifest summary pointers do not match batch entries.",
+      );
+    }
+
+    const expectedFileNames = manifestEntries.map((e) => e.fileName).sort();
+    if (
+      batchFilesOnDisk.length !== expectedFileNames.length ||
+      batchFilesOnDisk.some((f, idx) => f !== expectedFileNames[idx])
+    ) {
+      fail(
+        409,
+        "ArchiveIntegrityViolation",
+        "Durable archive batch files on disk do not match manifest.json inventory.",
+      );
+    }
+
+    const bundles: DurableArchiveBundleFile[] = [];
+    for (const entry of manifestEntries) {
+      const filePath = path.join(this.batchesDir, entry.fileName);
+      let rawBundle: unknown;
+      try {
+        const text = await readFile(filePath, "utf8");
+        rawBundle = JSON.parse(text);
+      } catch {
+        fail(
+          409,
+          "ArchiveIntegrityViolation",
+          `Durable archive batch file ${entry.fileName} is unreadable or corrupted JSON.`,
+        );
+      }
+      const verified = verifyExportedArchiveBundle(rawBundle);
+      if (
+        verified.batchId !== entry.id ||
+        verified.batchNumber !== entry.batchNumber ||
+        verified.firstSequence !== entry.firstSequence ||
+        verified.lastSequence !== entry.lastSequence ||
+        verified.eventCount !== entry.eventCount ||
+        verified.batchDigestSha256 !== entry.batchDigestSha256 ||
+        verified.bundleDigestSha256 !== entry.bundleDigestSha256 ||
+        verified.durableFileName !== entry.fileName
+      ) {
+        fail(
+          409,
+          "ArchiveIntegrityViolation",
+          `Durable archive batch file ${entry.fileName} does not match manifest entry.`,
+        );
+      }
+      const parsedObj = rawBundle as DurableArchiveBundleFile;
+      bundles.push({
+        format: "vardena-owner-audit-archive-bundle",
+        formatVersion: 1,
+        durableFileName: entry.fileName,
+        bundleDigestSha256: entry.bundleDigestSha256,
+        batch: {
+          ...parsedObj.batch,
+          durableFileName: entry.fileName,
+          bundleDigestSha256: entry.bundleDigestSha256,
+        },
+        events: parsedObj.events,
+      });
+    }
+
+    return {
+      verified: true,
+      manifest: {
+        format: "vardena-owner-audit-archive-manifest",
+        formatVersion: 1,
+        updatedAt,
+        latestBatchId: lastEntry ? lastEntry.id : null,
+        latestBatchNumber: lastEntry ? lastEntry.batchNumber : 0,
+        latestBatchDigestSha256: lastEntry ? lastEntry.batchDigestSha256 : null,
+        lastArchivedSequence: lastEntry ? lastEntry.lastSequence : null,
+        batches: manifestEntries,
+        manifestDigestSha256: expectedManifestDigest,
+      },
+      bundles,
+    };
+  }
+
+  public async persistBatch(bundle: {
+    batch: ArchiveBatchSummary;
+    events: ArchivedAuditEventRecord[];
+  }): Promise<{
+    entry: DurableArchiveManifestEntry;
+    rollback: () => Promise<void>;
+  }> {
+    const current = await this.verifyStore();
+    const verified = verifyExportedArchiveBundle(bundle);
+
+    const existingLast = current.manifest.batches.at(-1);
+    if (
+      existingLast &&
+      existingLast.id === verified.batchId &&
+      existingLast.bundleDigestSha256 === verified.bundleDigestSha256
+    ) {
+      return {
+        entry: existingLast,
+        rollback: async () => {},
+      };
+    }
+
+    if (
+      verified.batchNumber !== current.manifest.latestBatchNumber + 1 ||
+      bundle.batch.previousBatchDigest !==
+        current.manifest.latestBatchDigestSha256 ||
+      verified.firstSequence <= (current.manifest.lastArchivedSequence ?? 0)
+    ) {
+      fail(
+        409,
+        "ArchiveIntegrityViolation",
+        `Durable archive batch #${verified.batchNumber} (${verified.batchId}) does not chain cleanly onto durable manifest latest batch #${current.manifest.latestBatchNumber}.`,
+      );
+    }
+
+    let priorManifestRaw: string | null = null;
+    if (await this.fileExists(this.manifestPath)) {
+      priorManifestRaw = await readFile(this.manifestPath, "utf8");
+    }
+
+    const batchFilePath = path.join(this.batchesDir, verified.durableFileName);
+    const bundleFile: DurableArchiveBundleFile = {
+      format: "vardena-owner-audit-archive-bundle",
+      formatVersion: 1,
+      durableFileName: verified.durableFileName,
+      bundleDigestSha256: verified.bundleDigestSha256,
+      batch: {
+        ...bundle.batch,
+        durableFileName: verified.durableFileName,
+        bundleDigestSha256: verified.bundleDigestSha256,
+      },
+      events: bundle.events,
+    };
+
+    await this.writeAtomicFsync(
+      batchFilePath,
+      `${canonicalJson(bundleFile)}\n`,
+      {
+        exclusive: true,
+        mode: 0o444,
+      },
+    );
+
+    // Read back from disk and verify before updating manifest.json
+    try {
+      const readBackText = await readFile(batchFilePath, "utf8");
+      const readBackVerified = verifyExportedArchiveBundle(
+        JSON.parse(readBackText),
+      );
+      if (readBackVerified.bundleDigestSha256 !== verified.bundleDigestSha256) {
+        throw new Error("Read-back bundle digest mismatch");
+      }
+    } catch (err) {
+      await chmod(batchFilePath, 0o600).catch(() => {});
+      await rm(batchFilePath, { force: true }).catch(() => {});
+      if (err instanceof ApiError) throw err;
+      fail(
+        503,
+        "ArchiveStorageUnavailable",
+        "Durable archive batch read-back verification failed.",
+      );
+    }
+
+    const newEntry: DurableArchiveManifestEntry = {
+      id: verified.batchId,
+      batchNumber: verified.batchNumber,
+      fileName: verified.durableFileName,
+      firstSequence: verified.firstSequence,
+      lastSequence: verified.lastSequence,
+      eventCount: verified.eventCount,
+      retentionCutoffAt: bundle.batch.retentionCutoffAt,
+      previousBatchDigest: bundle.batch.previousBatchDigest,
+      batchDigestSha256: verified.batchDigestSha256,
+      bundleDigestSha256: verified.bundleDigestSha256,
+    };
+    const nextEntries = [...current.manifest.batches, newEntry];
+    const nextManifest: DurableArchiveManifest = {
+      format: "vardena-owner-audit-archive-manifest",
+      formatVersion: 1,
+      updatedAt: new Date().toISOString(),
+      latestBatchId: newEntry.id,
+      latestBatchNumber: newEntry.batchNumber,
+      latestBatchDigestSha256: newEntry.batchDigestSha256,
+      lastArchivedSequence: newEntry.lastSequence,
+      batches: nextEntries,
+      manifestDigestSha256: computeManifestDigest(nextEntries),
+    };
+
+    try {
+      await this.writeAtomicFsync(
+        this.manifestPath,
+        `${canonicalJson(nextManifest)}\n`,
+        {
+          exclusive: false,
+        },
+      );
+    } catch (err) {
+      await chmod(batchFilePath, 0o600).catch(() => {});
+      await rm(batchFilePath, { force: true }).catch(() => {});
+      throw err;
+    }
+
+    return {
+      entry: newEntry,
+      rollback: async () => {
+        try {
+          if (priorManifestRaw === null) {
+            await rm(this.manifestPath, { force: true });
+          } else {
+            await this.writeAtomicFsync(this.manifestPath, priorManifestRaw, {
+              exclusive: false,
+            });
+          }
+        } finally {
+          await chmod(batchFilePath, 0o600).catch(() => {});
+          await rm(batchFilePath, { force: true }).catch(() => {});
+        }
+      },
+    };
+  }
 }
 
 interface ArchiveBatchRow {
@@ -842,6 +1657,8 @@ interface ArchiveBatchRow {
   retention_cutoff_at: Date;
   previous_batch_digest: string | null;
   batch_digest_sha256: string;
+  durable_file_name: string;
+  durable_bundle_sha256: string;
 }
 
 interface ArchivedEventRow {
@@ -894,6 +1711,8 @@ function mapBatchRow(row: ArchiveBatchRow): ArchiveBatchSummary {
     retentionCutoffAt: row.retention_cutoff_at.toISOString(),
     previousBatchDigest: row.previous_batch_digest,
     batchDigestSha256: row.batch_digest_sha256,
+    durableFileName: row.durable_file_name,
+    bundleDigestSha256: row.durable_bundle_sha256,
   };
 }
 
@@ -919,37 +1738,60 @@ function mapArchivedEventRow(row: ArchivedEventRow): ArchivedAuditEventRecord {
   };
 }
 
-async function verifyArchiveLedgerInternal(
-  tx: PoolClient,
-  filterBatchId?: string,
-): Promise<{
-  verified: true;
-  batchCount: number;
-  verifiedEventCount: number;
+function assertArchiveActor(actor: AuthorizedActorRow) {
+  assertActiveAuthorizedActor(
+    actor as Pick<User, "id" | "role" | "is_active" | "must_change_password">,
+    "audit.archive",
+  );
+}
+
+function assertDurableStoreConfigured(
+  store: AuditArchiveStore | undefined,
+): AuditArchiveStore {
+  if (!store) {
+    fail(
+      503,
+      "ArchiveStorageUnavailable",
+      "Independent durable archive storage (OWNER_AUDIT_ARCHIVE_DIR) is not configured.",
+    );
+  }
+  return store;
+}
+
+async function verifyDbLedgerOnly(tx: PoolClient): Promise<{
+  batches: { batch: ArchiveBatchSummary; events: ArchivedAuditEventRecord[] }[];
+  totalVerifiedEvents: number;
   latestBatchId: string | null;
   latestBatchDigestSha256: string | null;
+  latestBundleDigestSha256: string | null;
   lastArchivedSequence: number | null;
 }> {
   const batchesRes = await tx.query<ArchiveBatchRow>(
     `SELECT id, batch_number, created_by, created_at, reason,
             first_sequence, last_sequence, event_count, retention_cutoff_at,
-            previous_batch_digest, batch_digest_sha256
+            previous_batch_digest, batch_digest_sha256,
+            durable_file_name, durable_bundle_sha256
      FROM owner_audit_archive.archive_batches
      ORDER BY batch_number ASC`,
   );
-  if (filterBatchId !== undefined) {
-    const exists = batchesRes.rows.some((b) => b.id === filterBatchId);
-    if (!exists) {
-      fail(404, "EntityNotFound", "Archive batch was not found.");
-    }
-  }
 
   let prevDigest: string | null = null;
   let prevLastSeq = 0;
   let totalVerifiedEvents = 0;
+  const batches: {
+    batch: ArchiveBatchSummary;
+    events: ArchivedAuditEventRecord[];
+  }[] = [];
 
-  for (const batchRow of batchesRes.rows) {
-    const batch = mapBatchRow(batchRow);
+  for (let idx = 0; idx < batchesRes.rows.length; idx++) {
+    const batch = mapBatchRow(batchesRes.rows[idx]!);
+    if (batch.batchNumber !== idx + 1) {
+      fail(
+        409,
+        "ArchiveIntegrityViolation",
+        `Archive batch ${batch.id} batchNumber (${batch.batchNumber}) is not contiguous (#${idx + 1}).`,
+      );
+    }
     if (batch.previousBatchDigest !== prevDigest) {
       fail(
         409,
@@ -975,7 +1817,14 @@ async function verifyArchiveLedgerInternal(
       [batch.id],
     );
     const events = eventsRes.rows.map(mapArchivedEventRow);
-    verifyExportedArchiveBundle({ batch, events });
+    const verifiedBundle = verifyExportedArchiveBundle({ batch, events });
+    if (verifiedBundle.bundleDigestSha256 !== batch.bundleDigestSha256) {
+      fail(
+        409,
+        "ArchiveIntegrityViolation",
+        `Archive batch ${batch.id} durable_bundle_sha256 mismatch.`,
+      );
+    }
 
     const sourceRes = await tx.query<SourceAuditRow>(
       `SELECT sequence, id, actor_id, event_type, target_type, target_id,
@@ -1035,30 +1884,110 @@ async function verifyArchiveLedgerInternal(
     prevDigest = batch.batchDigestSha256;
     prevLastSeq = batch.lastSequence;
     totalVerifiedEvents += events.length;
+    batches.push({ batch, events });
   }
 
-  const latest = batchesRes.rows.at(-1);
+  const latest = batches.at(-1)?.batch ?? null;
   return {
-    verified: true,
-    batchCount: batchesRes.rows.length,
-    verifiedEventCount: totalVerifiedEvents,
+    batches,
+    totalVerifiedEvents,
     latestBatchId: latest ? latest.id : null,
-    latestBatchDigestSha256: latest ? latest.batch_digest_sha256 : null,
-    lastArchivedSequence: latest ? Number(latest.last_sequence) : null,
+    latestBatchDigestSha256: latest ? latest.batchDigestSha256 : null,
+    latestBundleDigestSha256: latest ? latest.bundleDigestSha256 : null,
+    lastArchivedSequence: latest ? latest.lastSequence : null,
   };
 }
 
-function assertArchiveActor(actor: AuthorizedActorRow) {
-  assertActiveAuthorizedActor(
-    actor as Pick<User, "id" | "role" | "is_active" | "must_change_password">,
-    "audit.archive",
-  );
+async function verifyArchiveLedgerInternal(
+  tx: PoolClient,
+  store: AuditArchiveStore,
+): Promise<{
+  verified: true;
+  batchCount: number;
+  verifiedEventCount: number;
+  latestBatchId: string | null;
+  latestBatchDigestSha256: string | null;
+  latestBundleDigestSha256: string | null;
+  lastArchivedSequence: number | null;
+}> {
+  const durable = await store.verifyStore();
+  const dbState = await verifyDbLedgerOnly(tx);
+
+  if (durable.manifest.batches.length !== dbState.batches.length) {
+    fail(
+      409,
+      "ArchiveIntegrityViolation",
+      `Independent durable archive store batch count (${durable.manifest.batches.length}) does not match PostgreSQL archive ledger batch count (${dbState.batches.length}); run archive recovery to reconcile.`,
+    );
+  }
+
+  for (let i = 0; i < dbState.batches.length; i++) {
+    const dbItem = dbState.batches[i]!.batch;
+    const storeItem = durable.manifest.batches[i]!;
+    if (
+      dbItem.id !== storeItem.id ||
+      dbItem.batchNumber !== storeItem.batchNumber ||
+      dbItem.firstSequence !== storeItem.firstSequence ||
+      dbItem.lastSequence !== storeItem.lastSequence ||
+      dbItem.eventCount !== storeItem.eventCount ||
+      dbItem.previousBatchDigest !== storeItem.previousBatchDigest ||
+      dbItem.batchDigestSha256 !== storeItem.batchDigestSha256 ||
+      dbItem.durableFileName !== storeItem.fileName ||
+      dbItem.bundleDigestSha256 !== storeItem.bundleDigestSha256
+    ) {
+      fail(
+        409,
+        "ArchiveIntegrityViolation",
+        `Archive batch #${i + 1} (${dbItem.id}) metadata in PostgreSQL ledger contradicts independent durable archive store.`,
+      );
+    }
+  }
+
+  return {
+    verified: true,
+    batchCount: dbState.batches.length,
+    verifiedEventCount: dbState.totalVerifiedEvents,
+    latestBatchId: dbState.latestBatchId,
+    latestBatchDigestSha256: dbState.latestBatchDigestSha256,
+    latestBundleDigestSha256: dbState.latestBundleDigestSha256,
+    lastArchivedSequence: dbState.lastArchivedSequence,
+  };
+}
+
+export async function getVerifiedDurableBatchIds(
+  tx: PoolClient,
+  store?: AuditArchiveStore,
+): Promise<ReadonlySet<string>> {
+  if (!store) return new Set<string>();
+  try {
+    const durable = await store.verifyStore();
+    const dbState = await verifyDbLedgerOnly(tx);
+    const durableById = new Map(
+      durable.manifest.batches.map((b) => [b.id, b] as const),
+    );
+    const verifiedIds = new Set<string>();
+    for (const item of dbState.batches) {
+      const d = durableById.get(item.batch.id);
+      if (
+        d &&
+        d.batchNumber === item.batch.batchNumber &&
+        d.batchDigestSha256 === item.batch.batchDigestSha256 &&
+        d.bundleDigestSha256 === item.batch.bundleDigestSha256
+      ) {
+        verifiedIds.add(item.batch.id);
+      }
+    }
+    return verifiedIds;
+  } catch {
+    return new Set<string>();
+  }
 }
 
 export async function getAuditArchiveStatus(
   tx: PoolClient,
   actor: AuthorizedActorRow,
   rawQuery: Record<string, unknown> = {},
+  store?: AuditArchiveStore,
 ): Promise<AuditArchiveStatusReport> {
   assertArchiveActor(actor);
   const q = object(rawQuery, ["asOf"]);
@@ -1067,7 +1996,141 @@ export async function getAuditArchiveStatus(
       ? utcInstant(String(q.asOf), "asOf")
       : new Date().toISOString();
 
-  const integrity = await verifyArchiveLedgerInternal(tx);
+  let durableStoreConfigured = Boolean(store);
+  let durableStoreVerified = false;
+  let dbLedgerVerified = false;
+  let crossStoreConsistent = false;
+  let recoveryRequired = false;
+  let issueCode: string | null = null;
+  let issueMessage: string | null = null;
+  let durableStoreBatchCount = 0;
+  let durableStoreEventCount = 0;
+  let latestBatchId: string | null = null;
+  let latestBatchDigestSha256: string | null = null;
+  let latestBundleDigestSha256: string | null = null;
+  let lastArchivedSequence: number | null = null;
+  const verifiedBatchIdList: string[] = [];
+
+  let durableResult: Awaited<
+    ReturnType<AuditArchiveStore["verifyStore"]>
+  > | null = null;
+  if (!store) {
+    issueCode = "ArchiveStorageUnavailable";
+    issueMessage =
+      "Independent durable archive storage (OWNER_AUDIT_ARCHIVE_DIR) is not configured.";
+  } else {
+    try {
+      durableResult = await store.verifyStore();
+      durableStoreVerified = true;
+      durableStoreBatchCount = durableResult.manifest.batches.length;
+      durableStoreEventCount = durableResult.manifest.batches.reduce(
+        (sum, b) => sum + b.eventCount,
+        0,
+      );
+    } catch (err) {
+      durableStoreVerified = false;
+      issueCode =
+        err instanceof ApiError ? err.code : "ArchiveIntegrityViolation";
+      issueMessage =
+        err instanceof Error
+          ? err.message
+          : "Independent durable archive store failed verification.";
+    }
+  }
+
+  let dbResult: Awaited<ReturnType<typeof verifyDbLedgerOnly>> | null = null;
+  try {
+    dbResult = await verifyDbLedgerOnly(tx);
+    dbLedgerVerified = true;
+  } catch (err) {
+    dbLedgerVerified = false;
+    recoveryRequired = durableStoreVerified && durableStoreBatchCount > 0;
+    if (!issueCode) {
+      issueCode =
+        err instanceof ApiError ? err.code : "ArchiveIntegrityViolation";
+      issueMessage =
+        err instanceof Error
+          ? err.message
+          : "PostgreSQL archive ledger failed verification.";
+    }
+  }
+
+  if (durableResult && dbResult) {
+    const durableById = new Map(
+      durableResult.manifest.batches.map((b) => [b.id, b] as const),
+    );
+    let prefixMismatch = false;
+    const minLen = Math.min(
+      durableResult.manifest.batches.length,
+      dbResult.batches.length,
+    );
+    for (let i = 0; i < minLen; i++) {
+      const d = durableResult.manifest.batches[i]!;
+      const dbB = dbResult.batches[i]!.batch;
+      if (
+        d.id !== dbB.id ||
+        d.batchNumber !== dbB.batchNumber ||
+        d.batchDigestSha256 !== dbB.batchDigestSha256 ||
+        d.bundleDigestSha256 !== dbB.bundleDigestSha256
+      ) {
+        prefixMismatch = true;
+        break;
+      }
+    }
+    for (const item of dbResult.batches) {
+      const d = durableById.get(item.batch.id);
+      if (
+        d &&
+        d.batchNumber === item.batch.batchNumber &&
+        d.batchDigestSha256 === item.batch.batchDigestSha256 &&
+        d.bundleDigestSha256 === item.batch.bundleDigestSha256
+      ) {
+        verifiedBatchIdList.push(item.batch.id);
+      }
+    }
+    if (
+      !prefixMismatch &&
+      durableResult.manifest.batches.length === dbResult.batches.length
+    ) {
+      crossStoreConsistent = true;
+      latestBatchId = dbResult.latestBatchId;
+      latestBatchDigestSha256 = dbResult.latestBatchDigestSha256;
+      latestBundleDigestSha256 = dbResult.latestBundleDigestSha256;
+      lastArchivedSequence = dbResult.lastArchivedSequence;
+    } else if (!prefixMismatch) {
+      crossStoreConsistent = false;
+      recoveryRequired = true;
+      issueCode = "ArchiveRecoveryRequired";
+      issueMessage =
+        durableResult.manifest.batches.length > dbResult.batches.length
+          ? "Independent durable archive store contains verified batches not yet present in PostgreSQL ledger; recovery is required."
+          : "PostgreSQL archive ledger contains batches missing from independent durable archive store; recovery is required.";
+      latestBatchId =
+        dbResult.latestBatchId ?? durableResult.manifest.latestBatchId;
+      latestBatchDigestSha256 =
+        dbResult.latestBatchDigestSha256 ??
+        durableResult.manifest.latestBatchDigestSha256;
+      latestBundleDigestSha256 =
+        dbResult.latestBundleDigestSha256 ??
+        durableResult.manifest.batches.at(-1)?.bundleDigestSha256 ??
+        null;
+      lastArchivedSequence =
+        dbResult.lastArchivedSequence ??
+        durableResult.manifest.lastArchivedSequence;
+    } else {
+      crossStoreConsistent = false;
+      recoveryRequired = false;
+      issueCode = "ArchiveIntegrityViolation";
+      issueMessage =
+        "Independent durable archive store and PostgreSQL archive ledger have conflicting batch digests.";
+    }
+  }
+
+  const verified =
+    durableStoreConfigured &&
+    durableStoreVerified &&
+    dbLedgerVerified &&
+    crossStoreConsistent;
 
   const statsRes = await tx.query<{
     total_source_events: string;
@@ -1077,6 +2140,7 @@ export async function getAuditArchiveStatus(
     past_floor_incident_hold_count: string;
     archived_event_count: string;
     unarchived_eligible_count: string;
+    db_batch_count: string;
   }>(
     `SELECT
        COUNT(*)::text AS total_source_events,
@@ -1089,15 +2153,23 @@ export async function getAuditArchiveStatus(
          WHERE minimum_retained_until <= $1::timestamptz
            AND COALESCE(security_incident, owner.is_security_incident_event(event_type, outcome)) = TRUE
        )::text AS past_floor_incident_hold_count,
-       (SELECT COUNT(*)::text FROM owner_audit_archive.archived_audit_events) AS archived_event_count,
+       (
+         SELECT COUNT(*)::text
+         FROM owner_audit_archive.archived_audit_events a
+         WHERE a.batch_id = ANY($2::varchar[])
+       ) AS archived_event_count,
        COUNT(*) FILTER (
-         WHERE event_type NOT IN ('AUDIT_ARCHIVE_BATCH_CREATED', 'AUDIT_ARCHIVE_VERIFIED')
+         WHERE event_type <> ALL($3::text[])
            AND NOT EXISTS (
-             SELECT 1 FROM owner_audit_archive.archived_audit_events a WHERE a.id = owner.audit_events.id
+             SELECT 1
+             FROM owner_audit_archive.archived_audit_events a
+             WHERE a.id = owner.audit_events.id
+               AND a.batch_id = ANY($2::varchar[])
            )
-       )::text AS unarchived_eligible_count
+       )::text AS unarchived_eligible_count,
+       (SELECT COUNT(*)::text FROM owner_audit_archive.archive_batches) AS db_batch_count
      FROM owner.audit_events`,
-    [asOfIso],
+    [asOfIso, verifiedBatchIdList, [...archiveMetaEventTypes]],
   );
   const row = statsRes.rows[0]!;
 
@@ -1116,14 +2188,24 @@ export async function getAuditArchiveStatus(
       ),
       archivedEventCount: Number(row.archived_event_count),
       unarchivedEligibleEventCount: Number(row.unarchived_eligible_count),
-      archiveBatchCount: integrity.batchCount,
+      archiveBatchCount: Number(row.db_batch_count),
+      durableStoreBatchCount,
+      durableStoreEventCount,
       cleanupEligibleEventCount: 0,
     },
     integrity: {
-      verified: integrity.verified,
-      latestBatchId: integrity.latestBatchId,
-      latestBatchDigestSha256: integrity.latestBatchDigestSha256,
-      lastArchivedSequence: integrity.lastArchivedSequence,
+      verified,
+      durableStoreConfigured,
+      durableStoreVerified,
+      dbLedgerVerified,
+      crossStoreConsistent,
+      recoveryRequired,
+      issueCode,
+      issueMessage,
+      latestBatchId,
+      latestBatchDigestSha256,
+      latestBundleDigestSha256,
+      lastArchivedSequence,
     },
   };
 }
@@ -1132,15 +2214,35 @@ export async function listAuditArchiveBatches(
   tx: PoolClient,
   actor: AuthorizedActorRow,
   rawQuery: Record<string, unknown> = {},
+  store?: AuditArchiveStore,
 ) {
   assertArchiveActor(actor);
   const q = object(rawQuery, ["page"]);
   const p = parsePage(q.page);
   const pageSize = 50;
+
+  if (store) {
+    const durable = await store.verifyStore();
+    if (durable.bundles.length > 0) {
+      const sorted = [...durable.bundles]
+        .map((b) => b.batch)
+        .sort((a, b) => b.batchNumber - a.batchNumber);
+      const offset = (p - 1) * pageSize;
+      const slice = sorted.slice(offset, offset + pageSize + 1);
+      return {
+        items: slice.slice(0, pageSize),
+        page: p,
+        pageSize,
+        hasNext: slice.length > pageSize,
+      };
+    }
+  }
+
   const rows = await tx.query<ArchiveBatchRow>(
     `SELECT id, batch_number, created_by, created_at, reason,
             first_sequence, last_sequence, event_count, retention_cutoff_at,
-            previous_batch_digest, batch_digest_sha256
+            previous_batch_digest, batch_digest_sha256,
+            durable_file_name, durable_bundle_sha256
      FROM owner_audit_archive.archive_batches
      ORDER BY batch_number DESC
      LIMIT $1 OFFSET $2`,
@@ -1158,86 +2260,308 @@ export async function getAuditArchiveBatch(
   tx: PoolClient,
   actor: AuthorizedActorRow,
   rawBatchId: unknown,
+  store?: AuditArchiveStore,
 ): Promise<AuditArchiveBundle> {
   assertArchiveActor(actor);
   const batchId = parseId(rawBatchId);
-  await verifyArchiveLedgerInternal(tx, batchId);
+  const durableStore = assertDurableStoreConfigured(store);
+  const durable = await durableStore.verifyStore();
+  const durableBundle = durable.bundles.find((b) => b.batch.id === batchId);
+  if (!durableBundle) {
+    fail(
+      404,
+      "EntityNotFound",
+      "Archive batch was not found in durable store.",
+    );
+  }
 
-  const batchRes = await tx.query<ArchiveBatchRow>(
+  const dbBatchRes = await tx.query<ArchiveBatchRow>(
     `SELECT id, batch_number, created_by, created_at, reason,
             first_sequence, last_sequence, event_count, retention_cutoff_at,
-            previous_batch_digest, batch_digest_sha256
+            previous_batch_digest, batch_digest_sha256,
+            durable_file_name, durable_bundle_sha256
      FROM owner_audit_archive.archive_batches
      WHERE id = $1`,
     [batchId],
   );
-  if (!batchRes.rowCount) {
-    fail(404, "EntityNotFound", "Archive batch was not found.");
+  const dbBatchRow = dbBatchRes.rows[0];
+  if (dbBatchRow) {
+    const dbBatch = mapBatchRow(dbBatchRow);
+    if (
+      dbBatch.batchNumber !== durableBundle.batch.batchNumber ||
+      dbBatch.batchDigestSha256 !== durableBundle.batch.batchDigestSha256 ||
+      dbBatch.bundleDigestSha256 !== durableBundle.bundleDigestSha256 ||
+      dbBatch.durableFileName !== durableBundle.durableFileName
+    ) {
+      fail(
+        409,
+        "ArchiveIntegrityViolation",
+        `Archive batch ${batchId} in PostgreSQL ledger contradicts independent durable archive store.`,
+      );
+    }
   }
-  const eventsRes = await tx.query<ArchivedEventRow>(
-    `SELECT id, batch_id, sequence, actor_id, event_type, target_type, target_id,
-            occurred_at, minimum_retained_until, outcome, security_incident,
-            incident_status, reason, before_state, after_state, archived_at, record_sha256
-     FROM owner_audit_archive.archived_audit_events
-     WHERE batch_id = $1
-     ORDER BY sequence ASC`,
-    [batchId],
-  );
-  const bundle: AuditArchiveBundle = {
-    batch: mapBatchRow(batchRes.rows[0]!),
-    events: eventsRes.rows.map(mapArchivedEventRow),
+
+  return {
+    batch: durableBundle.batch,
+    events: durableBundle.events,
+    durableStorage: {
+      persisted: true,
+      fileName: durableBundle.durableFileName,
+      bundleDigestSha256: durableBundle.bundleDigestSha256,
+      verified: true,
+      presentInDbLedger: Boolean(dbBatchRow),
+    },
   };
-  verifyExportedArchiveBundle(bundle);
-  return bundle;
 }
 
-export interface CreateAuditArchiveBatchOptions {
-  /** Test-only hook invoked after archive inserts and before transaction completion to test rollback. */
-  afterInsertHook?: (tx: PoolClient) => Promise<void> | void;
+async function insertBatchAndEventsToDb(
+  tx: PoolClient,
+  batch: ArchiveBatchSummary,
+  events: readonly ArchivedAuditEventRecord[],
+): Promise<ArchiveBatchSummary> {
+  const insertedBatchRes = await tx.query<ArchiveBatchRow>(
+    `INSERT INTO owner_audit_archive.archive_batches (
+       id, batch_number, created_by, created_at, reason,
+       first_sequence, last_sequence, event_count,
+       retention_cutoff_at, previous_batch_digest, batch_digest_sha256,
+       durable_file_name, durable_bundle_sha256
+     )
+     VALUES ($1, $2, $3, $4::timestamptz, $5, $6, $7, $8, $9::timestamptz, $10, $11, $12, $13)
+     RETURNING id, batch_number, created_by, created_at, reason,
+               first_sequence, last_sequence, event_count, retention_cutoff_at,
+               previous_batch_digest, batch_digest_sha256,
+               durable_file_name, durable_bundle_sha256`,
+    [
+      batch.id,
+      batch.batchNumber,
+      batch.createdBy,
+      batch.createdAt,
+      batch.reason,
+      batch.firstSequence,
+      batch.lastSequence,
+      batch.eventCount,
+      batch.retentionCutoffAt,
+      batch.previousBatchDigest,
+      batch.batchDigestSha256,
+      batch.durableFileName,
+      batch.bundleDigestSha256,
+    ],
+  );
+
+  for (const p of events) {
+    await tx.query(
+      `INSERT INTO owner_audit_archive.archived_audit_events (
+         id, batch_id, sequence, actor_id, event_type, target_type, target_id,
+         occurred_at, minimum_retained_until, outcome, security_incident,
+         incident_status, reason, before_state, after_state, archived_at, record_sha256
+       )
+       VALUES (
+         $1, $2, $3, $4, $5, $6, $7,
+         $8::timestamptz, $9::timestamptz, $10, $11,
+         $12, $13, $14, $15, $16::timestamptz, $17
+       )`,
+      [
+        p.id,
+        batch.id,
+        p.sequence,
+        p.actorId,
+        p.eventType,
+        p.targetType,
+        p.targetId,
+        p.occurredAt,
+        p.minimumRetainedUntil,
+        p.outcome,
+        p.securityIncident,
+        p.incidentStatus,
+        p.reason,
+        p.beforeState ? JSON.stringify(p.beforeState) : null,
+        p.afterState ? JSON.stringify(p.afterState) : null,
+        p.archivedAt,
+        p.recordSha256,
+      ],
+    );
+  }
+
+  return mapBatchRow(insertedBatchRes.rows[0]!);
+}
+
+async function reconcilePendingDurableBatchesOnRetry(
+  tx: PoolClient,
+  actorId: string,
+  store: AuditArchiveStore,
+): Promise<ArchiveBatchSummary[]> {
+  const durable = await store.verifyStore();
+  const dbState = await verifyDbLedgerOnly(tx);
+
+  if (dbState.batches.length > durable.bundles.length) {
+    fail(
+      409,
+      "ArchiveIntegrityViolation",
+      "Durable archive store is missing batches recorded in PostgreSQL ledger; run POST /api/v1/audit-archive/recover or investigate storage loss.",
+    );
+  }
+
+  for (let i = 0; i < dbState.batches.length; i++) {
+    const dbItem = dbState.batches[i]!.batch;
+    const storeItem = durable.manifest.batches[i]!;
+    if (
+      dbItem.id !== storeItem.id ||
+      dbItem.batchNumber !== storeItem.batchNumber ||
+      dbItem.batchDigestSha256 !== storeItem.batchDigestSha256 ||
+      dbItem.bundleDigestSha256 !== storeItem.bundleDigestSha256
+    ) {
+      fail(
+        409,
+        "ArchiveIntegrityViolation",
+        `Archive batch #${i + 1} (${dbItem.id}) in PostgreSQL ledger contradicts independent durable archive store.`,
+      );
+    }
+  }
+
+  const reconciled: ArchiveBatchSummary[] = [];
+  for (let i = dbState.batches.length; i < durable.bundles.length; i++) {
+    const bundle = durable.bundles[i]!;
+    const sourceRes = await tx.query<SourceAuditRow>(
+      `SELECT sequence, id, actor_id, event_type, target_type, target_id,
+              occurred_at, minimum_retained_until, outcome,
+              COALESCE(security_incident, owner.is_security_incident_event(event_type, outcome)) AS security_incident,
+              COALESCE(
+                incident_status,
+                CASE
+                  WHEN COALESCE(security_incident, owner.is_security_incident_event(event_type, outcome))
+                  THEN 'UNRESOLVED'
+                  ELSE 'NONE'
+                END
+              ) AS incident_status,
+              reason, before_state, after_state
+       FROM owner.audit_events
+       WHERE sequence BETWEEN $1 AND $2
+       ORDER BY sequence ASC`,
+      [bundle.batch.firstSequence, bundle.batch.lastSequence],
+    );
+
+    if (sourceRes.rows.length !== bundle.events.length) {
+      fail(
+        409,
+        "ArchiveIntegrityViolation",
+        `Source audit events are missing for durable archive batch ${bundle.batch.id}; run POST /api/v1/audit-archive/recover to restore missing source and ledger records.`,
+      );
+    }
+
+    for (let j = 0; j < bundle.events.length; j++) {
+      const ev = bundle.events[j]!;
+      const src = sourceRes.rows[j]!;
+      const srcDigest = computeArchivedEventDigest({
+        sequence: Number(src.sequence),
+        id: src.id,
+        actorId: src.actor_id,
+        eventType: src.event_type,
+        targetType: src.target_type,
+        targetId: src.target_id,
+        occurredAt: src.occurred_at.toISOString(),
+        minimumRetainedUntil: src.minimum_retained_until.toISOString(),
+        outcome: src.outcome,
+        securityIncident: Boolean(src.security_incident),
+        incidentStatus: (src.incident_status ?? "NONE") as AuditIncidentStatus,
+        reason: src.reason,
+        beforeState: auditState(src.before_state),
+        afterState: auditState(src.after_state),
+      });
+      if (src.id !== ev.id || srcDigest !== ev.recordSha256) {
+        fail(
+          409,
+          "ArchiveIntegrityViolation",
+          `Source audit event ${src.id} contradicts durable archive batch ${bundle.batch.id}.`,
+        );
+      }
+    }
+
+    const summary = await insertBatchAndEventsToDb(
+      tx,
+      bundle.batch,
+      bundle.events,
+    );
+    await audit(tx, {
+      actor: actorId,
+      type: "AUDIT_ARCHIVE_BATCH_CREATED",
+      targetType: "AuditArchiveBatch",
+      targetId: summary.id,
+      reason: summary.reason,
+      after: {
+        archiveBatchId: summary.id,
+        archivedCount: summary.eventCount,
+        firstSequence: summary.firstSequence,
+        lastSequence: summary.lastSequence,
+        batchDigestSha256: summary.batchDigestSha256,
+        bundleDigestSha256: summary.bundleDigestSha256,
+        durableFileName: summary.durableFileName,
+        archiveVerified: true,
+      },
+    });
+    reconciled.push(summary);
+  }
+
+  return reconciled;
 }
 
 export async function createAuditArchiveBatch(
   tx: PoolClient,
   actor: AuthorizedActorRow,
   rawBody: unknown,
-  options?: CreateAuditArchiveBatchOptions,
+  options?: {
+    store?: AuditArchiveStore | undefined;
+    afterInsertHook?: (tx: PoolClient) => Promise<void> | void;
+    skipDiskRollbackOnError?: boolean;
+  },
 ): Promise<{
   status: "ARCHIVED" | "NO_ELIGIBLE_EVENTS";
   archivedCount: number;
   batch: ArchiveBatchSummary | null;
 }> {
   assertArchiveActor(actor);
-  const body = object(rawBody, ["reason", "maxEvents", "upToOccurredAt"]);
+  const store = assertDurableStoreConfigured(options?.store);
+  const body = object(rawBody, ["reason", "upToOccurredAt", "maxEvents"]);
   const archiveReason = parseReason(body.reason);
-  let maxEvents = 200;
-  if (body.maxEvents !== undefined) {
-    const parsed = Number(body.maxEvents);
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 500) {
-      invalid("maxEvents must be an integer between 1 and 500.");
-    }
-    maxEvents = parsed;
+
+  let upToOccurredAt: string | null = null;
+  if (
+    body.upToOccurredAt !== undefined &&
+    body.upToOccurredAt !== null &&
+    body.upToOccurredAt !== ""
+  ) {
+    upToOccurredAt = utcInstant(String(body.upToOccurredAt), "upToOccurredAt");
   }
-  const upToOccurredAt =
-    body.upToOccurredAt !== undefined
-      ? utcInstant(String(body.upToOccurredAt), "upToOccurredAt")
-      : null;
 
-  await tx.query(
-    "LOCK TABLE owner_audit_archive.archive_batches IN EXCLUSIVE MODE",
+  let maxEvents = 500;
+  if (body.maxEvents !== undefined && body.maxEvents !== null) {
+    if (
+      typeof body.maxEvents !== "number" ||
+      !Number.isInteger(body.maxEvents) ||
+      body.maxEvents < 1 ||
+      body.maxEvents > 1000
+    ) {
+      invalid("maxEvents must be an integer between 1 and 1000.");
+    }
+    maxEvents = body.maxEvents;
+  }
+
+  await tx.query("SELECT pg_advisory_xact_lock(77004001)");
+
+  const reconciled = await reconcilePendingDurableBatchesOnRetry(
+    tx,
+    actor.id,
+    store,
   );
-
-  // Verify existing archive chain before appending a new batch.
-  const integrity = await verifyArchiveLedgerInternal(tx);
+  const integrity = await verifyArchiveLedgerInternal(tx, store);
   const lastArchivedSeq = integrity.lastArchivedSequence ?? 0;
 
-  // Check if any non-meta unarchived events exist in the requested window.
   const eligibleNonMetaRes = await tx.query<{ max_seq: string | null }>(
     `SELECT MAX(sequence)::text AS max_seq
      FROM owner.audit_events
      WHERE sequence > $1
-       AND event_type NOT IN ('AUDIT_ARCHIVE_BATCH_CREATED', 'AUDIT_ARCHIVE_VERIFIED')
-       AND ($2::timestamptz IS NULL OR occurred_at <= $2::timestamptz)`,
-    [lastArchivedSeq, upToOccurredAt],
+       AND event_type <> ALL($2::text[])
+       AND ($3::timestamptz IS NULL OR occurred_at <= $3::timestamptz)`,
+    [lastArchivedSeq, [...archiveMetaEventTypes], upToOccurredAt],
   );
 
   const maxEligibleNonMetaSeq = eligibleNonMetaRes.rows[0]?.max_seq
@@ -1245,6 +2569,14 @@ export async function createAuditArchiveBatch(
     : null;
 
   if (maxEligibleNonMetaSeq === null) {
+    if (reconciled.length > 0) {
+      const lastReconciled = reconciled[reconciled.length - 1]!;
+      return {
+        status: "ARCHIVED",
+        archivedCount: lastReconciled.eventCount,
+        batch: lastReconciled,
+      };
+    }
     return {
       status: "NO_ELIGIBLE_EVENTS",
       archivedCount: 0,
@@ -1252,8 +2584,6 @@ export async function createAuditArchiveBatch(
     };
   }
 
-  // Snapshot upper sequence bound before writing the batch audit row so this run
-  // never recursively archives its own AUDIT_ARCHIVE_BATCH_CREATED event.
   const highWaterRes = await tx.query<{ max_seq: string }>(
     `SELECT COALESCE(MAX(sequence), 0)::text AS max_seq
      FROM owner.audit_events
@@ -1288,6 +2618,14 @@ export async function createAuditArchiveBatch(
     (r) => !(archiveMetaEventTypes as readonly string[]).includes(r.event_type),
   );
   if (rows.length === 0 || !hasNonMetaInSlice) {
+    if (reconciled.length > 0) {
+      const lastReconciled = reconciled[reconciled.length - 1]!;
+      return {
+        status: "ARCHIVED",
+        archivedCount: lastReconciled.eventCount,
+        batch: lastReconciled,
+      };
+    }
     return {
       status: "NO_ELIGIBLE_EVENTS",
       archivedCount: 0,
@@ -1296,14 +2634,13 @@ export async function createAuditArchiveBatch(
   }
 
   const batchId = ulid();
+  const batchNumber = integrity.batchCount + 1;
+  const nowIso = new Date().toISOString();
   const firstSequence = Number(rows[0]!.sequence);
   const lastSequence = Number(rows[rows.length - 1]!.sequence);
   const retentionCutoffAt = rows[rows.length - 1]!.occurred_at.toISOString();
 
-  const preparedEvents: {
-    payload: CanonicalArchiveEventPayload;
-    recordSha256: string;
-  }[] = rows.map((r) => {
+  const preparedEvents: ArchivedAuditEventRecord[] = rows.map((r) => {
     const payload: CanonicalArchiveEventPayload = {
       sequence: Number(r.sequence),
       id: r.id,
@@ -1320,9 +2657,12 @@ export async function createAuditArchiveBatch(
       beforeState: auditState(r.before_state),
       afterState: auditState(r.after_state),
     };
+    const recordSha256 = computeArchivedEventDigest(payload);
     return {
-      payload,
-      recordSha256: computeArchivedEventDigest(payload),
+      ...payload,
+      batchId,
+      archivedAt: nowIso,
+      recordSha256,
     };
   });
 
@@ -1336,83 +2676,69 @@ export async function createAuditArchiveBatch(
     recordDigests: preparedEvents.map((e) => e.recordSha256),
   });
 
-  const insertedBatchRes = await tx.query<ArchiveBatchRow>(
-    `INSERT INTO owner_audit_archive.archive_batches (
-       id, created_by, reason, first_sequence, last_sequence, event_count,
-       retention_cutoff_at, previous_batch_digest, batch_digest_sha256
-     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8, $9)
-     RETURNING id, batch_number, created_by, created_at, reason,
-               first_sequence, last_sequence, event_count, retention_cutoff_at,
-               previous_batch_digest, batch_digest_sha256`,
-    [
-      batchId,
-      actor.id,
-      archiveReason,
-      firstSequence,
-      lastSequence,
-      preparedEvents.length,
-      retentionCutoffAt,
-      integrity.latestBatchDigestSha256,
-      batchDigestSha256,
-    ],
+  const durableFileName = formatDurableBatchFileName(batchNumber, batchId);
+  const baseBatchSummary = {
+    id: batchId,
+    batchNumber,
+    createdBy: actor.id,
+    createdAt: nowIso,
+    reason: archiveReason,
+    firstSequence,
+    lastSequence,
+    eventCount: preparedEvents.length,
+    retentionCutoffAt,
+    previousBatchDigest: integrity.latestBatchDigestSha256,
+    batchDigestSha256,
+    durableFileName,
+  };
+  const bundleDigestSha256 = computeArchiveBundleDigest({
+    batch: baseBatchSummary,
+    events: preparedEvents,
+  });
+  const candidateBatchSummary: ArchiveBatchSummary = {
+    ...baseBatchSummary,
+    bundleDigestSha256,
+  };
+
+  const batchSummary = await insertBatchAndEventsToDb(
+    tx,
+    candidateBatchSummary,
+    preparedEvents,
   );
 
-  for (const item of preparedEvents) {
-    const p = item.payload;
-    await tx.query(
-      `INSERT INTO owner_audit_archive.archived_audit_events (
-         id, batch_id, sequence, actor_id, event_type, target_type, target_id,
-         occurred_at, minimum_retained_until, outcome, security_incident,
-         incident_status, reason, before_state, after_state, record_sha256
-       )
-       VALUES (
-         $1, $2, $3, $4, $5, $6, $7,
-         $8::timestamptz, $9::timestamptz, $10, $11,
-         $12, $13, $14, $15, $16
-       )`,
-      [
-        p.id,
-        batchId,
-        p.sequence,
-        p.actorId,
-        p.eventType,
-        p.targetType,
-        p.targetId,
-        p.occurredAt,
-        p.minimumRetainedUntil,
-        p.outcome,
-        p.securityIncident,
-        p.incidentStatus,
-        p.reason,
-        p.beforeState ? JSON.stringify(p.beforeState) : null,
-        p.afterState ? JSON.stringify(p.afterState) : null,
-        item.recordSha256,
-      ],
-    );
-  }
-
-  if (options?.afterInsertHook) {
-    await options.afterInsertHook(tx);
-  }
-
-  const batchSummary = mapBatchRow(insertedBatchRes.rows[0]!);
-
-  await audit(tx, {
-    actor: actor.id,
-    type: "AUDIT_ARCHIVE_BATCH_CREATED",
-    targetType: "AuditArchiveBatch",
-    targetId: batchSummary.id,
-    reason: archiveReason,
-    after: {
-      archiveBatchId: batchSummary.id,
-      archivedCount: batchSummary.eventCount,
-      firstSequence: batchSummary.firstSequence,
-      lastSequence: batchSummary.lastSequence,
-      batchDigestSha256: batchSummary.batchDigestSha256,
-      archiveVerified: true,
-    },
+  const persisted = await store.persistBatch({
+    batch: batchSummary,
+    events: preparedEvents,
   });
+
+  try {
+    if (options?.afterInsertHook) {
+      await options.afterInsertHook(tx);
+    }
+
+    await audit(tx, {
+      actor: actor.id,
+      type: "AUDIT_ARCHIVE_BATCH_CREATED",
+      targetType: "AuditArchiveBatch",
+      targetId: batchSummary.id,
+      reason: archiveReason,
+      after: {
+        archiveBatchId: batchSummary.id,
+        archivedCount: batchSummary.eventCount,
+        firstSequence: batchSummary.firstSequence,
+        lastSequence: batchSummary.lastSequence,
+        batchDigestSha256: batchSummary.batchDigestSha256,
+        bundleDigestSha256: batchSummary.bundleDigestSha256,
+        durableFileName: batchSummary.durableFileName,
+        archiveVerified: true,
+      },
+    });
+  } catch (err) {
+    if (!options?.skipDiskRollbackOnError) {
+      await persisted.rollback();
+    }
+    throw err;
+  }
 
   return {
     status: "ARCHIVED",
@@ -1424,33 +2750,283 @@ export async function createAuditArchiveBatch(
 export async function verifyAuditArchiveIntegrity(
   tx: PoolClient,
   actor: AuthorizedActorRow,
-  rawBody: unknown,
+  rawBody: unknown = {},
+  store?: AuditArchiveStore,
 ) {
   assertArchiveActor(actor);
-  const body = object(rawBody, ["reason", "batchId"]);
-  const verifyReason = parseReason(body.reason);
-  const filterBatchId =
-    body.batchId !== undefined ? parseId(body.batchId) : undefined;
+  const durableStore = assertDurableStoreConfigured(store);
+  const body = object(rawBody ?? {}, ["reason"]);
+  const verifyReason =
+    body.reason !== undefined && body.reason !== null && body.reason !== ""
+      ? parseReason(body.reason)
+      : "Periodic audit archive integrity verification";
 
-  const result = await verifyArchiveLedgerInternal(tx, filterBatchId);
-  const targetId =
-    filterBatchId ?? result.latestBatchId ?? "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+  const result = await verifyArchiveLedgerInternal(tx, durableStore);
 
   await audit(tx, {
     actor: actor.id,
     type: "AUDIT_ARCHIVE_VERIFIED",
     targetType: "AuditArchiveBatch",
-    targetId,
+    targetId: result.latestBatchId ?? "EMPTY_ARCHIVE",
     reason: verifyReason,
     after: {
-      ...(result.latestBatchId ? { archiveBatchId: result.latestBatchId } : {}),
+      archiveBatchId: result.latestBatchId,
       archivedCount: result.verifiedEventCount,
-      ...(result.latestBatchDigestSha256
-        ? { batchDigestSha256: result.latestBatchDigestSha256 }
-        : {}),
+      lastSequence: result.lastArchivedSequence,
+      batchDigestSha256: result.latestBatchDigestSha256,
+      bundleDigestSha256: result.latestBundleDigestSha256,
       archiveVerified: true,
     },
   });
 
   return result;
+}
+
+export async function recoverAuditArchiveService(
+  tx: PoolClient,
+  actor: AuthorizedActorRow,
+  rawBody: unknown = {},
+  store?: AuditArchiveStore,
+): Promise<AuditArchiveRecoveryResult> {
+  assertArchiveActor(actor);
+  const durableStore = assertDurableStoreConfigured(store);
+  const body = object(rawBody ?? {}, ["reason"]);
+  const recoveryReason = parseReason(body.reason);
+
+  await tx.query("SELECT pg_advisory_xact_lock(77004001)");
+
+  const durable = await durableStore.verifyStore();
+  const dbBatchesRes = await tx.query<ArchiveBatchRow>(
+    `SELECT id, batch_number, created_by, created_at, reason,
+            first_sequence, last_sequence, event_count, retention_cutoff_at,
+            previous_batch_digest, batch_digest_sha256,
+            durable_file_name, durable_bundle_sha256
+     FROM owner_audit_archive.archive_batches
+     ORDER BY batch_number ASC`,
+  );
+  const dbBatches = dbBatchesRes.rows.map(mapBatchRow);
+
+  const minLen = Math.min(durable.bundles.length, dbBatches.length);
+  for (let i = 0; i < minLen; i++) {
+    const d = durable.bundles[i]!.batch;
+    const dbB = dbBatches[i]!;
+    if (
+      d.id !== dbB.id ||
+      d.batchNumber !== dbB.batchNumber ||
+      d.firstSequence !== dbB.firstSequence ||
+      d.lastSequence !== dbB.lastSequence ||
+      d.eventCount !== dbB.eventCount ||
+      d.previousBatchDigest !== dbB.previousBatchDigest ||
+      d.batchDigestSha256 !== dbB.batchDigestSha256 ||
+      d.bundleDigestSha256 !== dbB.bundleDigestSha256 ||
+      d.durableFileName !== dbB.durableFileName
+    ) {
+      fail(
+        409,
+        "ArchiveIntegrityViolation",
+        `Conflicting archive batch #${i + 1} between independent durable store and PostgreSQL ledger.`,
+      );
+    }
+  }
+
+  let recoveredBatchCount = 0;
+  let recoveredSourceEventCount = 0;
+  let recoveredLedgerEventCount = 0;
+  let rehydratedDurableBatchCount = 0;
+
+  // 1. Ensure all source audit events and DB ledger rows exist for every verified bundle in durable store
+  for (const bundle of durable.bundles) {
+    for (const ev of bundle.events) {
+      const existingSrcRes = await tx.query<SourceAuditRow>(
+        `SELECT sequence, id, actor_id, event_type, target_type, target_id,
+                occurred_at, minimum_retained_until, outcome,
+                COALESCE(security_incident, owner.is_security_incident_event(event_type, outcome)) AS security_incident,
+                COALESCE(
+                  incident_status,
+                  CASE
+                    WHEN COALESCE(security_incident, owner.is_security_incident_event(event_type, outcome))
+                    THEN 'UNRESOLVED'
+                    ELSE 'NONE'
+                  END
+                ) AS incident_status,
+                reason, before_state, after_state
+         FROM owner.audit_events
+         WHERE id = $1 OR sequence = $2`,
+        [ev.id, ev.sequence],
+      );
+
+      if (existingSrcRes.rows.length === 0) {
+        await tx.query(
+          `INSERT INTO owner.audit_events (
+             sequence, id, actor_id, event_type, target_type, target_id,
+             occurred_at, outcome, reason, before_state, after_state,
+             security_incident, incident_status
+           )
+           OVERRIDING SYSTEM VALUE
+           VALUES (
+             $1, $2, $3, $4, $5, $6,
+             $7::timestamptz, $8, $9, $10, $11,
+             $12, $13
+           )`,
+          [
+            ev.sequence,
+            ev.id,
+            ev.actorId,
+            ev.eventType,
+            ev.targetType,
+            ev.targetId,
+            ev.occurredAt,
+            ev.outcome,
+            ev.reason,
+            ev.beforeState ? JSON.stringify(ev.beforeState) : null,
+            ev.afterState ? JSON.stringify(ev.afterState) : null,
+            ev.securityIncident,
+            ev.incidentStatus,
+          ],
+        );
+        recoveredSourceEventCount += 1;
+      } else {
+        const src = existingSrcRes.rows[0]!;
+        const srcDigest = computeArchivedEventDigest({
+          sequence: Number(src.sequence),
+          id: src.id,
+          actorId: src.actor_id,
+          eventType: src.event_type,
+          targetType: src.target_type,
+          targetId: src.target_id,
+          occurredAt: src.occurred_at.toISOString(),
+          minimumRetainedUntil: src.minimum_retained_until.toISOString(),
+          outcome: src.outcome,
+          securityIncident: Boolean(src.security_incident),
+          incidentStatus: (src.incident_status ??
+            "NONE") as AuditIncidentStatus,
+          reason: src.reason,
+          beforeState: auditState(src.before_state),
+          afterState: auditState(src.after_state),
+        });
+        if (
+          existingSrcRes.rows.length > 1 ||
+          src.id !== ev.id ||
+          Number(src.sequence) !== ev.sequence ||
+          srcDigest !== ev.recordSha256
+        ) {
+          fail(
+            409,
+            "ArchiveIntegrityViolation",
+            `Existing source audit event ${src.id} (seq ${String(src.sequence)}) conflicts with durable archive event ${ev.id} (seq ${ev.sequence}).`,
+          );
+        }
+      }
+    }
+
+    const batchExistsInDb = dbBatches.some((b) => b.id === bundle.batch.id);
+    if (!batchExistsInDb) {
+      await insertBatchAndEventsToDb(tx, bundle.batch, bundle.events);
+      recoveredBatchCount += 1;
+      recoveredLedgerEventCount += bundle.events.length;
+    } else {
+      // Check if any archived_audit_events rows for this batch were missing
+      const existingArchivedRes = await tx.query<{ id: string }>(
+        `SELECT id FROM owner_audit_archive.archived_audit_events WHERE batch_id = $1`,
+        [bundle.batch.id],
+      );
+      const existingIds = new Set(existingArchivedRes.rows.map((r) => r.id));
+      for (const p of bundle.events) {
+        if (!existingIds.has(p.id)) {
+          await tx.query(
+            `INSERT INTO owner_audit_archive.archived_audit_events (
+               id, batch_id, sequence, actor_id, event_type, target_type, target_id,
+               occurred_at, minimum_retained_until, outcome, security_incident,
+               incident_status, reason, before_state, after_state, archived_at, record_sha256
+             )
+             VALUES (
+               $1, $2, $3, $4, $5, $6, $7,
+               $8::timestamptz, $9::timestamptz, $10, $11,
+               $12, $13, $14, $15, $16::timestamptz, $17
+             )`,
+            [
+              p.id,
+              bundle.batch.id,
+              p.sequence,
+              p.actorId,
+              p.eventType,
+              p.targetType,
+              p.targetId,
+              p.occurredAt,
+              p.minimumRetainedUntil,
+              p.outcome,
+              p.securityIncident,
+              p.incidentStatus,
+              p.reason,
+              p.beforeState ? JSON.stringify(p.beforeState) : null,
+              p.afterState ? JSON.stringify(p.afterState) : null,
+              p.archivedAt,
+              p.recordSha256,
+            ],
+          );
+          recoveredLedgerEventCount += 1;
+        }
+      }
+    }
+  }
+
+  if (recoveredSourceEventCount > 0) {
+    await tx.query(
+      `SELECT setval(
+         pg_get_serial_sequence('owner.audit_events', 'sequence'),
+         GREATEST((SELECT COALESCE(MAX(sequence), 1) FROM owner.audit_events), 1),
+         true
+       )`,
+    );
+  }
+
+  // 2. If PostgreSQL ledger has verified batches beyond the durable store (e.g. replaced archive volume),
+  // verify them against source and rehydrate the missing durable batch files.
+  if (dbBatches.length > durable.bundles.length) {
+    const dbVerified = await verifyDbLedgerOnly(tx);
+    for (let i = durable.bundles.length; i < dbVerified.batches.length; i++) {
+      const item = dbVerified.batches[i]!;
+      await durableStore.persistBatch({
+        batch: item.batch,
+        events: item.events,
+      });
+      rehydratedDurableBatchCount += 1;
+    }
+  }
+
+  const finalVerify = await verifyArchiveLedgerInternal(tx, durableStore);
+
+  await audit(tx, {
+    actor: actor.id,
+    type: "AUDIT_ARCHIVE_RECOVERED",
+    targetType: "AuditArchiveBatch",
+    targetId: finalVerify.latestBatchId ?? "EMPTY_ARCHIVE",
+    reason: recoveryReason,
+    after: {
+      archiveBatchId: finalVerify.latestBatchId,
+      recoveredBatchCount,
+      recoveredSourceEventCount,
+      recoveredLedgerEventCount,
+      rehydratedDurableBatchCount,
+      archivedCount: finalVerify.verifiedEventCount,
+      lastSequence: finalVerify.lastArchivedSequence,
+      batchDigestSha256: finalVerify.latestBatchDigestSha256,
+      bundleDigestSha256: finalVerify.latestBundleDigestSha256,
+      archiveVerified: true,
+    },
+  });
+
+  return {
+    verified: true,
+    recoveredBatchCount,
+    recoveredSourceEventCount,
+    recoveredLedgerEventCount,
+    rehydratedDurableBatchCount,
+    batchCount: finalVerify.batchCount,
+    verifiedEventCount: finalVerify.verifiedEventCount,
+    latestBatchId: finalVerify.latestBatchId,
+    latestBatchDigestSha256: finalVerify.latestBatchDigestSha256,
+    latestBundleDigestSha256: finalVerify.latestBundleDigestSha256,
+    lastArchivedSequence: finalVerify.lastArchivedSequence,
+  };
 }

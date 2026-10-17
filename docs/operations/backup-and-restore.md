@@ -126,21 +126,49 @@ backup as the data-portability answer.
 
 The standalone Owner Licensing application (`owner-licensing/`) maintains its
 own isolated PostgreSQL database (`owner`, `owner_audit_archive`, and
-`public.owner_migrations`), separate from customer Vardena installations:
+`public.owner_migrations`), separate from customer Vardena installations, paired
+with an independent durable filesystem archive store (`OWNER_AUDIT_ARCHIVE_DIR`):
 - Active audit events in `owner.audit_events` are append-only with a mandatory
   three-year minimum retention window (`minimum_retained_until = occurred_at +
   3 years` in UTC) and an unresolved security-incident hold
   (`security_incident = true`, `incident_status = 'UNRESOLVED'`).
-- Permanent separate archive batches in `owner_audit_archive.archive_batches`
-  and `owner_audit_archive.archived_audit_events` are append-only, minimized
-  via the 28-key state allowlist, and protected by per-record SHA-256 digests
-  (`record_sha256`) and chained batch digests (`previous_batch_digest` →
-  `batch_digest_sha256`).
-- Operators holding `OWNER_ADMIN` (`audit.archive`) create archive batches via
-  `POST /api/v1/audit-archive/batches`, export portable verified batch bundles
-  via `GET /api/v1/audit-archive/batches/:id`, and verify ledger/source
-  consistency via `POST /api/v1/audit-archive/verify` (including after a logical
-  database restore). Database triggers and SHA-256 digests enforce application-role
-  append-only invariants and tamper-evidence on verification; storing exported
-  bundles on external immutable media remains an infrastructure deployment
-  procedure.
+- Permanent separate archive persistence is enforced across two decoupled
+  boundaries so the archive does not depend exclusively on the same PostgreSQL
+  database and its backup lifecycle as the source audit records:
+  1. **Independent durable filesystem archive store (`OWNER_AUDIT_ARCHIVE_DIR`):**
+     `FilesystemAuditArchiveStore` writes write-once (`link` + `unlink`,
+     `chmod 0o444`, file and directory `fsync`), read-back-verified JSON batch
+     bundles (`batches/batch-XXXXXX-<id>.json`) and an atomic `fsync`ed
+     hash-chained `manifest.json` on an independent filesystem path/volume
+     outside the PostgreSQL data directory.
+  2. **PostgreSQL archive ledger (`owner_audit_archive.archive_batches` and
+     `owner_audit_archive.archived_audit_events`):** append-only tables recording
+     each batch's `durable_file_name`, `durable_bundle_sha256`, per-record
+     SHA-256 digests (`record_sha256`), and chained batch digests
+     (`previous_batch_digest` → `batch_digest_sha256`).
+- A downloadable JSON response or an operator instruction to save a file is never
+  treated as proof of durable archival. If `OWNER_AUDIT_ARCHIVE_DIR` is not
+  configured or the durable store write/read-back fails, `POST /api/v1/audit-archive/batches`
+  fails closed (`503 ArchiveStorageUnavailable`), rolls back both stores, and
+  never marks source events as `archived: true`.
+- Operators holding `OWNER_ADMIN` (`audit.archive`):
+  - Create durable archive batches via `POST /api/v1/audit-archive/batches`
+    (which also reconciles any pending durable batch on retry after an
+    interrupted database commit without duplicating files on disk).
+  - Retrieve and verify stored batch bundles from `OWNER_AUDIT_ARCHIVE_DIR` via
+    `GET /api/v1/audit-archive/batches/:id`.
+  - Verify 1-to-1 integrity across `OWNER_AUDIT_ARCHIVE_DIR`,
+    `owner_audit_archive`, and `owner.audit_events` via
+    `POST /api/v1/audit-archive/verify` (`409 ArchiveIntegrityViolation` on any
+    missing or tampered file or digest mismatch).
+  - Recover after a PostgreSQL rollback or point-in-time restore via
+    `POST /api/v1/audit-archive/recover`, which verifies the independent durable
+    store (`OWNER_AUDIT_ARCHIVE_DIR`), restores any missing source events into
+    `owner.audit_events` (preserving exact original `id`, `sequence`, timestamps,
+    and digests) and missing batches/events into `owner_audit_archive`, and logs
+    `AUDIT_ARCHIVE_RECOVERED`.
+- **Deployment prerequisite vs. implemented guarantee:** mounting
+  `OWNER_AUDIT_ARCHIVE_DIR` on a dedicated persistent volume/disk separate from
+  the PostgreSQL data volume with its own backup/snapshot lifecycle is a
+  deployment prerequisite; cryptographic hardware WORM / HSM is not implemented
+  in Phase 1.

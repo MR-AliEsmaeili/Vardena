@@ -219,6 +219,8 @@ export const o = {
       'مشاهده نصب سرور جایگزین ثبت شد (مشاهده اپراتور، نه تأیید رمزنگاری)',
     AUDIT_ARCHIVE_BATCH_CREATED: 'ایجاد بسته بایگانی مجزای ممیزی',
     AUDIT_ARCHIVE_VERIFIED: 'بررسی و تأیید یکپارچگی بایگانی ممیزی',
+    AUDIT_ARCHIVE_RECOVERED:
+      'بازیابی و همگام‌سازی بایگانی از مخزن پایدار مستقل',
     AUDIT_ARCHIVE_ACCESS_DENIED:
       'درخواست عملیات بایگانی ممیزی رد شد (فاقد مجوز)',
   },
@@ -234,29 +236,38 @@ export const o = {
   auditUnarchivedBadge: 'در مخزن فعال (در انتظار بایگانی)',
   auditArchiveSectionTitle: 'مدیریت بایگانی مجزا و سیاست نگه‌داری (OQ-77)',
   auditArchiveSectionNote:
-    'رویدادهای ممیزی فقط-افزودنی هستند، حداقل سه سال از زمان وقوع نگه‌داری می‌شوند، رخدادهای امنیتی حل‌نشده هرگز به‌صورت خودکار حذف نمی‌شوند و بایگانی دائمی مجزا بدون هیچ مسیر حذف یا پاک‌سازی مخرب برقرار است.',
+    'رویدادهای ممیزی فقط-افزودنی هستند، حداقل سه سال از زمان وقوع نگه‌داری می‌شوند، رخدادهای امنیتی حل‌نشده هرگز به‌صورت خودکار حذف نمی‌شوند و بسته‌های بایگانی در مخزن پایدار مستقل از پایگاه‌داده (OWNER_AUDIT_ARCHIVE_DIR) به‌همراه دفتر کل PostgreSQL نگه‌داری و صحت‌سنجی می‌شوند.',
   auditArchiveTotalEvents: 'کل رویدادهای ممیزی',
   auditArchiveWithinFloor: 'در بازه حداقل ۳ سال',
   auditArchivePastFloor: 'گذشته از کف ۳ ساله',
   auditArchiveIncidentHolds: 'رخدادهای امنیتی تحت محافظت',
-  auditArchiveArchivedCount: 'رویدادهای بایگانی‌شده',
+  auditArchiveArchivedCount: 'رویدادهای بایگانی‌شده (تأییدشده)',
   auditArchivePendingCount: 'در انتظار بایگانی',
   auditArchiveBatchCount: 'تعداد بسته‌های بایگانی',
-  auditArchiveIntegrityLabel: 'وضعیت یکپارچگی زنجیره بایگانی',
-  auditArchiveIntegrityVerified: 'معتبر و منطبق با رکوردهای منشأ (SHA-256)',
-  auditArchiveReasonLabel: 'دلیل ثبت بسته بایگانی یا بررسی یکپارچگی',
+  auditArchiveDurableStoreBatches: 'بسته‌های مخزن پایدار مستقل',
+  auditArchiveIntegrityLabel:
+    'وضعیت یکپارچگی زنجیره بایگانی و مخزن پایدار مستقل',
+  auditArchiveIntegrityVerified:
+    'معتبر و منطبق بین مخزن پایدار مستقل، دفتر کل بایگانی و جدول منشأ (SHA-256)',
+  auditArchiveIntegrityFailed:
+    'عدم تطابق یا نیازمند بازیابی از مخزن پایدار مستقل',
+  auditArchiveReasonLabel: 'دلیل ثبت بسته بایگانی، بررسی یکپارچگی یا بازیابی',
   auditArchiveReasonRequired:
-    'ثبت دلیل برای عملیات بایگانی یا بررسی یکپارچگی الزامی است.',
+    'ثبت دلیل برای عملیات بایگانی، بررسی یکپارچگی یا بازیابی الزامی است.',
   auditArchiveCreateBatch: 'ایجاد بسته بایگانی مجزا',
   auditArchiveCreatingBatch: 'در حال ایجاد بسته بایگانی...',
   auditArchiveVerifyButton: 'بررسی یکپارچگی بایگانی',
   auditArchiveVerifying: 'در حال بررسی یکپارچگی...',
+  auditArchiveRecoverButton: 'بازیابی از مخزن پایدار مستقل',
+  auditArchiveRecovering: 'در حال بازیابی بایگانی...',
   auditArchiveBatchCreatedSuccess:
-    'بسته بایگانی مجزا با موفقیت ایجاد و ثبت شد.',
+    'بسته بایگانی مجزا با موفقیت در مخزن پایدار مستقل و دفتر کل ایجاد و ثبت شد.',
   auditArchiveNoEligibleEvents:
     'رویداد جدیدی برای بایگانی وجود ندارد؛ تمام رویدادهای واجد شرایط قبلاً بایگانی شده‌اند.',
   auditArchiveVerifiedSuccess:
-    'یکپارچگی زنجیره بایگانی و تطابق با جدول منشأ تأیید شد.',
+    'یکپارچگی مخزن پایدار مستقل، زنجیره بایگانی و تطابق با جدول منشأ تأیید شد.',
+  auditArchiveRecoveredSuccess:
+    'بازیابی و همگام‌سازی بایگانی از مخزن پایدار مستقل با موفقیت انجام و تأیید شد.',
   auditArchiveBatchesEmpty: 'هنوز بسته بایگانی ثبت نشده است.',
-  auditArchiveBatchesHeading: 'بسته‌های بایگانی ثبت‌شده',
+  auditArchiveBatchesHeading: 'بسته‌های بایگانی ثبت‌شده در مخزن پایدار مستقل',
 };

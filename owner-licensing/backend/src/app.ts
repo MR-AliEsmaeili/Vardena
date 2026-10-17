@@ -8,10 +8,13 @@ import { ulid } from "ulid";
 import type { PoolClient } from "pg";
 import type { Config } from "./config.js";
 import {
+  FilesystemAuditArchiveStore,
   createAuditArchiveBatch,
   getAuditArchiveBatch,
   getAuditArchiveStatus,
+  getVerifiedDurableBatchIds,
   listAuditArchiveBatches,
+  recoverAuditArchiveService,
   verifyAuditArchiveIntegrity,
 } from "./archive.js";
 import { listAuditEvents } from "./audit.js";
@@ -796,6 +799,9 @@ export async function createApp(db: Database, cfg: Config) {
       );
     },
   );
+  const archiveStore = cfg.archiveDir
+    ? new FilesystemAuditArchiveStore(cfg.archiveDir)
+    : undefined;
   // Read-only explorer. Authorization is the route permission; the query never
   // supplies or changes the authenticated actor.
   route(
@@ -804,9 +810,14 @@ export async function createApp(db: Database, cfg: Config) {
     "audit.view",
     true,
     async (tx, _a, req, res) => {
+      const verifiedDurableBatchIds = await getVerifiedDurableBatchIds(
+        tx,
+        archiveStore,
+      );
       res.locals.body = await listAuditEvents(
         tx,
         req.query as Record<string, unknown>,
+        { verifiedDurableBatchIds },
       );
     },
   );
@@ -844,6 +855,7 @@ export async function createApp(db: Database, cfg: Config) {
         tx,
         a.user,
         req.query as Record<string, unknown>,
+        archiveStore,
       );
     },
   );
@@ -858,6 +870,7 @@ export async function createApp(db: Database, cfg: Config) {
         tx,
         a.user,
         req.query as Record<string, unknown>,
+        archiveStore,
       );
     },
   );
@@ -869,7 +882,12 @@ export async function createApp(db: Database, cfg: Config) {
     async (tx, a, req, res) => {
       if (!(await archiveAuthorized(tx, a, res, pathTarget(req.params.id))))
         return;
-      res.locals.body = await getAuditArchiveBatch(tx, a.user, req.params.id);
+      res.locals.body = await getAuditArchiveBatch(
+        tx,
+        a.user,
+        req.params.id,
+        archiveStore,
+      );
     },
   );
   route(
@@ -879,7 +897,9 @@ export async function createApp(db: Database, cfg: Config) {
     true,
     async (tx, a, req, res) => {
       if (!(await archiveAuthorized(tx, a, res, null))) return;
-      const result = await createAuditArchiveBatch(tx, a.user, req.body);
+      const result = await createAuditArchiveBatch(tx, a.user, req.body, {
+        store: archiveStore,
+      });
       res.locals.status = result.status === "ARCHIVED" ? 201 : 200;
       res.locals.body = result;
     },
@@ -891,7 +911,27 @@ export async function createApp(db: Database, cfg: Config) {
     true,
     async (tx, a, req, res) => {
       if (!(await archiveAuthorized(tx, a, res, null))) return;
-      res.locals.body = await verifyAuditArchiveIntegrity(tx, a.user, req.body);
+      res.locals.body = await verifyAuditArchiveIntegrity(
+        tx,
+        a.user,
+        req.body,
+        archiveStore,
+      );
+    },
+  );
+  route(
+    "post",
+    "/audit-archive/recover",
+    undefined,
+    true,
+    async (tx, a, req, res) => {
+      if (!(await archiveAuthorized(tx, a, res, null))) return;
+      res.locals.body = await recoverAuditArchiveService(
+        tx,
+        a.user,
+        req.body,
+        archiveStore,
+      );
     },
   );
   app.use("/api/v1", router);

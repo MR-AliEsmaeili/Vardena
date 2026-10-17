@@ -294,7 +294,11 @@ describe("audit explorer read (no database)", () => {
         after_state: null,
       },
     ]);
-    const body = await listAuditEvents(tx, { targetType: "User" });
+    const body = await listAuditEvents(
+      tx,
+      { targetType: "User" },
+      { verifiedDurableBatchIds: new Set([ulidB]) },
+    );
     expect(body.items[0]).toMatchObject({
       id: ulidA,
       occurredAt: "2023-10-15T10:00:00.000Z",
@@ -304,6 +308,18 @@ describe("audit explorer read (no database)", () => {
       archived: true,
       archiveBatchId: ulidB,
       outcome: "DENIED",
+    });
+
+    // If the batch is not verified in the independent durable store, archived is false
+    const unverifiedBody = await listAuditEvents(
+      tx,
+      { targetType: "User" },
+      { verifiedDurableBatchIds: new Set() },
+    );
+    expect(unverifiedBody.items[0]).toMatchObject({
+      id: ulidA,
+      archived: false,
+      archiveBatchId: null,
     });
     expect(auditFilters({ targetType: "AuditArchiveBatch" })).toEqual({
       page: 1,

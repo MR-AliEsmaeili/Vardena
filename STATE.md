@@ -2542,34 +2542,49 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
     append-only triggers (`retain_archive_batches`, `retain_archived_events`),
     batch hash-chain validation (`validate_archive_batch_insert`), and
     source-matching verification (`verify_archived_event_matches_source`).
-  - **Domain retention evaluator & archive service (`owner-licensing/backend/src/archive.ts`, `src/audit.ts`, `src/domain.ts`, `src/app.ts`)**:
+  - **Domain retention evaluator & independent durable archive service (`owner-licensing/backend/src/archive.ts`, `src/audit.ts`, `src/config.ts`, `src/domain.ts`, `src/app.ts`)**:
     - Enforces the 3-year minimum active retention window in UTC
       (`computeMinimumRetainedUntil`, `evaluateAuditEventRetention`), unresolved
       security-incident protection hold (`UNRESOLVED_SECURITY_INCIDENT_HOLD`),
       and permanent retention (`PERMANENT_RETENTION_POLICY_NO_PURGE`,
       `cleanupEligible: false`).
+    - Persists archive batches to an independent durable filesystem store
+      (`OWNER_AUDIT_ARCHIVE_DIR`, `FilesystemAuditArchiveStore`) writing
+      write-once (`link` + `unlink`, `chmod 0o444`, file and directory `fsync`),
+      read-back-verified JSON batch bundles (`batches/batch-XXXXXX-<id>.json`)
+      and an atomic `fsync`ed hash-chained `manifest.json` outside PostgreSQL,
+      paired with the PostgreSQL `owner_audit_archive` ledger (`durable_file_name`,
+      `durable_bundle_sha256`). Fails closed (`503 ArchiveStorageUnavailable`)
+      when `OWNER_AUDIT_ARCHIVE_DIR` is not configured, rolls back both stores on
+      failure, reconciles pending durable batches on retry without duplication,
+      and only reports events as `archived: true` when verified in both stores.
     - Grants `audit.archive` exclusively to `OWNER_ADMIN`; `LICENSE_OPERATOR`
       retains `audit.view` for read-only audit explorer viewing and is denied
       privileged archive operations (`GET /api/v1/audit-archive/status`,
       `GET /api/v1/audit-archive/batches`, `GET /api/v1/audit-archive/batches/:id`,
-      `POST /api/v1/audit-archive/batches`, `POST /api/v1/audit-archive/verify`)
-      at both route and service boundaries (`403 PermissionDenied`), recording
-      an attributable `AUDIT_ARCHIVE_ACCESS_DENIED` security-incident audit row.
-    - Enforces idempotent batch archiving with allowlist state minimization,
-      per-record SHA-256 digests (`record_sha256`), chained batch digests
-      (`previous_batch_digest` → `batch_digest_sha256`), portable bundle
-      verification (`verifyExportedArchiveBundle`), and protection against
-      recursive self-archiving on repeated runs.
+      `POST /api/v1/audit-archive/batches`, `POST /api/v1/audit-archive/verify`,
+      `POST /api/v1/audit-archive/recover`) at both route and service boundaries
+      (`403 PermissionDenied`), recording an attributable
+      `AUDIT_ARCHIVE_ACCESS_DENIED` security-incident audit row.
+    - Provides deterministic post-restore recovery (`POST /api/v1/audit-archive/recover`)
+      that verifies the independent durable store (`OWNER_AUDIT_ARCHIVE_DIR`),
+      restores any missing source events into `owner.audit_events` (`OVERRIDING
+      SYSTEM VALUE` + sequence sync) and missing batches/events into
+      `owner_audit_archive` after a PostgreSQL backup restore, and logs
+      `AUDIT_ARCHIVE_RECOVERED`.
   - **Owner Frontend (`owner-licensing/frontend/src/features/audit/audit-page.tsx`, `audit-filters.ts`, `api/contracts.ts`, `api/owner.api.ts`, `lib/owner-i18n.ts`)**:
     displays per-event 3-year retention floor timestamps in Persian/Jalali
     Tehran format (`formatOwnerInstant`), unresolved security-incident hold
     badges, and separate-archive badges for `audit.view` holders, and renders
-    the `OWNER_ADMIN`-only (`audit.archive`) archive management and integrity
-    verification panel on `/app/audit`.
+    the `OWNER_ADMIN`-only (`audit.archive`) archive management, integrity
+    verification, and durable-store recovery panel on `/app/audit`.
 - **Explicit non-goals and open boundaries:**
   no destructive purge or automatic deletion job (`cleanupEligibleEventCount = 0`);
   no invented incident-resolution workflow to clear security-incident holds;
-  database triggers and SHA-256 digests provide application-role append-only
-  enforcement and tamper-evidence on verification, not hardware WORM against a
-  compromised PostgreSQL superuser; customer-side `licensing.license_audit_events`
+  mounting `OWNER_AUDIT_ARCHIVE_DIR` on a dedicated volume outside the
+  PostgreSQL data directory is a deployment prerequisite; database triggers,
+  write-once `0o444` `fsync`ed bundle files, and SHA-256 digests provide
+  application-role append-only enforcement, cross-store tamper-evidence, and
+  post-restore recovery, not hardware WORM against a compromised OS root or
+  PostgreSQL superuser; customer-side `licensing.license_audit_events`
   archiving and Product Owner acceptance remain open under `OQ-77`.

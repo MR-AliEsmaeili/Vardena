@@ -11,6 +11,7 @@ import type {
   CustomerInput,
   OperationalRecord,
   Paginated,
+  RecoverAuditArchiveResult,
   Role,
   VerifyAuditArchiveResult,
 } from './contracts';
@@ -143,3 +144,5 @@ export const verifyAuditArchive = (body: {
   reason: string;
   batchId?: string;
 }) => apiPost<VerifyAuditArchiveResult>('/audit-archive/verify', body);
+export const recoverAuditArchive = (body: { reason: string }) =>
+  apiPost<RecoverAuditArchiveResult>('/audit-archive/recover', body);

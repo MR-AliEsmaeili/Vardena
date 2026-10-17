@@ -1,5 +1,6 @@
 -- OQ-77: Append-only audit retention floor (3 years minimum from event occurrence),
--- unresolved security-incident hold, and permanent separate archive schema.
+-- unresolved security-incident hold, and permanent separate archive ledger schema
+-- paired with the independent durable filesystem archive store (OWNER_AUDIT_ARCHIVE_DIR).
 -- Forward-only migration; preserves 001, 002, and 003 checksums.
 
 CREATE OR REPLACE FUNCTION owner.compute_minimum_retained_until(p_occurred_at TIMESTAMPTZ)
@@ -96,7 +97,7 @@ CREATE SCHEMA IF NOT EXISTS owner_audit_archive;
 
 CREATE TABLE IF NOT EXISTS owner_audit_archive.archive_batches (
   id VARCHAR(26) PRIMARY KEY CHECK (id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'),
-  batch_number BIGSERIAL UNIQUE NOT NULL CHECK (batch_number >= 1),
+  batch_number BIGINT UNIQUE NOT NULL CHECK (batch_number >= 1),
   created_by VARCHAR(26) NOT NULL REFERENCES owner.users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
   reason VARCHAR(500) NOT NULL CHECK (
@@ -112,6 +113,12 @@ CREATE TABLE IF NOT EXISTS owner_audit_archive.archive_batches (
   ),
   batch_digest_sha256 VARCHAR(64) NOT NULL UNIQUE CHECK (
     batch_digest_sha256 ~ '^[0-9a-f]{64}$'
+  ),
+  durable_file_name VARCHAR(128) NOT NULL UNIQUE CHECK (
+    durable_file_name ~ '^batch-[0-9]{6,}-[0-9A-HJKMNP-TV-Z]{26}\.json$'
+  ),
+  durable_bundle_sha256 VARCHAR(64) NOT NULL UNIQUE CHECK (
+    durable_bundle_sha256 ~ '^[0-9a-f]{64}$'
   )
 );
 
@@ -183,9 +190,12 @@ DECLARE
   v_prev owner_audit_archive.archive_batches%ROWTYPE;
   v_author owner.users%ROWTYPE;
 BEGIN
+  NEW.created_at := date_trunc('milliseconds', COALESCE(NEW.created_at, clock_timestamp()));
+  NEW.retention_cutoff_at := date_trunc('milliseconds', NEW.retention_cutoff_at);
+
   SELECT * INTO v_author FROM owner.users WHERE id = NEW.created_by;
-  IF NOT FOUND OR NOT v_author.is_active OR v_author.role <> 'OWNER_ADMIN' OR v_author.must_change_password THEN
-    RAISE EXCEPTION 'Archive batches require an active OWNER_ADMIN actor with completed password change'
+  IF NOT FOUND OR v_author.role <> 'OWNER_ADMIN' THEN
+    RAISE EXCEPTION 'Archive batches require an OWNER_ADMIN created_by actor'
       USING ERRCODE = '42501';
   END IF;
 
@@ -195,6 +205,13 @@ BEGIN
   LIMIT 1;
 
   IF FOUND THEN
+    IF NEW.batch_number IS NULL THEN
+      NEW.batch_number := v_prev.batch_number + 1;
+    ELSIF NEW.batch_number <> v_prev.batch_number + 1 THEN
+      RAISE EXCEPTION 'Archive batch batch_number (%) must equal previous batch_number + 1 (%)',
+        NEW.batch_number, v_prev.batch_number + 1
+        USING ERRCODE = '23514';
+    END IF;
     IF NEW.previous_batch_digest IS DISTINCT FROM v_prev.batch_digest_sha256 THEN
       RAISE EXCEPTION 'Archive batch previous_batch_digest does not match latest batch_digest_sha256'
         USING ERRCODE = '23514';
@@ -205,6 +222,12 @@ BEGIN
         USING ERRCODE = '23514';
     END IF;
   ELSE
+    IF NEW.batch_number IS NULL THEN
+      NEW.batch_number := 1;
+    ELSIF NEW.batch_number <> 1 THEN
+      RAISE EXCEPTION 'First archive batch must have batch_number = 1'
+        USING ERRCODE = '23514';
+    END IF;
     IF NEW.previous_batch_digest IS NOT NULL THEN
       RAISE EXCEPTION 'First archive batch must have previous_batch_digest = NULL'
         USING ERRCODE = '23514';
@@ -228,6 +251,8 @@ DECLARE
   v_src_incident BOOLEAN;
   v_src_status VARCHAR(16);
 BEGIN
+  NEW.archived_at := date_trunc('milliseconds', COALESCE(NEW.archived_at, clock_timestamp()));
+
   SELECT * INTO v_batch
   FROM owner_audit_archive.archive_batches
   WHERE id = NEW.batch_id;
@@ -282,3 +307,6 @@ DROP TRIGGER IF EXISTS verify_archived_event_matches_source ON owner_audit_archi
 CREATE TRIGGER verify_archived_event_matches_source
 BEFORE INSERT ON owner_audit_archive.archived_audit_events
 FOR EACH ROW EXECUTE FUNCTION owner_audit_archive.verify_archived_event_matches_source();
+
+REVOKE ALL ON SCHEMA owner_audit_archive FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA owner_audit_archive FROM PUBLIC;

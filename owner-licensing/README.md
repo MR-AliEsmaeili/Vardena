@@ -39,7 +39,9 @@ customer schemas (`licensing`, `identity`, `users`); this is defense in depth,
 No production connection string or usable bootstrap password is supplied.
 
 1. In `backend/`, copy `.env.example` to `.env`; configure `OWNER_DATABASE_URL`,
-   `OWNER_PUBLIC_ORIGIN`, `OWNER_BOOTSTRAP_USERNAME`, `OWNER_BOOTSTRAP_PASSWORD`.
+   `OWNER_PUBLIC_ORIGIN`, `OWNER_AUDIT_ARCHIVE_DIR` (an absolute path on a
+   storage volume independent of the PostgreSQL data directory),
+   `OWNER_BOOTSTRAP_USERNAME`, `OWNER_BOOTSTRAP_PASSWORD`.
    Use a unique initial password (8–128 nonblank characters).
 2. Run `npm ci --ignore-scripts --no-audit --no-fund` in both package directories.
 3. In `backend/`, run `npm run migrate`, then `npm run bootstrap`.
@@ -103,8 +105,10 @@ Do not publish Owner images through the customer release channel. An Owner UI
 nginx sample proxies `/api/` to an internal service named `owner-api` on port 3001;
 this is deployment composition, not a customer endpoint. No new microservice.
 Terminate HTTPS at the Owner ingress. Set `NODE_ENV=production`,
-`OWNER_PUBLIC_ORIGIN=https://<owner-host>`, `OWNER_DATABASE_URL` from a secret store.
-Never place these credentials in the UI's `VITE_*` variables or customer `.env`.
+`OWNER_PUBLIC_ORIGIN=https://<owner-host>`, `OWNER_DATABASE_URL` from a secret store,
+and `OWNER_AUDIT_ARCHIVE_DIR=/var/lib/vardena-owner/audit-archive` mounted on an
+independent persistent volume outside the PostgreSQL data directory and backup
+lifecycle. Never place these credentials in the UI's `VITE_*` variables or customer `.env`.
 
 Use separate migration and application credentials. The migration role owns schemas
 `owner` and `owner_audit_archive` plus `public.owner_migrations`. Grant runtime only
@@ -158,7 +162,7 @@ if any superseded four-role user row exists.
 `004-audit-retention-archive.sql` implements OQ-77 audit retention and separate
 archive controls:
 - Adds `minimum_retained_until` (`GENERATED ALWAYS AS (((occurred_at AT TIME ZONE 'UTC') + INTERVAL '3 years') AT TIME ZONE 'UTC') STORED NOT NULL`), `security_incident`, and `incident_status` (`'NONE'` or `'UNRESOLVED'`) on `owner.audit_events`, enforced by `BEFORE INSERT` trigger `enforce_audit_retention_metadata` and `audit_events_incident_metadata_check`.
-- Creates the separate archive schema `owner_audit_archive` (`owner_audit_archive.archive_batches` and `owner_audit_archive.archived_audit_events`) with `BEFORE UPDATE OR DELETE` append-only triggers (`retain_archive_batches`, `retain_archived_events`), batch hash-chain validation (`validate_archive_batch_insert`), and source-matching verification (`verify_archived_event_matches_source`).
+- Creates the separate archive ledger schema `owner_audit_archive` (`owner_audit_archive.archive_batches` with `durable_file_name` and `durable_bundle_sha256`, and `owner_audit_archive.archived_audit_events`) with `BEFORE UPDATE OR DELETE` append-only triggers (`retain_archive_batches`, `retain_archived_events`), contiguous `batch_number` and batch hash-chain validation (`validate_archive_batch_insert`), and source-matching verification (`verify_archived_event_matches_source`), paired with the independent durable filesystem archive store (`FilesystemAuditArchiveStore` at `OWNER_AUDIT_ARCHIVE_DIR`).
 
 ### Legacy-role compatibility matrix and upgrade runbook (`002` → `003`)
 
@@ -270,10 +274,14 @@ password. `audit-events` GET (`audit.view`; granted to `Owner Admin` and
 includes `minimumRetainedUntil`, `securityIncident`, `incidentStatus`,
 `archived`, and `archiveBatchId`.
 `audit-archive/status` GET, `audit-archive/batches` GET/POST,
-`audit-archive/batches/:id` GET, and `audit-archive/verify` POST require
-`audit.archive` (`Owner Admin` only; denied attempts by `License Operator` write
-`AUDIT_ARCHIVE_ACCESS_DENIED` with `security_incident = true` and return 403).
-Full contract:
+`audit-archive/batches/:id` GET, `audit-archive/verify` POST, and
+`audit-archive/recover` POST require `audit.archive` (`Owner Admin` only;
+denied attempts by `License Operator` write `AUDIT_ARCHIVE_ACCESS_DENIED` with
+`security_incident = true` and return 403). Archive writes, bundle retrieval,
+verification, and recovery require `OWNER_AUDIT_ARCHIVE_DIR` to be configured
+and fail closed (`503 ArchiveStorageUnavailable`) otherwise; a downloadable JSON
+response or operator instruction to save a file is never treated as proof of
+durable archival. Full contract:
 [backend README](backend/README.md#audit-explorer-contract). Calendar and
 instant rules: [task record](../docs/tasks/licensing-owner-side-phase-1-1-audit-explorer.md).
 `operational-records` GET with `page`, literal `search`, optional `kind`,

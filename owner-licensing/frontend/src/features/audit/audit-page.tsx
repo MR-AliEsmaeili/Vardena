@@ -183,6 +183,29 @@ function AuditArchiveControlSection() {
     },
   });
 
+  const recoverMutation = useMutation({
+    mutationFn: (reason: string) => api.recoverAuditArchive({ reason }),
+    onSuccess: async () => {
+      setReasonText('');
+      setReasonError(null);
+      setFeedback(o.auditArchiveRecoveredSuccess);
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.auditArchiveStatus(),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.auditArchiveBatches(1),
+        }),
+        queryClient.invalidateQueries({ queryKey: ['owner', 'audit'] }),
+      ]);
+    },
+  });
+
+  const isMutating =
+    createBatchMutation.isPending ||
+    verifyMutation.isPending ||
+    recoverMutation.isPending;
+
   const validateReason = (): string | null => {
     const trimmed = reasonText.trim();
     if (!trimmed) {
@@ -263,14 +286,30 @@ function AuditArchiveControlSection() {
               {statusQuery.data.counts.unarchivedEligibleEventCount}
             </dd>
           </div>
-          <div className="rounded border bg-slate-50 p-3 sm:col-span-3">
+          <div className="rounded border bg-slate-50 p-3">
+            <dt className="text-xs text-slate-500">
+              {o.auditArchiveDurableStoreBatches}
+            </dt>
+            <dd className="font-semibold">
+              {statusQuery.data.counts.durableStoreBatchCount} (
+              {statusQuery.data.counts.durableStoreEventCount})
+            </dd>
+          </div>
+          <div className="rounded border bg-slate-50 p-3 sm:col-span-2">
             <dt className="text-xs text-slate-500">
               {o.auditArchiveIntegrityLabel}
             </dt>
-            <dd className="font-medium text-emerald-800">
+            <dd
+              className={
+                statusQuery.data.integrity.verified
+                  ? 'font-medium text-emerald-800'
+                  : 'font-medium text-rose-800'
+              }
+            >
               {statusQuery.data.integrity.verified
                 ? o.auditArchiveIntegrityVerified
-                : '—'}
+                : (statusQuery.data.integrity.issueMessage ??
+                  o.auditArchiveIntegrityFailed)}
               {statusQuery.data.integrity.latestBatchDigestSha256 ? (
                 <span
                   className="ms-2 font-mono text-xs text-slate-600"
@@ -304,7 +343,7 @@ function AuditArchiveControlSection() {
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
-            disabled={createBatchMutation.isPending || verifyMutation.isPending}
+            disabled={isMutating}
             onClick={() => {
               const valid = validateReason();
               if (valid) createBatchMutation.mutate(valid);
@@ -317,7 +356,7 @@ function AuditArchiveControlSection() {
           <Button
             type="button"
             variant="outline"
-            disabled={createBatchMutation.isPending || verifyMutation.isPending}
+            disabled={isMutating}
             onClick={() => {
               const valid = validateReason();
               if (valid) verifyMutation.mutate(valid);
@@ -326,6 +365,19 @@ function AuditArchiveControlSection() {
             {verifyMutation.isPending
               ? o.auditArchiveVerifying
               : o.auditArchiveVerifyButton}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isMutating}
+            onClick={() => {
+              const valid = validateReason();
+              if (valid) recoverMutation.mutate(valid);
+            }}
+          >
+            {recoverMutation.isPending
+              ? o.auditArchiveRecovering
+              : o.auditArchiveRecoverButton}
           </Button>
         </div>
 
@@ -340,6 +392,9 @@ function AuditArchiveControlSection() {
         ) : null}
         {verifyMutation.isError ? (
           <ApiErrorAlert error={verifyMutation.error} />
+        ) : null}
+        {recoverMutation.isError ? (
+          <ApiErrorAlert error={recoverMutation.error} />
         ) : null}
       </div>
 
@@ -370,7 +425,8 @@ function AuditArchiveControlSection() {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-mono font-semibold" dir="ltr">
-                      #{batch.batchNumber} — {batch.id}
+                      #{batch.batchNumber} — {batch.id} ({batch.durableFileName}
+                      )
                     </span>
                     <span>{createdFormatted}</span>
                   </div>

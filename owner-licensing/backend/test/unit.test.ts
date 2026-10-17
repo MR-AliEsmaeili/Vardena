@@ -1,4 +1,13 @@
-import { readFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   assertActiveAuthorizedActor,
@@ -22,16 +31,20 @@ import {
   type SafeUserUpgradeRow,
 } from "../src/migrate.js";
 import {
+  FilesystemAuditArchiveStore,
   canonicalAuditRetentionPolicy,
   computeArchiveBatchDigest,
+  computeArchiveBundleDigest,
   computeArchivedEventDigest,
   computeMinimumRetainedUntil,
   createAuditArchiveBatch,
   evaluateAuditEventRetention,
+  formatDurableBatchFileName,
   getAuditArchiveBatch,
   getAuditArchiveStatus,
   isInherentSecurityIncident,
   listAuditArchiveBatches,
+  recoverAuditArchiveService,
   validateAndNormalizeIncidentMetadata,
   verifyAuditArchiveIntegrity,
   verifyExportedArchiveBundle,
@@ -526,7 +539,8 @@ describe("Customer field allowlist for the two-role model", () => {
       unresolvedSecurityIncidentsExcludedFromCleanup: true,
       permanentSeparateArchiveInForce: true,
       automaticDestructivePurgeEnabled: false,
-      archiveStorageBoundary: "SEPARATE_POSTGRES_SCHEMA_AND_EXPORTABLE_BUNDLE",
+      archiveStorageBoundary:
+        "INDEPENDENT_DURABLE_FILESYSTEM_STORE_AND_POSTGRES_LEDGER",
       cryptographicHardwareWormImplemented: false,
     });
 
@@ -669,7 +683,8 @@ describe("Customer field allowlist for the two-role model", () => {
       previousBatchDigest: null,
       recordDigests: [recordDigest, incidentDigest],
     });
-    const validBundle = {
+    const durableFileName = formatDurableBatchFileName(1, batchId);
+    const validBundleBase = {
       batch: {
         id: batchId,
         batchNumber: 1,
@@ -682,6 +697,7 @@ describe("Customer field allowlist for the two-role model", () => {
         retentionCutoffAt: "2023-10-17T12:00:00.000Z",
         previousBatchDigest: null,
         batchDigestSha256: batchDigest,
+        durableFileName,
       },
       events: [
         {
@@ -698,13 +714,24 @@ describe("Customer field allowlist for the two-role model", () => {
         },
       ],
     };
+    const bundleDigest = computeArchiveBundleDigest(validBundleBase);
+    const validBundle = {
+      ...validBundleBase,
+      batch: {
+        ...validBundleBase.batch,
+        bundleDigestSha256: bundleDigest,
+      },
+    };
     expect(verifyExportedArchiveBundle(validBundle)).toEqual({
       verified: true,
       batchId,
+      batchNumber: 1,
       eventCount: 2,
       firstSequence: 1,
       lastSequence: 2,
       batchDigestSha256: batchDigest,
+      bundleDigestSha256: bundleDigest,
+      durableFileName,
     });
 
     // Invalid, missing, or inconsistent incident/archive metadata fails safely
@@ -828,7 +855,7 @@ describe("Customer field allowlist for the two-role model", () => {
     expect(
       verifyExportedArchiveBundle({
         batch: {
-          ...validBundle.batch,
+          ...validBundleBase.batch,
           firstSequence: 1,
           lastSequence: 1,
           eventCount: 1,
@@ -869,5 +896,135 @@ describe("Customer field allowlist for the two-role model", () => {
     await expect(
       verifyAuditArchiveIntegrity(fakeTx, operatorActor, { reason: "test" }),
     ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+    await expect(
+      recoverAuditArchiveService(fakeTx, operatorActor, { reason: "test" }),
+    ).rejects.toMatchObject({ status: 403, code: "PermissionDenied" });
+
+    // Archive write, retrieve, verify, and recover fail closed (503 ArchiveStorageUnavailable)
+    // when OWNER_AUDIT_ARCHIVE_DIR / store is not configured
+    const adminActor = {
+      id: actorId,
+      role: "OWNER_ADMIN" as const,
+      is_active: true,
+      must_change_password: false,
+    };
+    await expect(
+      createAuditArchiveBatch(fakeTx, adminActor, { reason: "test" }),
+    ).rejects.toMatchObject({
+      status: 503,
+      code: "ArchiveStorageUnavailable",
+    });
+    await expect(
+      getAuditArchiveBatch(fakeTx, adminActor, batchId),
+    ).rejects.toMatchObject({
+      status: 503,
+      code: "ArchiveStorageUnavailable",
+    });
+    await expect(
+      verifyAuditArchiveIntegrity(fakeTx, adminActor, { reason: "test" }),
+    ).rejects.toMatchObject({
+      status: 503,
+      code: "ArchiveStorageUnavailable",
+    });
+    await expect(
+      recoverAuditArchiveService(fakeTx, adminActor, { reason: "test" }),
+    ).rejects.toMatchObject({
+      status: 503,
+      code: "ArchiveStorageUnavailable",
+    });
+
+    // Config validation for OWNER_AUDIT_ARCHIVE_DIR
+    expect(
+      config({
+        OWNER_DATABASE_URL: "postgresql://u:p@localhost:5432/owner",
+        OWNER_PUBLIC_ORIGIN: "https://owner.example.test",
+        OWNER_AUDIT_ARCHIVE_DIR: "/var/lib/vardena-owner/audit-archive",
+      }).archiveDir,
+    ).toBe("/var/lib/vardena-owner/audit-archive");
+    expect(() =>
+      config({
+        OWNER_DATABASE_URL: "postgresql://u:p@localhost:5432/owner",
+        OWNER_PUBLIC_ORIGIN: "https://owner.example.test",
+        OWNER_AUDIT_ARCHIVE_DIR: "relative/archive",
+      }),
+    ).toThrow(/OWNER_AUDIT_ARCHIVE_DIR must be an absolute path/);
+    expect(() =>
+      config({
+        OWNER_DATABASE_URL: "postgresql://u:p@localhost:5432/owner",
+        OWNER_PUBLIC_ORIGIN: "https://owner.example.test",
+        OWNER_AUDIT_ARCHIVE_DIR: "/",
+      }),
+    ).toThrow(/OWNER_AUDIT_ARCHIVE_DIR must not be the filesystem root/);
+
+    // FilesystemAuditArchiveStore persists write-once read-back-verified bundles,
+    // detects tampering/missing files, and cleanly rolls back on failure
+    const tmpArchiveDir = mkdtempSync(
+      path.join(os.tmpdir(), "vardena-archive-unit-"),
+    );
+    try {
+      const store = new FilesystemAuditArchiveStore(tmpArchiveDir);
+      const emptyVerify = await store.verifyStore();
+      expect(emptyVerify.verified).toBe(true);
+      expect(emptyVerify.manifest.batches).toHaveLength(0);
+
+      const persisted1 = await store.persistBatch(validBundle);
+      expect(persisted1.entry.id).toBe(batchId);
+      expect(persisted1.entry.fileName).toBe(durableFileName);
+
+      const batchFilePath = path.join(
+        tmpArchiveDir,
+        "batches",
+        durableFileName,
+      );
+      const st = statSync(batchFilePath);
+      expect(st.mode & 0o777).toBe(0o444);
+
+      const verifiedAfter1 = await store.verifyStore();
+      expect(verifiedAfter1.verified).toBe(true);
+      expect(verifiedAfter1.manifest.batches).toHaveLength(1);
+      expect(verifiedAfter1.bundles[0]?.bundleDigestSha256).toBe(bundleDigest);
+
+      // Idempotent re-persist of the same latest batch succeeds without error
+      const idempotentPersist = await store.persistBatch(validBundle);
+      expect(idempotentPersist.entry.bundleDigestSha256).toBe(bundleDigest);
+
+      // Tampering with batch file on disk is detected by verifyStore()
+      const originalBatchRaw = readFileSync(batchFilePath, "utf8");
+      chmodSync(batchFilePath, 0o600);
+      writeFileSync(
+        batchFilePath,
+        originalBatchRaw.replace("Created customer", "Tampered customer"),
+        "utf8",
+      );
+      await expect(store.verifyStore()).rejects.toMatchObject({
+        status: 409,
+        code: "ArchiveIntegrityViolation",
+      });
+      writeFileSync(batchFilePath, originalBatchRaw, "utf8");
+      chmodSync(batchFilePath, 0o444);
+      expect((await store.verifyStore()).verified).toBe(true);
+
+      // Extra unlisted file in batches/ is detected
+      const unlistedPath = path.join(
+        tmpArchiveDir,
+        "batches",
+        "batch-000002-01ARZ3NDEKTSV4RRFFQ69G5FA1.json",
+      );
+      writeFileSync(unlistedPath, "{}", "utf8");
+      await expect(store.verifyStore()).rejects.toMatchObject({
+        status: 409,
+        code: "ArchiveIntegrityViolation",
+      });
+      rmSync(unlistedPath);
+      expect((await store.verifyStore()).verified).toBe(true);
+
+      // Rollback removes uncommitted batch file and restores manifest
+      await persisted1.rollback();
+      const afterRollback = await store.verifyStore();
+      expect(afterRollback.manifest.batches).toHaveLength(0);
+      expect(afterRollback.bundles).toHaveLength(0);
+    } finally {
+      rmSync(tmpArchiveDir, { recursive: true, force: true });
+    }
   });
 });
