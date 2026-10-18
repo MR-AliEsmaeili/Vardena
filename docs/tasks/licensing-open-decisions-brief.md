@@ -29,54 +29,54 @@ customer **enroll a client device**, **prove a replacement request** and
 - The device slice gates on `EvaluatedLicense.active` (strict signed validity),
   never on `accessMode`: `ClientDevicesRepository.lockedLicenseContext`
   (`backend/src/modules/licensing/data/client-devices.repository.ts`) sets
-  `active: evaluated?.active ?? false`, and `requireActiveSignedLicense`,
-  `licenseBindingIsCurrent` and the two inline replacement branches all require
-  it. `accessMode` is referenced nowhere in the device slice.
+  `active: evaluated?.active ?? false`, and `requireActiveSignedLicense` and the
+  replacement operation gates require it. `accessMode` is referenced nowhere in
+  the device slice.
 - Consequently, from the first millisecond after the signed expiry instant:
   enrollment challenges, enrollment activation and replacement challenges are
-  refused with `license-not-active`; and `proveReplacement`,
-  `replacementRequestExport`, `completeReplacement` and `cancelReplacement`
-  first transition the pending request to **`EXPIRED`** and then refuse. A
-  plain `GET` of the device inventory or history (a **read**, requiring only
-  `Licensing.Device.View`) runs the same sweep, so reading the page destroys
-  in-flight state.
-- The audit reason recorded for that destruction is `license-version-changed`
-  (or `license-context-changed` in the sweep), although no version and no
-  binding changed — only the natural expiry boundary was crossed.
+  refused with `license-not-active`, and `proveReplacement` /
+  `completeReplacement` refuse the same way.
 - Deactivation, inventory and history still work during Grace; every other
   licensed capability keeps working, because `LicensingService` preserves
   entitled permissions in `GRACE` (ADR-0049 decision 4) and
   `Org/UserAllocation` accepts `ACTIVE | GRACE`.
-- **No test pins any of this.**
 
-### Why it is a question rather than a bug to fix silently
+### Already corrected (2026-10-16, second corrective slice)
 
-- ADR-0049 decision 4 and PDR-11 §9.1 ("normal authorized operation continues
-  during Grace") say Grace keeps entitled capabilities.
-- PDR-15 §2.13 says an offline replacement "may remain pending until a valid
-  signed response/evidence is imported" with a 30-day TTL, and
-  `docs/licensing/client-device-lifecycle.md` §4.1 makes the terminal
-  transition depend on the **effective version or installation binding
-  changing** — neither changes at a natural expiry boundary.
-- Against that, PDR-15's original decision text describes registration as
-  permitted when the "authoritative license is active", which can be read as
-  requiring the strictly valid license.
-- Whichever way it is decided, the current behaviour is undocumented,
-  untested, and reports a reason that is factually wrong.
+The destructive half of this area was a defect, not a policy question, and is
+fixed:
+
+- the sweep that runs before a read no longer treats an inactive license as a
+  context change, so a plain `GET` cannot expire a retained challenge or
+  replacement request;
+- `proveReplacement` and `completeReplacement` refuse with `license-not-active`
+  and leave the retained request untouched, so an already accepted
+  Owner-signed response survives the lapse and applies after a valid renewal;
+- the sweep has exactly two triggers with accurate reasons —
+  `challenge-expired` / `request-expired` for the operation's own clock, and
+  `license-context-changed` for a real effective-version, binding or
+  entitlement change (replacing the inaccurate `license-version-changed`);
+- repository-level regression tests pin both directions and fail on the
+  pre-change predicate (verified locally).
+
+This means the **implemented** behaviour is now option A2 below. The surviving
+product question is narrower: should Grace also *permit* device enrollment,
+replacement proof and completion (A1), or is refusing-while-retaining (A2) the
+approved policy?
 
 ### Options
 
 | # | Option | Effect | Cost / risk |
 |---|---|---|---|
-| A1 | **Grace permits device operations** (treat `ACTIVE` and `GRACE` as current; `READ_ONLY`/`BLOCKED` refuse without destroying). | Consistent with "Grace keeps normal operation"; a customer whose server dies in the renewal window can still replace it; renewal restores everything without manual reconstruction. | A customer who never renews can register/rotate devices for 14 extra days. Bounded and small. |
-| A2 | **Grace refuses device operations, but never destroys pending state** (refuse with `license-not-active`, leave the request `PENDING` to its own 30-day TTL). | Keeps "a valid license is required to change the device fleet", while honouring PDR-15 §2.13 and OQ-45's "no manual reconstruction after renewal". | A Grace-window replacement cannot complete until the renewal lands; that is a deliberate, explainable delay. |
-| A3 | **Keep today's behaviour**, document it in PDR-15/§9 and pin it with tests. | No code change. | Requires accepting that a read can void an Owner-approved replacement and that the audit reason is misleading — I recommend against it unless A1/A2 are rejected. |
+| A1 | **Grace permits device operations** (treat `ACTIVE` and `GRACE` as current; `READ_ONLY`/`BLOCKED` still refuse without destroying). | Consistent with "Grace keeps normal operation"; a customer whose server dies in the renewal window can still replace it. | A customer who never renews can register/rotate devices for 14 extra days. Bounded and small; one predicate (`requireActiveSignedLicense`) plus its tests. |
+| A2 | **Grace refuses device operations, but never destroys pending state** — *this is what the code does today, documented and tested.* | Keeps "a valid license is required to change the device fleet" while honouring PDR-15 §2.13 and OQ-45's "no manual reconstruction after renewal". | A Grace-window replacement cannot complete until the renewal lands; that is a deliberate, explainable delay. |
+| A3 | Keep the pre-2026-10-16 behaviour (a read may void a pending replacement). | n/a | Rejected as a defect: it needs a reason that is factually false and destroys accepted offline evidence. |
 
 ### Recommendation
 
-**A2**, with A1 acceptable if the Owner prefers operational continuity during
-Grace. In both cases the destructive sweep must stop treating natural expiry as
-a context change, and the recorded reason must say what actually happened.
+**A2** is implemented and recommended as the settled reading; choose **A1** only
+if the Owner prefers operational continuity during Grace, in which case the
+change is bounded to one predicate and its tests.
 
 ---
 
@@ -183,25 +183,46 @@ adjacent renewal path. Two facts came out of it:
    now measures the deterministic continuation baseline as well whenever it
    exists and differs from the named target, refuses with that baseline named as
    `predecessorVersionId`, records it as the resolution subject when an explicit
-   resolution authorizes the reduction, and defers an otherwise-unused
-   resolution until the baseline has been measured (an operation-level check
-   still refuses a resolution nothing authorized). Regression tests construct the
-   exact timeline above, including the resolution and the no-conflict
-   counter-case; the 71 pre-existing domain cases and the 88 import-service cases
-   are unchanged.
+   resolution authorizes the reduction. Exactly ONE predecessor is measured and
+   named, and it is the same version the resolution is consumed against, so one
+   operator confirmation can never authorize a reduction the operator was not
+   shown; a change relative to a version that never governed the window is not a
+   reduction. Regression tests construct the exact timeline above (the refusal
+   naming the real grant, the resolution, the no-conflict counter-case, and the
+   correction of an expired version), and all 76 domain cases and 88
+   import-service cases pass.
 
-2. **No-baseline paths remain unmeasured (high/medium) — product decision
-   required.** A post-gap recovery candidate is measured against nothing,
-   although PDR-13 §4.2 says the reduction guard "runs on the recovery path
-   exactly as on every other path"; a retires-nothing candidate that is not
-   exactly adjacent (interior gap fill, backdated prefix) is likewise unmeasured,
-   which `docs/licensing/version-model-and-file-exchange.md` records as in scope
-   for L-05 while PDR-11 §8.6 states an unconditional trigger. **Recommendation:**
-   either extend the baseline to "the retained version with the greatest
-   effective end ≤ the candidate's start" (one consistent rule for recovery, gap
-   fill and backdated prefix) or record the exemption explicitly in PDR-13 and
-   the version-model document. No existing test covers a reduction on a
-   no-baseline path, so this change must bring its own timeline.
+2. **The post-gap recovery path is still unmeasured — Product Owner decision
+   required.** PDR-13 §4.2 states that the reduction guard "runs on the recovery
+   path exactly as on every other path". It does not: `continuationBaselineFor`
+   requires a retained effective window ending exactly at the candidate's
+   `validFrom`, while a post-gap candidate starts strictly *after* the
+   installation's coverage end, so nothing is measured and a reducing recovery
+   (for example org limit 50 with 40 in use → limit 2, entitlement removed) is
+   applied. Three labelled characterisation tests in `license-version.spec.ts`
+   pin that state as evidence.
+   **Why it cannot be enabled on its own:** the dedicated recovery route
+   (`POST /api/v1/license/gap-recovery`) carries only the recovery intent, and
+   the dedicated resolution route (`POST /api/v1/license/reduction-resolution`)
+   carries only the resolution intent — a post-gap candidate on that route is
+   refused by `post-gap-recovery-requires-dedicated-operation` *before* any
+   reduction rule runs. Enabling the guard without a resolution-capable recovery
+   operation would therefore make a legitimate reducing recovery permanently
+   inapplicable (a deadlock, pinned by the third characterisation test).
+   **Decision needed:** may the dedicated recovery operation carry an explicit
+   reduction resolution — i.e. require BOTH `Licensing.Installation.RecoverAfterGap`
+   and `Licensing.License.ResolveReduction` for a reducing recovery — or must a
+   reducing recovery stay terminally refused? The first option is the only one
+   that satisfies PDR-13 §4.2 without inventing a new authority; it widens the
+   permission set of one route and must be an Owner decision.
+   **Also open, smaller:** a retires-nothing candidate that is not exactly
+   adjacent (interior gap fill, backdated prefix) is unmeasured too, which
+   `docs/licensing/version-model-and-file-exchange.md` records as in scope for
+   L-05 while PDR-11 §8.6 states an unconditional trigger. Extending the baseline
+   to "the retained version with the greatest effective end ≤ the candidate's
+   start" would cover recovery, gap fill and backdated prefix with one rule, but
+   it changes which version a signed document is measured against, so it needs
+   the Owner's decision as well.
 
 ---
 

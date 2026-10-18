@@ -227,3 +227,64 @@ bounded evidence and operational plan in
 These tests do not replace Product Owner review or exact-head CI verification. Full
 database, migration-rehearsal, Docker, PostgreSQL and E2E suites are CI-only under
 `docs/testing/test-execution-policy.md`.
+
+## 8. Addendum (2026-10-16) — license activity is not a license context change
+
+The customer-server slice above reasoned about the signed license context as a single
+predicate, and the expiry sweep treated an **inactive** license (natural expiry inside
+Grace, Read-Only, or a blocked/suspended status) as if the operation's bound version or
+customer binding had changed. Two consequences were wrong and are corrected here.
+
+**What was wrong.**
+
+1. The sweep that runs before a read (`GET /license/devices`, `GET /license/devices/:id/history`)
+   transitioned every pending enrollment challenge and every `CHALLENGE`/`PENDING`
+   replacement request to `EXPIRED` as soon as the license crossed its natural expiry
+   instant, under the audit reason `license-version-changed` — a version/binding change
+   that had not happened. A plain read therefore destroyed accepted, still-valid offline
+   state.
+2. The same conflation made `proveReplacement` and `completeReplacement` destroy the
+   retained request when the license was merely inactive, so a customer could not use an
+   already accepted Owner-signed replacement response after a renewal without a fresh
+   offline exchange.
+
+**What the code does now.**
+
+- `licenseBindingIsCurrent` answers exactly one question — is this operation still bound
+  to the effective version, customer binding and signed device entitlement it was created
+  under — and no longer includes license activity.
+- The sweep has exactly two triggers, each with its own audit reason: the operation's own
+  clock (`challenge-expired` / `request-expired`) and a real signed-license context change
+  (`license-context-changed`, which also replaces the older, inaccurate
+  `license-version-changed` wording in the two inline replacement branches).
+- An inactive license refuses the operation with the accurate `license-not-active` and
+  **changes nothing**: the challenge/request stays retained, expires on its own clock at
+  the latest, and a valid renewal restores the operation — the restoration behaviour OQ-45
+  requires. An Owner-signed response that is still within the request's validity window is
+  not thrown away.
+- Deactivation and cancellation keep their own rules (deactivation stays available to
+  resolve overage even with an expired license, as §3 already documented). Consequence worth
+  stating explicitly: because a retained request is no longer force-expired by an inactive
+  license, `cancelReplacement` and `deactivate` now succeed for a still-`PENDING`/`CHALLENGE`
+  operation in Grace/Read-Only/blocked state where they previously answered
+  `replacement-request-expired` as a side effect of the destruction. Both are authorized by
+  platform `Licensing.*` permissions that ADR-0049 decision 3 keeps effective in Read-Only,
+  and neither creates, activates or releases a device record; creating a replacement,
+  proving it and completing it all still require an active license.
+
+**Regression evidence.** `backend/src/modules/licensing/data/client-devices.repository.spec.ts`
+pins both directions with a deterministic fake Prisma client: an inactive license (natural
+expiry and a suspended status) expires nothing; a changed effective version expires both
+the challenge and the request with `license-context-changed`; a passed clock expires them
+with the time reasons; `completeReplacement` and `proveReplacement` refuse with
+`license-not-active` and leave no `EXPIRED` transition and no audit row behind. On the
+pre-change predicate those four cases fail (verified locally). The live PostgreSQL suite
+continues to cover the real version-change sweep and its `license-context-changed` reason;
+the inactive-license arm is covered at the repository level only, because it needs no SQL
+semantics the unit harness does not already exercise.
+
+**Still open (Product Owner decision).** Whether a Grace-window license may *create* a new
+enrollment/replacement, not only finish one, is unchanged and undecided: creation still
+requires the license to be active (`license-not-active`), and Read-Only/Blocked still refuse
+everything. The exact question, its options and its consequences are recorded in
+[`docs/tasks/licensing-open-decisions-brief.md`](../tasks/licensing-open-decisions-brief.md) §1.

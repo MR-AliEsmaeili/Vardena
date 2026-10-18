@@ -1455,37 +1455,26 @@ export function evaluateImportConflicts(
     // automatically the grant the candidate continues. A document may name an
     // already-ended (or scheduled) version — the documented correction of an
     // expired or scheduled version — while starting exactly where the version
-    // that actually governs the installation ends. Comparing only against the
-    // named version would let a weak, unrelated target displace the control,
-    // so the deterministic continuation baseline is measured as well, with the
-    // same per-dimension usage check rule 6c uses, and it is named in the
-    // explain payload. A target that IS the baseline is measured once. An
-    // unused resolution is therefore not "not applicable" yet: it may still be
-    // consumed by the baseline, and the operation-level
-    // `resolution-not-applicable` check below refuses it when nothing
-    // authorized it.
+    // that actually governs the installation ends. Measuring the named version
+    // there would let a weak, unrelated target displace the §8.6 control
+    // entirely, and measuring BOTH would let one operator confirmation
+    // authorize a reduction the operator was never shown. So when a distinct
+    // continuation baseline exists, it is the ONE predecessor measured: it is
+    // the grant the installation is actually on, the refusal names it, and a
+    // resolution's single subject is that same version. The named version is
+    // still validated, made eligible and retired by rules 3/6 above; it is
+    // simply not a grant this candidate continues.
     const continuationBaseline = continuationBaselineFor(
       candidate,
       versions,
       installationCustomerId,
     );
     const distinctBaseline =
+      target !== null &&
       continuationBaseline !== null &&
       continuationBaseline.versionId !== supersedes.versionId
         ? continuationBaseline
         : null;
-    const guard = evaluateReductionHandOver(
-      supersedes,
-      candidate,
-      target !== null,
-      usage,
-      reductionResolution,
-      distinctBaseline !== null,
-    );
-    if (guard.action === 'refuse') return guard.evaluation;
-    resolutionApplied = resolutionApplied || guard.resolutionUsed;
-    if (guard.resolutionUsed) resolutionSubject = supersedes;
-
     if (distinctBaseline !== null) {
       const baselineConflicts = reductionConflicts(
         distinctBaseline,
@@ -1507,10 +1496,19 @@ export function evaluateImportConflicts(
           });
         }
         resolutionApplied = true;
-        // The named target stays the recorded subject when it was the
-        // predecessor the resolution was consumed against.
-        if (resolutionSubject === null) resolutionSubject = distinctBaseline;
+        resolutionSubject = distinctBaseline;
       }
+    } else {
+      const guard = evaluateReductionHandOver(
+        supersedes,
+        candidate,
+        target !== null,
+        usage,
+        reductionResolution,
+      );
+      if (guard.action === 'refuse') return guard.evaluation;
+      resolutionApplied = resolutionApplied || guard.resolutionUsed;
+      if (guard.resolutionUsed) resolutionSubject = supersedes;
     }
   } else {
     // Rule 6c (PDR-11 §8.6, L-05): the candidate retires nothing — the
@@ -1673,13 +1671,6 @@ function evaluateReductionHandOver(
   namedByDocument: boolean,
   usage: LicenseUsageSnapshot | null,
   resolution: ReductionResolutionIntent | null,
-  /**
-   * True when a distinct continuation baseline is measured as well (rule 6b′),
-   * so an unused resolution is not yet "not applicable": it may still be
-   * consumed by the baseline, and the caller's operation-level check refuses it
-   * when nothing authorized it.
-   */
-  deferUnusedResolution = false,
 ):
   | { action: 'refuse'; evaluation: ImportConflictEvaluation }
   | {
@@ -1691,7 +1682,7 @@ function evaluateReductionHandOver(
     conflicts.push({ kind: 'open-end-closed' });
   }
   if (conflicts.length === 0) {
-    return resolution !== null && !deferUnusedResolution
+    return resolution !== null
       ? {
           action: 'refuse',
           evaluation: conflictOnly({

@@ -388,16 +388,32 @@ import ──► retained (not yet effective | effective | expired)
   precisely because nothing else may overlap. Naming such a version does **not**
   choose which grant §8.6 measures: when the installation is on a different
   retained version whose effective window ends exactly at the candidate's
-  `validFrom`, that continuation baseline is measured as well (rule 6b′,
-  corrective slice 2026-10-16), so a weak, already-ended target can never
-  displace the capacity/entitlement control. The refusal names the baseline as
-  `reduction.predecessorVersionId`, the same explicit resolution lifts it, and —
-  where the named target itself produced no conflict — an unused resolution is
-  not refused as `resolution-not-applicable` until the baseline has been
-  measured. A legacy code cannot express
+  `validFrom`, that continuation baseline **is** the measured predecessor (rule
+  6b′, corrective slice 2026-10-16), so a weak, already-ended target can never
+  displace the capacity/entitlement control — and the named version is not
+  measured at all, so a change relative to a grant that never governed this
+  window is not a reduction. Exactly one predecessor is measured and named as
+  `reduction.predecessorVersionId`, which is also the single subject a supplied
+  resolution is consumed against: one operator confirmation can never authorize
+  a reduction it was not shown. A legacy code cannot express
   *which* version it replaces, so it may replace at most one still-governing
   version that has no recorded supersession; anything else is refused rather
   than guessed.
+- **Known gap — the post-gap recovery path is not measured (open decision).**
+  [PDR-13](../decisions/product/PDR-13-post-gap-recovery.md) §4.2 requires the
+  reduction guard to run on the recovery path "exactly as on every other path",
+  and it does not: a recovery candidate starts strictly after the installation's
+  coverage end, while the baseline rule above requires exact adjacency, so no
+  predecessor exists and a reducing recovery is applied. Enabling the guard is
+  not a one-line change, because the dedicated recovery route carries only the
+  recovery intent and the dedicated resolution route carries only the resolution
+  intent — the latter is refused by `post-gap-recovery-requires-dedicated-operation`
+  before any reduction rule runs — so a guard without a resolution-capable
+  recovery operation would make a legitimate reducing recovery permanently
+  inapplicable. The current behaviour is pinned by a labelled characterisation
+  suite in `license-version.spec.ts` as evidence for the pending Product Owner
+  decision recorded in
+  [`docs/tasks/licensing-open-decisions-brief.md`](../tasks/licensing-open-decisions-brief.md) §4.
 - **A supersession may not hand over in the past.** The hand-over is the
   candidate's own `validFrom`, so retiring a version at an instant that is
   already past removes coverage that version really had, and the as-of answer
