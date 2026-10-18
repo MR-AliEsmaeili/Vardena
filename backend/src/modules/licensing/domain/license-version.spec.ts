@@ -1811,7 +1811,8 @@ describe('an explicit supersession sanctions exactly the version it names', () =
       usage,
       reductionResolution: { reason: 'Operator confirmed the renewal.' },
     });
-    expect(resolved.conflict).toBeNull();
+    if (resolved.conflict !== null)
+      throw new Error('expected the resolved import to apply');
     expect(resolved.supersedes).toBe(low);
     expect(resolved.resolutionSubject?.versionId).toBe(high.versionId);
 
@@ -1833,7 +1834,8 @@ describe('an explicit supersession sanctions exactly the version it names', () =
       installationCustomerCode: CUSTOMER_CODE,
       usage,
     });
-    expect(applied.conflict).toBeNull();
+    if (applied.conflict !== null)
+      throw new Error('expected the named supersession to apply');
     expect(applied.supersedes).toBe(low);
   });
 
