@@ -17,6 +17,7 @@ import {
   operationStatusFilter,
   optionalBusinessDay,
   optionalId,
+  optionalSigningKeyId,
   page,
   persistedBusinessDay,
   queryText,
@@ -27,13 +28,14 @@ import {
   type Permission,
   type Role,
 } from "./domain.js";
+import { findSigningKeyStatus } from "./signing-keys.js";
 
 const columns = `r.id, r.customer_id, c.customer_code, c.display_name, r.kind,
   r.observation_category, r.observed_status, r.installation_reference,
   r.old_installation_reference, r.replacement_installation_reference,
   r.old_server_observed_state, r.replacement_observed_state,
   r.emergency_old_server_lost, r.replaces_record_id,
-  r.observed_validity_end,
+  r.observed_validity_end, r.signing_key_id,
   r.created_at, r.updated_at,
   r.created_by, r.updated_by`;
 
@@ -244,8 +246,32 @@ export async function listOperations(
     WHERE ${where} ORDER BY r.id DESC LIMIT 50 OFFSET $${values.length + 1}`,
     [...values, (currentPage - 1) * 50],
   );
+  // OQ-74: fetch the current status of each operation's signing key in one
+  // round-trip. Operations without a signing key get null; keys not registered
+  // in owner.signing_keys also get null (UNKNOWN safety).
+  const keyIds = rows.rows
+    .map((r) => r.signing_key_id)
+    .filter((k): k is string => typeof k === "string" && k.length > 0);
+  const keyStatusMap = new Map<string, string>();
+  if (keyIds.length > 0) {
+    const uniqueIds = Array.from(new Set(keyIds));
+    const keyRows = await tx.query<{ id: string; status: string }>(
+      `SELECT id, status FROM owner.signing_keys WHERE id = ANY($1::text[])`,
+      [uniqueIds],
+    );
+    for (const kr of keyRows.rows) keyStatusMap.set(kr.id, kr.status);
+  }
   return {
-    items: rows.rows.map((row) => operationResponse(row, role)),
+    items: rows.rows.map((row) =>
+      operationResponse(
+        row,
+        role,
+        undefined,
+        row.signing_key_id
+          ? (keyStatusMap.get(row.signing_key_id as string) ?? null)
+          : null,
+      ),
+    ),
     total: Number(total.rows[0]!.count),
     page: currentPage,
     pageSize: 50,
@@ -254,7 +280,16 @@ export async function listOperations(
 export async function getOperation(tx: PoolClient, role: Role, rawId: unknown) {
   assertOperationPermission(role, "operations.view");
   const found = await readOperation(tx, id(rawId));
-  return operationResponse(found.row, role, found.transitions);
+  const signingKeyStatus = await findSigningKeyStatus(
+    tx,
+    found.row.signing_key_id as string | null,
+  );
+  return operationResponse(
+    found.row,
+    role,
+    found.transitions,
+    signingKeyStatus,
+  );
 }
 
 function assertOperationPermission(
@@ -284,6 +319,7 @@ export async function recordLicenseObservation(
     "reason",
     "evidenceReference",
     "observedValidityEnd",
+    "signingKeyId",
   ]);
   const customerId = id(input.customerId);
   const installation = installationReference(
@@ -300,6 +336,26 @@ export async function recordLicenseObservation(
     input.observedValidityEnd,
     "observedValidityEnd",
   );
+  // OQ-74: optional signing-key id that the operator observed on the license
+  // artifact. Null when no key was recorded (the safety status will surface as
+  // UNKNOWN). The id must already exist in owner.signing_keys — the operator
+  // registers the key from the signing-keys page before linking it to a
+  // license observation.
+  const signingKeyIdValue = optionalSigningKeyId(input.signingKeyId);
+  if (signingKeyIdValue !== null) {
+    const exists = (
+      await tx.query<{ id: string }>(
+        "SELECT id FROM owner.signing_keys WHERE id=$1",
+        [signingKeyIdValue],
+      )
+    ).rows[0];
+    if (!exists)
+      fail(
+        400,
+        "ValidationFailed",
+        "signingKeyId does not match a registered signing key. Register the key first on the signing-keys page.",
+      );
+  }
   const plan = licenseObservationCreate();
   await lockCustomer(tx, customerId);
   const existing = await tx.query(
@@ -323,8 +379,9 @@ export async function recordLicenseObservation(
   await tx.query(
     `INSERT INTO owner.operational_records(
       id, customer_id, kind, observed_status, observation_category,
-      installation_reference, observed_validity_end, created_by, updated_by)
-    VALUES ($1,$2,'LICENSE',$3,$4,$5,$6,$7,$7)`,
+      installation_reference, observed_validity_end, signing_key_id,
+      created_by, updated_by)
+    VALUES ($1,$2,'LICENSE',$3,$4,$5,$6,$7,$8,$8)`,
     [
       recordId,
       customerId,
@@ -332,6 +389,7 @@ export async function recordLicenseObservation(
       plan.observationCategory,
       installation,
       observedValidityEnd,
+      signingKeyIdValue,
       actorId,
     ],
   );
@@ -345,6 +403,7 @@ export async function recordLicenseObservation(
     evidence,
   );
   const found = await readOperation(tx, recordId);
+  const signingKeyStatus = await findSigningKeyStatus(tx, signingKeyIdValue);
   await audit(tx, {
     actor: actorId,
     type: "LICENSE_ISSUANCE_OBSERVED",
@@ -352,9 +411,17 @@ export async function recordLicenseObservation(
     targetId: recordId,
     reason,
     before: { observedStatus: "UNRECORDED" },
-    after: snapshot(found.row, evidence),
+    after: {
+      ...snapshot(found.row, evidence),
+      signingKeyId: signingKeyIdValue,
+    },
   });
-  return operationResponse(found.row, role, found.transitions);
+  return operationResponse(
+    found.row,
+    role,
+    found.transitions,
+    signingKeyStatus,
+  );
 }
 
 export async function recordActivationObservation(
@@ -388,6 +455,10 @@ export async function recordActivationObservation(
     evidence,
   );
   const found = await readOperation(tx, String(current.row.id));
+  const signingKeyStatus = await findSigningKeyStatus(
+    tx,
+    found.row.signing_key_id as string | null,
+  );
   await audit(tx, {
     actor: actorId,
     type: "LICENSE_ACTIVATION_OBSERVED",
@@ -397,7 +468,12 @@ export async function recordActivationObservation(
     before: snapshot(current.row, null),
     after: snapshot(found.row, evidence),
   });
-  return operationResponse(found.row, role, found.transitions);
+  return operationResponse(
+    found.row,
+    role,
+    found.transitions,
+    signingKeyStatus,
+  );
 }
 
 export async function recordServerReplacement(
@@ -494,7 +570,7 @@ export async function recordServerReplacement(
       milestones: plan.transitions.map((step) => step.next),
     },
   });
-  return operationResponse(found.row, role, found.transitions);
+  return operationResponse(found.row, role, found.transitions, null);
 }
 
 export async function recordOldServerObservation(
@@ -554,7 +630,7 @@ export async function recordOldServerObservation(
     before: snapshot(current.row, null),
     after: snapshot(found.row, evidence),
   });
-  return operationResponse(found.row, role, found.transitions);
+  return operationResponse(found.row, role, found.transitions, null);
 }
 
 export async function recordReplacementObservation(
@@ -611,5 +687,5 @@ export async function recordReplacementObservation(
     before: snapshot(current.row, null),
     after: snapshot(found.row, evidence),
   });
-  return operationResponse(found.row, role, found.transitions);
+  return operationResponse(found.row, role, found.transitions, null);
 }

@@ -10,6 +10,49 @@ import { EmptyState, LoadingState } from '@/ui/patterns/states';
 import { Pagination } from '@/ui/patterns/owner-states';
 import { ManualNotice, OperationError, labelOf } from './operation-ui';
 
+/** OQ-74: show the signing-key id and the derived safety status inline. */
+function SigningKeySafetyLine({
+  signingKeyId,
+  safety,
+}: {
+  signingKeyId: string | null;
+  safety: 'SAFE' | 'NEEDS_REVIEW' | 'UNKNOWN';
+}) {
+  const labelMap: Record<typeof safety, string> = {
+    SAFE: o.signingKeySafetySafe,
+    NEEDS_REVIEW: o.signingKeySafetyNeedsReview,
+    UNKNOWN: o.signingKeySafetyUnknown,
+  };
+  const classes: Record<typeof safety, string> = {
+    SAFE: 'bg-emerald-100 text-emerald-800',
+    NEEDS_REVIEW: 'bg-red-100 text-red-800',
+    UNKNOWN: 'bg-slate-100 text-slate-700',
+  };
+  const helpMap: Record<typeof safety, string> = {
+    SAFE: o.signingKeySafetySafeHelp,
+    NEEDS_REVIEW: o.signingKeySafetyNeedsReviewHelp,
+    UNKNOWN: o.signingKeySafetyUnknownHelp,
+  };
+  return (
+    <p className="text-xs">
+      <span className="text-slate-500">{o.operationsSigningKeyColumn}: </span>
+      {signingKeyId ? (
+        <span className="code text-slate-600" dir="ltr">
+          {signingKeyId}
+        </span>
+      ) : (
+        <span className="text-slate-400">—</span>
+      )}
+      <span
+        className={`ms-2 inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${classes[safety]}`}
+        title={helpMap[safety]}
+      >
+        {labelMap[safety]}
+      </span>
+    </p>
+  );
+}
+
 export function OperationsPage() {
   const [params, setParams] = useSearchParams();
   const search = params.get('search') ?? '';
@@ -130,6 +173,14 @@ export function OperationsPage() {
                 {o.kinds[item.kind]} — {labelOf(item.observedStatus)}
                 {item.emergencyOldServerLost ? ` — ${o.emergency}` : ''}
               </p>
+              {/* OQ-74: signing-key safety status. Only LICENSE observations
+                  carry a signing key; SERVER_REPLACEMENT is always UNKNOWN. */}
+              {item.kind === 'LICENSE' && (
+                <SigningKeySafetyLine
+                  signingKeyId={item.signingKeyId}
+                  safety={item.signingKeySafety}
+                />
+              )}
               <p className="text-xs text-slate-500">{o.operatorObserved}</p>
             </li>
           ))}

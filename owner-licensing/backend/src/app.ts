@@ -56,6 +56,13 @@ import {
   recordServerReplacement,
 } from "./operations.js";
 import {
+  getSigningKey,
+  listSigningKeys,
+  registerSigningKey,
+  updateSigningKeyNotes,
+  updateSigningKeyStatus,
+} from "./signing-keys.js";
+import {
   authenticate,
   cookieToken,
   hashPassword,
@@ -841,6 +848,78 @@ export async function createApp(db: Database, cfg: Config) {
   const archiveStore = cfg.archiveDir
     ? new FilesystemAuditArchiveStore(cfg.archiveDir)
     : undefined;
+  // OQ-74 (2026-10-18): signing-key tracking routes. Both Owner Admin and
+  // License Operator can read (they need to see safety status while recording
+  // license observations); only Owner Admin can mutate (mark compromised/safe,
+  // register, update notes). The route permission enforces this — read routes
+  // use `customers.view`, write routes use `customers.write`.
+  route(
+    "get",
+    "/signing-keys",
+    "customers.view",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await listSigningKeys(
+        tx,
+        a.user.role,
+        req.query as Record<string, unknown>,
+      );
+    },
+  );
+  route(
+    "get",
+    "/signing-keys/:id",
+    "customers.view",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await getSigningKey(tx, a.user.role, req.params.id);
+    },
+  );
+  route(
+    "post",
+    "/signing-keys",
+    "customers.write",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.status = 201;
+      res.locals.body = await registerSigningKey(
+        tx,
+        a.user.id,
+        a.user.role,
+        req.body,
+      );
+    },
+  );
+  route(
+    "post",
+    "/signing-keys/:id/status",
+    "customers.write",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await updateSigningKeyStatus(
+        tx,
+        a.user.id,
+        a.user.role,
+        req.params.id,
+        req.body,
+      );
+    },
+  );
+  route(
+    "patch",
+    "/signing-keys/:id/notes",
+    "customers.write",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await updateSigningKeyNotes(
+        tx,
+        a.user.id,
+        a.user.role,
+        req.params.id,
+        req.body,
+      );
+    },
+  );
   // Read-only explorer. Authorization is the route permission; the query never
   // supplies or changes the authenticated actor.
   route(

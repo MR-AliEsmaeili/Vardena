@@ -214,6 +214,7 @@ export const o = {
     OperationalRecord: 'رکورد عملیات دستی',
     User: 'کاربر',
     AuditArchiveBatch: 'بسته بایگانی ممیزی',
+    SigningKey: 'کلید امضا',
   },
   auditEventLabels: {
     AUTH_LOGIN: 'ورود کاربر',
@@ -242,6 +243,10 @@ export const o = {
       'بازیابی و همگام‌سازی بایگانی از مخزن پایدار مستقل',
     AUDIT_ARCHIVE_ACCESS_DENIED:
       'درخواست عملیات بایگانی ممیزی رد شد (فاقد مجوز)',
+    SIGNING_KEY_REGISTERED: 'ثبت کلید امضای جدید',
+    SIGNING_KEY_STATUS_CHANGED:
+      'تغییر وضعیت کلید امضا (امن / لو رفته / ابطال‌شده)',
+    SIGNING_KEY_NOTES_UPDATED: 'به‌روزرسانی یادداشت کلید امضا',
   },
   auditObservedNote:
     'این رویداد مشاهده اپراتور است. رسید رمزنگاری‌شده، تأیید امضا یا تماس با سرور مشتری را نشان نمی‌دهد.',
@@ -289,4 +294,54 @@ export const o = {
     'بازیابی و همگام‌سازی بایگانی از مخزن پایدار مستقل با موفقیت انجام و تأیید شد.',
   auditArchiveBatchesEmpty: 'هنوز بسته بایگانی ثبت نشده است.',
   auditArchiveBatchesHeading: 'بسته‌های بایگانی ثبت‌شده در مخزن پایدار مستقل',
+  // OQ-74 (2026-10-18): signing-key tracking labels.
+  signingKeys: 'کلیدهای امضا',
+  signingKeysHelp:
+    'ثبت اداری کلیدهای امضای مالک و وضعیت فعلی هر کلید. در صورت لو رفتن کلید، کلید جدیدی جایگزین تولید و در فهرست اعتماد مشتری چرخش می‌شود؛ تعیین تکلیف لایسنس‌های قدیمی با مالک است (هیچ ابطال خودکار نیست). در ستون وضعیت ایمنی، هر لایسنسی که با کلید لو رفته یا ابطال‌شده امضا شده باشد به‌عنوان «نیازمند بررسی مالک» نمایش داده می‌شود.',
+  signingKeyId: 'شناسه کلید امضا',
+  signingKeyLabel: 'برچسب کلید',
+  signingKeyStatus: 'وضعیت کلید',
+  signingKeySafety: 'وضعیت ایمنی',
+  signingKeyDetectedAt: 'تاریخ تشخیص وضعیت',
+  signingKeyReason: 'دلیل تغییر وضعیت',
+  signingKeyEvidence: 'مرجع شواهد',
+  signingKeyNotes: 'یادداشت',
+  signingKeyEmpty: 'هنوز کلید امضایی ثبت نشده است.',
+  signingKeyEmptyHelp:
+    'پس از تولید کلید امضای جدید، شناسه آن را اینجا ثبت کنید تا بتوان آن را به مشاهدات لایسنس مرتبط کرد.',
+  signingKeyRegister: 'ثبت کلید امضای جدید',
+  signingKeyIdLabel: 'شناسه کلید (۱ تا ۱۲۰ نویسه) *',
+  signingKeyIdHint:
+    'شناسه عمومی کلید؛ مطابق با شناسه کلید در artifact امضاشده. کلید خصوصی هرگز وارد یا ذخیره نمی‌شود.',
+  signingKeyLabelField: 'برچسب نمایشی کلید *',
+  signingKeyNotesField: 'یادداشت (اختیاری)',
+  signingKeyEvidenceField: 'مرجع شواهد (اختیاری)',
+  signingKeyRegisterSuccess: 'کلید امضا با موفقیت ثبت شد.',
+  signingKeyMarkCompromised: 'علامت‌گذاری به‌عنوان لو رفته',
+  signingKeyMarkRevoked: 'علامت‌گذاری به‌عنوان ابطال‌شده',
+  signingKeyMarkActive: 'علامت‌گذاری به‌عنوان امن',
+  signingKeyStatusChangeReason: 'دلیل تغییر وضعیت (۱ تا ۵۰۰ نویسه) *',
+  signingKeyStatusChangeSuccess: 'وضعیت کلید امضا تغییر کرد.',
+  signingKeyStatusActive: 'امن',
+  signingKeyStatusCompromised: 'لو رفته',
+  signingKeyStatusRevoked: 'ابطال‌شده',
+  signingKeySafetySafe: 'امن',
+  signingKeySafetyNeedsReview: 'نیازمند بررسی مالک',
+  signingKeySafetyUnknown: 'نامشخص',
+  signingKeySafetySafeHelp: 'این لایسنس با کلید امضای فعال (امن) صادر شده است.',
+  signingKeySafetyNeedsReviewHelp:
+    'این لایسنس با کلیدی لو رفته یا ابطال‌شده صادر شده است. مالک باید به‌صورت موردی تصمیم بگیرد: تمدید با کلید جدید، ابطال، یا پذیرش.',
+  signingKeySafetyUnknownHelp: 'هیچ کلید امضایی برای این مشاهده ثبت نشده است.',
+  signingKeyStatusConflict: 'کلید در همین وضعیت است.',
+  signingKeyNotFound: 'کلید امضا یافت نشد.',
+  signingKeyInvalidId:
+    'شناسه کلید باید ۱ تا ۱۲۰ نویسه باشد، بدون فاصله یا کلید خصوصی.',
+  signingKeyAlreadyExists:
+    'کلید امضایی با این شناسه و برچسب متفاوت قبلاً ثبت شده است.',
+  signingKeyNotRegistered:
+    'این شناسه کلید هنوز ثبت نشده است. ابتدا آن را در صفحه کلیدهای امضا ثبت کنید.',
+  signingKeyLinkedTo: 'کلید امضای مرتبط',
+  signingKeyNoLinked: 'هیچ کلید امضایی ثبت نشده است.',
+  operationsSigningKeyColumn: 'کلید امضا',
+  operationsSafetyColumn: 'ایمنی کلید',
 };

@@ -92,14 +92,58 @@ export interface OperationalRecord {
   cryptographicVerification: 'NOT_IMPLEMENTED';
   signedArtifactProduced: false;
   customerServerContacted: false;
+  /**
+   * OQ-74 (2026-10-18): the signing key an operator observed on the license
+   * artifact. Null when no key was recorded (the safety status will surface as
+   * UNKNOWN). Only meaningful for LICENSE observations; always null for
+   * SERVER_REPLACEMENT.
+   */
+  signingKeyId: string | null;
+  /**
+   * The current administrative status of the signing key, derived from a
+   * live DB lookup at read time (no denormalized column to drift). Null when
+   * no signing key was recorded or the key is not registered in
+   * `owner.signing_keys`.
+   */
+  signingKeyStatus: 'ACTIVE' | 'COMPROMISED' | 'REVOKED' | null;
+  /**
+   * Derived safety status of this license observation, computed by the server
+   * from `signingKeyStatus`:
+   *   - SAFE         — signed with an ACTIVE key
+   *   - NEEDS_REVIEW — signed with a COMPROMISED or REVOKED key
+   *   - UNKNOWN      — no signing key recorded or key not registered
+   */
+  signingKeySafety: 'SAFE' | 'NEEDS_REVIEW' | 'UNKNOWN';
   createdAt: string;
   updatedAt: string;
   createdBy: string;
   updatedBy: string;
   transitions?: OperationTransition[];
 }
+/** OQ-74: administrative record of an Owner signing key. No private material. */
+export interface SigningKey {
+  id: string;
+  label: string;
+  status: 'ACTIVE' | 'COMPROMISED' | 'REVOKED';
+  /** ISO instant when the current status was detected/recorded. Null while ACTIVE. */
+  statusDetectedAt: string | null;
+  /** Operator reason for the latest status change. Null while ACTIVE. */
+  statusReason: string | null;
+  /** Optional reference to external evidence (ticket URL, doc id, etc.). */
+  evidenceRef: string | null;
+  /** Free-form notes about this key. Bounded. */
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  updatedBy: string;
+}
 export type AuditTargetType =
-  'Customer' | 'OperationalRecord' | 'User' | 'AuditArchiveBatch';
+  | 'Customer'
+  | 'OperationalRecord'
+  | 'User'
+  | 'AuditArchiveBatch'
+  | 'SigningKey';
 export type AuditOutcome = 'SUCCESS' | 'DENIED';
 export type AuditIncidentStatus = 'NONE' | 'UNRESOLVED';
 export interface AuditEvent {

@@ -324,6 +324,132 @@ function hasControlCharacter(value: string) {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// OQ-74 — signing-key tracking (Product Owner decision 2026-10-18).
+//
+// The Owner app is observational (PDR-17: cryptographic issuance is "not
+// implemented" here). These validators record an operator's observation of
+// which signing key was used for a license, and the key's current
+// administrative status. The customer runtime remains the authority for actual
+// signature verification.
+//
+// No private key material is ever accepted, stored, or returned by these
+// types — only the public `keyId` (an opaque string up to 120 chars, matching
+// the customer-side `LicenseVersion.keyId` field).
+// ---------------------------------------------------------------------------
+
+export const signingKeyStatuses = ["ACTIVE", "COMPROMISED", "REVOKED"] as const;
+export type SigningKeyStatus = (typeof signingKeyStatuses)[number];
+
+/** Derived safety status of a license observation, based on its signing key. */
+export type SigningKeySafety = "SAFE" | "NEEDS_REVIEW" | "UNKNOWN";
+
+/**
+ * Validate a signing-key id. Matches the customer-side `LicenseVersion.keyId`
+ * constraints: an opaque string of 1..120 chars, no control characters, no
+ * key-material or artifact markers, no whitespace.
+ */
+export function signingKeyId(value: unknown): string {
+  const s = text(value, "signingKeyId", 1, 120);
+  if (hasControlCharacter(s) || artifactMarkers.test(s))
+    invalid(
+      "signingKeyId must not contain control characters, key material, or signed artifacts.",
+    );
+  if (/\s/.test(s)) invalid("signingKeyId must not contain whitespace.");
+  return s;
+}
+
+/** Validate an optional signing-key id (null when not supplied). */
+export function optionalSigningKeyId(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  return signingKeyId(value);
+}
+
+/** Validate a signing-key label (human-friendly, no key material). */
+export function signingKeyLabel(value: unknown): string {
+  const s = text(value, "label", 1, 200);
+  if (hasControlCharacter(s) || artifactMarkers.test(s))
+    invalid(
+      "label must not contain control characters, key material, or signed artifacts.",
+    );
+  return s;
+}
+
+/** Validate a signing-key status value. */
+export function signingKeyStatus(value: unknown): SigningKeyStatus {
+  if (!signingKeyStatuses.includes(value as SigningKeyStatus))
+    invalid("Invalid signing-key status.");
+  return value as SigningKeyStatus;
+}
+
+/** Optional notes for a signing key. Bounded; no key material or artifacts. */
+export function signingKeyNotes(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  return boundedNote(value, "notes", 1, 2000);
+}
+
+/** Optional evidence reference for a signing-key status change. */
+export function signingKeyEvidenceRef(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  return boundedNote(value, "evidenceReference", 1, 200);
+}
+
+/**
+ * Compute the derived safety status of a license observation from its signing
+ * key's current status. Returns `UNKNOWN` when no signing key is recorded.
+ */
+export function signingKeySafety(
+  signingKeyStatus: string | null | undefined,
+): SigningKeySafety {
+  if (signingKeyStatus === null || signingKeyStatus === undefined)
+    return "UNKNOWN";
+  if (signingKeyStatus === "ACTIVE") return "SAFE";
+  // COMPROMISED or REVOKED both surface as NEEDS_REVIEW — the Owner must
+  // decide per-license whether to reissue, revoke, or accept.
+  return "NEEDS_REVIEW";
+}
+
+export interface SigningKeyRow {
+  id: string;
+  label: string;
+  status: SigningKeyStatus;
+  status_detected_at: Date | null;
+  status_reason: string | null;
+  evidence_ref: string | null;
+  notes: string | null;
+  created_at: Date;
+  updated_at: Date;
+  created_by: string;
+  updated_by: string;
+}
+
+/** Explicit response allowlist for signing keys; private material never leaks. */
+export function signingKeyResponse(
+  row: Record<string, unknown>,
+  actorRole: Role,
+) {
+  if (!permissions(actorRole).includes("customers.view"))
+    fail(403, "Forbidden", "Signing-key read is not permitted.");
+  return {
+    id: row.id,
+    label: row.label,
+    status: signingKeyStatus(row.status),
+    statusDetectedAt:
+      row.status_detected_at instanceof Date
+        ? row.status_detected_at.toISOString()
+        : null,
+    statusReason: row.status_reason,
+    evidenceRef: row.evidence_ref,
+    notes: row.notes,
+    createdAt:
+      row.created_at instanceof Date ? row.created_at.toISOString() : null,
+    updatedAt:
+      row.updated_at instanceof Date ? row.updated_at.toISOString() : null,
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+  };
+}
+
 export function boundedNote(
   value: unknown,
   field: string,
@@ -515,9 +641,14 @@ export function operationResponse(
   row: Record<string, unknown>,
   actorRole: Role,
   transitions?: Record<string, unknown>[],
+  signingKeyStatusValue?: string | null,
 ) {
   if (!permissions(actorRole).includes("operations.view"))
     fail(403, "PermissionDenied", "Operational records are not permitted.");
+  const signingKeyIdValue =
+    row.signing_key_id === undefined || row.signing_key_id === null
+      ? null
+      : String(row.signing_key_id);
   const body: Record<string, unknown> = {
     id: row.id,
     customerId: row.customer_id,
@@ -544,6 +675,15 @@ export function operationResponse(
     cryptographicVerification: "NOT_IMPLEMENTED",
     signedArtifactProduced: false,
     customerServerContacted: false,
+    // OQ-74 (2026-10-18): the signing key an operator observed on the license
+    // artifact, and the derived safety status from the key's current
+    // administrative state. Null when no key was recorded. The safety status
+    // is computed from a separate DB lookup, NOT from the operation row, so a
+    // status change on the signing key immediately propagates to every
+    // operation that references it (no denormalized column to drift).
+    signingKeyId: signingKeyIdValue,
+    signingKeyStatus: signingKeyStatusValue ?? null,
+    signingKeySafety: signingKeySafety(signingKeyStatusValue),
     createdAt: instant(row.created_at),
     updatedAt: instant(row.updated_at),
     createdBy: row.created_by,
