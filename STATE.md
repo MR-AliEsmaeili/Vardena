@@ -2958,8 +2958,17 @@ in PR #115 (`1e3d407fd3f08650e0e70353f96b277e80ef03fd`).
   migrations and Docker checks are CI-only. `prisma:generate` could not download
   its engine from `binaries.prisma.sh` under the sandbox's outbound-host/TLS
   restriction, so the local OpenAPI dump warned that permission-mirror sync was
-  unavailable; generation and live database verification must complete in CI.
+  unavailable. Follow-up CI successfully generated Prisma and completed
+  migrations and live-DB E2E (see the exact run below).
 - **PR/CI:** [PR #179](https://github.com/MR-AliEsmaeili/Vardena/pull/179) is
-  open from the fixed session branch. Verify the live `backend`, `frontend`, and
-  `generated-api-client` statuses on its current head; CI-only live-DB E2E must
-  pass before review is complete. No self-acceptance or merge is claimed.
+  open from the fixed session branch. Initial run
+  [39156526837](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39156526837)
+  found a fixture-only active-user limit failure; the test app now uses the
+  explicit local-development license provider without touching persisted
+  license state. Follow-up run
+  [39157334770](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39157334770)
+  passed `backend` (including migrations and live-DB E2E), `frontend`,
+  `generated-api-client`, `docs`, and `ci-gate` on implementation head
+  `d0b6184d44b67a65d15bc662f1ab9aca1f5d1309`. This documentation-only update
+  triggers a fresh exact-head CI run; check current PR statuses for that head.
+  No self-acceptance or merge is claimed.
