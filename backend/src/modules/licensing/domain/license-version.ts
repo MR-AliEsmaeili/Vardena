@@ -1070,7 +1070,12 @@ export type ImportConflictEvaluation =
  * retained version ends there (a first license, a backwards gap fill, or a
  * post-gap start). A dedicated post-gap recovery has its separate accepted
  * L-07 measurement against `lapsedCoverageVersion`; this helper does not broaden
- * to interior or backdated gap-fill candidates (C11 remains open).
+ * to interior or backdated gap-fill candidates. C11 is decided as not
+ * applicable under the approved issuance rule (PDR-18 §2, 2026-10-17): no
+ * special interior/backdated gap-fill path is required or authorized, and the
+ * existing conflict rules refuse such candidates through normal operation
+ * (`overlapping-range`, `backdated-supersession`,
+ * `post-gap-recovery-requires-dedicated-operation`).
  *
  * Selection is total and identity-independent (a changed `licenseId` must not
  * weaken the §8.6 check — the F-8 decision of 2026-10-13):

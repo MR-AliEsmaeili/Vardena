@@ -12,9 +12,14 @@
 > while archive/access implementation remains open. OQ-45's natural-subscription-
 > expiry boundary is signed expiry + 14×24h UTC (`now >= boundary`); enforcement
 > is not implemented. The accepted C10 policy (OD-LIC-05 Option 1) is recorded
-> in PDR-13 §8 / ADR-0050 and described in §3.3; OQ-87 stays open and C11 remains
-> outside its scope. This document is technical design/code evidence, not proof
-> of merge or broader subsystem completion.
+> in PDR-13 §8 / ADR-0050 and described in §3.3; OQ-87 stays open under the
+> registry convention. C11 is decided as not applicable under the approved
+> issuance rule (PDR-18 §2, 2026-10-17): no special interior/backdated gap-fill
+> path is required or authorized, and the existing conflict rules refuse such
+> candidates through normal operation (`overlapping-range`,
+> `backdated-supersession`, `post-gap-recovery-requires-dedicated-operation`).
+> This document is technical design/code evidence, not proof of merge or broader
+> subsystem completion.
 
 > **Historical product reconciliation (2026-10-15):**
 > [PDR-11 §§9–10, 12, 15 and 20](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
@@ -432,8 +437,14 @@ import ──► retained (not yet effective | effective | expired)
   resolution route, renewal-gap precedence and non-post-gap behavior remain
   unchanged. No schema/migration change is needed. OD-LIC-05 accepts this narrow
   C10 behavior only; **OQ-87 remains open under the registry convention**. The
-  separate C11 question — measurement of interior/backdated gap fills — remains
-  open and outside this decision.
+  separate C11 question — measurement of interior/backdated gap fills — is
+  decided as **not applicable** under PDR-18 §2 (2026-10-17): no special
+  interior/backdated gap-fill path is required or authorized, and the existing
+  conflict rules refuse such candidates through normal operation
+  (`overlapping-range` for a candidate that lands inside any retained effective
+  window, `backdated-supersession` for a hand-over that would rewrite past
+  governance, and `post-gap-recovery-requires-dedicated-operation` for a new
+  identity starting after the installation's coverage end).
 - **A supersession may not hand over in the past.** The hand-over is the
   candidate's own `validFrom`, so retiring a version at an instant that is
   already past removes coverage that version really had, and the as-of answer
