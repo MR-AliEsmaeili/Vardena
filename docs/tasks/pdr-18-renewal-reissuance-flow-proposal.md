@@ -2,13 +2,7 @@
 
 - **Date:** 2026-10-17
 - **Author:** engineering (Arena agent session on `arena/195e235b-vardena`)
-- **Status:** **PROPOSAL — no Product Owner decision, and no runtime change.** This
-  document is the deliverable PDR-18 §1 asks for in its final bullet
-  ("engineering must propose a compatible renewal/reissuance flow that does not
-  silently weaken overlap/gap and supersession checks"). It deliberately
-  implements nothing: PDR-18 §1 also says "Do not implement a workaround or
-  infer that a newly issued license can override a currently governing version
-  without passing the existing conflict authority."
+- **Status:** **SUPERSEDED AS A PRODUCT-CHOICE PROPOSAL by Product Owner decision OD-LIC-06 (2026-10-18); technical evidence retained, no runtime change.** The four options and Option 2 recommendation below were prepared before the Owner clarified the intended renewal behavior and are no longer the decision menu. The approved policy is recorded in [PDR-18 §9](../decisions/product/PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md#9-renewal-applies-the-owner-authorized-new-end-date-od-lic-06-oq-88): a valid renewal applies the Owner-signed new end date to the existing license, and its `validFrom` is not the effective hand-over/start. Engineering must now produce a compatible protocol/persistence design and acceptance cases before implementation. Existing conflict, signature, identity, retained-history, replay, reduction and post-gap safeguards remain mandatory.
 - **Related:** [PDR-18](../decisions/product/PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md)
   §1 (temporal constraints) and §2 (C11), [PDR-13](../decisions/product/PDR-13-post-gap-recovery.md)
   §9, [ADR-0050](../adr/0050-post-gap-recovery-reduction-guard.md),
@@ -99,7 +93,15 @@ the hand-over target. The two paths differ in which operation may carry the
 explicit reduction resolution and in what the audited resolution subject is, so
 the change is not cosmetic even where the numeric limits are identical.
 
-## 4. Options
+## 4. Historical options (superseded by OD-LIC-06; not actionable)
+
+The options below document the analysis made before the Product Owner clarified
+that renewal updates the existing license's signed end date. They are retained
+as historical engineering evidence only; none of the four options is the
+approved policy. Do not implement one of them instead of the approved PDR-18 §9
+semantics.
+
+## 4.1 Historical options
 
 All four keep the invariants of §5. They differ only in **which instant is the
 "activation-validity start" that PDR-18 §1.2 pins to the issuance day.**
@@ -199,8 +201,9 @@ carve-out in §1's temporal bullet. **Option 1 and Option 3 are not recommended*
 without an explicit decision about the truncated term and about late renewals
 becoming recovery operations.
 
-**This is a recommendation only. No option is implemented, and none may be
-treated as decided until the Product Owner answers OQ-88.**
+**Historical status:** this recommendation was superseded by OD-LIC-06. The
+Product Owner has answered the business question; the customer-side technical
+design and implementation remain outstanding.
 
 ## 7. What this document does not do
 
