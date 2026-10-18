@@ -1,4 +1,4 @@
-import { formatOwnerInstant } from '@/lib/date-time';
+import { formatOwnerBusinessDay, formatOwnerInstant } from '@/lib/date-time';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -10,6 +10,7 @@ import { auditTrailHref } from '@/features/audit/audit-filters';
 import { o } from '@/lib/owner-i18n';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
+import { DateInput } from '@/ui/patterns/date-input';
 import { FormField } from '@/ui/patterns/form-field';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { LoadingState } from '@/ui/patterns/states';
@@ -57,6 +58,16 @@ export function CustomerPage({ mode }: { mode: 'new' | 'detail' | 'edit' }) {
           ...('contractReference' in c
             ? [
                 [o.reference, c.contractReference],
+                [
+                  o.contractStartDate,
+                  formatOwnerBusinessDay(c.contractStartDate),
+                  c.contractStartDate,
+                ],
+                [
+                  o.contractEndDate,
+                  formatOwnerBusinessDay(c.contractEndDate),
+                  c.contractEndDate,
+                ],
                 [o.created, formatOwnerInstant(c.createdAt), c.createdAt],
                 [o.updated, formatOwnerInstant(c.updatedAt), c.updatedAt],
               ]
@@ -71,6 +82,7 @@ export function CustomerPage({ mode }: { mode: 'new' | 'detail' | 'edit' }) {
         ))}
       </dl>
       <p className="text-sm text-slate-500">{o.immutable}</p>
+      <p className="text-sm text-slate-500">{o.contractDatesHelp}</p>
       <div className="flex gap-3">
         {permissions.has('customers.write') && (
           <Button asChild>
@@ -101,6 +113,8 @@ function CustomerForm({ customer }: { customer?: Customer }) {
       displayName: customer?.displayName ?? '',
       status: customer?.status ?? 'ACTIVE',
       contractReference: customer?.contractReference ?? '',
+      contractStartDate: customer?.contractStartDate ?? '',
+      contractEndDate: customer?.contractEndDate ?? '',
       reason: '',
     },
   });
@@ -116,6 +130,8 @@ function CustomerForm({ customer }: { customer?: Customer }) {
           displayName: v.displayName,
           status: v.status,
           contractReference: v.contractReference,
+          contractStartDate: v.contractStartDate,
+          contractEndDate: v.contractEndDate,
           reason: v.reason,
         });
       }
@@ -171,6 +187,34 @@ function CustomerForm({ customer }: { customer?: Customer }) {
             )}
           </FormField>
         ))}
+        <fieldset className="space-y-3 rounded border p-3">
+          <legend className="px-1 text-sm font-semibold">
+            {o.contractDatesTitle}
+          </legend>
+          <p className="text-sm text-slate-500">{o.contractDatesHelp}</p>
+          {(['contractStartDate', 'contractEndDate'] as const).map((key) => (
+            <FormField
+              key={key}
+              id={key}
+              label={
+                key === 'contractStartDate'
+                  ? o.contractStartDate
+                  : o.contractEndDate
+              }
+              error={form.formState.errors[key]?.message}
+            >
+              {(props) => (
+                <DateInput
+                  {...props}
+                  value={form.watch(key)}
+                  onChange={(value) =>
+                    form.setValue(key, value, { shouldValidate: true })
+                  }
+                />
+              )}
+            </FormField>
+          ))}
+        </fieldset>
         <label className="block space-y-2">
           <span>{o.status}</span>
           <select

@@ -2673,3 +2673,249 @@ This is a follow-up to §30, not a reopening of OQ-73. ADR-0042 and `docs/dateti
   completed GitHub Actions run and every required job conclusion. The exact
   final-head CI evidence is recorded on PR #171; do not substitute any earlier
   run. PR #171 remains open and unmerged.
+
+## 49. PDR-18 §1 — contract dates, Owner-side observation metadata and signed-license validity (2026-10-17)
+
+- **Baseline and branch:** starting `main`
+  `7fa9ff3ba460eb023b657db216c6a6488cc2af87` (PR #172 merge; **no open pull
+  requests** at the start of this work). Implemented on the branch
+  `arena/195e235b-vardena`; the pull request is opened against `main` and must
+  stay OPEN and unmerged — no merge or Product Owner acceptance is implied.
+- **Verified starting state (source evidence, not prose):** OQ-45's Grace /
+  Read-Only runtime slice is **already implemented on `main`** (PR #167 merge
+  `c715a64cdfcbc866fe65613a0375a118e0024a8b`, completion PR #168) and was
+  **not** rewritten: `LICENSE_GRACE_DURATION_MS` and `graceEndsAtFor` in
+  `backend/src/modules/licensing/domain/license.ts`, `accessMode`
+  `GRACE`/`READ_ONLY` derived at `now >= validUntil + 14×24h` in UTC without
+  mutating signed validity, the single central filter
+  `LicensingService.filterLicensedPermissions` behind both the HTTP guard and
+  `AuthorizationService.requireAllPermissions` (which also refuses mutation
+  codes in `READ_ONLY` in system/worker context), and the customer UI notice
+  through the shared date foundation. What was missing is PDR-18 §1: the Owner
+  side had **no** contract dates (`owner.customers` carried only
+  `contract_reference`), **no** activation-validity dates anywhere, and no
+  issuance-day rule.
+- **Implemented (Owner side, PDR-18 §1.1–§1.5):**
+  - Additive migration `owner-licensing/backend/migrations/005-contract-and-activation-dates.sql`
+    (**semantically corrected 2026-10-17**): `owner.customers.contract_start_date`
+    / `contract_end_date` (commercial, may precede the recording, order-checked
+    only) and `owner.operational_records.observed_validity_end` (the validity
+    end the operator recorded having seen; exclusive; a `SERVER_REPLACEMENT`
+    record records none; `null` means no end was recorded).
+    **No issuance or activation date is stored at all.** The recording day
+    (`recordedOn`) is derived on read as the UTC calendar day of the row's
+    `created_at`, which is `NOT NULL DEFAULT clock_timestamp()` and is
+    immutable under migration 002's `owner.immutable_operation_facts` trigger —
+    so it is server-controlled, always present, and cannot be confused with a
+    signed license's issuance date. The migration contains **no backfill and no
+    `UPDATE`**, so no historical issuance/activation date is fabricated for
+    existing rows, and the SQLSTATE 55006 hazard (an `UPDATE` followed by an
+    `ALTER TABLE` on the same table inside the single migration transaction) is
+    structurally absent. 005 was corrected in place rather than superseded
+    because it has never been released: it exists only on this unmerged PR
+    branch and is absent from `main`. No applied migration is edited; 001–004
+    checksums are unchanged.
+  - `recordLicenseObservation` does not accept `recordedOn`: the request
+    allowlist refuses any other field with `400 ValidationFailed`, and the
+    recording day comes from PostgreSQL's `clock_timestamp()` via `created_at` —
+    the authoritative server clock, never a browser or client value.
+  - `persistedBusinessDay` in `owner-licensing/backend/src/domain.ts` is the
+    single place that undoes node-postgres' local-midnight materialization of a
+    `date`, so a process east or west of UTC cannot shift a recorded day.
+  - The API, the audit-state allowlist and the Owner UI expose the two groups
+    under separate names and separate Persian labels, rendered Jalali-first
+    through the staged shared date foundation; the UI offers **no** input for
+    the recording day, and its help text states that the recording day is not
+    the signed license's issuance date (PDR-17).
+- **Deliberately blocked:**
+  - **OQ-88 (registered 2026-10-17, engineering).** PDR-18 §1.2/§1.6 forbids a
+    past or future activation-validity start, but the approved version model
+    keeps a *future-dated* renewal (OQ-80 Option B hand-over; matrix C2) and
+    the committed conformance vectors carry `issuedAt 2026-10-11` with
+    `validFrom 2027-01-01`. Rejecting such artifacts at import would invalidate
+    already-signed licenses and would weaken the approved overlap/gap/
+    supersession controls, so **no** verification-path or signed-format
+    behaviour was changed.
+  - **PDR-18 §4 (contract termination, cancellation, revocation).** Decided
+    policy, no instrument: the signed version payload carries only
+    `ACTIVE`/`EXPIRED`/`SUSPENDED` and there is no signed termination or
+    cancellation artifact (OQ-78; matrix F2–F5). No status semantics were
+    changed and no Grace was widened.
+  - **WORM** is not an MVP requirement (PDR-18 §3); nothing was added and the
+    append-only audit, three-year retention floor, unresolved-incident hold and
+    separate durable archive are untouched.
+- **Superseded revision (do not read as current behaviour).** An earlier
+  revision of this PR stored the operator-recording day as
+  `activation_valid_from` / `activationValidFrom` and the operator-supplied end
+  as `activation_valid_until` / `activationValidUntil`, presenting them as the
+  license's "activation validity", and it additionally required the recorded end
+  to be later than the recording day. Both were corrected: the first because
+  PDR-17 records cryptographic issuance and verification as not implemented, so
+  the Owner application cannot know a signed license's issuance or activation
+  date (see §51 below); the second because `recordedOn` is a recording day, not a
+  technical activation start, and an operator must be able to record an
+  observation of an **already-expired** license. Claims from that revision that
+  survive in older notes — "a server-asserted issuance day present in the
+  response and the stored row", "a refused client-supplied start date", "a
+  refused end before the start" — describe **superseded** behaviour and are NOT
+  properties of the final implementation.
+- **Tests (final):** `owner-licensing/backend/test/unit.test.ts` — UTC-day
+  derivation from UTC/Tehran/US offsets, canonical-day validation,
+  local-midnight round-trip, contract-date ordering, the recording day following
+  the recording instant, a response that carries no issuance/activation property
+  and states `OPERATOR_OBSERVED` / `NOT_IMPLEMENTED`, and a recorded end that
+  may precede, equal or follow the recording day with impossible dates still
+  refused. `owner-licensing/backend/test/api.test.ts` — contract dates that
+  precede the recording, inverted and malformed pairs, partial update, a refused
+  client-supplied `recordedOn`, **an accepted end before the recording day and
+  an accepted end equal to it**, refused malformed ends, no validity end on a
+  server-replacement record, and a migration case proving no
+  issuance/activation column exists, that pre-existing rows gain no invented end
+  and report their own recording day, and that the remaining CHECK rejects a
+  validity end on a `SERVER_REPLACEMENT`. Owner UI: `owner-flow.test.tsx`,
+  `operations-flow.test.tsx`, `customer-schema.test.ts`,
+  `operation-schema.test.ts`.
+- **FAST-LOCAL verification (final):** `owner-licensing/backend`
+  `tsc --noEmit`, `oxlint src test`, `prettier --check src test *.json`, and the
+  three unit suites (`unit.test.ts`, `domain-operations.test.ts`,
+  `audit-query.test.ts`): **65/65 passed**. `owner-licensing/frontend`
+  `tsc --noEmit` (after `npm run dates:stage`), `oxlint .`,
+  `prettier --check .` and the full Vitest suite: **160/160 passed**.
+  Repository-wide `scripts/check-docs-links.py` (0 broken) and
+  `scripts/check-date-contract.py` (PASS). No heavy suite, PostgreSQL
+  integration suite, migration rehearsal, E2E, Docker build or full
+  backend/frontend build was run locally, per instruction.
+- **CI evidence and handoff:** the final PR head's own run is recorded in the
+  pull-request description and in
+  [`docs/tasks/pdr-18-contract-and-activation-dates-implementation.md`](docs/tasks/pdr-18-contract-and-activation-dates-implementation.md)
+  §6, which names the verified implementation head and every job conclusion.
+  Earlier runs are history only and are never offered as evidence for a SHA they
+  did not test; the two failing runs and the genuine defects they exposed are
+  recorded in §6.1. Product Owner acceptance remains a separate, outstanding
+  status; CI success is not acceptance and does not authorize a merge.
+
+### 50. PDR-18 §1 — renewal/reissuance flow compatibility proposal (2026-10-17)
+
+The final bullet of PDR-18 §1 asks engineering to **propose** a renewal/reissuance
+flow compatible with the issue-today activation rule, and forbids implementing a
+workaround or inferring that a newly issued license may override a governing
+version without passing the existing conflict authority. That proposal is
+delivered as
+[`docs/tasks/pdr-18-renewal-reissuance-flow-proposal.md`](docs/tasks/pdr-18-renewal-reissuance-flow-proposal.md)
+— **analysis only: no runtime change, no migration, no regenerated vector, no
+test, and no decision.**
+
+- **Nine facts verified against the current code** (recorded as V1–V9 in the
+  proposal, each with a file/line citation): the retained version model carries
+  no `issuedAt` and precedence is `validFrom` → `importedAt` → `versionId`, so
+  the issuance timestamp cannot override the governing version (V1);
+  `assertLicenseVersionPayload` relates `validFrom` to nothing but `validUntil`
+  (V2); overlap is refused rather than stacked (V3); OQ-80 Option B hands over at
+  the successor's own `validFrom` (V4); backdated hand-over is refused while an
+  already-ended target is stampable (V5); G2 forbids a renewal gap (V6); a
+  post-gap start needs the dedicated recovery operation (V7); §8.6 measures a
+  hand-over under 6b and a contiguous renewal under 6c (V8); and the issuance CLI
+  always mints a new `licenseId` (V9).
+- **Three consequences of applying issue-today to renewals verbatim**, none of
+  which any record has decided: an early renewal consumes the term the customer
+  already paid for (nothing is stacked, V4); a renewal sold even one day after
+  coverage end — including inside the 14-day Grace — becomes a PDR-13 post-gap
+  **recovery** operation (V7 + V9); and the §8.6 measurement moves from rule 6c
+  to rule 6b.
+- **Four options** are presented with their costs, plus the invariants that must
+  hold under any of them — `evaluateImportConflicts` stays the single conflict
+  authority, the four refusal reasons stay, §8.6 stays, already-signed artifacts
+  keep verifying (any new rule must be scoped to newly issued documents, never
+  retroactive on VLIC2 verification), `issuedAt` never becomes a precedence
+  input, and no C11 path appears.
+- **Engineering recommendation (not a decision):** Option 2 — issue-today on the
+  signed artifact with a deferred effective start. Option 4 is the safe interim
+  if the smallest change is preferred. Options 1 and 3 are not recommended
+  without an explicit decision on truncated term and on late renewals becoming
+  recoveries.
+- **Blocked:** [OQ-88](docs/open-questions.md) remains open and is the blocking
+  question. Evidence-matrix row **L-18.9** records this proposal; row **L-18.7**
+  (activation-validity start on the signed artifact) stays blocked by OQ-88, and
+  **L-18.8** (PDR-18 §4 termination/cancellation) stays blocked by OQ-78. No
+  Product Owner acceptance is claimed and nothing here authorizes a merge.
+
+### 51. PDR-18 §1 — semantic correction of the Owner-side date model (2026-10-17)
+
+**The defect.** The first revision of this PR modelled the Owner-side recording
+date as `activation_valid_from` / `activationValidFrom` and the operator-supplied
+end as `activation_valid_until` / `activationValidUntil`, presenting them as the
+license's "activation validity". That overclaimed what the Owner application
+knows. PDR-17 records cryptographic issuance, signed receipts, deactivation
+proofs, revocation and recovery as **not implemented** in the Owner application
+and states that Owner operations record only `OPERATOR_OBSERVED` facts —
+"manually attributable facts, not cryptographically verified operations" — with
+every response carrying `cryptographicVerification = NOT_IMPLEMENTED`. A
+database-recording date is not proof of a signed license's issuance or activation
+date, and calling it one is a false claim in the schema, the API, the UI label
+and the audit trail.
+
+**The correction, applied at the source across every layer.**
+
+- **No stored issuance or activation date at all.** `activation_valid_from` is
+  gone. The recording day (`recordedOn` in the API) is _derived on read_ from the
+  row's `created_at`: a server-generated `timestamptz` that is `NOT NULL DEFAULT
+clock_timestamp()` and is immutable under migration 002's
+  `owner.immutable_operation_facts` trigger. This is the canonical BusinessDate
+  projection of an Instant (AR-32), so it creates no second source of truth that
+  could drift and requires no backfill.
+- **The operator-recorded end is renamed** to `observed_validity_end` /
+  `observedValidityEnd`, making its epistemic status part of its name. It is
+  validated only as a canonical `YYYY-MM-DD` calendar day and is **not** compared
+  with the recording day.
+- **The backfill is removed entirely**, so no observation timestamp is ever
+  written into a field that could be read as verified issuance evidence, and no
+  historical fact is fabricated for rows recorded before the migration.
+- **API, DTOs, zod schemas, forms, detail pages, audit projection, Persian
+  labels and every test were updated together**, so no two sources of truth
+  disagree. The UI help text now states explicitly that the recording day is not
+  the signed license's issuance date.
+- **Migration 005 was corrected in place, not superseded**: it has never been
+  released (it exists only on this unmerged PR branch and is absent from `main`,
+  verified by object lookup), so no supported installation can have applied it,
+  and the ledger's checksum guard would make any mismatch loud.
+
+**Three separate concepts, now distinct everywhere.** (1) Contract dates —
+commercial, on `owner.customers`, order-checked only, never derived from or
+overwriting technical validity. (2) Owner-side observation metadata —
+`recordedOn` (derived, server-controlled) and `observedValidityEnd` (recorded by
+the operator). (3) Customer-side signed-license validity — owned by the customer
+runtime; this PR does not model, read or alter it.
+
+**Evidence that nothing was missed:** `git diff --stat main…HEAD -- backend/src`
+is empty (the customer runtime is untouched) and `-- docs/licensing` is empty
+(the committed vectors, including the future-dated `validFrom` cases, are
+unchanged). A grep for the old identifiers returns nothing except two deliberate
+negative assertions in `unit.test.ts` that guard against their return.
+
+**Tests added/updated for the corrected semantics:** the recording day follows
+the recording instant (two instants, two days), the response carries no property
+claiming an issuance or activation date, the response states its own
+`OPERATOR_OBSERVED` / `NOT_IMPLEMENTED` status, a client-supplied `recordedOn`
+is refused (400) and stripped by the form schema, no label claims a verified
+issuance date, and a new PostgreSQL migration case proves the column set
+contains no issuance/activation column, that a row with an older `created_at`
+reports that day as its recording day with a `NULL` observed end (nothing
+invented), and that both new CHECKs reject violations.
+
+**Second defect found and fixed in the same correction.** The first revision of
+the corrected model still required `observedValidityEnd > recordedOn`, in a
+database CHECK (`observed_validity_end_after_recorded_day`) and in the domain
+layer. That rule was also wrong, and was removed from every layer: `recordedOn`
+is the day an operator recorded the observation, not the signed license's
+technical activation start, so an operator must be able to record an observation
+of an **already-expired** license. The recorded end is now validated only as a
+canonical calendar day; it is never compared with `recordedOn` or with the
+contract dates. No activation start is invented and none is inferred from the
+recording timestamp. The signed-license interval convention (a technical end
+follows its own technical start) is unchanged and untouched — it simply is not
+this model's start.
+
+**Unchanged:** no cryptographic issuance, signing, verification or revocation was
+added; PDR-18's authorization status was not altered; no new product decision was
+recorded on the Product Owner's behalf; OQ-88 (customer-side) and OQ-78
+(termination instrument) remain open and blocking for their own scopes.

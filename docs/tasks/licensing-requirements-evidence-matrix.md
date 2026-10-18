@@ -151,15 +151,29 @@ CI job names below are the ones the workflow actually runs
 | K3 | Persian/RTL copy for licensing refusals and device errors | Implemented | `features/licensing/license-import-errors.ts`, `device-lifecycle-errors.ts`, `lib/i18n.ts` | error-map unit tests, page tests | `frontend` |
 | K4 | The UI is never the enforcement point | Implemented | backend re-authorizes every call; the gate hides nothing by itself | `authorization-readonly.spec.ts`, `use-license-state.ts` doc contract | `backend`, `frontend` |
 
-## L. Test and delivery hygiene
+## L. PDR-18 — contract dates, Owner observation metadata and signed-license validity
+
+| # | Requirement | Status | Implementation | Test | CI job |
+|---|---|---|---|---|---|
+| L-18.1 | Contract start/end dates are persisted as commercial/administrative data, separate from technical validity | Implemented (2026-10-17) | `owner-licensing/backend/migrations/005-contract-and-activation-dates.sql`; `owner.customers.contract_start_date` / `contract_end_date` (PostgreSQL `date`) | `api.test.ts`, `unit.test.ts` | `backend` → "Owner fresh migrations and PostgreSQL API/security regressions" |
+| L-18.2 | The Owner-side recording day is server-controlled, always present and never client-supplied; it is NOT presented as the signed license's issuance date (PDR-17) | Implemented + semantically corrected (2026-10-17) | No stored issuance column; `recordedOn` is derived on read from the immutable `created_at` (`recordedOnFor`); the `object()` allowlist refuses a client `recordedOn` | `api.test.ts` (client-supplied `recordedOn` ⇒ 400), `unit.test.ts` (recording day follows the recording instant; response carries no issuance/activation property) | `backend` |
+| L-18.3 | The operator-recorded validity end is validated as a canonical calendar day and never compared with the recording day, so an already-expired license can be recorded | Implemented + corrected (2026-10-17) | `optionalBusinessDay` only (canonical `YYYY-MM-DD`, real calendar day). The former `observedValidityEnd > recordedOn` rule was **removed** from the migration CHECK and the domain layer | `api.test.ts` (end before ⇒ 201, end equal ⇒ 201, malformed end ⇒ 400), `unit.test.ts` (before/equal/after/null all accepted; impossible dates refused), `api.test.ts` migration case (direct SQL end before the recording day is accepted) | `backend` |
+| L-18.4 | API/UI/audit distinguish and label the concepts independently | Implemented (2026-10-17) | `customerResponse`, `operationResponse`, `audit.ts` state allowlist, `customer-page.tsx`, `operation-page.tsx`, `owner-i18n.ts` | `owner-flow.test.tsx`, `operations-flow.test.tsx`, `customer-schema.test.ts`, `operation-schema.test.ts` | `frontend` → "Owner UI verification" |
+| L-18.5 | Contract dates may precede the recording and are not validated as technical dates | Implemented (2026-10-17) | `assertContractDateOrder` (order only) | `api.test.ts` (2020 dates accepted), `customer-schema.test.ts` | `backend`, `frontend` |
+| L-18.6 | A PostgreSQL `date` is never read back as a shifted local day | Implemented (2026-10-17) | `persistedBusinessDay` — the single UTC-component conversion | `unit.test.ts` (local-midnight round-trip, UTC/Tehran/US offsets) | `backend` |
+| L-18.7 | Activation-validity start enforcement on the signed `VLIC2` artifact | **Blocked — OQ-88** (customer-side; conflicts with the approved future-dated renewal and the committed vectors; would invalidate already-signed licenses). **Owner-side separation is complete** — the Owner application claims no issuance date at all. | — (customer runtime untouched: `git diff main…HEAD -- backend/src` is empty) | Existing customer-side vector and licensing suites, unchanged | `backend` (existing suites prove no accidental change) |
+| L-18.8 | Contract termination Grace, cancellation and revocation outcomes (PDR-18 §4) | **Blocked — OQ-78** (no signed termination/cancellation instrument; matrix F2–F5) | — | — | No status semantics changed; no Grace widened |
+| L-18.9 | PDR-18 §1 final bullet — engineering must *propose* a renewal/reissuance flow compatible with the issue-today rule | **Proposal delivered (2026-10-17) — no decision, no code** | [`pdr-18-renewal-reissuance-flow-proposal.md`](pdr-18-renewal-reissuance-flow-proposal.md) — 9 verified facts, 4 options, invariants, engineering recommendation | — (analysis document; no runtime behaviour to test) | No CI job — documentation only, verified by the `docs` link check |
+
+## M. Test and delivery hygiene
 
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
-| L1 | Heavy suites only in GitHub Actions | Implemented | `docs/testing/test-execution-policy.md`; the workflow's own comments state CI-only steps |
-| L2 | Two non-UTC process timezones exercised for date contracts | Implemented | `backend` job steps with `TZ=Asia/Tehran` and `TZ=America/Los_Angeles` |
-| L3 | Secret/production-artifact hygiene | Implemented | `scripts/check-production-artifacts.py`, `scripts/check-owner-isolation.py` |
-| L4 | Documentation links resolve | Implemented | `scripts/check-docs-links.py` in the `docs` job |
-| L5 | Every claim in this matrix is CI-verified on the exact PR head | Live GitHub Actions checks are authoritative; compare their tested SHA to the current PR #171 head | Exact-head run and job conclusions are linked in PR #171; never substitute an earlier SHA |
+| M1 | Heavy suites only in GitHub Actions | Implemented | `docs/testing/test-execution-policy.md`; the workflow's own comments state CI-only steps |
+| M2 | Two non-UTC process timezones exercised for date contracts | Implemented | `backend` job steps with `TZ=Asia/Tehran` and `TZ=America/Los_Angeles` |
+| M3 | Secret/production-artifact hygiene | Implemented | `scripts/check-production-artifacts.py`, `scripts/check-owner-isolation.py` |
+| M4 | Documentation links resolve | Implemented | `scripts/check-docs-links.py` in the `docs` job |
+| M5 | Every claim in this matrix is CI-verified on the exact PR head | Live GitHub Actions checks are authoritative; compare their tested SHA to the current PR #171 head | Exact-head run and job conclusions are linked in PR #171; never substitute an earlier SHA |
 
 ---
 
@@ -173,7 +187,7 @@ CI job names below are the ones the workflow actually runs
 - **Implementation / delivery still pending:** the remaining open items above,
   each with its own contract, tests and operational documentation. C10 was delivered via PR #171; verify the current main/merge state independently before treating any branch-specific evidence in this historical matrix as current. C10 has no schema change or migration, and this
   narrow acceptance does not imply broader licensing completion.
-- **Open product questions that block nothing implemented here:** OQ-86, OQ-79 and OQ-77 implementation/evidence. OQ-45 contract-termination policy is decided by PDR-18; enforcement/evidence remains open.
+- **Open product questions that block nothing implemented here:** OQ-86, OQ-79 and OQ-77 implementation/evidence. OQ-45 contract-termination policy is decided by PDR-18; enforcement/evidence remains open. OQ-88 (customer-side activation-validity start versus the approved future-dated renewal/reissuance flow) was registered by engineering on 2026-10-17 and blocks only L-18.7; the Owner-side PDR-18 §1 model is delivered and the renewal/reissuance compatibility **proposal** that PDR-18 §1's final bullet asks for is delivered as L-18.9 (analysis only — no runtime change, no decision). Implementation record: [`pdr-18-contract-and-activation-dates-implementation.md`](pdr-18-contract-and-activation-dates-implementation.md); proposal: [`pdr-18-renewal-reissuance-flow-proposal.md`](pdr-18-renewal-reissuance-flow-proposal.md).
 
 This matrix describes the **implemented slice plus corrective slices** on the PR
 branch; it does not close any OQ, promote ADR-0049 (still Proposed), or claim the

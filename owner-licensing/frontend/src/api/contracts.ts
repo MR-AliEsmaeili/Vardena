@@ -34,6 +34,9 @@ export interface CustomerIdentity {
 }
 export interface Customer extends CustomerIdentity {
   contractReference: string;
+  /** PDR-18 §1: commercial contract dates, independent of technical validity. */
+  contractStartDate: string | null;
+  contractEndDate: string | null;
   createdAt: string;
   updatedAt: string;
   createdBy: string;
@@ -45,6 +48,8 @@ export interface CustomerInput {
   displayName: string;
   status: 'ACTIVE' | 'INACTIVE';
   contractReference: string;
+  contractStartDate?: string;
+  contractEndDate?: string;
 }
 export interface OperationTransition {
   id: string;
@@ -72,6 +77,17 @@ export interface OperationalRecord {
   replacementObservedState: string | null;
   emergencyOldServerLost: boolean;
   replacesRecordId: string | null;
+  /**
+   * PDR-18 §1 + PDR-17: Owner-side OBSERVATION metadata, never a claim about a
+   * signed artifact. `recordedOn` is the UTC calendar day on which an operator
+   * recorded this observation (derived by the server from the immutable
+   * `createdAt` instant) — it is NOT the license's actual issuance or
+   * activation date, which this application cannot verify.
+   * `observedValidityEnd` is the validity end the operator recorded having
+   * seen; null means no end was recorded.
+   */
+  recordedOn: string | null;
+  observedValidityEnd: string | null;
   evidenceBasis: 'OPERATOR_OBSERVED';
   cryptographicVerification: 'NOT_IMPLEMENTED';
   signedArtifactProduced: false;

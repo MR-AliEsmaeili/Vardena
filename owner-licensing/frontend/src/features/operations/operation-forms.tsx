@@ -10,6 +10,7 @@ import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { o } from '@/lib/owner-i18n';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
+import { DateInput } from '@/ui/patterns/date-input';
 import { FormField } from '@/ui/patterns/form-field';
 import { LoadingState } from '@/ui/patterns/states';
 import { useDirtyGuard } from '@/ui/patterns/owner-states';
@@ -110,20 +111,26 @@ export function ActivationFormPage() {
       installationReference: '',
       reason: '',
       evidenceReference: '',
+      observedValidityEnd: '',
       acknowledged: false,
     },
   });
   useDirtyGuard(form.formState.isDirty);
   const mutation = useMutation({
     mutationFn: (values: LicenseObservationValues) =>
-      api.recordLicenseObservation(
-        withEvidence({
+      api.recordLicenseObservation({
+        ...withEvidence({
           customerId: values.customerId,
           installationReference: values.installationReference,
           reason: values.reason,
           evidenceReference: values.evidenceReference,
         }),
-      ),
+        // The recording day is never sent: the server derives it from the
+        // immutable record instant (PDR-18 §1.2, PDR-17).
+        ...(values.observedValidityEnd.trim()
+          ? { observedValidityEnd: values.observedValidityEnd.trim() }
+          : {}),
+      }),
     onSuccess: async (record) => {
       form.reset();
       qc.setQueryData(['owner', 'operation', record.id], record);
@@ -197,6 +204,29 @@ export function ActivationFormPage() {
             />
           )}
         </FormField>
+        <fieldset className="space-y-3 rounded border p-3">
+          <legend className="px-1 text-sm font-semibold">
+            {o.observationDatesTitle}
+          </legend>
+          <p className="text-sm text-slate-500">{o.observationDatesHelp}</p>
+          <FormField
+            id="observedValidityEnd"
+            label={o.observedValidityEnd}
+            error={form.formState.errors.observedValidityEnd?.message}
+          >
+            {(props) => (
+              <DateInput
+                {...props}
+                value={form.watch('observedValidityEnd')}
+                onChange={(value) =>
+                  form.setValue('observedValidityEnd', value, {
+                    shouldValidate: true,
+                  })
+                }
+              />
+            )}
+          </FormField>
+        </fieldset>
         <Acknowledge
           form={form as unknown as UseFormReturn<{ acknowledged: boolean }>}
         />

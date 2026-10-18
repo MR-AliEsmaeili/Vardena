@@ -1,4 +1,4 @@
-import { formatOwnerInstant } from '@/lib/date-time';
+import { formatOwnerBusinessDay, formatOwnerInstant } from '@/lib/date-time';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, type UseFormReturn } from 'react-hook-form';
@@ -239,6 +239,24 @@ export function OperationPage() {
           [o.notVerified, o.notVerified],
           [o.noArtifact, o.noArtifact],
           [o.noContact, o.noContact],
+          // PDR-18 §1 + PDR-17: Owner-side observation metadata. Distinct
+          // from the customer's commercial contract dates (which live on the
+          // customer record) and from a signed license's technical validity
+          // (which this application cannot verify).
+          ...(record.kind === 'LICENSE'
+            ? ([
+                [
+                  o.recordedOn,
+                  formatOwnerBusinessDay(record.recordedOn),
+                  record.recordedOn,
+                ],
+                [
+                  o.observedValidityEnd,
+                  formatOwnerBusinessDay(record.observedValidityEnd),
+                  record.observedValidityEnd,
+                ],
+              ] as [string, string, string | null][])
+            : []),
           [o.id, record.id],
           [o.actor, record.createdBy],
           [o.created, formatOwnerInstant(record.createdAt), record.createdAt],

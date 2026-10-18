@@ -14,17 +14,24 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   assertActiveAuthorizedActor,
+  assertContractDateOrder,
   assertPermission,
+  businessDay,
   customerCode,
   customerResponse,
   isRole,
   object,
+  operationResponse,
+  optionalBusinessDay,
   password,
   permissions,
+  persistedBusinessDay,
+  recordedOnFor,
   role,
   roles,
   safeUser,
   text,
+  utcCalendarDay,
 } from "../src/domain.js";
 import {
   RoleUpgradeError,
@@ -1395,5 +1402,272 @@ describe("Customer field allowlist for the two-role model", () => {
     );
     expect(sanitizedDbStatus.integrity.issueMessage).not.toContain("dbsecret");
     expect(sanitizedDbStatus.integrity.issueMessage).not.toContain("10.0.0.5");
+  });
+});
+
+describe("PDR-18 §1 — contract dates, observation metadata and signed-license validity", () => {
+  it("derives the UTC calendar day of an instant, never a local day", () => {
+    // One instant expressed in two offsets is the same UTC day; a process
+    // timezone must never change the recorded day.
+    expect(utcCalendarDay(new Date("2026-10-17T00:00:00.000Z"))).toBe(
+      "2026-10-17",
+    );
+    expect(utcCalendarDay(new Date("2026-10-17T23:59:59.999Z"))).toBe(
+      "2026-10-17",
+    );
+    // Tehran regression: 03:30+03:30 is the START of the same UTC day, and
+    // 20:00-04:00 is the same UTC day seen from the west.
+    expect(utcCalendarDay(new Date("2026-10-17T03:30:00.000+03:30"))).toBe(
+      "2026-10-17",
+    );
+    expect(utcCalendarDay(new Date("2026-10-16T20:00:00.000-04:00"))).toBe(
+      "2026-10-17",
+    );
+    // A Tehran evening is the NEXT UTC day, so a local-day reading would shift.
+    expect(utcCalendarDay(new Date("2026-10-17T20:00:00.000+03:30"))).toBe(
+      "2026-10-17",
+    );
+  });
+  it("accepts only real canonical calendar days", () => {
+    expect(businessDay("2028-02-29", "contractStartDate")).toBe("2028-02-29");
+    for (const value of [
+      "2027-02-29",
+      "2027-13-01",
+      "2027-1-1",
+      "1405/07/23",
+      "2027-01-01T00:00:00Z",
+      "",
+    ])
+      expect(() => businessDay(value, "contractStartDate")).toThrow(
+        /contractStartDate/,
+      );
+  });
+  it("treats an omitted value as not recorded, never as a defaulted day", () => {
+    expect(optionalBusinessDay(undefined, "contractEndDate")).toBeNull();
+    expect(optionalBusinessDay(null, "contractEndDate")).toBeNull();
+    expect(optionalBusinessDay("", "contractEndDate")).toBeNull();
+    expect(optionalBusinessDay("2027-01-01", "contractEndDate")).toBe(
+      "2027-01-01",
+    );
+  });
+  it("reads a PostgreSQL date back without a timezone shift", () => {
+    // node-postgres materializes `date` as a LOCAL-midnight JS Date, so the
+    // value must be read through its UTC date components.
+    expect(persistedBusinessDay(null)).toBeNull();
+    expect(persistedBusinessDay(undefined)).toBeNull();
+    expect(persistedBusinessDay(new Date(2026, 9, 17))).toBe("2026-10-17");
+    expect(persistedBusinessDay(new Date(2026, 0, 1))).toBe("2026-01-01");
+    expect(persistedBusinessDay(new Date(2026, 11, 31))).toBe("2026-12-31");
+    expect(persistedBusinessDay("2026-10-17")).toBe("2026-10-17");
+  });
+
+  // ---------------------------------------------------------------------
+  // Owner-side observation metadata (PDR-17: cryptographic issuance and
+  // verification are not implemented, so the recording day is metadata about
+  // the recording, never an attested issuance or activation date).
+  // ---------------------------------------------------------------------
+  it("derives the recording day from the server instant, in UTC, not locally", () => {
+    expect(recordedOnFor(new Date("2026-10-17T00:00:00.000Z"))).toBe(
+      "2026-10-17",
+    );
+    expect(recordedOnFor(new Date("2026-10-17T23:59:59.999Z"))).toBe(
+      "2026-10-17",
+    );
+    expect(recordedOnFor(new Date("2026-10-17T03:30:00.000+03:30"))).toBe(
+      "2026-10-17",
+    );
+    expect(recordedOnFor(new Date("2026-10-16T20:00:00.000-04:00"))).toBe(
+      "2026-10-17",
+    );
+    // An ISO string round-trips to the same day; it is the same instant.
+    expect(recordedOnFor("2026-10-17T12:00:00.000Z")).toBe("2026-10-17");
+    expect(() => recordedOnFor("not-a-date")).toThrow();
+  });
+  it("accepts a recorded end before, equal to, or after the recording day", () => {
+    // `recordedOn` is when an operator RECORDED the observation; it is not the
+    // license's technical activation start. An operator must be able to record
+    // an observation of an ALREADY-EXPIRED license, so the recorded end is
+    // never compared with the recording day.
+    const row = {
+      id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      customer_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      customer_code: "Acme.01",
+      display_name: "Acme",
+      kind: "LICENSE",
+      observation_category: "EXTERNAL_ISSUANCE_OBSERVED",
+      observed_status: "ISSUED",
+      installation_reference: "INST-1",
+      created_at: new Date("2026-10-17T00:00:00.000Z"),
+      updated_at: new Date("2026-10-17T00:00:00.000Z"),
+      created_by: "u1",
+      updated_by: "u1",
+    };
+    const endOn = (observed_validity_end: Date | null) =>
+      operationResponse({ ...row, observed_validity_end }, "OWNER_ADMIN");
+    // Before the recording day (an already-expired license).
+    expect(endOn(new Date(2026, 0, 1)).observedValidityEnd).toBe("2026-01-01");
+    // Equal to the recording day.
+    expect(endOn(new Date(2026, 9, 17)).observedValidityEnd).toBe("2026-10-17");
+    // After the recording day (the ordinary forward case).
+    expect(endOn(new Date(2027, 0, 1)).observedValidityEnd).toBe("2027-01-01");
+    // No recorded end is still allowed and is not the same as "unlimited".
+    expect(endOn(null).observedValidityEnd).toBeNull();
+    // The recording day is unaffected by the end in every case.
+    expect(endOn(new Date(2026, 0, 1)).recordedOn).toBe("2026-10-17");
+  });
+  it("still refuses impossible and malformed calendar days", () => {
+    for (const value of [
+      "2027-02-29",
+      "2027-13-01",
+      "2027-1-1",
+      "1405/07/23",
+      "2027-01-01T00:00:00Z",
+    ])
+      expect(() => optionalBusinessDay(value, "observedValidityEnd")).toThrow(
+        /observedValidityEnd/,
+      );
+    // A real leap day is accepted.
+    expect(optionalBusinessDay("2028-02-29", "observedValidityEnd")).toBe(
+      "2028-02-29",
+    );
+  });
+  it("records an observation without establishing a signed-license issuance date", () => {
+    const row = {
+      id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      customer_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      customer_code: "Acme.01",
+      display_name: "Acme",
+      kind: "LICENSE",
+      observation_category: "EXTERNAL_ISSUANCE_OBSERVED",
+      observed_status: "ISSUED",
+      installation_reference: "INST-1",
+      observed_validity_end: new Date(2027, 0, 1),
+      created_at: new Date("2026-10-17T23:59:59.000Z"),
+      updated_at: new Date("2026-10-17T23:59:59.000Z"),
+      created_by: "u1",
+      updated_by: "u1",
+    };
+    const body = operationResponse(row, "OWNER_ADMIN");
+    // The three concepts are separate fields with separate names.
+    expect(body.recordedOn).toBe("2026-10-17");
+    expect(body.observedValidityEnd).toBe("2027-01-01");
+    // The response states its own epistemic status explicitly (PDR-17).
+    expect(body.evidenceBasis).toBe("OPERATOR_OBSERVED");
+    expect(body.cryptographicVerification).toBe("NOT_IMPLEMENTED");
+    expect(body.signedArtifactProduced).toBe(false);
+    expect(body.customerServerContacted).toBe(false);
+    // No field may claim to hold the signed license's issuance or activation
+    // date: such a claim would be unsupported by this application.
+    const names = Object.keys(body);
+    expect(names).not.toContain("activationValidFrom");
+    expect(names).not.toContain("activationValidUntil");
+    expect(names.join(" ")).not.toMatch(
+      /issuedAt|issuanceDate|activationDate/i,
+    );
+  });
+  it("moves the recording day when the recording instant moves, proving it tracks the recording", () => {
+    const base = {
+      id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      customer_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      customer_code: "Acme.01",
+      display_name: "Acme",
+      kind: "LICENSE",
+      observation_category: "EXTERNAL_ISSUANCE_OBSERVED",
+      observed_status: "ISSUED",
+      installation_reference: "INST-1",
+      observed_validity_end: null,
+      updated_at: new Date("2026-10-17T23:59:59.000Z"),
+      created_by: "u1",
+      updated_by: "u1",
+    };
+    // Same license facts, two different recording instants: the recorded day
+    // follows the recording, so it can never be an issuance date.
+    expect(
+      operationResponse(
+        { ...base, created_at: new Date("2026-10-17T00:00:00.000Z") },
+        "OWNER_ADMIN",
+      ).recordedOn,
+    ).toBe("2026-10-17");
+    expect(
+      operationResponse(
+        { ...base, created_at: new Date("2026-10-18T00:00:00.000Z") },
+        "OWNER_ADMIN",
+      ).recordedOn,
+    ).toBe("2026-10-18");
+  });
+  it("records no validity end for a server-replacement observation", () => {
+    const body = operationResponse(
+      {
+        id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        customer_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        customer_code: "Acme.01",
+        display_name: "Acme",
+        kind: "SERVER_REPLACEMENT",
+        observation_category: "REPLACEMENT_AUTHORIZED",
+        observed_status: "REPLACEMENT_AUTHORIZED",
+        old_installation_reference: "OLD-1",
+        replacement_installation_reference: "NEW-1",
+        observed_validity_end: null,
+        created_at: new Date("2026-10-17T00:00:00.000Z"),
+        updated_at: new Date("2026-10-17T00:00:00.000Z"),
+        created_by: "u1",
+        updated_by: "u1",
+      },
+      "OWNER_ADMIN",
+    );
+    expect(body.observedValidityEnd).toBeNull();
+    expect(body.recordedOn).toBe("2026-10-17");
+  });
+
+  // ---------------------------------------------------------------------
+  // Commercial contract dates (never derived from, and never overwriting,
+  // technical validity).
+  // ---------------------------------------------------------------------
+  it("allows contract dates that precede issuance and a single-day contract", () => {
+    expect(() =>
+      assertContractDateOrder("2020-03-20", "2021-03-21"),
+    ).not.toThrow();
+    expect(() =>
+      assertContractDateOrder("2027-05-05", "2027-05-05"),
+    ).not.toThrow();
+    expect(() => assertContractDateOrder("2027-01-02", "2027-01-01")).toThrow(
+      /contractEndDate/,
+    );
+    expect(() => assertContractDateOrder(null, "2027-01-01")).not.toThrow();
+    expect(() => assertContractDateOrder("2027-01-01", null)).not.toThrow();
+  });
+  it("exposes contract dates as their own pair in the customer response", () => {
+    const body = customerResponse(
+      {
+        id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        customer_code: "Acme.01",
+        display_name: "Acme",
+        status: "ACTIVE",
+        contract_reference: "REF-1",
+        contract_start_date: new Date(2026, 9, 2),
+        contract_end_date: new Date(2027, 9, 2),
+        created_at: new Date(),
+        updated_at: new Date(),
+        created_by: "u1",
+        updated_by: "u1",
+      },
+      "OWNER_ADMIN",
+    );
+    expect(body.contractStartDate).toBe("2026-10-02");
+    expect(body.contractEndDate).toBe("2027-10-02");
+    // Contract dates are a customer-level concept; an operational record never
+    // carries them, so the two pairs cannot be confused.
+    expect(() =>
+      customerResponse(
+        {
+          id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          customer_code: "Acme.01",
+          display_name: "Acme",
+          status: "ACTIVE",
+          contract_reference: "REF-1",
+        },
+        "LICENSE_OPERATOR",
+      ),
+    ).not.toThrow();
   });
 });

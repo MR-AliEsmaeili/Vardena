@@ -60,6 +60,8 @@ async function login(username: string, password: string) {
   const r = await write("post", "/auth/login").send({ username, password });
   return { r, cookie: r.headers["set-cookie"]?.[0]?.split(";")[0] as string };
 }
+/** A unique, installation-reference-safe token for one test. */
+const uniq = (prefix: string) => `${prefix}-${ulid()}`;
 async function customer(cookie = adminCookie, code = `C-${ulid()}`) {
   return write("post", "/customers", cookie).send({
     customerCode: code,
@@ -589,6 +591,7 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
       "002-manual-operations.sql",
       "003-two-role-authorization.sql",
       "004-audit-retention-archive.sql",
+      "005-contract-and-activation-dates.sql",
     ]);
     await expect(
       db.pool.query("UPDATE owner.users SET role='SYSTEM_ADMIN' WHERE id=$1", [
@@ -1132,6 +1135,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       "002-manual-operations.sql",
       "003-two-role-authorization.sql",
       "004-audit-retention-archive.sql",
+      "005-contract-and-activation-dates.sql",
     ]);
     await db.pool.query("TRUNCATE owner.login_limits");
     for (let n = 0; n < 10; n++)
@@ -1253,6 +1257,321 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     );
     expect(JSON.stringify(history.body)).not.toContain("PRIVATE KEY");
     expect(JSON.stringify(history.body)).not.toContain("password_hash");
+  });
+  it("PDR-18 §1: keeps commercial contract dates separate from Owner-side observation metadata", async () => {
+    const code = (prefix: string) => `${prefix}-${ulid()}`;
+    // Contract dates are commercial and administrative: they may precede
+    // issuance and are never validated as technical validity dates.
+    const past = await write("post", "/customers", adminCookie).send({
+      customerCode: code("PDR18-PAST"),
+      displayName:
+        "\u0645\u0634\u062a\u0631\u06cc \u0642\u0631\u0627\u0631\u062f\u0627\u062f",
+      contractStartDate: "2020-03-20",
+      contractEndDate: "2021-03-21",
+    });
+    expect(past.status).toBe(201);
+    expect(past.body.contractStartDate).toBe("2020-03-20");
+    expect(past.body.contractEndDate).toBe("2021-03-21");
+    expect(
+      (
+        await write("post", "/customers", adminCookie).send({
+          customerCode: code("PDR18-OPEN"),
+          displayName: "Open contract",
+          contractStartDate: "2027-01-01",
+        })
+      ).body.contractEndDate,
+    ).toBeNull();
+    // A single-day contract is valid; an inverted pair is refused.
+    expect(
+      (
+        await write("post", "/customers", adminCookie).send({
+          customerCode: code("PDR18-SAME"),
+          displayName: "Single day",
+          contractStartDate: "2027-05-05",
+          contractEndDate: "2027-05-05",
+        })
+      ).status,
+    ).toBe(201);
+    expect(
+      (
+        await write("post", "/customers", adminCookie).send({
+          customerCode: code("PDR18-INV"),
+          displayName: "Inverted",
+          contractStartDate: "2027-01-02",
+          contractEndDate: "2027-01-01",
+        })
+      ).status,
+    ).toBe(400);
+    for (const contractStartDate of ["2027-13-01", "2027-02-30", "not-a-day"])
+      expect(
+        (
+          await write("post", "/customers", adminCookie).send({
+            customerCode: code("PDR18-BAD"),
+            displayName: "Malformed",
+            contractStartDate,
+          })
+        ).status,
+      ).toBe(400);
+    // A partial update keeps the recorded pair and still refuses an inversion.
+    expect(
+      (
+        await write("patch", `/customers/${past.body.id}`, adminCookie).send({
+          contractEndDate: "2020-03-19",
+          reason: "Inverted partial update",
+        })
+      ).status,
+    ).toBe(400);
+    const moved = await write(
+      "patch",
+      `/customers/${past.body.id}`,
+      adminCookie,
+    ).send({ contractEndDate: "2022-03-21", reason: "Extended contract" });
+    expect(moved.status).toBe(200);
+    expect(moved.body.contractStartDate).toBe("2020-03-20");
+    expect(moved.body.contractEndDate).toBe("2022-03-21");
+
+    // Owner-side observation metadata: the recording day is derived from the
+    // server instant, and the end is what the operator recorded having seen.
+    const end = new Date();
+    end.setUTCDate(end.getUTCDate() + 365);
+    const endDay = `${end.getUTCFullYear()}-${String(end.getUTCMonth() + 1).padStart(2, "0")}-${String(end.getUTCDate()).padStart(2, "0")}`;
+    const issued = await write(
+      "post",
+      "/operational-records/license-observations",
+      adminCookie,
+    ).send({
+      customerId: past.body.id,
+      installationReference: code("PDR18-INST"),
+      reason: "External issuance observed outside this application",
+      observedValidityEnd: endDay,
+    });
+    expect(issued.status).toBe(201);
+    expect(issued.body.observedValidityEnd).toBe(endDay);
+    // The recording day is the UTC calendar day of the immutable created_at.
+    const stored = await db.pool.query<{
+      recorded_on: string;
+      observed_validity_end: string;
+    }>(
+      "SELECT to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS recorded_on, to_char(observed_validity_end,'YYYY-MM-DD') AS observed_validity_end FROM owner.operational_records WHERE id=$1",
+      [issued.body.id],
+    );
+    expect(stored.rows[0]!.recorded_on).toBe(issued.body.recordedOn);
+    expect(stored.rows[0]!.observed_validity_end).toBe(endDay);
+    // The response states its own epistemic status (PDR-17).
+    expect(issued.body.evidenceBasis).toBe("OPERATOR_OBSERVED");
+    expect(issued.body.cryptographicVerification).toBe("NOT_IMPLEMENTED");
+
+    // The operator cannot select, backdate or future-date the recording day.
+    const withRecordedOn = await write(
+      "post",
+      "/operational-records/license-observations",
+      adminCookie,
+    ).send({
+      customerId: past.body.id,
+      installationReference: code("PDR18-INST"),
+      reason: "Operator must not choose the recording day",
+      recordedOn: "2020-01-01",
+    });
+    expect(withRecordedOn.status).toBe(400);
+    // The recorded end is NEVER compared with the recording day, so an
+    // observation of an ALREADY-EXPIRED license can be recorded.
+    const expired = await write(
+      "post",
+      "/operational-records/license-observations",
+      adminCookie,
+    ).send({
+      customerId: past.body.id,
+      installationReference: code("PDR18-INST"),
+      reason: "Observation of an already-expired license",
+      observedValidityEnd: "2020-01-01",
+    });
+    expect(expired.status).toBe(201);
+    expect(expired.body.observedValidityEnd).toBe("2020-01-01");
+    expect(expired.body.observedValidityEnd < expired.body.recordedOn).toBe(
+      true,
+    );
+    // An end exactly ON the recording day is also legal.
+    const sameDay = await write(
+      "post",
+      "/operational-records/license-observations",
+      adminCookie,
+    ).send({
+      customerId: past.body.id,
+      installationReference: code("PDR18-INST"),
+      reason: "End equal to the recording day",
+      observedValidityEnd: expired.body.recordedOn,
+    });
+    expect(sameDay.status).toBe(201);
+    expect(sameDay.body.observedValidityEnd).toBe(sameDay.body.recordedOn);
+    // A malformed end is refused, never silently normalized.
+    for (const observedValidityEnd of ["2027-13-45", "tomorrow", "1405/07/23"])
+      expect(
+        (
+          await write(
+            "post",
+            "/operational-records/license-observations",
+            adminCookie,
+          ).send({
+            customerId: past.body.id,
+            installationReference: code("PDR18-INST"),
+            reason: "Malformed observed validity end",
+            observedValidityEnd,
+          })
+        ).status,
+      ).toBe(400);
+    // The two extra observations above were persisted; only the malformed ones
+    // were refused.
+    expect(
+      (
+        await db.pool.query(
+          "SELECT count(*)::int AS n FROM owner.operational_records WHERE installation_reference LIKE 'PDR18-INST-%'",
+        )
+      ).rows[0]!.n,
+    ).toBe(3);
+  });
+  it("PDR-18 §1: a server-replacement record records no license validity end", async () => {
+    const made = await customer(adminCookie, uniq("PDR18-REP"));
+    const replacement = await write(
+      "post",
+      "/operational-records/server-replacements",
+      adminCookie,
+    ).send({
+      customerId: made.body.id,
+      oldInstallationReference: uniq("PDR18-OLD"),
+      replacementInstallationReference: uniq("PDR18-NEW"),
+      emergencyOldServerLost: false,
+      reason: "Owner authorized replacement",
+    });
+    expect(replacement.status).toBe(201);
+    expect(replacement.body.observedValidityEnd).toBeNull();
+    // The recording day is still reported; it is metadata about the recording.
+    expect(replacement.body.recordedOn).toMatch(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/);
+  });
+  it("PDR-18 §1 migration 005: no historical issuance or activation date is fabricated", async () => {
+    // The corrected model stores no issuance/activation date at all: the
+    // recording day is derived from the immutable `created_at` instant, so
+    // there is nothing to backfill and nothing to invent.
+    const columns = (
+      await db.pool.query<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns
+        WHERE table_schema='owner' AND table_name='operational_records'
+          AND column_name LIKE ANY (ARRAY['%valid%','%issuan%','%activat%'])`,
+      )
+    ).rows.map((r) => r.column_name);
+    expect(columns).toContain("observed_validity_end");
+    expect(columns).not.toContain("activation_valid_from");
+    expect(columns).not.toContain("activation_valid_until");
+
+    const made = await customer(adminCookie, uniq("PDR18-MIG"));
+
+    // A row recorded before this migration (simulated by an explicit, older
+    // `created_at`) keeps that instant as its recording day and gains NO
+    // recorded end: the migration backfills nothing and invents no issuance or
+    // activation date for existing data.
+    const legacy = ulid();
+    await db.transaction(async (tx) => {
+      await tx.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          installation_reference, created_at, updated_at, created_by, updated_by)
+        VALUES ($1,$2,'LICENSE','ISSUED','EXTERNAL_ISSUANCE_OBSERVED',$3,
+          '2026-01-01T00:00:00.000Z'::timestamptz,
+          '2026-01-01T00:00:00.000Z'::timestamptz,$4,$4)`,
+        [legacy, made.body.id, uniq("PDR18-MIG-LEGACY"), adminId],
+      );
+      // The append-only history guard requires the legal transition chain.
+      await insertTransition(
+        tx,
+        legacy,
+        adminId,
+        "UNRECORDED",
+        "ISSUED",
+        "row recorded before migration 005",
+        "2026-01-01T00:00:00.000Z",
+      );
+    });
+    const legacyRow = await db.pool.query<{
+      recorded_on: string;
+      observed_validity_end: string | null;
+    }>(
+      "SELECT to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS recorded_on, observed_validity_end FROM owner.operational_records WHERE id=$1",
+      [legacy],
+    );
+    expect(legacyRow.rows[0]!.recorded_on).toBe("2026-01-01");
+    expect(legacyRow.rows[0]!.observed_validity_end).toBeNull();
+    // The API reports the same separation: a recording day derived from the
+    // stored instant, and no recorded end.
+    const legacyRead = await request(app)
+      .get(`/api/v1/operational-records/${legacy}`)
+      .set("Cookie", adminCookie);
+    expect(legacyRead.status).toBe(200);
+    expect(legacyRead.body.recordedOn).toBe("2026-01-01");
+    expect(legacyRead.body.observedValidityEnd).toBeNull();
+
+    // The database no longer requires the recorded end to be later than the
+    // recording day: an operator must be able to record an observation of an
+    // ALREADY-EXPIRED license. A direct SQL insert on the recording day is
+    // accepted, and the API and the database agree on that rule.
+    const expiredRow = ulid();
+    await db.transaction(async (tx) => {
+      await tx.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          installation_reference, observed_validity_end, created_by, updated_by)
+        VALUES ($1,$2,'LICENSE','ISSUED','EXTERNAL_ISSUANCE_OBSERVED',$3,
+          '2020-01-01'::date, $4,$4)`,
+        [expiredRow, made.body.id, uniq("PDR18-MIG-EXPIRED"), adminId],
+      );
+      await insertTransition(
+        tx,
+        expiredRow,
+        adminId,
+        "UNRECORDED",
+        "ISSUED",
+        "observation of an already-expired license",
+      );
+    });
+    const expiredRead = await request(app)
+      .get(`/api/v1/operational-records/${expiredRow}`)
+      .set("Cookie", adminCookie);
+    expect(expiredRead.status).toBe(200);
+    const today = new Date().toISOString().slice(0, 10);
+    expect(expiredRead.body.observedValidityEnd).toBe("2020-01-01");
+    expect(expiredRead.body.recordedOn).toBe(today);
+    // The recorded end precedes the recording day, which is now legal.
+    expect(
+      expiredRead.body.observedValidityEnd < expiredRead.body.recordedOn,
+    ).toBe(true);
+
+    // Only a license observation may carry a recorded validity end.
+    await expect(
+      db.pool.query(
+        `INSERT INTO owner.operational_records(
+          id, customer_id, kind, observed_status, observation_category,
+          old_installation_reference, replacement_installation_reference,
+          observed_validity_end, created_by, updated_by)
+        VALUES ($1,$2,'SERVER_REPLACEMENT','REPLACEMENT_AUTHORIZED',
+          'REPLACEMENT_AUTHORIZED',$3,$4,'2027-01-01'::date,$5,$5)`,
+        [
+          ulid(),
+          made.body.id,
+          uniq("PDR18-MIG-OLD"),
+          uniq("PDR18-MIG-NEW"),
+          adminId,
+        ],
+      ),
+    ).rejects.toThrow(/observed_validity_end_license_only/);
+
+    // A contract's end may not precede its start.
+    await expect(
+      db.pool.query(
+        `INSERT INTO owner.customers(
+          id, customer_code, display_name, status, contract_start_date,
+          contract_end_date, created_by, updated_by)
+        VALUES ($1,$2,'Inverted','ACTIVE','2027-01-02'::date,'2027-01-01'::date,$3,$3)`,
+        [ulid(), uniq("PDR18-MIG-INV"), adminId],
+      ),
+    ).rejects.toThrow(/contract_date_order/);
   });
   it("enforces the manual server-replacement sequence, same customer, and concurrency", async () => {
     const first = await customer(adminCookie, `Rep-A-${ulid()}`);

@@ -130,6 +130,117 @@ export function status(value: unknown): string {
   if (value !== "ACTIVE" && value !== "INACTIVE") invalid("Invalid status.");
   return value;
 }
+
+// ---------------------------------------------------------------------------
+// PDR-18 §1 — three separate date concepts
+//
+// Both stored day values are canonical BusinessDate calendar days
+// (`YYYY-MM-DD`, docs/datetime.md, AR-32). They are deliberately separate:
+//
+//   contract dates      — commercial/administrative, may precede the recording.
+//   Owner-side metadata — the day an operator RECORDED an observation (derived
+//                         on read from the immutable `created_at` instant) and
+//                         the validity end the operator recorded having seen.
+//   signed-license validity — owned by the customer runtime; not modelled here.
+//
+// The Owner-side pair is never an attested property of a signed artifact:
+// PDR-17 records cryptographic issuance and verification as not implemented,
+// and every response states `cryptographicVerification = NOT_IMPLEMENTED`.
+//
+// Nothing here accepts a client clock or a browser-supplied date: the recording
+// day is derived from a server-generated, immutable `timestamptz` column.
+// ---------------------------------------------------------------------------
+
+const BUSINESS_DAY_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+
+/** The UTC calendar day of an authoritative instant (never a local day). */
+export function utcCalendarDay(at: Date): string {
+  const month = String(at.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(at.getUTCDate()).padStart(2, "0");
+  return `${String(at.getUTCFullYear()).padStart(4, "0")}-${month}-${day}`;
+}
+
+/** Validate one supplied canonical calendar day. */
+export function businessDay(value: unknown, field: string): string {
+  if (typeof value !== "string" || !BUSINESS_DAY_PATTERN.test(value))
+    invalid(`${field} must be a canonical YYYY-MM-DD calendar day.`);
+  const at = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(at.getTime()) || utcCalendarDay(at) !== value)
+    invalid(`${field} is not a real calendar day.`);
+  return value;
+}
+
+/** An omitted, null or empty value is "not recorded", never a default day. */
+export function optionalBusinessDay(
+  value: unknown,
+  field: string,
+): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  return businessDay(value, field);
+}
+
+/**
+ * Read a PostgreSQL `date` column back as a canonical calendar day.
+ *
+ * node-postgres materializes `date` as a JS `Date` at LOCAL midnight, so the
+ * value must be read through its UTC date components or a process running east
+ * or west of UTC would silently shift the day. This is the only place that
+ * conversion happens (persistence carrier; AR-32).
+ */
+export function persistedBusinessDay(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    const year = value.getFullYear();
+    const month = value.getMonth();
+    const day = value.getDate();
+    return utcCalendarDay(new Date(Date.UTC(year, month, day)));
+  }
+  if (typeof value === "string") return value.slice(0, 10);
+  fail(500, "InternalError", "The operation failed. Please retry.");
+}
+
+/**
+ * The UTC calendar day on which an observation was RECORDED.
+ *
+ * This is derived, never stored and never accepted from a client: it is the
+ * canonical BusinessDay projection of the row's `created_at` instant, a server
+ * -generated `timestamptz` that migration 002 makes immutable. It answers
+ * "when did an operator record this?", never "when was the license really
+ * issued or activated?" — the Owner application has no cryptographic evidence
+ * of the latter (PDR-17).
+ */
+export function recordedOnFor(createdAt: unknown): string {
+  if (createdAt instanceof Date) return utcCalendarDay(createdAt);
+  if (typeof createdAt === "string") {
+    const at = new Date(createdAt);
+    if (!Number.isNaN(at.getTime())) return utcCalendarDay(at);
+  }
+  fail(500, "InternalError", "The operation failed. Please retry.");
+}
+
+// There is deliberately NO rule comparing `observedValidityEnd` with
+// `recordedOn`. The recording day is when an operator recorded the observation;
+// it is not the signed license's technical activation start, which this
+// application cannot know (PDR-17). An operator must be able to record an
+// observation of an already-expired license, so the recorded end may precede,
+// equal or follow the recording day. The signed-license interval convention
+// (an end follows its own technical start) is untouched — it simply is not this
+// model's start. A `null` end means "no end was recorded": it is never
+// defaulted, never derived from the recording day and never derived from the
+// contract dates.
+
+/**
+ * Contract dates are commercial: either side may be unrecorded, they may lie in
+ * the past (issuance is allowed to follow the contract start), and the end may
+ * equal the start (a single-day contract).
+ */
+export function assertContractDateOrder(
+  start: string | null,
+  end: string | null,
+): void {
+  if (start !== null && end !== null && end < start)
+    invalid("contractEndDate must not be earlier than contractStartDate.");
+}
 export function page(value: unknown): number {
   if (value === undefined) return 1;
   if (typeof value !== "string" || !/^[1-9][0-9]{0,5}$/.test(value))
@@ -177,6 +288,10 @@ export function customerResponse(c: Record<string, unknown>, actorRole: Role) {
     displayName: c.display_name,
     status: c.status,
     contractReference: c.contract_reference,
+    // PDR-18 §1: commercial contract dates, separate from and never rewritten
+    // by, or derived from, any technical validity value.
+    contractStartDate: persistedBusinessDay(c.contract_start_date),
+    contractEndDate: persistedBusinessDay(c.contract_end_date),
     createdAt: c.created_at,
     updatedAt: c.updated_at,
     createdBy: c.created_by,
@@ -418,6 +533,13 @@ export function operationResponse(
     replacementObservedState: row.replacement_observed_state,
     emergencyOldServerLost: row.emergency_old_server_lost,
     replacesRecordId: row.replaces_record_id,
+    // PDR-18 §1 / PDR-17: Owner-side OBSERVATION metadata, not a claim about a
+    // signed artifact. `recordedOn` is the day this observation was recorded —
+    // the UTC BusinessDay projection of the immutable server-generated
+    // `created_at` instant, never the license's actual issuance or activation
+    // day. `observedValidityEnd` is the end the operator recorded having seen.
+    recordedOn: recordedOnFor(row.created_at),
+    observedValidityEnd: persistedBusinessDay(row.observed_validity_end),
     evidenceBasis: "OPERATOR_OBSERVED",
     cryptographicVerification: "NOT_IMPLEMENTED",
     signedArtifactProduced: false,
