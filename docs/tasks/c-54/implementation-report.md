@@ -26,21 +26,21 @@ The new response is quantity-only and in the item's base unit: each ledger row i
 
 ## Local verification
 
-| Check | Result |
-| --- | --- |
-| Backend typecheck (`npm run typecheck`) | PASS |
-| Backend lint (`npm run lint`) | PASS — 0 errors; 3 existing warnings in unrelated licensing/accounting files |
-| Backend format (`npm run format:check`) | PASS |
-| Backend unit suite (`npm test`) | PASS — 164 files, 2,208 tests |
-| Kardex service unit tests | PASS — 12 tests, included in the full suite |
-| Backend build (`npm run build`) | PASS |
-| Frontend typecheck | PASS |
-| Frontend lint | PASS — 0 warnings/errors |
-| Frontend format (`npm run format:check`) | PASS |
-| Frontend unit suite (`npm test`) | PASS — 61 files, 426 tests |
-| Frontend build | PASS — Vite reports existing dependency-comment and large-chunk warnings |
-| OpenAPI dump and generated TypeScript client | PASS — regenerated from this checkout; quantity route/DTOs and `referenceId` are included, while the legacy Kardex 403 description remains unchanged. The committed-file check is run after committing. |
-| Live-DB E2E / migration rehearsal / docker-compose | NOT RUN locally — CI-only by instruction |
+| Check                                              | Result                                                                                                                                                                                                                           |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend typecheck (`npm run typecheck`)            | PASS                                                                                                                                                                                                                             |
+| Backend lint (`npm run lint`)                      | PASS — 0 errors; 3 existing warnings in unrelated licensing/accounting files                                                                                                                                                     |
+| Backend format (`npm run format:check`)            | PASS                                                                                                                                                                                                                             |
+| Backend unit suite (`npm test`)                    | PASS — 164 files, 2,208 tests                                                                                                                                                                                                    |
+| Kardex service unit tests                          | PASS — 12 tests, included in the full suite                                                                                                                                                                                      |
+| Backend build (`npm run build`)                    | PASS                                                                                                                                                                                                                             |
+| Frontend typecheck                                 | PASS                                                                                                                                                                                                                             |
+| Frontend lint                                      | PASS — 0 warnings/errors                                                                                                                                                                                                         |
+| Frontend format (`npm run format:check`)           | PASS                                                                                                                                                                                                                             |
+| Frontend unit suite (`npm test`)                   | PASS — 61 files, 426 tests                                                                                                                                                                                                       |
+| Frontend build                                     | PASS — Vite reports existing dependency-comment and large-chunk warnings                                                                                                                                                         |
+| OpenAPI dump and generated TypeScript client       | PASS — regenerated from this checkout; quantity route/DTOs and `referenceId` are included, while the legacy Kardex 403 description remains unchanged. `scripts/check-generated-api-client.sh` passes against the committed tree. |
+| Live-DB E2E / migration rehearsal / docker-compose | NOT RUN locally — CI-only by instruction                                                                                                                                                                                         |
 
 **Sandbox limitation:** `npm run prisma:generate` was attempted with the CI-style dummy `DATABASE_URL`, but the Prisma CLI could not reach its engine download host (`binaries.prisma.sh`; TLS connection unavailable under the sandbox's outbound-host policy). Consequently the local OpenAPI dump emitted a permission-mirror sync warning because the generated Prisma client was unavailable, although it completed and the OpenAPI-derived client was generated. The backend build/typecheck/unit suite passed; CI must perform Prisma generation, live PostgreSQL E2E and the generated-client check on the final PR head.
 
@@ -62,4 +62,4 @@ The new response is quantity-only and in the item's base unit: each ledger row i
 
 ## Review and CI status
 
-Local static/unit checks are recorded above. The CI-only live database suite and GitHub `backend`, `frontend`, and `generated-api-client` checks must be green on the final pushed PR head before review can be completed. No acceptance is recorded by this report.
+Local static/unit checks and the committed-file API-client check are recorded above. [PR #179](https://github.com/MR-AliEsmaeili/Vardena/pull/179) is open from the fixed session branch. Verify the live `backend`, `frontend`, and `generated-api-client` statuses on the current PR head; the CI-only live database suite must also pass before review can be completed. No acceptance is recorded by this report.

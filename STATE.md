@@ -2946,8 +2946,8 @@ in PR #115 (`1e3d407fd3f08650e0e70353f96b277e80ef03fd`).
 - **Artifacts:** task brief and implementation/test report are
   `docs/tasks/c-54/brief.md` and
   `docs/tasks/c-54/implementation-report.md`. The OpenAPI-derived frontend
-  declaration was regenerated; the committed-file checker and exact-head CI
-  remain required final gates.
+  declaration was regenerated and `scripts/check-generated-api-client.sh`
+  passes against the committed tree.
 - **Local evidence:** backend typecheck, build, format and lint pass (lint has
   three pre-existing warnings in unrelated files); backend unit suite passes
   (164 files / 2,208 tests). Frontend typecheck, lint, format, unit tests
@@ -2959,6 +2959,7 @@ in PR #115 (`1e3d407fd3f08650e0e70353f96b277e80ef03fd`).
   its engine from `binaries.prisma.sh` under the sandbox's outbound-host/TLS
   restriction, so the local OpenAPI dump warned that permission-mirror sync was
   unavailable; generation and live database verification must complete in CI.
-- **PR/CI:** pull request and exact-head `backend`, `frontend`, and
-  `generated-api-client` checks are the remaining handoff gates. No self-acceptance
-  or merge is claimed.
+- **PR/CI:** [PR #179](https://github.com/MR-AliEsmaeili/Vardena/pull/179) is
+  open from the fixed session branch. Verify the live `backend`, `frontend`, and
+  `generated-api-client` statuses on its current head; CI-only live-DB E2E must
+  pass before review is complete. No self-acceptance or merge is claimed.
