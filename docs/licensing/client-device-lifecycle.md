@@ -265,12 +265,13 @@ customer binding had changed. Two consequences were wrong and are corrected here
 - Deactivation and cancellation keep their own rules (deactivation stays available to
   resolve overage even with an expired license, as §3 already documented). Consequence worth
   stating explicitly: because a retained request is no longer force-expired by an inactive
-  license, `cancelReplacement` and `deactivate` now succeed for a still-`PENDING`/`CHALLENGE`
-  operation in Grace/Read-Only/blocked state where they previously answered
-  `replacement-request-expired` as a side effect of the destruction. Both are authorized by
-  platform `Licensing.*` permissions that ADR-0049 decision 3 keeps effective in Read-Only,
-  and neither creates, activates or releases a device record; creating a replacement,
-  proving it and completing it all still require an active license.
+  license, `cancelReplacement`, `replacementRequestExport` and `deactivate` now succeed for a
+  still-`CHALLENGE`/`PENDING` operation in Grace/Read-Only/blocked state where they previously
+  answered `replacement-request-expired` as a side effect of the destruction. All three are
+  authorized by platform `Licensing.*` permissions that ADR-0049 decision 3 keeps effective
+  in Read-Only, none creates, activates or releases a device record, and exporting a pending
+  request is a read of retained state; creating a replacement, proving it and completing it
+  all still require an active license.
 
 **Regression evidence.** `backend/src/modules/licensing/data/client-devices.repository.spec.ts`
 pins both directions with a deterministic fake Prisma client: an inactive license (natural
