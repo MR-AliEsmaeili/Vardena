@@ -1729,6 +1729,114 @@ describe('an explicit supersession sanctions exactly the version it names', () =
     expect(applied.supersedes).toBe(parts.scheduled);
   });
 
+  it('measures the continuation baseline when the document names a non-overlapping version', () => {
+    // F-01 reproduction (§8.6, corrective 2026-10-16): naming a weak version
+    // the candidate does not overlap must not displace the measurement of the
+    // grant the installation actually continues.
+    const low = version({
+      ...window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+      organizationLimit: 5,
+      entitlements: [],
+    });
+    const high = version({
+      ...window('2027-01-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'),
+      organizationLimit: 50,
+      entitlements: [],
+    });
+    const candidate = version({
+      ...window('2028-01-01T00:00:00.000Z', '2029-01-01T00:00:00.000Z'),
+      organizationLimit: 6,
+      entitlements: [],
+    });
+    const usage = {
+      organizationCount: 40,
+      activeUserCount: 0,
+      registeredDeviceCount: 0,
+    };
+
+    const named = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'explicit', operationId: low.operationId },
+      versions: [low, high],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+    });
+
+    // Against the NAMED version this is an increase (5 → 6). Against the
+    // version the installation is actually on (50) it is a reduction with 40
+    // organizations in use, so the import is refused — and the explain payload
+    // names the baseline, not the weak target.
+    expect(named.conflict).toEqual({
+      reason: 'reduction-requires-resolution',
+      overlapping: 1,
+      reduction: {
+        predecessorVersionId: high.versionId,
+        conflicts: [
+          { kind: 'organization-capacity', limit: 6, currentUsage: 40 },
+        ],
+      },
+    });
+    expect(named.supersedes).toBeNull();
+
+    // The same document WITHOUT the supersession has always reached this
+    // verdict through rule 6c, so the target choice cannot decide the outcome.
+    const unnamed = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'none' },
+      versions: [low, high],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+    });
+    expect(unnamed.conflict).toEqual(named.conflict);
+
+    // The explicit resolution of the real conflict still applies the document,
+    // and the BASELINE is the recorded resolution subject.
+    const resolved = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'explicit', operationId: low.operationId },
+      versions: [low, high],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+      reductionResolution: { reason: 'Operator confirmed the renewal.' },
+    });
+    expect(resolved.conflict).toBeNull();
+    expect(resolved.supersedes).toBe(low);
+    expect(resolved.resolutionSubject?.versionId).toBe(high.versionId);
+
+    // A candidate that stays within counted usage is not a reduction against
+    // either version, so the named supersession still applies normally.
+    const withinUsage = version({
+      ...window('2028-01-01T00:00:00.000Z', '2029-01-01T00:00:00.000Z'),
+      organizationLimit: 45,
+      entitlements: [],
+    });
+    const applied = evaluateImportConflicts({
+      candidate: withinUsage,
+      operationId: withinUsage.operationId,
+      documentHash: withinUsage.documentHash,
+      supersession: { kind: 'explicit', operationId: low.operationId },
+      versions: [low, high],
+      at: NOW,
+      installationCustomerId: CUSTOMER,
+      installationCustomerCode: CUSTOMER_CODE,
+      usage,
+    });
+    expect(applied.conflict).toBeNull();
+    expect(applied.supersedes).toBe(low);
+  });
+
   it('still applies a supersession of a non-overlapping version when nothing else overlaps', () => {
     // The documented "correction of a scheduled version": naming a version the
     // candidate does not overlap stays allowed while it overlaps NOTHING else.

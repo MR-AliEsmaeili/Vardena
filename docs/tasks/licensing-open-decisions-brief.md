@@ -161,41 +161,47 @@ Until either exists, the standing risk in `docs/tasks/licensing-owner-side-phase
 
 ---
 
-## 4. Reduction-guard findings from the renewal audit (defect, not policy)
+## 4. Reduction-guard findings from the renewal audit (one fixed, one to decide)
 
 The renewal/supersession audit re-checked the L-05 downgrade question the Owner
 asked about, and confirmed the guard is **not** keyed on `supersedes`:
 `evaluateImportConflicts` runs the capacity/entitlement arms on the explicit
 supersession path, the implicit hand-over, the legacy `VLIC1` path and the
-adjacent renewal path. Two facts still need a decision and are **not** fixed
-here, because the fix changes the single conflict authority:
+adjacent renewal path. Two facts came out of it:
 
-1. **A named supersession target can displace the measurement (high).** When a
-   document names a `supersedesOperationId` that does **not** overlap it, the
-   capacity/entitlement measurement runs only against that named version, and
-   the L-05 continuation baseline is not computed at all (`supersedes !== null`
-   skips rule 6c). Reproduced with ordinary imports only: `V_low` (org limit 5)
-   → adjacent `V_high` (org limit 50) → `D` (org limit 6) naming `V_low`. The
-   same document without `supersedesOperationId` is refused
-   `reduction-requires-resolution`. This contradicts the in-code §8.6 text and
-   design §F-8 ("a changed licenseId must not bypass the control").
-2. **No-baseline paths are unmeasured (high/medium).** A post-gap recovery
-   candidate is measured against nothing, although PDR-13 §4.2 says the
-   reduction guard "runs on the recovery path exactly as on every other path";
-   a retires-nothing candidate that is not exactly adjacent (interior gap fill,
-   backdated prefix) is likewise unmeasured, which
-   `docs/licensing/version-model-and-file-exchange.md` records as in scope for
-   L-05 while PDR-11 §8.6 states an unconditional trigger.
+1. **A named supersession target could displace the measurement (high) — FIXED
+   in this change.** When a document named a `supersedesOperationId` that did
+   **not** overlap it, the capacity/entitlement measurement ran only against
+   that named version and the L-05 continuation baseline was not computed at all
+   (`supersedes !== null` skipped rule 6c). Reproduced with ordinary imports
+   only: `V_low` (org limit 5) → adjacent `V_high` (org limit 50) → `D`
+   (org limit 6) naming `V_low`, with 40 organizations in use: the document was
+   **applied**, while the same document without `supersedesOperationId` was
+   refused `reduction-requires-resolution`. This contradicted the in-code §8.6
+   text and design §F-8 ("a changed licenseId must not bypass the control"), so
+   it was treated as the pure defect it is rather than as policy. Rule **6b′**
+   now measures the deterministic continuation baseline as well whenever it
+   exists and differs from the named target, refuses with that baseline named as
+   `predecessorVersionId`, records it as the resolution subject when an explicit
+   resolution authorizes the reduction, and defers an otherwise-unused
+   resolution until the baseline has been measured (an operation-level check
+   still refuses a resolution nothing authorized). Regression tests construct the
+   exact timeline above, including the resolution and the no-conflict
+   counter-case; the 71 pre-existing domain cases and the 88 import-service cases
+   are unchanged.
 
-**Recommendation:** fix (1) first — it is a pure defect and the minimal change
-is to also resolve the continuation baseline when a named target does not
-overlap, and to union its conflicts into the same refusal/explain payload, with
-`predecessorVersionId` naming the baseline. Then decide (2): either extend the
-baseline to "the retained version with the greatest effective end ≤ the
-candidate's start" (one consistent rule for recovery, gap fill and backdated
-prefix) or record the exemption explicitly in PDR-13 and the version-model
-document. Both changes must land with tests that construct the exact timeline
-above, because no existing test covers a reduction on a no-baseline path.
+2. **No-baseline paths remain unmeasured (high/medium) — product decision
+   required.** A post-gap recovery candidate is measured against nothing,
+   although PDR-13 §4.2 says the reduction guard "runs on the recovery path
+   exactly as on every other path"; a retires-nothing candidate that is not
+   exactly adjacent (interior gap fill, backdated prefix) is likewise unmeasured,
+   which `docs/licensing/version-model-and-file-exchange.md` records as in scope
+   for L-05 while PDR-11 §8.6 states an unconditional trigger. **Recommendation:**
+   either extend the baseline to "the retained version with the greatest
+   effective end ≤ the candidate's start" (one consistent rule for recovery, gap
+   fill and backdated prefix) or record the exemption explicitly in PDR-13 and
+   the version-model document. No existing test covers a reduction on a
+   no-baseline path, so this change must bring its own timeline.
 
 ---
 

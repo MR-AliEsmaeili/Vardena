@@ -1450,16 +1450,68 @@ export function evaluateImportConflicts(
     // of the dedicated, authorized, audited resolution operation. An open end
     // may be closed only where the document names the version it retires
     // (PDR-12); that arm is never operator-resolvable.
+    //
+    // Rule 6b′ (corrective 2026-10-16): the version a document names is not
+    // automatically the grant the candidate continues. A document may name an
+    // already-ended (or scheduled) version — the documented correction of an
+    // expired or scheduled version — while starting exactly where the version
+    // that actually governs the installation ends. Comparing only against the
+    // named version would let a weak, unrelated target displace the control,
+    // so the deterministic continuation baseline is measured as well, with the
+    // same per-dimension usage check rule 6c uses, and it is named in the
+    // explain payload. A target that IS the baseline is measured once. An
+    // unused resolution is therefore not "not applicable" yet: it may still be
+    // consumed by the baseline, and the operation-level
+    // `resolution-not-applicable` check below refuses it when nothing
+    // authorized it.
+    const continuationBaseline = continuationBaselineFor(
+      candidate,
+      versions,
+      installationCustomerId,
+    );
+    const distinctBaseline =
+      continuationBaseline !== null &&
+      continuationBaseline.versionId !== supersedes.versionId
+        ? continuationBaseline
+        : null;
     const guard = evaluateReductionHandOver(
       supersedes,
       candidate,
       target !== null,
       usage,
       reductionResolution,
+      distinctBaseline !== null,
     );
     if (guard.action === 'refuse') return guard.evaluation;
     resolutionApplied = resolutionApplied || guard.resolutionUsed;
     if (guard.resolutionUsed) resolutionSubject = supersedes;
+
+    if (distinctBaseline !== null) {
+      const baselineConflicts = reductionConflicts(
+        distinctBaseline,
+        candidate,
+        usage,
+      );
+      if (baselineConflicts.length > 0) {
+        if (
+          reductionResolution === null ||
+          !baselineConflicts.every(isResolvableReductionConflict)
+        ) {
+          return conflictOnly({
+            reason: 'reduction-requires-resolution',
+            overlapping: 1,
+            reduction: {
+              predecessorVersionId: distinctBaseline.versionId,
+              conflicts: baselineConflicts,
+            },
+          });
+        }
+        resolutionApplied = true;
+        // The named target stays the recorded subject when it was the
+        // predecessor the resolution was consumed against.
+        if (resolutionSubject === null) resolutionSubject = distinctBaseline;
+      }
+    }
   } else {
     // Rule 6c (PDR-11 §8.6, L-05): the candidate retires nothing — the
     // ordinary contiguous renewal — so rule 6b had no predecessor to compare.
@@ -1621,6 +1673,13 @@ function evaluateReductionHandOver(
   namedByDocument: boolean,
   usage: LicenseUsageSnapshot | null,
   resolution: ReductionResolutionIntent | null,
+  /**
+   * True when a distinct continuation baseline is measured as well (rule 6b′),
+   * so an unused resolution is not yet "not applicable": it may still be
+   * consumed by the baseline, and the caller's operation-level check refuses it
+   * when nothing authorized it.
+   */
+  deferUnusedResolution = false,
 ):
   | { action: 'refuse'; evaluation: ImportConflictEvaluation }
   | {
@@ -1632,7 +1691,7 @@ function evaluateReductionHandOver(
     conflicts.push({ kind: 'open-end-closed' });
   }
   if (conflicts.length === 0) {
-    return resolution !== null
+    return resolution !== null && !deferUnusedResolution
       ? {
           action: 'refuse',
           evaluation: conflictOnly({
