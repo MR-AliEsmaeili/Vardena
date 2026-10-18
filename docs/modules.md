@@ -896,6 +896,7 @@ states/current,backdate-check,movements/:id/cost,recalculations}`. Events:
   for Accounting-side reversal/correction. Landed cost, FIFO/LIFO/specific
   identification, lot/serial-level valuation and **any Inventory UI** are also
   outside this integration decision. OQ-24 stays OPEN; ADR-0039 stays **Proposed**.
+- **Quantity Kardex (C-54; explicit API/permission follow-up, 2026-10-18):** `GET /api/v1/inventory/kardex/quantity` is the read-only, quantity-only route. It returns signed `base_quantity` changes, chronological cumulative quantities, opening/closing quantities, and snapshot-backed pages from `inventory_movements`; the ordering is `movement_date ASC, created_at ASC, id ASC`. It requires `Inventory.Kardex.View`, required `organizationId`, `warehouseId` and `itemId`, and accepts optional inclusive BusinessDate bounds. Shared page size is 100 by default / 500 maximum, with a 50,000-row page window. The existing `GET /api/v1/inventory/kardex` remains unchanged under `Inventory.Movement.View`. Neither route checks `inventory_balances`; projection comparison policy remains open as OQ-89.
 - **API (implemented):** `/api/v1/inventory/{items,item-groups,units,unit-conversions,warehouses}`.
   Unit conversions are the exception: **no PATCH and no enable/disable**, because
   effective-dated configuration is never edited in place — a change is a new version
@@ -912,9 +913,10 @@ states/current,backdate-check,movements/:id/cost,recalculations}`. Events:
   lock-ordering cycle with the posting core's `data/inventory-locks.ts`).
 - **Permissions:** `Inventory.{Item,ItemGroup,Unit,Warehouse}` ×
   `{View,Create,Edit,Enable,Disable}` (20) plus `Inventory.UnitConversion.{View,Create}`
-  (2) — 22 master-data codes, **plus the 10 core codes listed under Status, the 11
-  Material Request codes (C-50) and the 4 valuation codes (ADR-0039) = 47
-  registered codes in total**, enforced in the application services.
+  (2) master-data codes and the dedicated `Inventory.Kardex.View` read code
+  (**23 codes combined**), **plus the 10 core codes listed under Status, 11 Material Request codes (C-50),
+  8 business-document codes (C-58), and 6 valuation/pricing codes (ADR-0039) =
+  58 registered Inventory codes in total**, enforced in the application services.
 - **Owns:** items (with units of measure), warehouses, locations, stock balances,
   stock movements (receipt, issue, transfer, adjustment) — movements are
   immutable; balances are derived/materialized from movements.

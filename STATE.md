@@ -2919,3 +2919,46 @@ this model's start.
 added; PDR-18's authorization status was not altered; no new product decision was
 recorded on the Product Owner's behalf; OQ-88 (customer-side) and OQ-78
 (termination instrument) remain open and blocking for their own scopes.
+
+### 52. C-54 — Additive quantity Kardex API/permission follow-up (2026-10-18)
+
+**Status: READY FOR REVIEW — NOT ACCEPTED.** This entry records implementation
+work only; it is not Owner acceptance, does not close any OQ, and does not
+authorize merge. The original quantity Kardex remains the implementation merged
+in PR #115 (`1e3d407fd3f08650e0e70353f96b277e80ef03fd`).
+
+- **Baseline and branch:** `main` at
+  `6d8a4f943e533fc6bc684927335bbc0182f509d5`; all work remains on this session's
+  fixed branch `arena/f25829e6-vardena`.
+- **Additive contract:** `GET /api/v1/inventory/kardex/quantity` requires
+  `organizationId`, `warehouseId`, and `itemId`, accepts optional inclusive
+  BusinessDate bounds, returns signed ledger changes and cumulative quantities
+  in the item's base unit, and uses snapshot-backed chronological pagination.
+  `Inventory.Kardex.View` is separately registered and enforced. The existing
+  `GET /api/v1/inventory/kardex` remains under `Inventory.Movement.View`; a
+  service unit test now explicitly guards that permission and response contract.
+- **Isolation and boundaries:** ODR-3 organization authorization precedes
+  Inventory-owned item/warehouse checks. The new endpoint enforces shared
+  page-size limits and the 50,000-row page window. No new table, migration,
+  valuation/cost field, Accounting integration, or frontend behavior was added.
+  No read of `inventory_balances` was introduced; **OQ-89 remains OPEN** and
+  projection reconciliation is unimplemented pending an Owner decision.
+- **Artifacts:** task brief and implementation/test report are
+  `docs/tasks/c-54/brief.md` and
+  `docs/tasks/c-54/implementation-report.md`. The OpenAPI-derived frontend
+  declaration was regenerated; the committed-file checker and exact-head CI
+  remain required final gates.
+- **Local evidence:** backend typecheck, build, format and lint pass (lint has
+  three pre-existing warnings in unrelated files); backend unit suite passes
+  (164 files / 2,208 tests). Frontend typecheck, lint, format, unit tests
+  (61 files / 426 tests) and build pass. Documentation-link check passes
+  (320 Markdown files, 1,043 relative links). See the implementation report
+  for details.
+- **Not run locally by instruction/environment:** PostgreSQL E2E, live-DB,
+  migrations and Docker checks are CI-only. `prisma:generate` could not download
+  its engine from `binaries.prisma.sh` under the sandbox's outbound-host/TLS
+  restriction, so the local OpenAPI dump warned that permission-mirror sync was
+  unavailable; generation and live database verification must complete in CI.
+- **PR/CI:** pull request and exact-head `backend`, `frontend`, and
+  `generated-api-client` checks are the remaining handoff gates. No self-acceptance
+  or merge is claimed.

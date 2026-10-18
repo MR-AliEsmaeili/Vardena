@@ -2,11 +2,9 @@ import type { PermissionDefinition } from '../../rbac/domain/permission-definiti
 
 /**
  * The Inventory module's master-data permissions (AR-22, ADR-0006).
- *
- * Only master data is covered here — the transactional half of the module
- * (receipts, issues, transfers, adjustments, stock queries) is future work and
- * brings its own permissions (`Inventory.Receipt.*` etc. from
- * docs/security.md §3).
+ * Core transactional permissions are in `inventory-core-permissions.ts`; the
+ * dedicated quantity Kardex read, Material Request, valuation and
+ * business-document codes live in their corresponding module-owned registries.
  *
  * Codes follow `Module.Entity.Action` with the same action vocabulary as the
  * Users and Organization modules (`Edit`, plus separate `Enable`/`Disable`).
