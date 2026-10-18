@@ -1419,6 +1419,153 @@ describe('import conflict evaluation', () => {
   });
 });
 
+/**
+ * C11 policy verification (PDR-18 §2, decided 2026-10-17).
+ *
+ * PDR-18 §2 decides that no special interior/backdated gap-fill path is required
+ * or authorized: activation-validity start cannot be backdated or future-dated
+ * relative to the issuance day, and C11 is "not applicable under the approved
+ * issuance rule". The decision explicitly leaves "any code-path cleanup and
+ * verification" as engineering work — this block is that verification.
+ *
+ * What the block pins is the negative space: there is no separate C11 path in
+ * `evaluateImportConflicts`, and the existing conflict rules already refuse
+ * every shape an interior/backdated gap-fill candidate could take. Each case
+ * below asserts BOTH the refusal reason AND that the same `evaluateImportConflicts`
+ * entry point produced it — so a future refactor that introduces a special C11
+ * arm would have to either rename these reasons or remove this block, making
+ * the policy drift visible at review time.
+ */
+describe('C11 policy: no special interior/backdated gap-fill path (PDR-18 §2)', () => {
+  function evaluate(
+    candidate: Partial<RetainedLicenseVersion>,
+    overrides: Partial<Parameters<typeof evaluateImportConflicts>[0]> = {},
+  ): ReturnType<typeof evaluateImportConflicts> {
+    const full = version(candidate);
+    return evaluateImportConflicts({
+      candidate: full,
+      operationId: full.operationId,
+      documentHash: full.documentHash,
+      supersession: { kind: 'none' },
+      versions: [],
+      at: NOW,
+      ...overrides,
+    });
+  }
+
+  it('routes an interior candidate through the normal rule-5 hand-over, not a special C11 measurement (OQ-80 Option B)', () => {
+    // The retained version still governs at NOW. A candidate whose `validFrom`
+    // is inside its effective window is the "interior gap fill" shape C11 once
+    // contemplated a special measurement path for. PDR-18 §2 decides no such
+    // special path exists: the same rule-5 hand-over that handles any
+    // later-starting successor (OQ-80 Option B) handles this too. The candidate
+    // is ACCEPTED, the predecessor is named as the version it takes over, and
+    // no interior-baseline measurement runs. The continuation baseline helper
+    // (`continuationBaselineFor`) deliberately does not broaden to interior
+    // candidates — see its doc comment.
+    const governing = version(
+      window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+    );
+    const result = evaluate(
+      window('2026-06-01T00:00:00.000Z', '2027-06-01T00:00:00.000Z'),
+      { versions: [governing] },
+    );
+
+    // No refusal, no special C11 verdict — the normal hand-over fired.
+    expect(result.conflict).toBeNull();
+    expect(result.supersedes?.versionId).toBe(governing.versionId);
+  });
+
+  it('refuses an interior candidate that overlaps more than one retained version (rule 4 → overlapping-range)', () => {
+    // When an interior candidate overlaps MORE THAN ONE retained version, rule
+    // 4 refuses it as `overlapping-range` — there is no special C11 measurement
+    // path that would pick one of the overlapping versions as the "interior
+    // baseline". The operator must re-issue the document with a `validFrom`
+    // that does not collide with retained history.
+    const first = version(
+      window('2026-01-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z'),
+    );
+    const second = version(
+      window('2026-09-01T00:00:00.000Z', '2027-09-01T00:00:00.000Z'),
+    );
+    const result = evaluate(
+      window('2026-06-01T00:00:00.000Z', '2027-06-01T00:00:00.000Z'),
+      { versions: [first, second] },
+    );
+
+    expect(result.conflict).toEqual({
+      reason: 'overlapping-range',
+      overlapping: 2,
+    });
+    expect(result.supersedes).toBeNull();
+  });
+
+  it('refuses an explicit supersession that would rewrite past governance (rule 6 → backdated-supersession)', () => {
+    // A "backdated activation start" that names an already-governing version
+    // and would retire it at an instant the target had already exercised is
+    // the second shape C11 once contemplated. Rule 6 refuses it as
+    // `backdated-supersession`, again through the single conflict authority.
+    const governing = version(window('2026-01-01T00:00:00.000Z', null));
+    // The candidate starts in the past relative to NOW and names the governing
+    // version, so the hand-over would remove governance the target already
+    // exercised before the import instant.
+    const result = evaluate(window('2026-03-01T00:00:00.000Z', null), {
+      versions: [governing],
+      supersession: { kind: 'explicit', operationId: governing.operationId },
+    });
+
+    expect(result.conflict).toEqual({
+      reason: 'backdated-supersession',
+      overlapping: 0,
+    });
+    expect(result.supersedes).toBeNull();
+  });
+
+  it('refuses a new-identity post-gap candidate through the ordinary import (rule 7b → post-gap-recovery-requires-dedicated-operation)', () => {
+    // The third C11-adjacent shape is a candidate carrying a NEW license
+    // identity whose window starts strictly after the installation's retained
+    // coverage end. Rule 7b refuses it on the ordinary path and routes it to
+    // the dedicated recovery operation (PDR-13 / OD-LIC-02). C11 adds no
+    // special handling for "the gap is small" or "the gap is interior" — the
+    // same refusal applies regardless of gap size.
+    const ended = version(
+      window('2026-01-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z'),
+    );
+    const result = evaluate(
+      {
+        ...window('2026-03-15T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+        licenseId: '01K7ANOTHERLICENSE000000000',
+      },
+      { versions: [ended] },
+    );
+
+    expect(result.conflict).toEqual({
+      reason: 'post-gap-recovery-requires-dedicated-operation',
+      overlapping: 0,
+    });
+    expect(result.supersedes).toBeNull();
+  });
+
+  it('routes a same-license post-gap candidate to renewal-gap, not to a C11 measurement', () => {
+    // A same-license candidate that starts strictly after the retained
+    // coverage end is a G2 renewal-gap (rule 7), not a C11 measurement against
+    // an interior grant. PDR-18 §2 does not authorize a special measurement
+    // path here either; the operator must re-issue the document with a
+    // contiguous `validFrom` or use the dedicated recovery operation if a new
+    // identity is genuinely required.
+    const ended = version(
+      window('2026-01-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z'),
+    );
+    const result = evaluate(
+      window('2026-03-15T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+      { versions: [ended] },
+    );
+
+    expect(result.conflict?.reason).toBe('renewal-gap');
+    expect(result.supersedes).toBeNull();
+  });
+});
+
 describe('a supersession may not remove governance from the past', () => {
   it('asks only whether already-exercised governance would disappear', () => {
     const governing = version(window('2026-01-01T00:00:00.000Z', null));
