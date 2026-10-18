@@ -2628,7 +2628,10 @@ describe('post-gap recovery and the §8.6 reduction guard (characterisation)', (
 
     // 50 organizations granted and 40 in use, the recovery grants 2 and drops
     // the entitlement — and it is applied.
-    expect(applied.conflict).toBeNull();
+    if (applied.conflict !== null)
+      throw new Error(
+        `expected the recovery to apply, refused: ${applied.conflict.reason}`,
+      );
     expect(applied.resolutionSubject).toBeNull();
   });
 

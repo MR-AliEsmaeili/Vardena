@@ -991,7 +991,7 @@ export class ClientDevicesRepository {
         });
         return { error: failure } as const;
       }
-      if (!context.active) {
+      if (context.version === null || !context.active) {
         // The version still governs this request, but the license does not
         // permit device-lifecycle changes right now (natural expiry, Read-Only
         // or a blocked status). Refuse WITHOUT destroying the retained
@@ -1273,7 +1273,7 @@ export class ClientDevicesRepository {
         });
         return { error: failure } as const;
       }
-      if (!context.active) {
+      if (context.version === null || !context.active) {
         // As in `proveReplacement`: the binding is intact, so the retained
         // request is NOT destroyed. The accepted Owner-signed response stays
         // valid until the request's own expiry and applies after a valid
