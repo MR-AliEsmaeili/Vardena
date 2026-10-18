@@ -73,6 +73,51 @@ The response DTO, durable operation receipt, storage and generated API client ar
 
 This PDR records Product Owner policy only. It does not claim implementation, tests, CI, operational readiness, or Product Owner acceptance of any code. Keep product decisions separate from engineering design, verification and delivery. Do not run heavy local test suites; use targeted lightweight checks locally and reserve heavy/integration/E2E verification for CI. No merge is authorized by this PDR.
 
+## 9. Renewal applies the Owner-authorized new end date (OD-LIC-06; OQ-88)
+
+**Product Owner decision — approved 2026-10-18.**
+
+For a valid renewal of an existing customer license, the business outcome is to
+extend the existing license's validity by applying the **new activation-validity
+end date explicitly chosen and signed by the Owner**. The customer system must
+not use the renewal artifact's `validFrom` as the effective hand-over/start
+instant for that renewal. In particular, importing an otherwise valid renewal
+before the current expiry must not prematurely replace/restart the current
+validity window, create a gap, or discard the remaining paid term. Applying the
+renewal updates the effective end date to the Owner-authorized end date.
+
+**Example:** on 20 Mehr, the customer's current license expires on 30 Mehr. The
+Owner issues and signs a renewal on 20 Mehr with a new end date. The customer
+admin may import it on 20 Mehr; after successful validation and application,
+the current license remains effective continuously and its expiry becomes the
+new signed end date. The customer does not wait until 30 Mehr to import it.
+
+This is renewal semantics, not initial issuance or a general new-license
+override. The existing license/customer/installation binding, valid signature,
+authorization, version/identity rules, audit trail, idempotency, retained
+history, and §8.6 reduction/conflict controls remain mandatory. A repeated
+import must not apply the renewal more than once. This decision does not
+authorize changing a different customer's license, silently transferring an
+installation, extending beyond the signed end date, or bypassing post-gap
+recovery rules for a genuinely lapsed license.
+
+This is a **product decision, not a claim that the current VLIC2 version model
+already supports it**. Engineering must design the smallest compatible protocol
+and persistence change before runtime implementation. The design must specify
+how a renewal is unambiguously bound to the existing license identity, how the
+Owner-signed new end date is represented and verified, how the legacy
+`validFrom` field is handled without weakening signature/schema validation,
+how already-signed artifacts remain compatible, and how conflict checks,
+retained history, audit, retries/replays, expiry/Grace and post-gap recovery
+interact. The single conflict authority and in-transaction re-evaluation remain
+mandatory. Do not simply ignore malformed or unsigned fields, mutate signed
+payloads, rewrite existing vectors to hide incompatibility, or change runtime
+behavior until the design and acceptance tests are reviewed.
+
+OQ-88's product question is answered by this section. Its registry row remains
+active for the implementation/design/evidence gap; that status does not mean
+the business policy is still undecided.
+
 ## Related records
 
 - [PDR-11 — Licensing requirements](PDR-11-vardena-licensing-product-requirements.md)
