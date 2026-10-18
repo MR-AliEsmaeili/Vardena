@@ -30,6 +30,15 @@
 --     the version model in `backend/src/modules/licensing/`) is owned by the
 --     customer runtime and is deliberately NOT modelled here. See OQ-88.
 --
+-- DELIBERATELY ABSENT: any rule requiring `observed_validity_end` to be later
+-- than the recording day. `recordedOn` is when an OPERATOR RECORDED the
+-- observation; it is not the signed license's technical activation start, which
+-- this application cannot know. An operator must be able to record an
+-- observation of an ALREADY-EXPIRED license, so the recorded end may precede,
+-- equal or follow the recording day. The signed-license interval convention
+-- (an end follows its own technical start) remains valid where that start is
+-- authoritatively known — it is simply not this model's start.
+--
 -- Both stored day columns are PostgreSQL `date` (canonical BusinessDate
 -- `YYYY-MM-DD`, docs/datetime.md / AR-32), never a UTC-midnight JS `Date` on
 -- the wire. Forward-only migration; preserves 001, 002, 003 and 004 checksums.
@@ -40,8 +49,8 @@
 -- can have applied it; the ledger checksum guard makes any such mismatch loud.
 
 ALTER TABLE owner.customers
-  ADD COLUMN IF NOT EXISTS contract_start_date date,
-  ADD COLUMN IF NOT EXISTS contract_end_date date,
+  ADD COLUMN contract_start_date date,
+  ADD COLUMN contract_end_date date,
   ADD CONSTRAINT contract_date_order CHECK (
     contract_start_date IS NULL
     OR contract_end_date IS NULL
@@ -49,22 +58,10 @@ ALTER TABLE owner.customers
   );
 
 ALTER TABLE owner.operational_records
-  ADD COLUMN IF NOT EXISTS observed_validity_end date,
+  ADD COLUMN observed_validity_end date,
   -- An observed validity end is a license concept; a server-replacement record
   -- records no license validity at all.
   ADD CONSTRAINT observed_validity_end_license_only CHECK (
     kind = 'LICENSE'
     OR observed_validity_end IS NULL
-  ),
-  -- Retained interval convention: the recorded end must be later than the day
-  -- the observation was recorded. `created_at` is NOT NULL and immutable
-  -- (migration 002), and `timezone('UTC', timestamptz)` is immutable, so this
-  -- is a stable per-row invariant rather than a time-dependent predicate.
-  -- Every pre-existing row has a NULL end, so the constraint validates
-  -- immediately without a backfill and without an UPDATE (an UPDATE followed
-  -- by an ALTER TABLE on the same table fails inside the single migration
-  -- transaction with SQLSTATE 55006).
-  ADD CONSTRAINT observed_validity_end_after_recorded_day CHECK (
-    observed_validity_end IS NULL
-    OR observed_validity_end > (created_at AT TIME ZONE 'UTC')::date
   );

@@ -1373,18 +1373,36 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       recordedOn: "2020-01-01",
     });
     expect(withRecordedOn.status).toBe(400);
-    // The interval convention: the end must be later than the recording day.
-    const beforeRecording = await write(
+    // The recorded end is NEVER compared with the recording day, so an
+    // observation of an ALREADY-EXPIRED license can be recorded.
+    const expired = await write(
       "post",
       "/operational-records/license-observations",
       adminCookie,
     ).send({
       customerId: past.body.id,
       installationReference: code("PDR18-INST"),
-      reason: "End precedes the recording day",
+      reason: "Observation of an already-expired license",
       observedValidityEnd: "2020-01-01",
     });
-    expect(beforeRecording.status).toBe(400);
+    expect(expired.status).toBe(201);
+    expect(expired.body.observedValidityEnd).toBe("2020-01-01");
+    expect(expired.body.observedValidityEnd < expired.body.recordedOn).toBe(
+      true,
+    );
+    // An end exactly ON the recording day is also legal.
+    const sameDay = await write(
+      "post",
+      "/operational-records/license-observations",
+      adminCookie,
+    ).send({
+      customerId: past.body.id,
+      installationReference: code("PDR18-INST"),
+      reason: "End equal to the recording day",
+      observedValidityEnd: expired.body.recordedOn,
+    });
+    expect(sameDay.status).toBe(201);
+    expect(sameDay.body.observedValidityEnd).toBe(sameDay.body.recordedOn);
     // A malformed end is refused, never silently normalized.
     for (const observedValidityEnd of ["2027-13-45", "tomorrow", "1405/07/23"])
       expect(
@@ -1401,13 +1419,15 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
           })
         ).status,
       ).toBe(400);
+    // The two extra observations above were persisted; only the malformed ones
+    // were refused.
     expect(
       (
         await db.pool.query(
           "SELECT count(*)::int AS n FROM owner.operational_records WHERE installation_reference LIKE 'PDR18-INST-%'",
         )
       ).rows[0]!.n,
-    ).toBe(1);
+    ).toBe(3);
   });
   it("PDR-18 §1: a server-replacement record records no license validity end", async () => {
     const made = await customer(adminCookie, uniq("PDR18-REP"));
@@ -1488,17 +1508,40 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     expect(legacyRead.body.recordedOn).toBe("2026-01-01");
     expect(legacyRead.body.observedValidityEnd).toBeNull();
 
-    // The end must be strictly later than the day the observation is recorded.
-    await expect(
-      db.pool.query(
+    // The database no longer requires the recorded end to be later than the
+    // recording day: an operator must be able to record an observation of an
+    // ALREADY-EXPIRED license. A direct SQL insert on the recording day is
+    // accepted, and the API and the database agree on that rule.
+    const expiredRow = ulid();
+    await db.transaction(async (tx) => {
+      await tx.query(
         `INSERT INTO owner.operational_records(
           id, customer_id, kind, observed_status, observation_category,
           installation_reference, observed_validity_end, created_by, updated_by)
         VALUES ($1,$2,'LICENSE','ISSUED','EXTERNAL_ISSUANCE_OBSERVED',$3,
-          (clock_timestamp() AT TIME ZONE 'UTC')::date, $4,$4)`,
-        [ulid(), made.body.id, uniq("PDR18-MIG-INST"), adminId],
-      ),
-    ).rejects.toThrow(/observed_validity_end_after_recorded_day/);
+          '2020-01-01'::date, $4,$4)`,
+        [expiredRow, made.body.id, uniq("PDR18-MIG-EXPIRED"), adminId],
+      );
+      await insertTransition(
+        tx,
+        expiredRow,
+        adminId,
+        "UNRECORDED",
+        "ISSUED",
+        "observation of an already-expired license",
+      );
+    });
+    const expiredRead = await request(app)
+      .get(`/api/v1/operational-records/${expiredRow}`)
+      .set("Cookie", adminCookie);
+    expect(expiredRead.status).toBe(200);
+    const today = new Date().toISOString().slice(0, 10);
+    expect(expiredRead.body.observedValidityEnd).toBe("2020-01-01");
+    expect(expiredRead.body.recordedOn).toBe(today);
+    // The recorded end precedes the recording day, which is now legal.
+    expect(
+      expiredRead.body.observedValidityEnd < expiredRead.body.recordedOn,
+    ).toBe(true);
 
     // Only a license observation may carry a recorded validity end.
     await expect(

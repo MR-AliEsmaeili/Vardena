@@ -15,7 +15,6 @@ import { describe, expect, it } from "vitest";
 import {
   assertActiveAuthorizedActor,
   assertContractDateOrder,
-  assertObservedValidityEnd,
   assertPermission,
   businessDay,
   customerCode,
@@ -1484,18 +1483,53 @@ describe("PDR-18 §1 — contract dates, observation metadata and signed-license
     expect(recordedOnFor("2026-10-17T12:00:00.000Z")).toBe("2026-10-17");
     expect(() => recordedOnFor("not-a-date")).toThrow();
   });
-  it("keeps the operator-recorded end after the recording day", () => {
-    expect(() => assertObservedValidityEnd("2026-10-17", "2026-10-17")).toThrow(
-      /observedValidityEnd/,
+  it("accepts a recorded end before, equal to, or after the recording day", () => {
+    // `recordedOn` is when an operator RECORDED the observation; it is not the
+    // license's technical activation start. An operator must be able to record
+    // an observation of an ALREADY-EXPIRED license, so the recorded end is
+    // never compared with the recording day.
+    const row = {
+      id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      customer_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      customer_code: "Acme.01",
+      display_name: "Acme",
+      kind: "LICENSE",
+      observation_category: "EXTERNAL_ISSUANCE_OBSERVED",
+      observed_status: "ISSUED",
+      installation_reference: "INST-1",
+      created_at: new Date("2026-10-17T00:00:00.000Z"),
+      updated_at: new Date("2026-10-17T00:00:00.000Z"),
+      created_by: "u1",
+      updated_by: "u1",
+    };
+    const endOn = (observed_validity_end: Date | null) =>
+      operationResponse({ ...row, observed_validity_end }, "OWNER_ADMIN");
+    // Before the recording day (an already-expired license).
+    expect(endOn(new Date(2026, 0, 1)).observedValidityEnd).toBe("2026-01-01");
+    // Equal to the recording day.
+    expect(endOn(new Date(2026, 9, 17)).observedValidityEnd).toBe("2026-10-17");
+    // After the recording day (the ordinary forward case).
+    expect(endOn(new Date(2027, 0, 1)).observedValidityEnd).toBe("2027-01-01");
+    // No recorded end is still allowed and is not the same as "unlimited".
+    expect(endOn(null).observedValidityEnd).toBeNull();
+    // The recording day is unaffected by the end in every case.
+    expect(endOn(new Date(2026, 0, 1)).recordedOn).toBe("2026-10-17");
+  });
+  it("still refuses impossible and malformed calendar days", () => {
+    for (const value of [
+      "2027-02-29",
+      "2027-13-01",
+      "2027-1-1",
+      "1405/07/23",
+      "2027-01-01T00:00:00Z",
+    ])
+      expect(() => optionalBusinessDay(value, "observedValidityEnd")).toThrow(
+        /observedValidityEnd/,
+      );
+    // A real leap day is accepted.
+    expect(optionalBusinessDay("2028-02-29", "observedValidityEnd")).toBe(
+      "2028-02-29",
     );
-    expect(() => assertObservedValidityEnd("2026-10-17", "2026-10-16")).toThrow(
-      /observedValidityEnd/,
-    );
-    expect(() =>
-      assertObservedValidityEnd("2026-10-17", "2026-10-18"),
-    ).not.toThrow();
-    // No recorded end is allowed and is not the same as "unlimited".
-    expect(() => assertObservedValidityEnd("2026-10-17", null)).not.toThrow();
   });
   it("records an observation without establishing a signed-license issuance date", () => {
     const row = {

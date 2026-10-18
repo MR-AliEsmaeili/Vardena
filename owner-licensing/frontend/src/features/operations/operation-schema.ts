@@ -27,8 +27,13 @@ const acknowledged = z.boolean().refine((value) => value, o.confirmRequired);
  * PDR-18 §1.2 + PDR-17: the day an observation was recorded is derived by the
  * server from the immutable record instant. There is deliberately no
  * `recordedOn` field here — an operator can never select, backdate or
- * future-date it. Only the operator-recorded, EXCLUSIVE validity end is
- * collected, and an empty value records "no end was recorded".
+ * future-date it.
+ *
+ * Only the operator-recorded validity end is collected, validated as a real
+ * canonical calendar day. It is deliberately NOT compared with the recording
+ * day: the recording day is not the license's technical activation start, so an
+ * operator may record an observation of an already-expired license. An empty
+ * value records "no end was recorded" and is never defaulted.
  */
 const observedValidityEnd = z
   .string()

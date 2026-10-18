@@ -218,20 +218,16 @@ export function recordedOnFor(createdAt: unknown): string {
   fail(500, "InternalError", "The operation failed. Please retry.");
 }
 
-/**
- * The retained interval convention for the operator-recorded validity end: it
- * must be later than the day the observation was recorded. A `null` end means
- * "no end was recorded" — it is never defaulted and never invented.
- */
-export function assertObservedValidityEnd(
-  recordedOn: string,
-  end: string | null,
-): void {
-  if (end !== null && end <= recordedOn)
-    invalid(
-      "observedValidityEnd must be later than the day the observation is recorded.",
-    );
-}
+// There is deliberately NO rule comparing `observedValidityEnd` with
+// `recordedOn`. The recording day is when an operator recorded the observation;
+// it is not the signed license's technical activation start, which this
+// application cannot know (PDR-17). An operator must be able to record an
+// observation of an already-expired license, so the recorded end may precede,
+// equal or follow the recording day. The signed-license interval convention
+// (an end follows its own technical start) is untouched — it simply is not this
+// model's start. A `null` end means "no end was recorded": it is never
+// defaulted, never derived from the recording day and never derived from the
+// contract dates.
 
 /**
  * Contract dates are commercial: either side may be unrecorded, they may lie in

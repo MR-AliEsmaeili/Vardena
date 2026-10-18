@@ -2,7 +2,6 @@ import { ulid } from "ulid";
 import type { PoolClient } from "pg";
 import { audit } from "./db.js";
 import {
-  assertObservedValidityEnd,
   assertPermission,
   evidenceReference,
   fail,
@@ -318,14 +317,14 @@ export async function recordLicenseObservation(
   // The recording day is never sent by the client and never stored in its own
   // column: it is the UTC calendar day of this row's `created_at`, which
   // PostgreSQL sets from `clock_timestamp()` and migration 002 then makes
-  // immutable. The recorded end is checked against that day so no row can ever
-  // carry an end at or before the day it was recorded.
-  const inserted = await tx.query<{ created_at: Date | string }>(
+  // immutable. `observedValidityEnd` is recorded exactly as the operator
+  // supplied it and is deliberately NOT compared with the recording day — an
+  // operator may record an observation of an already-expired license.
+  await tx.query(
     `INSERT INTO owner.operational_records(
       id, customer_id, kind, observed_status, observation_category,
       installation_reference, observed_validity_end, created_by, updated_by)
-    VALUES ($1,$2,'LICENSE',$3,$4,$5,$6,$7,$7)
-    RETURNING created_at`,
+    VALUES ($1,$2,'LICENSE',$3,$4,$5,$6,$7,$7)`,
     [
       recordId,
       customerId,
@@ -335,10 +334,6 @@ export async function recordLicenseObservation(
       observedValidityEnd,
       actorId,
     ],
-  );
-  assertObservedValidityEnd(
-    recordedOnFor(inserted.rows[0]!.created_at),
-    observedValidityEnd,
   );
   await writeTransition(
     tx,

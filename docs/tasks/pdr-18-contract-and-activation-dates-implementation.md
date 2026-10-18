@@ -99,7 +99,7 @@ change to the signed artifact or its validity semantics.
 | ----------------------- | --------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `contract_start_date`   | `owner.customers`           | `date` | Commercial/administrative contract start. May precede the recording.                                                                                     |
 | `contract_end_date`     | `owner.customers`           | `date` | Commercial/administrative contract end. May equal the start.                                                                                             |
-| `observed_validity_end` | `owner.operational_records` | `date` | The validity end the **operator recorded having seen**. Exclusive (half-open convention). `null` = no end was recorded — never defaulted, never derived. |
+| `observed_validity_end` | `owner.operational_records` | `date` | The validity end the **operator recorded having seen**, recorded exactly as supplied. `null` = no end was recorded — never defaulted, never derived, never compared with the recording day. |
 
 **Deliberately absent:** a stored issuance or activation date. The recording day
 (`recordedOn` in the API) is derived on read as
@@ -115,10 +115,16 @@ Invariants enforced by the database:
   side may be unrecorded.
 - `observed_validity_end_license_only` — a `SERVER_REPLACEMENT` record records no
   license validity end at all.
-- `observed_validity_end_after_recorded_day` — the recorded end must be strictly
-  later than the day the observation was recorded. `created_at` is `NOT NULL`
-  and immutable, and `timezone('UTC', timestamptz)` is immutable, so this is a
-  stable per-row invariant rather than a time-dependent predicate.
+
+**Deliberately absent: any rule comparing `observed_validity_end` with the
+recording day.** `recordedOn` is when an operator *recorded* the observation; it
+is not the signed license's technical activation start, which this application
+cannot know. An operator must be able to record an observation of an
+**already-expired** license, so the recorded end may precede, equal or follow the
+recording day. The signed-license interval convention (a technical end follows
+its own technical start) remains valid where that start is authoritatively known
+— it is simply not this model's start, and no start is invented or inferred from
+the recording timestamp to substitute for it.
 
 No backfill runs, so **no historical issuance or activation date is fabricated**
 for rows recorded before the migration. The migration is therefore a pure,
@@ -181,7 +187,7 @@ claims to hold an issuance or activation date.
 | Missing/optional contract dates stay supported; no end is invented             | `optionalBusinessDay` (`undefined`/`null`/`""` ⇒ `null`)                                                                    | `unit.test.ts` "treats an omitted value as not recorded"; `api.test.ts` (open-ended contract ⇒ `contractEndDate` null)                                                                                                                                   |
 | The recording day is server-controlled and cannot be overridden by a client    | `recordedOn` absent from the `object()` allowlist; derived from the immutable `created_at`                                  | `api.test.ts` (client-supplied `recordedOn` ⇒ 400); `unit.test.ts` (schema strips it); `operations-flow.test.tsx` (no editable control)                                                                                                                  |
 | Recording an observation does not establish the signed license's issuance date | no stored issuance/activation column at all; `recordedOn` derived from `created_at`; response states `NOT_IMPLEMENTED`      | `unit.test.ts` "records an observation without establishing a signed-license issuance date"; `unit.test.ts` "moves the recording day when the recording instant moves"; `api.test.ts` migration case (column set contains no issuance/activation column) |
-| The interval convention holds for the operator-recorded end                    | `optionalBusinessDay` + `assertObservedValidityEnd` (`>`) + `observed_validity_end_after_recorded_day` CHECK                | `unit.test.ts` half-open cases; `api.test.ts` (end before the recording day ⇒ 400; malformed end refused, not normalized; direct SQL ⇒ CHECK violation)                                                                                                  |
+| The recorded end is a canonical calendar day and is NEVER compared with the recording day (expired-license observations are recordable) | `optionalBusinessDay` only — canonical `YYYY-MM-DD`, real calendar day. The former `observedValidityEnd > recordedOn` rule was **removed** from the migration CHECK and the domain layer | `unit.test.ts` (end before / equal to / after the recording day all accepted; `null` accepted; impossible dates refused); `api.test.ts` (end before ⇒ 201, end equal ⇒ 201, malformed end ⇒ 400, direct SQL end before the recording day accepted) |
 | A server-replacement record records no license validity                        | `observed_validity_end_license_only` CHECK; UI shows the pair only for `LICENSE`                                            | `api.test.ts` "a server-replacement record records no license validity end"; `unit.test.ts`; direct SQL ⇒ CHECK violation                                                                                                                                |
 | API, audit and UI distinguish and label the three concepts                     | `customerResponse`, `operationResponse`, `audit.ts` allowlist, `customer-page.tsx`, `operation-page.tsx`, `owner-i18n.ts`   | `owner-flow.test.tsx` (contract dates rendered), `operations-flow.test.tsx` (observation metadata rendered, and **no** label claims a verified issuance date)                                                                                            |
 | Contract dates may precede the recording                                       | `assertContractDateOrder` allows any past start                                                                             | `api.test.ts` (`2020-03-20` accepted); `customer-schema.test.ts`                                                                                                                                                                                         |
@@ -321,11 +327,9 @@ classifier marked applicable did not succeed — reports success.
 
 **Known limitations**
 
-- The interval rule requires the observed end to be later than the recording
-  day, so an operator cannot record an end that is already in the past (for
-  example an expired license observed after the fact). This is the interval
-  convention retained from the approved implementation; changing it would be a
-  new product rule, so it is left as-is and flagged here.
+- The Owner application cannot state when a signed license was really issued or
+  activated, and it does not try: no issuance or activation date is stored,
+  derived or claimed.
 - The Owner application still cannot state when a signed license was really
   issued or activated. It now says so explicitly instead of implying otherwise.
 
