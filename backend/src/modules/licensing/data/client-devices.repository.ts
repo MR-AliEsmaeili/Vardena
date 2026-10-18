@@ -794,17 +794,21 @@ export class ClientDevicesRepository {
           'The replacement key is already part of a pending enrollment.',
         );
       }
+      // The fingerprint belongs IN the lookup, not in a post-comparison: with
+      // two pending requests in flight an unfiltered `findFirst` may return an
+      // arbitrary row, let the duplicate through, and leave
+      // `uq_device_replacement_requests_active_key_fingerprint` to reject the
+      // insert — which reaches the client as an unmapped database error instead
+      // of this stable reason.
       const existingRequest =
         await client.clientDeviceReplacementRequest.findFirst({
           where: {
             installationId: input.installationId,
+            keyFingerprint: input.keyFingerprint,
             state: { in: ['CHALLENGE', 'PENDING'] },
           },
         });
-      if (
-        existingRequest !== null &&
-        existingRequest.keyFingerprint === input.keyFingerprint
-      ) {
+      if (existingRequest !== null) {
         throw lifecycleError(
           'replacement-device-key-used',
           'The replacement key is already used by another pending request.',

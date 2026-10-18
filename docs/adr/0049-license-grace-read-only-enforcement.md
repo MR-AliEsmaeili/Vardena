@@ -50,3 +50,59 @@ ADR before dependent implementation.
   `View`/`Export` would be treated as a mutation (fail-safe direction).
 - Follow-up: OQ-45 remains open for contract-termination strictness and PO
   acceptance; OQ-78 cancellation/recovery semantics are not decided here.
+
+## Addendum (2026-10-16) — follow-up round on the merged enforcement
+
+This addendum records verification and coverage added after the enforcement
+slice merged in PR #167 (merge commit `c715a64cdfcbc866fe65613a0375a118e0024a8b`).
+**No decision above changes**, and OQ-45 stays **OPEN** for Product Owner
+acceptance and for the contract-termination strictness question.
+
+1. **The read classification is true of the real catalog.** Decision 3's rule
+   ("the final code segment is `View`/`Export`") was checked against every
+   registered `PermissionDefinition` array in `backend/src/modules/**`
+   (Accounting, Documents, Inventory ×5, Licensing, Organization, RBAC, Users,
+   Workflow). Every registered `...View` code is a read and every other code is
+   a mutation; **`Export` is not currently registered anywhere**, and no
+   registered code has any other read verb (`Print`, `Download`, `Preview`,
+   `List`, …) as its final segment. Two catalog facts are now pinned by a test
+   (`permission-read-classification.spec.ts`) so the rule cannot silently
+   become wrong: a future read-verb code fails the test until it is classified
+   deliberately, and every registered code must map to a module the signed
+   license can entitle.
+2. **Printing has no independent permission.** `Print` exists only as a
+   document-lifecycle action (`DOCUMENT_ACTIONS` in the Documents domain) and
+   has no RBAC code, no registered permission and no endpoint. Read-Only
+   therefore neither blocks nor grants printing today; when a print surface is
+   implemented it is authorized by the owning document's `View`/`Export` code
+   — which Read-Only keeps for entitled modules. If a dedicated `Print` code is
+   ever registered, §1's guard test fails and the Read-Only classification must
+   be decided explicitly rather than inherited.
+3. **Enforcement coverage completed where the previous round only reasoned.**
+   The HTTP path (`AuthorizationGuard` → `hasAllPermissions` →
+   `filterLicensedPermissions`) previously had no test at all in the Read-Only
+   round; it now has focused cases for a principal who *holds* a mutation code
+   in `READ_ONLY` (refused), an entitled read and a platform `Licensing.*` code
+   (kept), an unentitled read (still refused — Read-Only grants nothing new),
+   an entitled mutation during `GRACE` (allowed) and a `BLOCKED` license
+   (platform-only). Boundary and durability coverage was extended for the exact
+   expiry instant, the 336-hour span across a DST transition, one instant
+   expressed in two offsets, a fresh service instance after a restart (the
+   signed deadline never slides) and restoration of mutations on valid renewal
+   with no cache.
+4. **Defect fixed in the customer UI.** The grace notice in the license gate
+   rendered the raw ISO `graceEndsAt` wire value instead of formatting the
+   instant through the shared date foundation (`docs/datetime.md`, AR-32),
+   which the source guard did not catch because its raw-Instant pattern named
+   five fields explicitly. The gate now uses the shared formatter, the notice
+   is an accessible `role="status"` region, the guard's pattern is general
+   (`*At` / `*Timestamp`) and the gate has its first Grace/Read-Only tests.
+5. **Open item raised, not decided here.** The client-device lifecycle treats
+   a license that has crossed its natural expiry instant as "not active" for
+   registration, replacement proof and replacement completion, and destroys a
+   still-pending replacement request as `license-version-changed`. Whether the
+   approved `GRACE` window should permit those operations, and whether a
+   natural lapse may destroy an Owner-approved pending replacement that a valid
+   renewal is supposed to restore "without manual reconstruction", is a product
+   question recorded in the decision brief
+   [`docs/tasks/licensing-open-decisions-brief.md`](../tasks/licensing-open-decisions-brief.md).

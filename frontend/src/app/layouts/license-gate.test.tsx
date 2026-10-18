@@ -1,10 +1,12 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/errors';
 import { queryKeys } from '@/api/query-keys';
 import { AppRoutes } from '@/app/router';
 import { useLicenseState } from '@/features/licensing/use-license-state';
+import { resetDateTimeSettings, setDateTimeSettings } from '@/lib/datetime';
+import { formatDateTime } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
@@ -12,7 +14,9 @@ import {
   testActiveLicenseState,
   testFinancialArea,
   testFiscalYear,
+  testGraceLicenseState,
   testInactiveLicenseState,
+  testReadOnlyLicenseState,
   testUnlicensedLicenseState,
   testOrganization,
   testUser,
@@ -553,5 +557,98 @@ describe('licensing bootstrap stage', () => {
     expect(queryClient.getQueryData(queryKeys.licenseState())).toStrictEqual(
       testInactiveLicenseState,
     );
+  });
+});
+
+/**
+ * OQ-45 / ADR-0049: Grace and Read-Only at the bootstrap stage.
+ *
+ * Both modes are `active` for this stage on purpose — the workspace stays
+ * reachable and the BACKEND withholds the mutation permissions
+ * (`LicensingService.filterLicensedPermissions`), so this component must not
+ * pretend to be the enforcement point. What is pinned here is the notice: it
+ * names the mode, renders the grace deadline through the same canonical
+ * formatter as every other instant in the product (organization IANA zone,
+ * Jalali-first, Persian digits) and never prints the raw ISO wire value.
+ */
+describe('licensing bootstrap stage — Grace and Read-Only notices', () => {
+  /** The fixture's wire instant, pinned so the notice can be checked for leaking it. */
+  const GRACE_ENDS_AT = '2026-10-22T08:30:00.000Z';
+
+  afterEach(() => {
+    resetDateTimeSettings();
+  });
+
+  it('keeps the workspace reachable in Grace and formats the deadline canonically', async () => {
+    setDateTimeSettings({ timeZone: 'UTC' });
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: allAccountingPermissions,
+    });
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([]);
+    vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
+      testGraceLicenseState,
+    );
+
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+
+    expect(testGraceLicenseState.graceEndsAt).toBe(GRACE_ENDS_AT);
+
+    // Grace is not a lockout: the bootstrap order still runs to the
+    // organization stage, which is what proves the workspace is reachable.
+    // (Asserted globally on purpose: the bootstrap screen renders its own
+    // `<main>` while the license is being read, so a `main` handle captured
+    // early can be a detached element.)
+    expect(
+      await screen.findByText(t.organization.emptyTitle),
+    ).toBeInTheDocument();
+
+    // The bootstrap status regions are gone by now, so the only `status`
+    // region left is the license notice itself.
+    const notice = screen.getByRole('status');
+    expect(notice).toHaveTextContent(t.license.graceNotice);
+
+    const rendered = formatDateTime(GRACE_ENDS_AT);
+    expect(rendered).toMatch(/[۰-۹]/);
+    expect(notice).toHaveTextContent(
+      `${t.license.graceEndsAtLabel}: ${rendered}`,
+    );
+    expect(notice.textContent).not.toContain(GRACE_ENDS_AT);
+  });
+
+  it('keeps the workspace reachable in Read-Only, names the mode and formats the deadline', async () => {
+    setDateTimeSettings({ timeZone: 'UTC' });
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: allAccountingPermissions,
+    });
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([]);
+    vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
+      testReadOnlyLicenseState,
+    );
+
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+
+    expect(
+      await screen.findByText(t.organization.emptyTitle),
+    ).toBeInTheDocument();
+
+    const notice = screen.getByRole('status');
+    expect(notice).toHaveTextContent(t.license.readOnlyNotice);
+    expect(notice).toHaveTextContent(
+      `${t.license.graceEndsAtLabel}: ${formatDateTime(GRACE_ENDS_AT)}`,
+    );
+    expect(notice.textContent).not.toContain(GRACE_ENDS_AT);
+  });
+
+  it('renders no license notice while the license is simply active', async () => {
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([]);
+
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+
+    expect(
+      await screen.findByText(t.organization.emptyTitle),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 });
