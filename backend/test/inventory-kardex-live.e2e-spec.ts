@@ -38,11 +38,17 @@ describe.skipIf(DATABASE_URL === undefined)(
     let roleId = '';
 
     beforeAll(async () => {
+      // The shared CI database has only the bootstrap administrator's
+      // unlicensed one-user allowance. This suite tests Inventory/RBAC, not
+      // licensing, so use the explicit local-development provider in this
+      // isolated app instance instead of changing persisted license state.
+      const testConfig = loadAppConfig({
+        DATABASE_URL: DATABASE_URL!,
+        LICENSE_PROVIDER: 'local-development',
+      });
       const built = await createTestApp({
         override: (builder) =>
-          builder
-            .overrideProvider(APP_CONFIG)
-            .useValue(loadAppConfig({ DATABASE_URL: DATABASE_URL! })),
+          builder.overrideProvider(APP_CONFIG).useValue(testConfig),
       });
       app = built.app;
       prisma = app.get(PrismaService);
