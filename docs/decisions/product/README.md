@@ -34,7 +34,7 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 
 ## Records
 
-| [PDR-18](./PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) | Licensing contract dates vs activation validity, no WORM MVP requirement, lifecycle/replay/server/client-device decisions (2026-10-17) | PDR | **Decided — Product Owner approved** | Product policy is decided; technical/API/UI implementation and evidence remain separate |
+| [PDR-18](./PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) | Licensing contract/activation dates, renewal extends existing license to Owner-signed end date without using renewal `validFrom` as effective hand-over (OD-LIC-06), lifecycle/replay/server/client-device decisions, no WORM MVP requirement (updated 2026-10-18) | PDR | **Decided — Product Owner approved; OD-LIC-06 recorded** | Renewal protocol/version-model design, implementation and evidence remain separate |
 
 | ID | Title | Type | Status | Blocks MVP |
 |---|---|---|---|---|
