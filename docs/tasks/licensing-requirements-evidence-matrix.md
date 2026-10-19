@@ -249,3 +249,7 @@ Customer signature verification, signed bytes and license validity are unchanged
 ## OQ-78 PO-78-01 addendum (2026-10-19)
 
 The Product Owner decided PO-78-01 (Option A: offline revocation of a perpetual license is permitted), recorded in [PDR-18 §11](../decisions/product/PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md). Only row F2 changes status. OQ-78 remains **OPEN**; rows F3–F5 and the implementation/evidence for all revocation and recovery behaviour are not claimed. The assessment is [oq-78-revocation-recovery-assessment.md](oq-78-revocation-recovery-assessment.md).
+
+## OQ-78 PO answers addendum (2026-10-19)
+
+The Product Owner answered the six OQ-78 policy questions; see [PDR-18 §11.1](../decisions/product/PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) and the [assessment §9](oq-78-revocation-recovery-assessment.md). Effects on this matrix: F3 (artifact design) now has an approved scope rule (whole identity), a 2-day file expiry whose anchor is unresolved, refusal of unimported identities, and trust-list-bound compromise handling. F4 (persistence and replay) has an approved replay shape (A) pending schema review. F5 (recovery) uses the existing System Administrator account with no separate credential. No row's implementation status changed. OQ-78 remains **OPEN**.

@@ -3098,3 +3098,11 @@ in PR #115 (`1e3d407fd3f08650e0e70353f96b277e80ef03fd`).
 - **Source correction:** the open-decisions brief §3 states that a signed `SUSPENDED` document already yields `BLOCKED`. In the code, the import pipeline refuses any non-`ACTIVE` payload status (`license-import.service.ts`, `not-active`), so it is never persisted. No spec exercises that refusal.
 - **Gate:** **`BLOCKED — PRODUCT DECISION REQUIRED`** for OQ-78 implementation. The open questions (revocation scope, file expiry and ordering, compromise interaction, recovery credential, post-revocation coverage and termination representation, replay envelope) are listed in the assessment §6.
 - **Verification:** no heavy local test suite was run, per policy. The acceptance tests for revocation do not yet exist. A green documentation PR is not evidence of OQ-78 completion.
+
+## 54. OQ-78 — Product Owner answers recorded; gate changed to technical design (2026-10-19, documentation only)
+
+- **Recorded:** the six OQ-78 policy questions answered by the Product Owner, in [PDR-18 §11.1](docs/decisions/product/PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md). Summary: whole-identity revocation scope; 2-day revocation-file expiry; refusal of revocations for unimported identities; compromised-key artifacts effective until trust-list removal; the existing System Administrator account for recovery; PDR-13 for a post-revocation license; termination as an earlier signed `validUntil`; replay shape A.
+- **Open clarification:** the anchor of the 2-day expiry (signed `issuedAt` or first import) is not yet confirmed.
+- **Owner must accept:** if the anchor is `issuedAt`, an unimported revocation lapses and a new revocation file is needed.
+- **Status:** OQ-78 **remains OPEN**. Gate: `BLOCKED — TECHNICAL DESIGN REQUIRED`. No implementation, schema, endpoint or artifact type was added.
+- **Repository note:** the local branch ref had been reset to `main`; it was restored to the PR head `540a7f1` (same content, no file loss) before these edits.

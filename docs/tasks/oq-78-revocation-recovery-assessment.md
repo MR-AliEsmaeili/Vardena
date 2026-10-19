@@ -4,7 +4,7 @@
 
 **Registry status:** OQ-78 **remains OPEN**. Recording decision PO-78-01 does not resolve it (see [PDR-18 §11](../decisions/product/PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md#11-po-78-01--offline-revocation-of-a-perpetual-license-oq-78-2026-10-19)).
 
-**Gate decision:** **`BLOCKED — PRODUCT DECISION REQUIRED`** for OQ-78 implementation. The questions that block it are in §5 and are limited, specific and answerable. Preparatory design may follow the answers; implementation may not start before them.
+**Gate decision (updated 2026-10-19 after Product Owner answers, see §9):** **`BLOCKED — TECHNICAL DESIGN REQUIRED`** for OQ-78 implementation. The policy questions are answered. One product clarification remains (the anchor of the 2-day revocation-file expiry), and the technical design is not yet written. Implementation is not authorized.
 
 **Baseline:** `main` = `df494c22b4c0daa3b4ea285939ada3a43c799eec` (merge of PR #182, OQ-88 renewal protocol, merged 2026-10-19T12:13:45Z). No other open pull request existed at the start of this work.
 
@@ -171,6 +171,8 @@ The question is whether the OQ-78 protocol depends on an unresolved decision abo
 
 ## 6. Phase F — implementation readiness
 
+> **Superseded by §9 (2026-10-19):** the six questions below were answered by the Product Owner. The gate is now `BLOCKED — TECHNICAL DESIGN REQUIRED`.
+
 **Decision: `BLOCKED — PRODUCT DECISION REQUIRED`** for OQ-78 implementation.
 
 Reason: PO-78-01 settles *whether* offline revocation of a perpetual licence is permitted. It does not settle the following, which cannot be decided by engineering without changing product behaviour or security posture.
@@ -222,3 +224,24 @@ Reason: PO-78-01 settles *whether* offline revocation of a perpetual licence is 
 - [PDR-11 §§10, 20, 21](../decisions/product/PDR-11-vardena-licensing-product-requirements.md)
 - [OQ-74 record](licensing-oq-74-signing-key-compromise-response.md) · [OQ-81 design](oq-81-idempotent-replay-technical-design.md) · [Evidence matrix](licensing-requirements-evidence-matrix.md)
 - [Open-decisions brief §3](licensing-open-decisions-brief.md) (contains the `SUSPENDED → BLOCKED` statement corrected in §1.3) · [Phase 0 readiness R-7](licensing-owner-side-phase-0-readiness.md)
+
+---
+
+## 9. Product Owner answers and updated gate (2026-10-19)
+
+The answers are recorded canonically in [PDR-18 §11.1](../decisions/product/PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md). Summary and effect on this assessment:
+
+| Question (§6) | Answer | Effect on the gap split |
+|---|---|---|
+| 1 — revocation scope | Whole license identity, including scheduled successors; reactivation rebuilds the chain explicitly | Areas 3 and 5: the state machine revokes the identity; reactivation is an explicit rebuild. |
+| 2a — file expiry | Expires 2 days after its anchor instant | Area 7: a time-bounded validity window is added. **Anchor is unresolved** (signed `issuedAt` vs first import). |
+| 2b — not-yet-imported license | Refused; the Owner must import first | Area 7: no pre-revocation retention; unknown-identity revocation is a rejection. |
+| 3 — compromised key | Still effective until the key is removed from the trust list | Area 3 and §4 D2: a residual window is accepted, consistent with OQ-74. |
+| 4 — recovery credential | Existing System Administrator account, normal password plus recovery authorization | Area 1: no separate credential. PDR-11 §10.3 wording to be reconciled. OQ-06 stays open. |
+| 5a — license after revocation | Recovered under PDR-13 | Area 5: PDR-13 remains the only route for a lapse. |
+| 5b — termination | Earlier signed `validUntil`; natural-expiry Grace | Area 4: uses the expiry path; no terminal revocation for termination. |
+| 6 — replay shape | Option A approved in principle | Area 6: shape approved; schema, status code and API change still need design review. |
+
+**Consequence the Owner must accept explicitly (Q2a):** if the anchor is `issuedAt`, a revocation not imported within 2 days no longer applies. The wrongly issued perpetual license then stays effective until a new revocation file is issued. This is consistent with PO-78-01 and OQ-74, but it must be communicated to the Owner and to customers.
+
+**Updated gate:** `BLOCKED — TECHNICAL DESIGN REQUIRED`. The only remaining product question is the anchor of the 2-day expiry. Technical design (ADR for the new artifact kind, binding fields, state machine, replay schema, audit events, tests) is required before any implementation. No implementation, schema, migration, endpoint or artifact type is authorized.
