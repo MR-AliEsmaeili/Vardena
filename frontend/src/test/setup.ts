@@ -24,3 +24,14 @@ if (!('matchMedia' in globalThis.window)) {
     }),
   });
 }
+
+// jsdom has no canvas implementation. `thinking-orbs` guards a null 2D
+// context (it returns before painting), but jsdom's own `getContext` logs a
+// "Not implemented" console error when called. Returning `null` explicitly
+// keeps the suite free of that noise while preserving the library's real
+// guarded path. Tests that need a context install their own stub.
+Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+  configurable: true,
+  writable: true,
+  value: () => null,
+});
