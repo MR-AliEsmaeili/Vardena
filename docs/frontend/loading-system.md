@@ -302,6 +302,25 @@ DOM still renders), and the orb integration test installs a no-op context.
 
 ---
 
+## 7. Known limitations and follow-ups
+
+- **Light theme only.** Theme propagation is implemented (`theme="auto"` plus
+  `data-theme` on `<html>`), but no dark palette exists to exercise it.
+- **No server timeout.** A genuinely hung backend keeps the panel visible; a
+  timeout/abort policy belongs to the transport layer and the product contract,
+  not to the loading UI.
+- **Coverage depends on the single HTTP layer.** Any future client that bypasses
+  `apiGet/apiPost/apiPatch/apiDelete` is invisible to the registry. The
+  standards already forbid that, and the review grep is the guard.
+- **Bundle cost.** `thinking-orbs` is ESM/CJS, `sideEffects: false`, and the
+  wrapper imports only `ThinkingOrb`; the canvas engine adds no runtime service.
+- **No visual regression/E2E.** The repository has no Playwright suite; behavior
+  (delay, visibility, announcements, reduced motion) is covered in jsdom, while
+  pixel-level canvas painting is a manual browser-review item, not an automated
+  assertion.
+
+---
+
 ## Appendix — verified `thinking-orbs` surface (0.3.2)
 
 Inspected in `node_modules/thinking-orbs` (package metadata, type declarations,
@@ -324,21 +343,3 @@ Inspected in `node_modules/thinking-orbs` (package metadata, type declarations,
 - **App wrapper:** `src/ui/thinking-orb.tsx` is the only import site; it sets
   `theme="auto"` (root `data-theme`), keeps the library's size presets, and
   marks the canvas decorative when visible status text is present.
-
----
-
-## 7. Known limitations and follow-ups
-
-- **Light theme only.** Theme propagation is implemented (`theme="auto"` plus
-  `data-theme` on `<html>`), but no dark palette exists to exercise it.
-- **No server timeout.** A genuinely hung backend keeps the panel visible; a
-  timeout/abort policy belongs to the transport layer and the product contract,
-  not to the loading UI.
-- **Coverage depends on the single HTTP layer.** Any future client that bypasses
-  `apiGet/apiPost/apiPatch/apiDelete` is invisible to the registry. The
-  standards already forbid that, and the review grep is the guard.
-- **Bundle cost.** `thinking-orbs` is ESM/CJS, `sideEffects: false`, and the
-  wrapper imports only `ThinkingOrb`; the canvas engine adds no runtime service.
-- **No visual regression/E2E.** The repository has no Playwright suite; the
-  canvas rendering itself is intentionally verified in a browser during review,
-  while behavior is covered in jsdom.
