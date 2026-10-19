@@ -283,6 +283,7 @@ Relevant tests:
 | `src/ui/patterns/request-activity.test.tsx` | delayed global panel, no flash for fast requests, one panel for concurrent writes, mixed messages, RTL/live region, ambient vs global, local threshold |
 | `src/ui/thinking-orb.test.tsx` | real `thinking-orbs`: role/name, decorative mode, reduced-motion static frame, animation loop when allowed |
 | `src/ui/button.test.tsx` | double-submit prevention (`disabled`, `aria-busy`, `data-loading`), decorative orb, `asChild` safety |
+| `src/ui/patterns/data-table.test.tsx` | section-level skeleton, rows usable during a local refresh, one local label, failure rendered separately |
 | Existing feature suites | unchanged behavior of login, session expiry, documents, inventory, admin, dashboard and error copy |
 
 The 15 mandatory scenarios from the brief map as follows: success, HTTP error,
