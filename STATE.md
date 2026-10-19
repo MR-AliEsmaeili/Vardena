@@ -3088,3 +3088,13 @@ in PR #115 (`1e3d407fd3f08650e0e70353f96b277e80ef03fd`).
   semantics, PDR-12/PDR-13, §8.6 reductions and the existing role/permission
   model are untouched; a genuine lapse still requires PDR-13's dedicated
   recovery.
+
+## 53. OQ-78 — PO-78-01 recorded; repository verification and remaining-gap assessment (2026-10-19, documentation only)
+
+- **Baseline:** `main` = `df494c22b4c0daa3b4ea285939ada3a43c799eec` (PR #182, OQ-88 renewal). CI on that push commit (run `39250424498`) completed with all jobs successful. No other PR was open at the start.
+- **Decision recorded:** **PO-78-01, Option A — offline revocation of a perpetual license is permitted.** Canonical record: [PDR-18 §11](docs/decisions/product/PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md). Cross-referenced from the OQ-78 row and a dated entry in `docs/open-questions.md`, from evidence-matrix §F (only row F2 changes status), and from the decisions index.
+- **OQ-78 status:** **remains OPEN.** Recording the decision does not resolve it, and no revocation, reactivation, recovery, schema, endpoint or artifact kind was added.
+- **Assessment:** [`docs/tasks/oq-78-revocation-recovery-assessment.md`](docs/tasks/oq-78-revocation-recovery-assessment.md) covers the repository verification, the OQ-78 gap split (product decided vs technical gap), the OQ-74 dependency analysis and the OQ-81 replay dependency.
+- **Source correction:** the open-decisions brief §3 states that a signed `SUSPENDED` document already yields `BLOCKED`. In the code, the import pipeline refuses any non-`ACTIVE` payload status (`license-import.service.ts`, `not-active`), so it is never persisted. No spec exercises that refusal.
+- **Gate:** **`BLOCKED — PRODUCT DECISION REQUIRED`** for OQ-78 implementation. The open questions (revocation scope, file expiry and ordering, compromise interaction, recovery credential, post-revocation coverage and termination representation, replay envelope) are listed in the assessment §6.
+- **Verification:** no heavy local test suite was run, per policy. The acceptance tests for revocation do not yet exist. A green documentation PR is not evidence of OQ-78 completion.
