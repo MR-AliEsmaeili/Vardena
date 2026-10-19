@@ -11,6 +11,29 @@ sees, and what is deliberately excluded.
 
 ---
 
+## 0. Audit baseline (2026-10-19)
+
+Verified in the checkout before implementing (not assumed from memory):
+
+| Area | Reality |
+| --- | --- |
+| Framework | React 19.3, TypeScript 6.0 (strict + `exactOptionalPropertyTypes`), Vite 7.3 |
+| Styling / primitives | Tailwind CSS 4.3 (Vite plugin), local shadcn/ui-style primitives in `src/ui/` |
+| Server state | TanStack Query 5.104 (`queries.retry` < 2 for non-terminal errors, `staleTime` 30 s, mutations `retry: false`) |
+| Transport | Axios 1.20, **one** instance in `src/api/client.ts`; 97 call sites across 6 `*.api.ts` modules; no `fetch`/WebSocket/EventSource |
+| Auth | httpOnly session cookie (ADR-0007), `withCredentials`; **no refresh-token flow**; 401 on `/auth/me`, `/auth/login`, `/auth/logout` is a session probe, other 401s clear the query cache and route to login |
+| Cancellation | TanStack Query `signal` → Axios `AbortSignal`; `normalizeApiError` maps `ERR_CANCELED` to `RequestAborted` |
+| Existing loading UI | `LoadingState`/`FullPageLoading`/`ResolvingState`, `DataTable` skeleton rows, per-mutation `isPending` labels and disabled controls, dashboard widget skeletons, explicit `scopeMissing`/`noPermission` states |
+| Existing feedback contract | `docs/frontend/ux/feedback-standard.md` (one primary channel; skeleton/label at section level; errors persistent; Toasts for completed mutations only) |
+| Pre-existing dependency governance | ADR-0002 fixed stack; ADR-0029/0030/0041 govern frontend state ownership; new dependency needs an ADR (AR-29/AR-30) |
+| Existing tests | 61 files / 426 tests green before the change; feature suites mock `@/api/*`, so the new cross-layer tests drive the real client with a controllable adapter |
+
+The audit found no other loading library and no second HTTP path. The design
+therefore registers activity in the existing interceptor pair instead of adding
+a wrapper around every hook.
+
+---
+
 ## 1. Architecture
 
 ```
@@ -276,6 +299,31 @@ Test harness notes: feature suites mock `@/api/*`, so the registry is exercised
 in `client.test.ts` through the real Axios instance and a controllable adapter.
 jsdom has no canvas 2D context; `src/test/setup.ts` stubs it to `null` (the orb
 DOM still renders), and the orb integration test installs a no-op context.
+
+---
+
+## Appendix — verified `thinking-orbs` surface (0.3.2)
+
+Inspected in `node_modules/thinking-orbs` (package metadata, type declarations,
+`dist/index.es.js`):
+
+- **Public API:** `ThinkingOrb` component + `OrbState`, `OrbSize`, `OrbTheme`,
+  `ThinkingOrbProps` types; export map `.` and `./engine`.
+- **Props:** `state` (`working` default, `searching`, `solving`, `listening`,
+  `connecting`, `weaving`, `composing`, `breathing`, `shaping`), `size`
+  (`64` default, `32`, `20`), `theme` (`auto` default, `light`, `dark`), plus
+  `speed`, `paused`, `color`, `dots`, `dotSize`, `frame`, `gravity`,
+  `style`, `aria-label` and canvas attributes.
+- **Rendering:** one `<canvas role="img">` with the library's default
+  `aria-label`; DPR capped at 2; rAF loop; pauses offscreen via
+  `IntersectionObserver` and on `visibilitychange`; `prefers-reduced-motion:
+  reduce` paints one static frame and returns before scheduling rAF.
+- **Packaging:** ESM + CJS, `sideEffects: false`, peer `react >= 18`.
+- **License:** MIT, © 2026 Jakub Antalik — reproduced in
+  `frontend/THIRD_PARTY_NOTICES.md`.
+- **App wrapper:** `src/ui/thinking-orb.tsx` is the only import site; it sets
+  `theme="auto"` (root `data-theme`), keeps the library's size presets, and
+  marks the canvas decorative when visible status text is present.
 
 ---
 
