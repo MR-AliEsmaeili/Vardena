@@ -118,6 +118,12 @@ OQ-88's product question is answered by this section. Its registry row remains
 active for the implementation/design/evidence gap; that status does not mean
 the business policy is still undecided.
 
+**Engineering design (2026-10-18; cross-reference only, not part of this
+decision):** the protocol/persistence design this section asks for is
+[`od-lic-06-renewal-protocol-and-persistence-design.md`](../../tasks/od-lic-06-renewal-protocol-and-persistence-design.md).
+It is a design document; nothing in it is implemented, and it does not change
+the policy recorded above.
+
 ## Related records
 
 - [PDR-11 — Licensing requirements](PDR-11-vardena-licensing-product-requirements.md)
