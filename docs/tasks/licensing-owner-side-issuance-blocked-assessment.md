@@ -9,6 +9,42 @@ Owner-side license issuance. Four independent decisions are outstanding
 (§4 B-1…B-4). Each is blocking on its own; none can be inferred from an
 existing record without inventing a security or product rule.
 
+> **Superseded 2026-10-19, same day — the Product Owner answered all four.**
+> The gate above is the state this assessment was written in and is kept as the
+> record of why nothing was implemented. The answers are canonical in
+> [PDR-19](../decisions/product/PDR-19-owner-side-issuance-decisions.md) as
+> **OD-LIC-07** (perpetual grants `OWNER_ADMIN`-only, time-limited grants for an
+> authorized `LICENSE_OPERATOR`, and per-user operator permissions configured by
+> `OWNER_ADMIN` — superseding PDR-17's static matrix for that role),
+> **OD-LIC-08** (**air-gapped offline signer**, B-2 Option B, with the four-step
+> prepare → carry → sign → import-and-record flow, so issuance is *not*
+> synchronous and the private key never reaches the Owner web process),
+> **OD-LIC-09** (B-3 controlled operator registration of `installationId` read
+> from the customer's Vardena page, with **source and confirmation recorded**)
+> and **OD-LIC-10** (B-4 Option B, a dedicated durable artifact store outside
+> PostgreSQL, superseding this README-quoted "no raw signed artifacts" clause for
+> license artifacts).
+>
+> **The gate is now `BLOCKED — TECHNICAL DESIGN REQUIRED`, plus two product forks
+> PDR-19 §5 records as undecided:** **F-1** whether "licenses whose limits the
+> Owner has specified" means a persisted per-customer grant profile or operator
+> entry bounded by per-user permission (different schemas, different UIs,
+> different guarantees), and **F-2** the exact configurable permission set and
+> its default for a new operator. OD-LIC-08 also introduces a **new artifact
+> kind** — the signing request — whose format, grammar, versioning and
+> validation are undefined; it is Owner-internal transport for an *unsigned*
+> payload, so PDR-16's "no new canonicalizer / no `VLIC3`" constraints are not
+> breached, but it must be designed before it can be built.
+>
+> Everything in §5 below ("what was deliberately not done") remains correct and
+> in force: nothing was implemented, and no answer in PDR-19 retroactively makes
+> an unsigned request an issued license. §6's ready-to-implement list is now
+> resequenced by OD-LIC-08, because step 2 of that list is no longer a single
+> synchronous transaction but a two-artifact offline round trip. U-1/OQ-74,
+> OQ-75, OQ-78, OQ-81 and OQ-85 all remain OPEN; OQ-90 and OQ-91 gained a
+> product direction and are not closed.
+
+
 **Baseline:** `main` = `510aca58ffdc7cb31b5d0b295d561a4db5d330fb` (merge of PR
 #184). CI on that push commit (run `39298247056`) completed `success`. Local
 branch `arena/59ce3185-vardena` started at the same SHA. One unrelated PR was

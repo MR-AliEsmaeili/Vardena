@@ -15,20 +15,29 @@ replacement or emergency old-server loss. There is **no signer, signing key,
 signed receipt, or claim of cryptographic confirmation**.
 
 Real license issuance (creating, signing and allocating an actual `VLIC2`
-artifact to a customer) is **not available and not authorized**. It is blocked on
-four recorded Product Owner decisions — no issuance permission exists and
-[OQ-75](../docs/open-questions.md) forbids inferring one; signing-key custody is
-undecided ([OQ-74](../docs/open-questions.md)/U-1) and the only mechanism this
-codebase supports is the one the readiness record rejects for production; the
-Owner holds no authoritative customer `installationId`
-([OQ-90](../docs/open-questions.md)); and this README's own "no raw signed
-artifacts" rule conflicts with a re-downloadable artifact
-([OQ-91](../docs/open-questions.md)). Evidence, options and consequences:
+artifact to a customer) is **not available and not implemented**. The four
+Product Owner decisions that blocked it were answered on 2026-10-19 in
+[PDR-19](../docs/decisions/product/PDR-19-owner-side-issuance-decisions.md):
+**OD-LIC-07** perpetual grants are `OWNER_ADMIN`-only, time-limited grants may be
+issued by an authorized `LICENSE_OPERATOR`, and `OWNER_ADMIN` configures each
+operator's permissions per user (this supersedes the static matrix below for
+`LICENSE_OPERATOR`); **OD-LIC-08** custody is an **air-gapped offline signer**, so
+the Owner web app prepares a signing request, the operator carries it to the
+offline environment, the signer validates and signs, and the Owner validates the
+returned artifact before recording it and offering download — issuance is
+therefore **not synchronous**, and the private key never reaches this
+application, its host, its configuration or its database; **OD-LIC-09**
+controlled operator registration of `installationId` read from the customer's
+Vardena page, with source and confirmation recorded; **OD-LIC-10** a dedicated
+durable signed-artifact store outside PostgreSQL. The gate is now
+**`BLOCKED — TECHNICAL DESIGN REQUIRED`** plus two undecided product forks
+(PDR-19 §5 F-1 limit model, F-2 configurable permission set and default).
+Evidence and options:
 [the issuance assessment](../docs/tasks/licensing-owner-side-issuance-blocked-assessment.md).
 `owner.signing_keys` is administrative metadata only — it holds **no public or
 private key material**, and its `id` is an opaque operator label that is not
 cryptographically bound to any key in a customer trust list. Do not read it as
-signing capability.
+signing capability, and do not read PDR-19 as a claim that any of it is built.
 
 ## Boundaries and dependencies
 
@@ -163,6 +172,19 @@ Customer ID and code cannot be updated, including direct SQL updates (trigger).
 Display-name/status/reference changes retain before/after fields and actor in the
 same transaction; a failed audit write rolls back the mutation. No arbitrary
 metadata JSON, customer secrets, contact/CRM/billing data or raw signed artifacts.
+
+> **Superseded in part by OD-LIC-10 (2026-10-19), not yet implemented:**
+> [PDR-19 §4](../docs/decisions/product/PDR-19-owner-side-issuance-decisions.md)
+> approves a **dedicated durable signed-artifact store outside PostgreSQL** for
+> issued license files, so the "no raw signed artifacts" clause above no longer
+> holds for signed license artifacts once that store exists. The rest of the
+> clause is unchanged: no arbitrary metadata JSON, no customer secrets, no
+> contact/CRM/billing data. Today no such store and no signed artifact exist in
+> this application, so the clause still describes the implemented state. A
+> readable archive of signed licenses is a disclosure surface even though it
+> cannot be forged; access must be permission-gated and every retrieval
+> attributable and audited, and retention/backup/restore of that store is not yet
+> decided.
 `002-manual-operations.sql` extends the empty reserved tables. It refuses to run
 if rows already exist. License observations are unique per customer and
 installation. Replacement observations are unique per customer and old
