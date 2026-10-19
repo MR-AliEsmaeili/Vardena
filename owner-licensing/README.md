@@ -14,6 +14,22 @@ while only `Owner Admin` (`replacements.authorize`) can authorize a server
 replacement or emergency old-server loss. There is **no signer, signing key,
 signed receipt, or claim of cryptographic confirmation**.
 
+Real license issuance (creating, signing and allocating an actual `VLIC2`
+artifact to a customer) is **not available and not authorized**. It is blocked on
+four recorded Product Owner decisions — no issuance permission exists and
+[OQ-75](../docs/open-questions.md) forbids inferring one; signing-key custody is
+undecided ([OQ-74](../docs/open-questions.md)/U-1) and the only mechanism this
+codebase supports is the one the readiness record rejects for production; the
+Owner holds no authoritative customer `installationId`
+([OQ-90](../docs/open-questions.md)); and this README's own "no raw signed
+artifacts" rule conflicts with a re-downloadable artifact
+([OQ-91](../docs/open-questions.md)). Evidence, options and consequences:
+[the issuance assessment](../docs/tasks/licensing-owner-side-issuance-blocked-assessment.md).
+`owner.signing_keys` is administrative metadata only — it holds **no public or
+private key material**, and its `id` is an opaque operator label that is not
+cryptographically bound to any key in a customer trust list. Do not read it as
+signing capability.
+
 ## Boundaries and dependencies
 
 - `backend/`: Node 22.12+, TypeScript, Express, PostgreSQL `pg`, Argon2id, ULID.
