@@ -63,11 +63,23 @@ export const auditFilterSchema = z
       ),
     actorId: optionalUlid,
     targetType: oneOf(auditTargetTypes),
-    targetId: optionalUlid,
+    targetId: z.string(),
     outcome: oneOf(auditOutcomes),
     from: optionalDay('from'),
     to: optionalDay('to'),
   })
+  .refine(
+    (v) =>
+      v.targetId === '' ||
+      (v.targetType === 'SigningKey'
+        ? v.targetId.length <= 120 &&
+          !/[\s\p{Cc}\p{Cf}]/u.test(v.targetId) &&
+          !/PRIVATE KEY|-----BEGIN |VLIC1|VLIC2|VDEA1|VDRQ1|VDRP1/i.test(
+            v.targetId,
+          )
+        : ulid.test(v.targetId)),
+    { path: ['targetId'], message: o.invalidId },
+  )
   .refine(
     (value) => value.from === '' || value.to === '' || value.from <= value.to,
     {

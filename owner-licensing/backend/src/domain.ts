@@ -324,6 +324,150 @@ function hasControlCharacter(value: string) {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// OQ-74 — signing-key tracking (Product Owner decision 2026-10-18).
+//
+// The Owner app is observational (PDR-17: cryptographic issuance is "not
+// implemented" here). These validators record an operator's observation of
+// which signing key was used for a license, and the key's current
+// administrative status. The customer runtime remains the authority for actual
+// signature verification.
+//
+// No private key material is ever accepted, stored, or returned by these
+// types — only the public `keyId` (an opaque string up to 120 chars, matching
+// the customer-side `LicenseVersion.keyId` field).
+// ---------------------------------------------------------------------------
+
+export const signingKeyStatuses = ["ACTIVE", "COMPROMISED", "REVOKED"] as const;
+export type SigningKeyStatus = (typeof signingKeyStatuses)[number];
+
+/** Derived safety status of a license observation, based on its signing key. */
+export type SigningKeySafety = "SAFE" | "NEEDS_REVIEW" | "UNKNOWN";
+
+/** Check raw metadata before trimming so boundary controls cannot disappear. */
+export function signingKeyMetadata(
+  value: unknown,
+  field: string,
+  min: number,
+  max: number,
+): string {
+  const raw = text(value, field, min, max, false);
+  if (/[\p{Cc}\p{Cf}]/u.test(raw) || artifactMarkers.test(raw))
+    invalid(`${field} must not contain controls, key material or artifacts.`);
+  return text(raw, field, min, max);
+}
+
+/**
+ * Validate a signing-key id. Matches the customer-side `LicenseVersion.keyId`
+ * constraints: an opaque string of 1..120 chars, no control characters, no
+ * key-material or artifact markers, no whitespace.
+ */
+export function signingKeyId(value: unknown): string {
+  const s = text(value, "signingKeyId", 1, 120, false);
+  if (/[\p{Cc}\p{Cf}]/u.test(s) || artifactMarkers.test(s))
+    invalid(
+      "signingKeyId must not contain control characters, key material, or signed artifacts.",
+    );
+  if (/\s/.test(s)) invalid("signingKeyId must not contain whitespace.");
+  return s;
+}
+
+/** Validate an optional signing-key id (null when not supplied). */
+export function optionalSigningKeyId(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  return signingKeyId(value);
+}
+
+/** Validate a signing-key label (human-friendly, no key material). */
+export function signingKeyLabel(value: unknown): string {
+  const s = signingKeyMetadata(value, "label", 1, 200);
+  if (hasControlCharacter(s) || artifactMarkers.test(s))
+    invalid(
+      "label must not contain control characters, key material, or signed artifacts.",
+    );
+  return s;
+}
+
+/** Validate a signing-key status value. */
+export function signingKeyStatus(value: unknown): SigningKeyStatus {
+  if (!signingKeyStatuses.includes(value as SigningKeyStatus))
+    invalid("Invalid signing-key status.");
+  return value as SigningKeyStatus;
+}
+
+/** Optional notes for a signing key. Bounded; no key material or artifacts. */
+export function signingKeyNotes(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  return signingKeyMetadata(value, "notes", 1, 2000);
+}
+
+/** Optional evidence reference for a signing-key status change. */
+export function signingKeyEvidenceRef(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  return signingKeyMetadata(value, "evidenceReference", 1, 200);
+}
+
+/**
+ * Compute the derived safety status of a license observation from its signing
+ * key's current status. Returns `UNKNOWN` when no signing key is recorded.
+ */
+export function signingKeySafety(
+  signingKeyStatusValue: string | null | undefined,
+): SigningKeySafety {
+  if (signingKeyStatusValue === null || signingKeyStatusValue === undefined)
+    return "UNKNOWN";
+  if (signingKeyStatusValue === "ACTIVE") return "SAFE";
+  // COMPROMISED or REVOKED both surface as NEEDS_REVIEW — the Owner must
+  // decide per-license whether to reissue, revoke, or accept.
+  if (
+    signingKeyStatusValue === "COMPROMISED" ||
+    signingKeyStatusValue === "REVOKED"
+  )
+    return "NEEDS_REVIEW";
+  return "UNKNOWN";
+}
+
+export interface SigningKeyRow {
+  id: string;
+  label: string;
+  status: SigningKeyStatus;
+  status_detected_at: Date | null;
+  status_reason: string | null;
+  evidence_ref: string | null;
+  notes: string | null;
+  created_at: Date;
+  updated_at: Date;
+  created_by: string;
+  updated_by: string;
+}
+
+/** Explicit response allowlist for signing keys; private material never leaks. */
+export function signingKeyResponse(
+  row: Record<string, unknown>,
+  actorRole: Role,
+) {
+  if (!permissions(actorRole).includes("customers.view"))
+    fail(403, "Forbidden", "Signing-key read is not permitted.");
+  return {
+    id: row.id,
+    label: row.label,
+    status: signingKeyStatus(row.status),
+    statusDetectedAt:
+      row.status_detected_at instanceof Date
+        ? row.status_detected_at.toISOString()
+        : null,
+    statusReason: row.status_reason,
+    evidenceRef: row.evidence_ref,
+    notes: row.notes,
+    createdAt:
+      row.created_at instanceof Date ? row.created_at.toISOString() : null,
+    updatedAt:
+      row.updated_at instanceof Date ? row.updated_at.toISOString() : null,
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+  };
+}
+
 export function boundedNote(
   value: unknown,
   field: string,
@@ -518,6 +662,8 @@ export function operationResponse(
 ) {
   if (!permissions(actorRole).includes("operations.view"))
     fail(403, "PermissionDenied", "Operational records are not permitted.");
+  const keyId = row.kind === "LICENSE" ? row.signing_key_id : null;
+  const keyStatus = keyId ? row.signing_key_status : null;
   const body: Record<string, unknown> = {
     id: row.id,
     customerId: row.customer_id,
@@ -544,6 +690,12 @@ export function operationResponse(
     cryptographicVerification: "NOT_IMPLEMENTED",
     signedArtifactProduced: false,
     customerServerContacted: false,
+    // Administrative association only; current status comes from the LEFT JOIN.
+    signingKeyId: keyId ?? null,
+    signingKeyStatus: keyStatus ?? null,
+    signingKeySafety: signingKeySafety(
+      typeof keyStatus === "string" ? keyStatus : null,
+    ),
     createdAt: instant(row.created_at),
     updatedAt: instant(row.updated_at),
     createdBy: row.created_by,

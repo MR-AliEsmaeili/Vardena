@@ -19,11 +19,15 @@ export const auditTargetTypes: readonly AuditTargetType[] = [
   'OperationalRecord',
   'User',
   'AuditArchiveBatch',
+  'SigningKey',
 ];
 export const auditOutcomes: readonly AuditOutcome[] = ['SUCCESS', 'DENIED'];
 
 /** Event types the Owner application writes. Used only as typing suggestions. */
 export const knownAuditEventTypes = [
+  'SIGNING_KEY_REGISTERED',
+  'SIGNING_KEY_STATUS_CHANGED',
+  'SIGNING_KEY_NOTES_UPDATED',
   'AUTH_LOGIN',
   'AUTH_LOGIN_FAILED',
   'AUTH_LOGOUT',

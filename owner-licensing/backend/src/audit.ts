@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { invalid, page } from "./domain.js";
+import { invalid, page, signingKeyId } from "./domain.js";
 
 /**
  * Owner audit explorer contract (PDR-17 "Audit view"; `audit.view` only).
@@ -16,6 +16,7 @@ export const auditTargetTypes = [
   "OperationalRecord",
   "User",
   "AuditArchiveBatch",
+  "SigningKey",
 ] as const;
 export const auditOutcomes = ["SUCCESS", "DENIED"] as const;
 export type AuditTargetType = (typeof auditTargetTypes)[number];
@@ -156,6 +157,12 @@ const auditStateKeys = new Set([
   "recoveredSourceEventCount",
   "recoveredLedgerEventCount",
   "rehydratedDurableBatchCount",
+  // OQ-74 signing-key tracking
+  "signingKeyId",
+  "label",
+  "status",
+  "notes",
+  "evidenceRef",
 ]);
 
 function singleValue(
@@ -226,7 +233,8 @@ export function auditFilters(query: Record<string, unknown>): AuditFilters {
   }
   const targetId = singleValue(query, "targetId");
   if (targetId !== undefined) {
-    if (!ulidPattern.test(targetId)) invalid("targetId is invalid.");
+    if (filters.targetType === "SigningKey") signingKeyId(targetId);
+    else if (!ulidPattern.test(targetId)) invalid("targetId is invalid.");
     filters.targetId = targetId;
   }
   const outcome = singleValue(query, "outcome");

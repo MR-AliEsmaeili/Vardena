@@ -9,6 +9,7 @@ describe('manual operation form contract', () => {
   it('requires an existing customer id, a bounded installation reference and explicit confirmation', () => {
     const valid = {
       customerId,
+      signingKeyId: '',
       installationReference: 'inst.a:1/b',
       reason: 'مشاهده شد',
       evidenceReference: 'CASE-1',
@@ -48,6 +49,7 @@ describe('manual operation form contract', () => {
   it('collects only the operator-recorded validity end, never a recording day', () => {
     const valid = {
       customerId,
+      signingKeyId: '',
       installationReference: 'inst.a:1/b',
       reason: 'مشاهده شد',
       evidenceReference: '',
@@ -84,6 +86,7 @@ describe('manual operation form contract', () => {
   it('rejects identical old and new installation references', () => {
     const value = {
       customerId,
+      signingKeyId: '',
       oldInstallationReference: 'OLD-1',
       replacementInstallationReference: 'OLD-1',
       reason: 'دلیل',
