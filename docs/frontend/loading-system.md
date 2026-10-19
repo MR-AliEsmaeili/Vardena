@@ -322,6 +322,21 @@ DOM still renders), and the orb integration test installs a no-op context.
 
 ---
 
+## 8. Security review
+
+| Question | Finding |
+| --- | --- |
+| Does the registry store request data? | No. Entries hold only a scope and an enum message; no URL, body, header, token, tenant or error is kept. |
+| Can the loading UI leak server internals? | No. It renders fixed dictionary copy; errors, codes and correlation IDs never enter it. |
+| Does the loading system add a network surface? | No. It observes the existing Axios instance and issues no request (proven by the "never creates an extra request" test). |
+| Does `thinking-orbs` phone home, evaluate code or touch storage? | Inspected `dist/`: no `fetch`/`XMLHttpRequest`/`WebSocket`/`EventSource`, no `eval`/`new Function`, no cookie or web-storage access. It paints to a canvas only. |
+| Any HTML injection? | The system renders text nodes only; `dangerouslySetInnerHTML` is not used anywhere in `src/`. |
+| Dependency risk | Single MIT package, ESM+CJS, `sideEffects: false`, peer React ≥18; `npm audit --omit=dev` → **0 vulnerabilities**. |
+| Permission behavior | Unchanged: no route guard, permission check or endpoint was added, removed or bypassed. 401 handling still runs after finalization. |
+| Data loss / double submit | Buttons remain disabled while loading; no form data is reset by any indicator. |
+
+---
+
 ## Appendix — verified `thinking-orbs` surface (0.3.2)
 
 Inspected in `node_modules/thinking-orbs` (package metadata, type declarations,
