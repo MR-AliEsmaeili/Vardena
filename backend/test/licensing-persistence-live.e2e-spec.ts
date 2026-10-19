@@ -2798,13 +2798,27 @@ describe.skipIf(DATABASE_URL === undefined)(
      * refusal.
      *
      * The suite shares ONE installation across its cases (only `beforeAll` and
-     * `afterAll` clean the licensing tables), so every window below starts at
-     * the coverage end the earlier cases actually retained. A window placed
-     * anywhere else would overlap retained coverage or leave a gap, and both are
-     * refusals this change must not weaken.
+     * `afterAll` clean the licensing tables), and the case before this block
+     * resets the installation and leaves a chain ending at 2047-01-01. Every
+     * window below therefore starts at the coverage end that chain actually
+     * retained at that point in the file: the new identity is adjacent to it
+     * (never overlapping and never leaving a gap) and the renewal then hands
+     * over at the target's own end. A window placed anywhere else would be
+     * refused by rules this change must not weaken.
      */
     const DAY_MS = 24 * 60 * 60 * 1000;
     const YEAR_MS = 365 * DAY_MS;
+    const MONTH_MS = 30 * DAY_MS;
+    /**
+     * The grant the preceding case left on the chain. A renewal must never look
+     * like a §8.6 reduction, so these documents keep it exactly: unlimited
+     * organizations, 100 users, the same three modules.
+     */
+    const RETAINED_GRANT = {
+      organizationLimit: null,
+      userLimit: 100,
+      moduleEntitlements: ['organization', 'users', 'rbac'],
+    };
 
     /** The instant the installation's retained coverage currently ends. */
     async function retainedCoverageEnd(): Promise<Date> {
@@ -2822,42 +2836,43 @@ describe.skipIf(DATABASE_URL === undefined)(
       const termStart = await retainedCoverageEnd();
       const termEnd = new Date(termStart.getTime() + YEAR_MS);
       const renewedUntil = new Date(termEnd.getTime() + YEAR_MS);
-      // Issued a month before the term it continues: the whole point of the
+      // Signed a month into the term it continues: the whole point of the
       // protocol is that the governance instant is derived, not signed.
-      const issuedAt = new Date(termStart.getTime() - 30 * DAY_MS);
+      const issuedAt = new Date(termStart.getTime() + MONTH_MS);
 
       const target = licenseFor({
         installationId,
         validFrom: termStart,
         validUntil: termEnd,
-        organizationLimit: 4,
-        userLimit: 10,
+        ...RETAINED_GRANT,
       });
       const first = await importOutcome(target);
-      expect(first.applied).toBe(true);
+      expect(first, first.message).toMatchObject({ applied: true });
 
       const renewal = licenseFor({
         installationId,
         validFrom: issuedAt,
         validUntil: renewedUntil,
-        organizationLimit: 4,
-        userLimit: 10,
         issuedAt,
         renewsOperationId: target.payload.operationId,
+        ...RETAINED_GRANT,
       });
       const second = await importOutcome(renewal);
-      expect(second.applied).toBe(true);
+      expect(second, second.message).toMatchObject({ applied: true });
 
       const rows = await query<{
+        id: string;
         operation_id: string;
+        license_id: string;
         governs_from: Date | null;
         valid_from: Date;
         valid_until: Date | null;
         governs_until: Date | null;
         superseded_by_version_id: string | null;
       }>(
-        `SELECT "operation_id", "governs_from", "valid_from", "valid_until",
-                "governs_until", "superseded_by_version_id"
+        `SELECT "id", "operation_id", "license_id", "governs_from",
+                "valid_from", "valid_until", "governs_until",
+                "superseded_by_version_id"
            FROM "licensing"."license_versions"
           WHERE "installation_id" = $1 AND "operation_id" IN ($2, $3)
           ORDER BY "imported_at", "id"`,
@@ -2924,8 +2939,13 @@ describe.skipIf(DATABASE_URL === undefined)(
       );
       expect(renewed).toHaveLength(1);
       expect(renewed[0]).toMatchObject({
-        renewed_version_id: targetRow!.superseded_by_version_id,
-        previous_license_id: null,
+        // The typed fact names the RENEWED row; the chain edge on that row
+        // names the renewal. They must agree in both directions.
+        renewed_version_id: targetRow!.id,
+        // The renewal was issued under a NEW license identity, so the
+        // immediately preceding license is retained as context (PDR-14 §3.5.4
+        // precedent); it is never a foreign key.
+        previous_license_id: targetRow!.license_id,
         operation_id: renewal.payload.operationId,
       });
       expect(new Date(renewed[0]!.renewed_from!).toISOString()).toBe(
@@ -2971,9 +2991,9 @@ describe.skipIf(DATABASE_URL === undefined)(
       const before = await app
         .get(LicensingService)
         .current(new Date(termEnd.getTime() - 1));
-      expect(before).toMatchObject({ active: true, organizationLimit: 4 });
+      expect(before).toMatchObject({ active: true, userLimit: 100 });
       const atBoundary = await app.get(LicensingService).current(termEnd);
-      expect(atBoundary).toMatchObject({ active: true, organizationLimit: 4 });
+      expect(atBoundary).toMatchObject({ active: true, userLimit: 100 });
       const after = await app
         .get(LicensingService)
         .current(new Date(termEnd.getTime() + 180 * DAY_MS));
@@ -2986,24 +3006,30 @@ describe.skipIf(DATABASE_URL === undefined)(
       const termStart = await retainedCoverageEnd();
       const termEnd = new Date(termStart.getTime() + YEAR_MS);
       const renewedUntil = new Date(termEnd.getTime() + YEAR_MS);
-      const issuedAt = new Date(termStart.getTime() - 30 * DAY_MS);
+      const issuedAt = new Date(termStart.getTime() + MONTH_MS);
 
       const first = licenseFor({
         installationId,
         validFrom: termStart,
         validUntil: termEnd,
-        organizationLimit: 4,
+        ...RETAINED_GRANT,
       });
-      await app.get(LicenseImportService).importDocument(first.file);
+      const firstOutcome = await importOutcome(first);
+      expect(firstOutcome, firstOutcome.message).toMatchObject({
+        applied: true,
+      });
       const renewal = licenseFor({
         installationId,
         validFrom: issuedAt,
         validUntil: renewedUntil,
-        organizationLimit: 4,
         issuedAt,
         renewsOperationId: first.payload.operationId,
+        ...RETAINED_GRANT,
       });
-      await app.get(LicenseImportService).importDocument(renewal.file);
+      const renewalOutcome = await importOutcome(renewal);
+      expect(renewalOutcome, renewalOutcome.message).toMatchObject({
+        applied: true,
+      });
 
       const versionsBefore = await count(
         `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
@@ -3018,14 +3044,14 @@ describe.skipIf(DATABASE_URL === undefined)(
 
       // The tail is now the applied renewal, so renewing the ORIGINAL target
       // again would stack two extensions of the same term.
-      const staleIssuedAt = new Date(renewedUntil.getTime() - 30 * DAY_MS);
+      const staleIssuedAt = new Date(renewedUntil.getTime() - MONTH_MS);
       const stale = licenseFor({
         installationId,
         validFrom: staleIssuedAt,
         validUntil: new Date(renewedUntil.getTime() + YEAR_MS),
-        organizationLimit: 4,
         issuedAt: staleIssuedAt,
         renewsOperationId: first.payload.operationId,
+        ...RETAINED_GRANT,
       });
       const refused = await importOutcome(stale);
       // The named version already carries a recorded supersession, which the
@@ -3045,7 +3071,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         ),
       ).toBe(versionsBefore);
       // A refusal is audited as exactly one rejection — never as an APPLIED
-      // fact and never as a version.
+      // fact, a renewal fact or a version.
       expect(
         await count(
           `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
@@ -3098,27 +3124,30 @@ describe.skipIf(DATABASE_URL === undefined)(
         installationId,
         validFrom: termStart,
         validUntil: termEnd,
-        organizationLimit: 4,
+        ...RETAINED_GRANT,
       });
-      await app.get(LicenseImportService).importDocument(target.file);
+      const targetOutcome = await importOutcome(target);
+      expect(targetOutcome, targetOutcome.message).toMatchObject({
+        applied: true,
+      });
 
-      const leftIssuedAt = new Date(termEnd.getTime() - 30 * DAY_MS);
-      const rightIssuedAt = new Date(termEnd.getTime() - 15 * DAY_MS);
+      const leftIssuedAt = new Date(termStart.getTime() + 10 * DAY_MS);
+      const rightIssuedAt = new Date(termStart.getTime() + 20 * DAY_MS);
       const left = licenseFor({
         installationId,
         validFrom: leftIssuedAt,
         validUntil: new Date(termEnd.getTime() + YEAR_MS),
-        organizationLimit: 4,
         issuedAt: leftIssuedAt,
         renewsOperationId: target.payload.operationId,
+        ...RETAINED_GRANT,
       });
       const right = licenseFor({
         installationId,
         validFrom: rightIssuedAt,
         validUntil: new Date(termEnd.getTime() + 2 * YEAR_MS),
-        organizationLimit: 4,
         issuedAt: rightIssuedAt,
         renewsOperationId: target.payload.operationId,
+        ...RETAINED_GRANT,
       });
 
       const outcomes = await raceImports([left, right]);
