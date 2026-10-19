@@ -621,7 +621,7 @@ function MovementForm({
         </div>
 
         <div className="flex items-center gap-2">
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting} loading={submitting}>
             {submitting
               ? t.inventory.submitting
               : kind === 'receipt'

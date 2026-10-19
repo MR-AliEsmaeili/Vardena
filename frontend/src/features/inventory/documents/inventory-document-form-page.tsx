@@ -322,6 +322,7 @@ function DocumentForm({
             <Button
               type="submit"
               disabled={pending}
+              loading={pending}
               data-testid="submit-document"
             >
               {pending

@@ -356,7 +356,7 @@ function TransferForm({
         </div>
 
         <div className="flex items-center gap-2">
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting} loading={submitting}>
             {submitting ? t.inventory.submitting : t.inventory.submitTransfer}
           </Button>
         </div>

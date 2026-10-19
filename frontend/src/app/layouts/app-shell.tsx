@@ -11,6 +11,7 @@ import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { Button } from '@/ui/button';
+import { BackgroundActivityIndicator } from '@/ui/patterns/request-activity';
 import { AppBreadcrumb } from '../breadcrumb';
 import { navigationSections } from '../navigation';
 import { BootstrapScreen } from './bootstrap-states';
@@ -120,6 +121,8 @@ export function AppShell() {
           </div>
 
           <div className="ms-auto flex items-center gap-3">
+            {/* Ambient refetch/background activity — never a page overlay. */}
+            <BackgroundActivityIndicator />
             {/*
               The organization indicator belongs to the organization stage:
               before the license is active there is no organization context
@@ -141,6 +144,7 @@ export function AppShell() {
               variant="outline"
               size="sm"
               disabled={session.isLoggingOut}
+              loading={session.isLoggingOut}
               onClick={() => {
                 void session.logout();
               }}

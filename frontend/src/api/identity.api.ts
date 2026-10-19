@@ -18,12 +18,22 @@ import type {
  * affordance only; the backend enforces every permission (AR-21).
  */
 
+/**
+ * Auth mutations own their feedback surface (the login form / password form /
+ * top-bar logout button shows the pending label and orb). They are therefore
+ * `background` for the global panel: the same operation must not be announced
+ * twice, and a generic «در حال ذخیره اطلاعات…» would misdescribe signing in.
+ */
 export function login(body: LoginRequest): Promise<AuthenticatedUser> {
-  return apiPost<AuthenticatedUser, LoginRequest>('/auth/login', body);
+  return apiPost<AuthenticatedUser, LoginRequest>('/auth/login', body, {
+    vardenaRequestActivity: { scope: 'background' },
+  });
 }
 
 export function logout(): Promise<void> {
-  return apiPost<void>('/auth/logout');
+  return apiPost<void>('/auth/logout', undefined, {
+    vardenaRequestActivity: { scope: 'background' },
+  });
 }
 
 export function changePassword(
@@ -32,6 +42,7 @@ export function changePassword(
   return apiPost<AuthenticatedUser, ChangePasswordRequest>(
     '/auth/change-password',
     body,
+    { vardenaRequestActivity: { scope: 'background' } },
   );
 }
 

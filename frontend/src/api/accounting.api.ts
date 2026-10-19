@@ -377,7 +377,10 @@ export function issueAccountingDocument(
   return apiPost<AccountingDocument, DocumentTransitionInput>(
     `/accounting-documents/${encodeURIComponent(documentId)}/issue`,
     body,
-    { params: { organizationId } },
+    {
+      params: { organizationId },
+      vardenaRequestActivity: { message: 'processing' },
+    },
   );
 }
 
@@ -389,7 +392,10 @@ export function finalizeAccountingDocument(
   return apiPost<AccountingDocument, DocumentTransitionInput>(
     `/accounting-documents/${encodeURIComponent(documentId)}/finalize`,
     body,
-    { params: { organizationId } },
+    {
+      params: { organizationId },
+      vardenaRequestActivity: { message: 'processing' },
+    },
   );
 }
 
@@ -401,7 +407,10 @@ export function reverseAccountingDocument(
   return apiPost<AccountingDocument, ReverseAccountingDocumentInput>(
     `/accounting-documents/${encodeURIComponent(documentId)}/reverse`,
     body,
-    { params: { organizationId } },
+    {
+      params: { organizationId },
+      vardenaRequestActivity: { message: 'processing' },
+    },
   );
 }
 

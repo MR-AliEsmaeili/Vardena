@@ -475,7 +475,7 @@ function DocumentForm({
             >
               {t.app.cancel}
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={submitting} loading={submitting}>
               {submitLabel}
             </Button>
           </div>

@@ -2,6 +2,7 @@ import { t } from '@/lib/i18n';
 import { formatCount } from '@/lib/format';
 import { Button } from '@/ui/button';
 import { Select } from '@/ui/select';
+import { LocalFetchingIndicator } from './request-activity';
 
 /** Stable reference so the default does not change identity per render. */
 const DEFAULT_PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
@@ -14,6 +15,8 @@ export interface PaginationProps {
   onPageChange: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
   disabled?: boolean;
+  /** A new server page is in flight; shows the local refresh indicator. */
+  fetching?: boolean;
 }
 
 /**
@@ -31,6 +34,7 @@ export function Pagination({
   onPageChange,
   onPageSizeChange,
   disabled = false,
+  fetching = false,
 }: PaginationProps) {
   const pageCount = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
   const canPrevious = page > 1 && !disabled;
@@ -42,6 +46,7 @@ export function Pagination({
         <span>
           {t.table.rowsTotal}: <span className="num">{formatCount(total)}</span>
         </span>
+        <LocalFetchingIndicator active={fetching} />
         {onPageSizeChange !== undefined && (
           <label className="flex items-center gap-2">
             <span className="text-xs text-slate-500">{t.table.pageSize}</span>

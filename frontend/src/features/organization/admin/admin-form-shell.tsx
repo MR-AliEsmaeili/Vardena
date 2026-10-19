@@ -108,6 +108,7 @@ export function AdminFormShell({
               <Button
                 type="submit"
                 disabled={submitting}
+                loading={submitting}
                 data-testid={`${testId}-submit`}
               >
                 {submitting ? t.orgAdmin.saving : submitLabel}

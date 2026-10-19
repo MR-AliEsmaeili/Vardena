@@ -1,3 +1,4 @@
+import type { AxiosRequestConfig } from 'axios';
 import { apiGet, apiPost } from './client';
 import type {
   ClientDevice,
@@ -59,8 +60,19 @@ export function importLicenseDocument(
   return apiPost<LicenseImportResult, ImportLicenseDocumentRequest>(
     '/license/import',
     request,
+    // The license import form owns its own «در حال بررسی و ثبت مجوز…» state;
+    // a second generic global announcement would be duplicate feedback.
+    { vardenaRequestActivity: { scope: 'background' } },
   );
 }
+
+/**
+ * Device lifecycle commands are explicit, user-initiated exchanges; none of
+ * them is a routine save, so they report the neutral `processing` message.
+ */
+const DEVICE_ACTIVITY: AxiosRequestConfig = {
+  vardenaRequestActivity: { message: 'processing' },
+};
 
 /** Retained installation-wide client-device inventory and signed quota. */
 export function getClientDeviceInventory(
@@ -90,7 +102,7 @@ export function createDeviceEnrollmentChallenge(
   return apiPost<
     DeviceEnrollmentChallenge,
     CreateDeviceEnrollmentChallengeRequest
-  >('/license/devices/enrollment-challenges', request);
+  >('/license/devices/enrollment-challenges', request, DEVICE_ACTIVITY);
 }
 
 /** Verify the device's detached signature and activate its retained row. */
@@ -101,6 +113,7 @@ export function activateDeviceEnrollment(
   return apiPost<ClientDevice, ProveDeviceEnrollmentRequest>(
     `/license/devices/enrollment-challenges/${encodeURIComponent(challengeId)}/activate`,
     request,
+    DEVICE_ACTIVITY,
   );
 }
 
@@ -110,6 +123,8 @@ export function deactivateClientDevice(
 ): Promise<ClientDevice> {
   return apiPost<ClientDevice>(
     `/license/devices/${encodeURIComponent(deviceId)}/deactivate`,
+    undefined,
+    DEVICE_ACTIVITY,
   );
 }
 
@@ -124,6 +139,7 @@ export function createDeviceReplacementChallenge(
   >(
     `/license/devices/${encodeURIComponent(oldDeviceId)}/replacement-challenges`,
     request,
+    DEVICE_ACTIVITY,
   );
 }
 
@@ -135,6 +151,7 @@ export function proveDeviceReplacement(
   return apiPost<DeviceReplacementRequestExport, ProveDeviceReplacementRequest>(
     `/license/devices/replacements/${encodeURIComponent(requestId)}/prove`,
     request,
+    DEVICE_ACTIVITY,
   );
 }
 
@@ -156,7 +173,7 @@ export function importDeviceReplacementResponse(
   return apiPost<
     DeviceReplacementCompletion,
     ImportDeviceReplacementResponseRequest
-  >('/license/devices/replacements/import', request);
+  >('/license/devices/replacements/import', request, DEVICE_ACTIVITY);
 }
 
 /** Terminally cancel a challenge or pending replacement request. */
@@ -165,5 +182,7 @@ export function cancelDeviceReplacement(
 ): Promise<DeviceReplacementResult> {
   return apiPost<DeviceReplacementResult>(
     `/license/devices/replacements/${encodeURIComponent(requestId)}/cancel`,
+    undefined,
+    DEVICE_ACTIVITY,
   );
 }

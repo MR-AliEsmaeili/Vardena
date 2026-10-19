@@ -17,6 +17,7 @@ import {
   TableWrapper,
 } from '@/ui/table';
 import { ApiErrorAlert } from './api-error-alert';
+import { LocalFetchingIndicator } from './request-activity';
 import { LoadingState } from './states';
 import { Pagination, type PaginationProps } from './pagination';
 
@@ -96,7 +97,7 @@ export function DataTable<TRow>({
   }
 
   return (
-    <div className="space-y-0">
+    <div className="space-y-0" aria-busy={isFetching ? true : undefined}>
       <TableWrapper
         className={cn(isFetching && 'opacity-70 transition-opacity')}
       >
@@ -192,8 +193,18 @@ export function DataTable<TRow>({
             )}
           </TableBody>
         </Table>
-        {pagination !== undefined && (
-          <Pagination {...pagination} disabled={isFetching} />
+        {pagination !== undefined ? (
+          <Pagination
+            {...pagination}
+            disabled={isFetching}
+            fetching={isFetching}
+          />
+        ) : (
+          // Tables without server pagination still get their OWN local
+          // refresh status, so the section never depends on the global panel.
+          <div className="border-t border-slate-100 px-3 py-2">
+            <LocalFetchingIndicator active={isFetching} />
+          </div>
         )}
       </TableWrapper>
     </div>

@@ -107,7 +107,11 @@ export function FinancialAreaCreateForm({
             )}
           </FormField>
           {mutation.isError && <ApiErrorAlert error={mutation.error} />}
-          <Button type="submit" disabled={mutation.isPending}>
+          <Button
+            type="submit"
+            disabled={mutation.isPending}
+            loading={mutation.isPending}
+          >
             {mutation.isPending
               ? t.financialContext.creating
               : t.financialContext.createArea}

@@ -2,6 +2,7 @@ import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { SessionProvider } from '@/features/auth/session-context';
 import { OrganizationProvider } from '@/features/organization/organization-context';
+import { GlobalRequestIndicator } from '@/ui/patterns/request-activity';
 import { ToastProvider } from '@/ui/patterns/toast';
 import { createQueryClient } from './query-client';
 
@@ -25,7 +26,16 @@ export function AppProviders({ children, queryClient }: AppProvidersProps) {
     <QueryClientProvider client={client}>
       <SessionProvider>
         <OrganizationProvider>
-          <ToastProvider>{children}</ToastProvider>
+          <ToastProvider>
+            {children}
+            {/*
+              ONE global request indicator for the whole application. It reads
+              the single HTTP activity registry and renders at most one
+              non-modal panel; mounting it here (not per page) is what makes
+              concurrent requests share one announcement.
+            */}
+            <GlobalRequestIndicator />
+          </ToastProvider>
         </OrganizationProvider>
       </SessionProvider>
     </QueryClientProvider>
