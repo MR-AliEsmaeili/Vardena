@@ -1434,6 +1434,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/kardex/quantity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a paginated quantity-only Kardex for one item and warehouse. */
+        get: operations["InventoryKardexController_quantity_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/kardex": {
         parameters: {
             query?: never;
@@ -5238,6 +5255,74 @@ export interface components {
              * @enum {string}
              */
             repricing?: "recalculate" | "skip";
+        };
+        KardexQuantityMovementLineDto: {
+            /** Format: ulid */
+            movementId: string;
+            /**
+             * Format: date
+             * @example 2026-10-08
+             */
+            date: string;
+            /**
+             * Format: date-time
+             * @description Ledger entry instant; the second chronological ordering key.
+             */
+            createdAt: string;
+            /** @enum {string} */
+            movementType: "inbound" | "outbound" | "transfer_in" | "transfer_out" | "adjustment_in" | "adjustment_out" | "reversal_in" | "reversal_out" | "purchase_return" | "sales_return";
+            /**
+             * @description Signed change in the item base unit; positive increases quantity and negative decreases it.
+             * @example -20.0000
+             */
+            quantityChange: string;
+            /**
+             * @description Ledger-derived cumulative quantity after this movement, in the base unit.
+             * @example 80.0000
+             */
+            quantityAfter: string;
+            /** @description Opaque source reference id. */
+            referenceId?: string;
+            /** @description Opaque source reference kind. */
+            referenceType?: string;
+            /**
+             * Format: ulid
+             * @description Transfer identity.
+             */
+            transferId?: string;
+            /**
+             * Format: ulid
+             * @description Original ledger movement identity for a reversal.
+             */
+            reversalOfMovementId?: string;
+        };
+        QuantityKardexResponseDto: {
+            items: components["schemas"]["KardexQuantityMovementLineDto"][];
+            total: number;
+            page: number;
+            pageSize: number;
+            /**
+             * @description Ledger-derived quantity before the requested range, in the base unit.
+             * @example 100.0000
+             */
+            opening: string;
+            /**
+             * @description Ledger-derived quantity after the full requested range, in the base unit.
+             * @example 130.0000
+             */
+            closing: string;
+            /**
+             * @description Explains how the opening quantity was derived.
+             * @enum {string}
+             */
+            openingBasis: "ledger_movements_before_date_from" | "zero_before_all_recorded_movements";
+            /**
+             * Format: ulid
+             * @description Base unit for every quantity in the response.
+             */
+            unitId: string;
+            /** @description Pass unchanged for every subsequent page. */
+            snapshot: string;
         };
         InventoryKardexRowDto: {
             /** Format: ulid */
@@ -13726,6 +13811,68 @@ export interface operations {
             };
             /** @description The reversal date precedes the original movement, a backdated reversal lacks the required confirmation or repricing choice, a configured valuation method is not implemented, or the reversal would violate the negative-stock policy. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryKardexController_quantity_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Not supported for the quantity Kardex. Rows are always ordered by movement day, creation time, and ledger id; providing sort returns 400. */
+                sort?: string;
+                /** @description Owning organization. */
+                organizationId: string;
+                warehouseId: string;
+                itemId: string;
+                /** @description Inclusive lower bound on the movement business day, canonical Gregorian YYYY-MM-DD. */
+                dateFrom?: string;
+                /** @description Inclusive upper bound on the movement business day, canonical Gregorian YYYY-MM-DD. */
+                dateTo?: string;
+                /** @description Opaque PostgreSQL ledger snapshot returned by page 1. Required for pages after page 1. */
+                snapshot?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuantityKardexResponseDto"];
+                };
+            };
+            /** @description Invalid range, unsupported ordering, page limit, or missing page snapshot. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing Inventory.Kardex.View. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The organization, item, or warehouse is not available in the requested scope. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

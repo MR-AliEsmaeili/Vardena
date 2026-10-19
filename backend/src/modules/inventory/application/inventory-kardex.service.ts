@@ -1,12 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
+import { toOffset } from '../../../kernel/pagination/paginated-result.js';
 import { resolveBusinessDateFilter } from './inventory-posting-support.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { InventoryKardexRepository } from '../data/inventory-kardex.repository.js';
 import { UnitConversionsRepository } from '../data/unit-conversions.repository.js';
 import { MOVEMENT_PERMISSIONS } from '../domain/inventory-core-permissions.js';
+import { KARDEX_PERMISSIONS } from '../domain/inventory-kardex-permissions.js';
+import type {
+  KardexMovementLine,
+  QuantityKardexResult,
+} from '../domain/kardex-movement.js';
+import type { MovementType } from '../domain/movement-type.js';
 import {
   resolveVersionAt,
   type UnitConversion,
@@ -36,6 +43,28 @@ export interface KardexQuery {
   pageSize: number;
 }
 
+export type QuantityKardexQuery = Omit<KardexQuery, 'displayUnitId'> & {
+  /** The chronological Kardex ordering is fixed; no client sort is supported. */
+  sort?: string | undefined;
+};
+
+/** Task 18's bounded-report page window, applied to this quantity endpoint. */
+export const MAX_KARDEX_REPORT_ROWS = 50_000;
+
+function assertKardexPageBound(page: number, pageSize: number): void {
+  const { skip, take } = toOffset(page, pageSize);
+  if (skip >= MAX_KARDEX_REPORT_ROWS) {
+    throw AppException.badRequest(
+      `The requested page is beyond the ${MAX_KARDEX_REPORT_ROWS}-row Kardex limit.`,
+    );
+  }
+  if (skip + take > MAX_KARDEX_REPORT_ROWS) {
+    throw AppException.badRequest(
+      `A Kardex request cannot read beyond the ${MAX_KARDEX_REPORT_ROWS}-row limit.`,
+    );
+  }
+}
+
 @Injectable()
 export class InventoryKardexService {
   constructor(
@@ -50,7 +79,68 @@ export class InventoryKardexService {
 
   async read(query: KardexQuery) {
     await this.authorization.requireAllPermissions([MOVEMENT_PERMISSIONS.VIEW]);
+    return this.readAuthorized(query);
+  }
+
+  async readQuantity(
+    query: QuantityKardexQuery,
+  ): Promise<QuantityKardexResult> {
+    await this.authorization.requireAllPermissions([KARDEX_PERMISSIONS.VIEW]);
+    const { sort, ...kardexQuery } = query;
+    const result = await this.readAuthorized(kardexQuery, {
+      enforcePageBound: true,
+      sort,
+    });
+    return {
+      items: result.items.map((movement): KardexMovementLine => ({
+        movementId: movement.movementId,
+        date: movement.movementDate,
+        createdAt: movement.createdAt,
+        movementType: movement.movementType as MovementType,
+        quantityChange: movement.signedQuantity,
+        quantityAfter: movement.runningQuantity,
+        ...(movement.referenceId === null
+          ? {}
+          : { referenceId: movement.referenceId }),
+        ...(movement.referenceType === null
+          ? {}
+          : { referenceType: movement.referenceType }),
+        ...(movement.transferId === null
+          ? {}
+          : { transferId: movement.transferId }),
+        ...(movement.reversalOfMovementId === null
+          ? {}
+          : { reversalOfMovementId: movement.reversalOfMovementId }),
+      })),
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      opening: result.opening,
+      closing: result.closing,
+      openingBasis: result.openingBasis,
+      snapshot: result.snapshot,
+      unitId: result.scope.baseUnitId,
+    };
+  }
+
+  private async readAuthorized(
+    query: KardexQuery,
+    options: {
+      enforcePageBound?: boolean | undefined;
+      sort?: string | undefined;
+    } = {},
+  ) {
+    // Permission checks are deliberately completed by the public method before
+    // ODR-3 scope checks, matching the repository-wide permission-first rule.
     await this.organizations.assertOrganizationInScope(query.organizationId);
+    if (options.sort !== undefined) {
+      throw AppException.badRequest(
+        'Kardex ordering is fixed chronologically by business day, entry time, and ledger id.',
+      );
+    }
+    if (options.enforcePageBound) {
+      assertKardexPageBound(query.page, query.pageSize);
+    }
     // Canonical YYYY-MM-DD days compare lexically in chronological order.
     if (query.dateFrom && query.dateTo && query.dateFrom > query.dateTo) {
       throw AppException.badRequest('dateFrom must not be later than dateTo.');
@@ -143,8 +233,8 @@ export class InventoryKardexService {
       opening: convert(page.openingBaseQuantity, openingAt),
       closing: convert(page.closingBaseQuantity, closingAt),
       openingBasis: dateFrom
-        ? 'ledger_movements_before_date_from'
-        : 'zero_before_all_recorded_movements',
+        ? ('ledger_movements_before_date_from' as const)
+        : ('zero_before_all_recorded_movements' as const),
       snapshot: page.snapshot,
     };
   }

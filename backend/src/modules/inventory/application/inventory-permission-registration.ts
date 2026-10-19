@@ -1,6 +1,7 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { PermissionRegistry } from '../../rbac/application/permission-registry.js';
 import { INVENTORY_PERMISSION_DEFINITIONS } from '../domain/inventory-permissions.js';
+import { INVENTORY_KARDEX_PERMISSION_DEFINITIONS } from '../domain/inventory-kardex-permissions.js';
 import { INVENTORY_CORE_PERMISSION_DEFINITIONS } from '../domain/inventory-core-permissions.js';
 import { MATERIAL_REQUEST_PERMISSION_DEFINITIONS } from '../domain/material-request-permissions.js';
 import { INVENTORY_VALUATION_PERMISSION_DEFINITIONS } from '../domain/inventory-valuation-permissions.js';
@@ -16,10 +17,10 @@ import { INVENTORY_DOCUMENT_PERMISSION_DEFINITIONS } from '../domain/inventory-d
  * fails module initialization instead of silently producing a permission
  * nobody can enforce.
  *
- * Also registers Material Request's permission vocabulary (C-50), the
- * valuation vocabulary (PDR-05) and the Inventory Business Document
- * vocabulary (C-58) — same module, same startup hook, no
- * separate registration class: both are Inventory-owned, not new modules.
+ * Also registers the dedicated quantity Kardex read code, Material Request's
+ * permission vocabulary (C-50), valuation (PDR-05) and Inventory Business
+ * Document vocabulary (C-58) — same module, same startup hook, no separate
+ * registration class: all are Inventory-owned, not new modules.
  */
 @Injectable()
 export class InventoryPermissionRegistration implements OnModuleInit {
@@ -28,6 +29,7 @@ export class InventoryPermissionRegistration implements OnModuleInit {
   onModuleInit(): void {
     this.registry.register([
       ...INVENTORY_PERMISSION_DEFINITIONS,
+      ...INVENTORY_KARDEX_PERMISSION_DEFINITIONS,
       ...INVENTORY_CORE_PERMISSION_DEFINITIONS,
       ...MATERIAL_REQUEST_PERMISSION_DEFINITIONS,
       ...INVENTORY_VALUATION_PERMISSION_DEFINITIONS,
