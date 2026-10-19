@@ -210,6 +210,7 @@ export function recalculateInventoryValuation(
   return apiPost<RecalculationResult>(
     '/inventory/valuation/recalculations',
     body,
+    { vardenaRequestActivity: { message: 'processing' } },
   );
 }
 
@@ -285,6 +286,7 @@ export function finalizeInventoryDocument(
 ): Promise<InventoryDocument> {
   return apiPost<InventoryDocument>(`${DOCUMENTS_PATH}/${id}/finalize`, body, {
     params: cleanParams({ organizationId }),
+    vardenaRequestActivity: { message: 'processing' },
   });
 }
 
@@ -296,7 +298,10 @@ export function accountingPostInventoryDocument(
   return apiPost<InventoryDocument>(
     `${DOCUMENTS_PATH}/${id}/accounting-post`,
     {},
-    { params: cleanParams({ organizationId }) },
+    {
+      params: cleanParams({ organizationId }),
+      vardenaRequestActivity: { message: 'processing' },
+    },
   );
 }
 
@@ -308,7 +313,10 @@ export function sealInventoryDocument(
   return apiPost<InventoryDocument>(
     `${DOCUMENTS_PATH}/${id}/seal`,
     {},
-    { params: cleanParams({ organizationId }) },
+    {
+      params: cleanParams({ organizationId }),
+      vardenaRequestActivity: { message: 'processing' },
+    },
   );
 }
 
@@ -320,5 +328,6 @@ export function cancelInventoryDocument(
 ): Promise<InventoryDocument> {
   return apiPost<InventoryDocument>(`${DOCUMENTS_PATH}/${id}/cancel`, body, {
     params: cleanParams({ organizationId }),
+    vardenaRequestActivity: { message: 'processing' },
   });
 }
