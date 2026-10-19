@@ -166,6 +166,7 @@ export function LoginPage() {
                 type="submit"
                 className="w-full"
                 disabled={session.isLoggingIn}
+                loading={session.isLoggingIn}
               >
                 {session.isLoggingIn ? t.auth.submitting : t.auth.submit}
               </Button>

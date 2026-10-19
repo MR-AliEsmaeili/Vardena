@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useSession } from '@/features/auth/use-session';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
+import { ThinkingOrbIndicator } from '@/ui/thinking-orb';
 import {
   Card,
   CardContent,
@@ -40,8 +41,10 @@ export function ResolvingState({ label }: { label: string }) {
     <output
       className="flex flex-col items-center gap-3 py-16"
       aria-live="polite"
+      aria-busy="true"
+      data-testid="resolving-state"
     >
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600" />
+      <ThinkingOrbIndicator size={64} decorative />
       <p className="text-sm text-slate-600">{label}</p>
     </output>
   );
@@ -56,6 +59,7 @@ export function LogoutButton() {
       variant="outline"
       size="sm"
       disabled={session.isLoggingOut}
+      loading={session.isLoggingOut}
       onClick={() => {
         void session.logout();
       }}

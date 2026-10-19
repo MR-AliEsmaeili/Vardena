@@ -259,7 +259,12 @@ export function ChangePasswordPage() {
                 )}
 
               <div className="space-y-2 pt-1">
-                <Button type="submit" className="w-full" disabled={isBusy}>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={isBusy}
+                  loading={session.isChangingPassword}
+                >
                   {session.isChangingPassword
                     ? t.auth.changingPassword
                     : t.auth.submitChangePassword}
@@ -269,6 +274,7 @@ export function ChangePasswordPage() {
                   variant="outline"
                   className="w-full"
                   disabled={isBusy}
+                  loading={session.isLoggingOut}
                   onClick={() => void handleLogout()}
                 >
                   {session.isLoggingOut ? t.auth.loggingOut : t.auth.logout}

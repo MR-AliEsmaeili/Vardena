@@ -250,7 +250,7 @@ export function LicenseImportForm(): ReactElement {
         type="submit"
         className="w-full"
         disabled={mutation.isPending}
-        aria-busy={mutation.isPending}
+        loading={mutation.isPending}
       >
         {mutation.isPending
           ? t.license.importSubmitting

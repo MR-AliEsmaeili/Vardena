@@ -175,6 +175,7 @@ export function ConfirmDialog({
               className={cn(danger && 'focus-visible:outline-rose-600')}
               onClick={onConfirm}
               disabled={loading || confirmDisabled}
+              loading={loading}
             >
               {loading ? (loadingLabel ?? confirmLabel) : confirmLabel}
             </Button>

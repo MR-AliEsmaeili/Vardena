@@ -31,6 +31,18 @@ export const fa = {
     regionLabel: 'اعلان‌ها',
     dismiss: 'بستن اعلان',
   },
+  // Request-loading feedback (Thinking Orbs). These strings are owned by the
+  // one activity registry in `api/request-activity.ts`; an endpoint never
+  // carries Persian copy.
+  loading: {
+    orbLabel: 'نشانگر انجام عملیات',
+    receiving: 'در حال دریافت اطلاعات…',
+    saving: 'در حال ذخیره اطلاعات…',
+    updating: 'در حال به‌روزرسانی اطلاعات…',
+    deleting: 'در حال حذف اطلاعات…',
+    processing: 'در حال انجام عملیات…',
+    background: 'در حال دریافت اطلاعات در پس‌زمینه…',
+  },
   auth: {
     loginTitle: 'ورود به وردنا',
     loginSubtitle: 'برای ادامه، با نام کاربری و گذرواژه سازمانی وارد شوید.',
@@ -1442,6 +1454,7 @@ export const fa = {
   },
   table: {
     loading: 'در حال دریافت داده‌ها…',
+    refreshing: 'در حال به‌روزرسانی…',
     emptyTitle: 'داده‌ای یافت نشد',
     emptyBody: 'برای فیلترهای انتخاب‌شده هیچ ردیفی بازگردانده نشد.',
     errorTitle: 'خطا در دریافت داده‌ها',
