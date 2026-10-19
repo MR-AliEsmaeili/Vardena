@@ -524,6 +524,82 @@ OPEN.** No decision is attributed to the Product Owner by this document.
 
 ---
 
+## 8.3 Addendum — security and coherence review of the technical design (2026-10-20)
+
+**Status after this addendum: `BLOCKED — TECHNICAL DESIGN REQUIRED`, awaiting design
+approval. Still nothing is implemented.**
+
+The technical design this assessment's gate asked for was delivered in
+[`owner-side-issuance-technical-design.md`](./owner-side-issuance-technical-design.md)
+and then reviewed for security and internal coherence. The review **corrected three
+defects in the design document itself**; it did not add capability, and it did not
+change any decision recorded in this assessment or in PDR-19.
+
+**RV-1 (High) — the request was authenticated only after signing.** The offline
+signer's nine validation checks were all **structural**, so a well-formed but
+substituted request passed every one of them and was signed with the authority key.
+The design's §3.6 now models ten alterations (T-1…T-10), including re-targeting
+another real customer, replacing `installationId` with another valid ULID, raising
+limits, adding modules, and **nulling `validUntil` — which converts a time-limited
+request into a perpetual license and crosses the boundary B-1 / OD-LIC-07 reserves to
+`OWNER_ADMIN`, using no key, no credential and no Owner access**. The assessment's
+B-1 finding was about *who may authorize*; RV-1 is the transport-side counterpart:
+*how does the signer know it is signing what the Owner authorized*. Refusal at Owner
+import was insufficient, because a valid authority signature already exists
+(OQ-78 OPEN ⇒ irrevocable in practice) and an artifact handed **directly to the
+customer** verifies against `LICENSE_SIGNING_PUBLIC_KEYS` without the Owner's import
+path ever running. Detection therefore moved **before the private key is read**
+(design §4.2 check 10).
+
+**RV-2 (Blocking defect) — the tamper check could never pass.** The design compared
+the *request* payload's canonical bytes against the *`VLIC2`* payload's. The two have
+different field sets (`v` 1 vs 2, `kind` `SERVER_LICENSE_ISSUANCE_REQUEST` vs
+`SERVER_LICENSE_VERSION`, request-only `requestId`/`requestedAt`/`requestedByUserId`/
+`deviceLimitSpecified` vs signed-only `issuedAt`), so the digests differ for an
+**untampered** round trip and every legitimate import would have been refused.
+Fail-closed, so not a security hole — but it would have surfaced only in integration,
+and the obvious "fix" would have been to weaken the one control standing between the
+operator's file and the authority key. Replaced by two digests with two jobs. A
+related factual error was corrected: `supersedesOperationId` is **always present** in
+the canonical bytes and is *not* omitted like `deviceLimit`; verified against
+`canonicalizeLicenseVersion` (`license-document.ts:272-303`) and a census of all 23
+corpus files, which also showed all six `VLIC2` vectors carry all 18 fields and
+**none** exercises the omission rules — an independent reason the golden literals of
+design §13.2 are required, and a concrete instance of readiness risk **R-3**.
+
+**RV-3 (High) — two self-contradictions in the data model.** `user_permission_grants`
+claimed intersection semantics (PDR-19 §5.2) while also stating that non-issuance
+access "follows the role until `OWNER_ADMIN` narrows it", which is union and silently
+reverses the decided mechanism for the four permissions the role holds today. That
+sentence is withdrawn. And `customer_limit_profiles` declared `customer_id` **unique**
+while also declaring a `RETIRED` status whose history "must remain readable, because
+past issuances reference them" — under a column-level `UNIQUE` only one row per
+customer can ever exist, so a retired profile can never be replaced and the only
+recovery from a mistaken retirement is a data fix that leaves every future issuance
+for that customer **unbounded**, since F-1's no-profile branch is the more permissive
+one. Corrected to a partial unique index on `status = 'ACTIVE'`. Design §6 is now a
+definitive matrix for both roles and every permission, and the three grant states (no
+row / active / revoked) are defined separately.
+
+**Three questions the review raised are Product Owner decisions and were stopped, not
+chosen:** **OQ-92** (adopt an Owner-held *request-signing* key — design §4.4 option
+O-B, documented as stronger but requiring a new key in the Owner web process, a second
+signed format and a custody policy while U-1/OQ-74 is OPEN; and what the acceptable
+out-of-band channel is, and whether the confirmation value may ever be shortened),
+**OQ-93** (the default effective access of a new operator's four existing permissions
+— R-1 vs R-3), and **OQ-94** (limit-profile lifecycle — may retirement be permanent,
+and should a profile change block an in-flight request). Engineering adopted only what
+existing decisions already permit: the out-of-band digest confirmation of design §4.4
+**O-A**, which needs **no new key, no signed-format change, no canonicalization
+change, no vector change and no customer-side change**.
+
+**Unchanged by this addendum:** every finding and gate in §§1–8 above; all four PDR-19
+decisions and both fork answers; the signed `VLIC2` format, canonicalization rules,
+vectors and separation boundary. No signer, key, permission, migration, endpoint,
+artifact, DTO or UI exists. **No OQ was closed.**
+
+---
+
 ## 9. Related records
 
 - [ADR-0046 — signed license documents and version lifecycle](../adr/0046-signed-license-documents-and-version-lifecycle.md) (Decisions 1, 2, 6, 7, 9)
