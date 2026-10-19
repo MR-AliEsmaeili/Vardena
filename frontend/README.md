@@ -14,7 +14,8 @@ never become a second accounting source of truth.
 
 React 19 · TypeScript · Vite · Tailwind CSS v4 · shadcn/ui-style primitives ·
 React Router · TanStack Query · Axios · React Hook Form + Zod ·
-TanStack Table · Day.js · lucide-react icons.
+TanStack Table · Day.js · lucide-react icons. `thinking-orbs` (MIT) is the
+one additional UI dependency, introduced by ADR-0051 for the loading system.
 
 State is selected by ownership: backend-owned data lives in TanStack Query,
 local interaction state stays in components, and narrowly scoped cross-tree
@@ -184,6 +185,23 @@ rules, server-side ownership/authorization boundary, and OpenAPI regeneration.
 - **All user-facing text lives in `lib/i18n.ts`** — no inline literals. The UI
   is Persian/RTL (`<html lang="fa" dir="rtl">`); layout uses logical
   properties so one responsive layout serves every breakpoint.
+
+## Loading and web-service activity
+
+All real HTTP requests are registered once by the single Axios instance and
+rendered through one shared loading system (ADR-0051). Nothing is wired per
+page:
+
+- the **global panel** appears after 500 ms for a still-running write and is
+  non-modal (`pointer-events-none`, no focus trap);
+- the **ambient orb** in the top bar represents background reads/refetches;
+- the **local** surface stays the section's skeleton/`aria-busy` and the
+  operation's disabled button/dialog, now with the same Thinking Orb.
+
+Rules, thresholds, the full coverage matrix and intentional exclusions live in
+[`../docs/frontend/loading-system.md`](../docs/frontend/loading-system.md).
+`thinking-orbs` is used only through `src/ui/thinking-orb.tsx`; its MIT notice
+is in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md).
 
 ## Organization & master data administration (FE-ORG-01)
 
