@@ -99,6 +99,18 @@ export interface LicenseVersionPayload {
    * PDR-11 PQ-5 is open — see design §3.3).
    */
   supersedesOperationId: string | null;
+  /**
+   * Operation id of the retained version this document RENEWS (OD-LIC-06,
+   * OQ-88). A renewal extends the named version's term instead of replacing
+   * it: the renewal starts governing at the named version's effective end, so
+   * its own `validFrom` is a signed issuance fact and never the hand-over.
+   *
+   * Signed and covered by the signature, omitted from the canonical bytes when
+   * absent (the established `deviceLimit` precedent), mutually exclusive with
+   * `supersedesOperationId`, never equal to this document's own `operationId`,
+   * and never inferred from dates, a `licenseId` or an operator flag.
+   */
+  renewsOperationId: string | null;
   issuedAt: Date;
 }
 
@@ -247,6 +259,8 @@ interface WirePayloadV2 {
   modules: string[];
   features: string[];
   supersedesOperationId: string | null;
+  /** Omitted only when the document is not a renewal (byte-compatible). */
+  renewsOperationId?: string | null;
   issuedAt: string;
 }
 
@@ -278,6 +292,12 @@ export function canonicalizeLicenseVersion(
     modules: [...payload.moduleEntitlements].sort(),
     features: [...payload.featureEntitlements].sort(),
     supersedesOperationId: payload.supersedesOperationId,
+    // Omitted entirely when absent, exactly like `deviceLimit`: every
+    // already-signed artifact, committed vector and signature keeps verifying
+    // byte-for-byte (PDR-16 D-2(b), OD-LIC-06 §10).
+    ...(payload.renewsOperationId === null
+      ? {}
+      : { renewsOperationId: payload.renewsOperationId }),
     issuedAt: payload.issuedAt.toISOString(),
   };
   return JSON.stringify(wire);
@@ -552,6 +572,10 @@ function readLicenseVersionPayload(raw: unknown): LicenseVersionPayload {
       wire.supersedesOperationId === undefined
         ? null
         : readId(wire.supersedesOperationId, 'supersedesOperationId'),
+    renewsOperationId:
+      wire.renewsOperationId === null || wire.renewsOperationId === undefined
+        ? null
+        : readId(wire.renewsOperationId, 'renewsOperationId'),
     issuedAt: readDate(wire.issuedAt, 'issuedAt'),
   };
 }
@@ -679,6 +703,33 @@ export function assertLicenseVersionPayload(
   readId(payload.installationId, 'installationId');
   if (payload.supersedesOperationId !== null) {
     readId(payload.supersedesOperationId, 'supersedesOperationId');
+  }
+  if (payload.renewsOperationId !== null) {
+    readId(payload.renewsOperationId, 'renewsOperationId');
+    // A renewal is the one document shape that says "extend the version I
+    // name" (OD-LIC-06 §3.1). The three rules below are payload defects, not
+    // state conflicts: the signed bytes can never be applied as issued.
+    if (payload.supersedesOperationId !== null) {
+      throw new LicenseDocumentError(
+        'payload',
+        'A license version cannot both renew and supersede a version; a renewal extends its target and never replaces it.',
+      );
+    }
+    if (payload.renewsOperationId === payload.operationId) {
+      throw new LicenseDocumentError(
+        'payload',
+        'A license version cannot renew itself.',
+      );
+    }
+    // PDR-18 §1.2: the activation-validity start is the issuance day and is
+    // never later. Checked ONLY for a renewal, so no already-signed artifact
+    // and no committed vector changes meaning (OD-LIC-06 §3.3).
+    if (payload.validFrom.getTime() > payload.issuedAt.getTime()) {
+      throw new LicenseDocumentError(
+        'payload',
+        'A renewal cannot become valid after it was issued.',
+      );
+    }
   }
   if (
     payload.validUntil !== null &&

@@ -2,8 +2,11 @@
 
 - **Date:** 2026-10-18
 - **Author:** engineering (design only; Arena session on `arena/6d1ab4c5-vardena`)
-- **Status:** **DESIGN FOR REVIEW — no runtime code, schema, migration, vector or test was changed by this task.**
-  No behavior described here is implemented or claimed as implemented.
+- **Status:** **APPROVED AND IMPLEMENTED** — the Product Owner answered Q-1
+  (`boundary`) and Q-2 (`coverage_end`) on 2026-10-19; see §16 for the
+  implementation record (code, schema, migration, vectors, tests A1–A17). The
+  design text below is the approved contract and is not rewritten by the
+  implementation.
 - **Decision source (binding, not reopened):**
   [PDR-18 §9 — renewal applies the Owner-authorized new end date](../decisions/product/PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md)
   (decision id **OD-LIC-06**, Product Owner approval 2026-10-18), registry row
@@ -831,3 +834,71 @@ lapse follows PDR-13.
    import pipeline and read model → tests A1–A17 → rollout gate.
 3. Keep OQ-88 **OPEN** until that slice is implemented, verified in CI and reviewed;
    this document answers the *design* gap only.
+
+## 16. Implementation record (2026-10-19)
+
+This section records what was built from the approved design. It changes no
+requirement; the sections above remain the contract. Baseline:
+`main` @ `8cd9b532a83682b730438b16949439833717bda9` (PRs #180 and #181 merged).
+
+### 16.1 Product Owner answers (closing §13)
+
+| Question | Answer | Where it is enforced |
+|---|---|---|
+| Q-1 | **`boundary`** — a renewal starts governing at the renewed version's exclusive effective end; the signed term is applied exactly | `windowStart()` / `effectiveWindow()` and the renewal resolution in `evaluateImportConflicts`; the target's `governs_until` and the renewal's `governs_from` are produced by the same accessor |
+| Q-2 | **`coverage_end`** — a new `coverageEnd` reports the end of the unbroken coverage chain; `validUntil` keeps its per-version meaning | `coverageEndOf()` → `LicenseVersionSnapshot.coverageEnd` → `LicenseStateView` / `LicenseStateDto`; the admin card shows both |
+
+### 16.2 Implemented surface
+
+| Design element | Implementation |
+|---|---|
+| §3.1 signed reference | `LicenseVersionPayload.renewsOperationId`; `WirePayloadV2.renewsOperationId` optional; emitted **between** `supersedesOperationId` and `issuedAt` and **omitted** when null (`canonicalizeLicenseVersion`); parsed to `null` when absent |
+| §3.1 payload validation | `assertLicenseVersionPayload`: malformed reference, self-renewal, renewal+supersession, and `validFrom > issuedAt` (renewal only) → `LicenseDocumentError('payload')` |
+| §3.1 issuance | `IssueLicenseVersionOptions.renewsOperationId`; CLI `--renews <operationId>` (mutually exclusive with `--supersedes`, refused with `--format v1`) |
+| §3.6 chain / §3.7 rule 4 | `coverageChain()` / `coverageChainTail()` / `coverageEndOf()`; target resolution inside `evaluateImportConflicts` only; refusals `renewal-target-unknown`, `renewal-target-not-current`, `renewal-target-perpetual`, `renewal-not-an-extension`, `recovery-not-applicable` |
+| §4.1 schema | migration `20261023000000_licensing_renewal_governs_from`: nullable `governs_from`, `license_versions_governs_from_check`, column comment, nullable audit columns `renewed_version_id`, `renewed_from`, `renewed_until`; **no backfill, no rewrite**; Prisma `governsFrom` |
+| §4.2/§4.3 transaction | command carries the derived `governsFrom`; the locked evaluation derives it again and the transaction refuses any disagreement before writing; target stamp = the same instant; renewal audit event built inside the transaction |
+| §6 read model | `LicenseVersionSummary.operationId` + `effectiveFrom`; `LicenseStateView.coverageEnd` (null when perpetual or unlicensed); scheduled selection by `windowStart` |
+| §8.3 audit | `license.import.renewed` (APPLIED, built in-transaction) + `license.version.superseded` naming the retired target; `previous_license_id` only when the identity changed; no generic `license.import.applied` row for a renewal |
+| §9 frontend | status card shows the chain end, the scheduled renewal's **effective** start, and the retained versions with their signed `operationId` |
+| §12 tests | A1–A17 in `license-version.spec.ts`, `license-document.spec.ts`, `canonical-byte-contract.spec.ts`, `license-import.service.spec.ts`, `licensing-persistence-live.e2e-spec.ts`, `license-openapi.contract.spec.ts` and the migration rehearsal |
+| §10 vectors | new `CAN-09` (renewal reference) only; CAN-01..CAN-08 and every OK/BAD/ROT artifact are byte-identical |
+
+### 16.3 Acceptance evidence (A1–A17)
+
+Every acceptance case named in §12 has a named test in the change. Where a case
+spans layers, the table lists each one; `L` cases run only in the live-PostgreSQL
+job, because the suite needs a real database.
+
+| Case | Evidence |
+|---|---|
+| A1 early renewal | `license-version.spec.ts` → "reads one window start…", "accepts a renewal of the tail and hands over at the target end, never earlier", "keeps the target term intact when the renewal is imported mid-term"; `license-document.spec.ts` → canonical-order/omission; `license-import.service.spec.ts` → "persists an early renewal with the target's hand-over…" (target `governs_until`, renewal `governs_from`, `coverageEnd`); `licensing-persistence-live.e2e-spec.ts` → early-renewal case |
+| A2 continuity across the boundary | domain spec → early-renewal and chain cases (at `end−1 ms`/`end` via `effectiveWindow`/`covers`); service spec → `effectiveVersionId` at both instants |
+| A3 exact signed end | service spec → `renewal-not-an-extension` case proves no rounding/clamping of the signed term; `resolveEffectiveVersion` boundary assertions |
+| A4 signature/tamper | `license-document.spec.ts` (parse/round-trip/refusals) plus the pre-existing import-rejection suites; no new writer path |
+| A5 wrong identity/binding | domain spec → "refuses an unknown, retired, or foreign renewal target"; pre-existing binding suites unchanged |
+| A6 duplicate import | service spec → replay = 409 `duplicate-operation`, single version row; live e2e → concurrent-renewal case |
+| A7 target/overlap conflicts | domain spec → "resolves the target as the tail…", "refuses an unknown, retired, or foreign renewal target", "accepts a renewal of the tail…" (non-extension), perpetual case; service spec → stale target/perpetual cases |
+| A8 reduction | domain spec → continuation-baseline block (unchanged) and renewal block; service spec → §8.6 reduction-then-resolution case |
+| A9 expired/lapsed | domain spec → gap/recovery blocks plus "never lets a renewal pass as a post-gap recovery"; service spec → stale-target case; pre-existing Grace/Read-Only suites |
+| A10 compatibility | `licensing-protocol-vectors.spec.ts` (whole corpus, unchanged digests); `canonical-byte-contract.spec.ts` (omission); `license-version.spec.ts` (`governsFrom: null` rows evaluate identically); OQ-80 Option B suite untouched |
+| A11 migration | migration rehearsal (`assertRenewalMigration`, `snapshotRetainedWindows`) in the `backend` job; `licensing-persistence-live` for the real schema |
+| A12 audit | service spec → typed-event assertions (`license.version.superseded` + `license.import.renewed`), rejection writes no APPLIED row; live e2e → persisted rows |
+| A13 concurrency | live e2e → two concurrent renewals of one target |
+| A14 perpetual target | domain spec → perpetual case; service spec → `renewal-target-perpetual` with explicit supersession still applying |
+| A15 changed `licenseId` | domain spec → F-8 non-bypass renewal case (unchanged, still enforced); service spec keeps the §8.6 guard |
+| A16 legacy `VLIC1` | service spec → "never treats a legacy code as a renewal"; pre-existing VLIC1 suites unchanged |
+| A17 read model | `license-version.spec.ts` → summary `operationId`/`effectiveFrom`; API contract spec → `coverageEnd` + summary fields; frontend status-card test; `generated-api-client` CI job |
+
+**Honest limitation.** These are static, named tests. Nothing in this change has
+been executed locally (no dependency installation in the working environment by
+design); the first execution is the CI run on the pushed head, and the PR
+records its result.
+
+### 16.4 Rollout floor
+
+The application release that reads `governs_from` must not be rolled back below
+while any row carries a non-null value: the previous release ignores the column,
+so it would show the renewal's signed `validFrom` as its start (and therefore
+"truncate" the current term in the read model) even though the rows are intact.
+The migration itself is additive and safe to apply before the release.

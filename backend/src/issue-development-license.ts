@@ -20,16 +20,31 @@ import {
  *     [--customer-name "Acme"] [--valid-until 2027-01-01] \
  *     [--organizations 3] [--users 25] [--devices 20] [--modules organization,users,rbac] \
  *     [--status ACTIVE] [--valid-from 2027-01-01] [--operation-id 01J...] \
- *     [--supersedes 01J...] [--key-id 2026-a] [--artifact] [--out license.json]
+ *     [--supersedes 01J... | --renews 01J...] [--key-id 2026-a] [--artifact] \
+ *     [--out license.json]
  *     → prints the signed license FILE (the `vardena-license` envelope around
  *       the `VLIC2` artifact) to paste into `POST /api/v1/license/import`, or
  *       to hand to the customer as a file. `--artifact` prints the bare
  *       artifact instead (the text transport, for the same endpoint); `--out`
  *       writes the chosen payload to a file without printing it.
  *
+ *   ... --renews <operationId>
+ *     → issues a RENEWAL (OD-LIC-06, OQ-88) of the retained version carrying
+ *       that operation id. The new signed end date is `--valid-until`; it is
+ *       applied exactly, and the renewal starts governing when the named
+ *       version's term ends — the customer can import it before that boundary
+ *       without shortening the current term. `--valid-from` stays the signed
+ *       issuance-day fact and is never the hand-over instant. The operation id
+ *       to renew is the `operationId` of the version the customer's
+ *       `GET /api/v1/license/current` reports (the current or scheduled one);
+ *       it is never inferred. `--renews` and `--supersedes` are mutually
+ *       exclusive, and a perpetual target cannot be renewed this way (use an
+ *       explicit `--supersedes` for the PDR-12 term change).
+ *
  *   ... --format v1
  *     → prints the legacy `VLIC1` license code accepted by
- *       `POST /api/v1/license/activate` (compatibility path).
+ *       `POST /api/v1/license/activate` (compatibility path). A text code
+ *       cannot carry a renewal and `--renews` with `--format v1` is refused.
  *
  * It refuses to run with `NODE_ENV=production`: a production license must be
  * issued by the commercial authority, not by a copy of the application.
@@ -92,6 +107,25 @@ async function issueDevelopmentLicense(): Promise<void> {
   if (format !== 'v2' && format !== 'v1') {
     throw new Error(`--format must be v2 or v1 (got "${format}").`);
   }
+  // OD-LIC-06 §3.1: a document is either a renewal (extends the named version)
+  // or a supersession (replaces it from its own start). Encoding both is a
+  // payload defect, and the legacy text code cannot carry a renewal at all.
+  const renews = args.has('renews') ? args.get('renews') : undefined;
+  if (renews === 'true') {
+    throw new Error(
+      '--renews requires the operation id of the retained version being renewed; read it from GET /api/v1/license/current.',
+    );
+  }
+  if (renews !== undefined && args.has('supersedes')) {
+    throw new Error(
+      '--renews and --supersedes are mutually exclusive: a renewal extends the version it names, it never replaces it.',
+    );
+  }
+  if (renews !== undefined && format === 'v1') {
+    throw new Error(
+      'A legacy VLIC1 text code cannot carry a renewal; issue a signed VLIC2 document (--format v2).',
+    );
+  }
   const common = {
     installationId,
     customerId,
@@ -124,6 +158,7 @@ async function issueDevelopmentLicense(): Promise<void> {
       'supersedesOperationId',
       args.has('supersedes') ? args.get('supersedes') : undefined,
     ),
+    ...(renews === undefined ? {} : { renewsOperationId: renews }),
   };
   const keyId = args.get('key-id');
   const artifact = args.has('artifact');
@@ -180,6 +215,7 @@ function summaryLines(
     deviceLimit: number | null;
     deviceLimitSpecified: boolean;
     moduleEntitlements: readonly string[];
+    renewsOperationId?: string | null;
   },
   transport: string,
 ): string[] {
@@ -190,6 +226,12 @@ function summaryLines(
     `Customer     : ${payload.customerId} [${payload.customerCode}] (${payload.customerName})`,
     `Status       : ${payload.status}`,
     `Valid        : ${payload.validFrom.toISOString()} → ${payload.validUntil?.toISOString() ?? 'perpetual'}`,
+    ...(payload.renewsOperationId === undefined ||
+    payload.renewsOperationId === null
+      ? []
+      : [
+          `Renews       : ${payload.renewsOperationId} (governs from that version's end, never from validFrom)`,
+        ]),
     `Limits       : organizations=${payload.organizationLimit ?? 'unlimited'} users=${payload.userLimit ?? 'unlimited'} devices=${payload.deviceLimitSpecified ? (payload.deviceLimit ?? 'unlimited') : 'unspecified'}`,
     `Modules      : ${payload.moduleEntitlements.join(', ')}`,
   ];

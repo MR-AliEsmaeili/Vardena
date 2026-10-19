@@ -163,6 +163,7 @@ const vlic2Payload: LicenseVersionPayload = {
   moduleEntitlements: ['inventory', 'accounting'],
   featureEntitlements: [],
   supersedesOperationId: null,
+  renewsOperationId: null,
   issuedAt: new Date('2026-10-11T00:00:00.000Z'),
 };
 canonVector(
@@ -439,6 +440,66 @@ canonVector(
   vdrpInput,
   canonicalizeDeviceReplacementResponse(vdrpPayload),
   'decision is APPROVE only; requestHash over armored VDRQ1.',
+);
+
+// VLIC2 renewal reference (OD-LIC-06 / OQ-88), appended so every existing
+// vector keeps its id, bytes, digest and signature. An early renewal: signed
+// and issued on 2026-10-11 for a term that starts where the version it renews
+// ends (2027-01-01), with `renewsOperationId` between `supersedesOperationId`
+// and `issuedAt`. A document without the field is byte-identical to the
+// pre-OQ-88 corpus, which CAN-01..CAN-08 continue to pin.
+const renewalOperationId = '01TESTRENEWALOP00000000000';
+const vlic2RenewalInput = {
+  v: 2,
+  kind: 'SERVER_LICENSE_VERSION',
+  operationId: renewalOperationId,
+  licenseId: LIC,
+  customerId: CUST,
+  customerCode: CUSTCODE,
+  customerName: 'شرکت تست',
+  installationId: INST,
+  status: 'ACTIVE',
+  validFrom: '2026-10-11T00:00:00.000Z',
+  validUntil: '2028-01-01T00:00:00.000Z',
+  organizationLimit: 3,
+  userLimit: 25,
+  deviceLimit: 12,
+  modules: ['inventory', 'accounting'],
+  features: [],
+  supersedesOperationId: null,
+  renewsOperationId: OP,
+  issuedAt: '2026-10-11T00:00:00.000Z',
+  deviceLimitSpecified: true,
+};
+const vlic2RenewalPayload: LicenseVersionPayload = {
+  version: 2,
+  kind: 'SERVER_LICENSE_VERSION',
+  operationId: renewalOperationId,
+  licenseId: LIC,
+  customerId: CUST,
+  customerCode: CUSTCODE,
+  customerName: 'شرکت تست',
+  installationId: INST,
+  status: 'ACTIVE',
+  validFrom: new Date('2026-10-11T00:00:00.000Z'),
+  validUntil: new Date('2028-01-01T00:00:00.000Z'),
+  organizationLimit: 3,
+  userLimit: 25,
+  deviceLimit: 12,
+  deviceLimitSpecified: true,
+  moduleEntitlements: ['inventory', 'accounting'],
+  featureEntitlements: [],
+  supersedesOperationId: null,
+  renewsOperationId: OP,
+  issuedAt: new Date('2026-10-11T00:00:00.000Z'),
+};
+canonVector(
+  'VLIC2 renewal reference to a retained version',
+  'VLIC2',
+  'renewal-reference',
+  vlic2RenewalInput,
+  canonicalizeLicenseVersion(vlic2RenewalPayload),
+  'renewsOperationId emitted between supersedesOperationId and issuedAt; omitted entirely when null, so pre-OQ-88 documents keep their exact bytes.',
 );
 
 // --- Valid artifacts ---

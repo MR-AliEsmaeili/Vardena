@@ -137,6 +137,8 @@ describe('Licensing OpenAPI success-response contracts', () => {
         'licenseId',
         'validFrom',
         'validUntil',
+        // OD-LIC-06 / OQ-88 (PO decision Q-2 = `coverage_end`).
+        'coverageEnd',
         'organizationLimit',
         'userLimit',
         'deviceLimit',
@@ -163,6 +165,27 @@ describe('Licensing OpenAPI success-response contracts', () => {
       expect(state.properties.versions).toMatchObject({
         type: 'array',
         items: { $ref: '#/components/schemas/LicenseVersionSummaryDto' },
+      });
+      expect(state.properties.coverageEnd).toMatchObject({
+        format: 'date-time',
+        nullable: true,
+      });
+
+      // The renewal target is identified by signed facts the operator can read:
+      // the version's operation id (what an Owner signs as `renewsOperationId`)
+      // and the instant it actually starts governing.
+      const summary =
+        document.components?.schemas?.['LicenseVersionSummaryDto'];
+      expect(summary).toBeDefined();
+      if (!summary || !('properties' in summary) || !summary.properties) {
+        throw new Error('LicenseVersionSummaryDto missing properties');
+      }
+      expect(summary.properties.operationId).toMatchObject({
+        type: 'string',
+      });
+      expect(summary.properties.effectiveFrom).toMatchObject({
+        type: 'string',
+        format: 'date-time',
       });
 
       expect(result.properties.changed).toBeDefined();

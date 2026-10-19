@@ -3812,3 +3812,317 @@ describe('stable customerCode across the license lifecycle (L-06, PDR-14)', () =
     });
   });
 });
+
+/**
+ * OD-LIC-06 / OQ-88 — the renewal protocol through the REAL import pipeline.
+ *
+ * PO decisions (design §13): Q-1 = `boundary` (a renewal starts governing at the
+ * renewed term's exclusive end; the signed new end is applied exactly) and Q-2 =
+ * `coverage_end` (the read model reports the end of the unbroken chain).
+ *
+ * Pinned timeline:
+ *   import instant  T0        = 2026-06-01T00:00:00Z
+ *   target                    [2026-01-01, 2027-01-01)
+ *   renewal (signed at T0)    governs [2027-01-01, 2028-01-01)
+ *
+ * The in-memory stores re-run `evaluateImportConflicts` inside `importVersion`
+ * and mirror the repository's agreement check on the derived start, so a service
+ * that derived `governsFrom` itself instead of taking the authority's verdict
+ * fails here.
+ */
+describe('renewal protocol (OD-LIC-06, OQ-88)', () => {
+  let harness: Harness;
+  const T0 = new Date('2026-06-01T00:00:00.000Z');
+  const BEFORE_HANDOVER = new Date('2026-12-31T23:59:59.999Z');
+  const HANDOVER = new Date('2027-01-01T00:00:00.000Z');
+  const AFTER_HANDOVER = new Date('2027-06-01T00:00:00.000Z');
+  const RENEWED_UNTIL = new Date('2028-01-01T00:00:00.000Z');
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    harness = buildHarness();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function importTarget(): Promise<{
+    operationId: string;
+    versionId: string;
+  }> {
+    const target = signedDocument(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: HANDOVER,
+        organizationLimit: 4,
+        userLimit: 10,
+      },
+      AUTHORITY.privateKey,
+    );
+    await harness.service.importDocument(target.file);
+    return {
+      operationId: target.payload.operationId,
+      versionId: harness.stores.versions[0]!.versionId,
+    };
+  }
+
+  function renewalDocument(
+    targetOperationId: string,
+    overrides: Partial<Parameters<typeof issueLicenseFile>[0]> = {},
+  ): string {
+    return issuedFile({
+      validFrom: T0,
+      validUntil: RENEWED_UNTIL,
+      issuedAt: T0,
+      organizationLimit: 4,
+      userLimit: 10,
+      renewsOperationId: targetOperationId,
+      ...overrides,
+    });
+  }
+
+  it('applies an early renewal, hands over at the target end and records the typed evidence', async () => {
+    const target = await importTarget();
+
+    const applied = await harness.service.importDocument(
+      renewalDocument(target.operationId),
+    );
+    expect(applied).toMatchObject({ changed: true, outcome: 'APPLIED' });
+
+    // The target is retired NOW but keeps governing until its own end: the
+    // renewal record never shortens the term the customer already holds.
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(harness.stores.versions[0]).toMatchObject({
+      versionId: target.versionId,
+      supersededAt: T0,
+      governsUntil: HANDOVER,
+    });
+    const renewal = harness.stores.versions[1]!;
+    expect(renewal.governsFrom).toEqual(HANDOVER);
+    expect(renewal.validFrom).toEqual(T0);
+    expect(renewal.validUntil).toEqual(RENEWED_UNTIL);
+
+    // Exactly one typed APPLIED event, plus the target's retirement. No generic
+    // `license.import.applied` row shadows the renewal.
+    expect(harness.stores.auditEvents.map((event) => event.eventType)).toEqual([
+      'license.version.superseded',
+      'license.import.renewed',
+    ]);
+    expect(harness.stores.auditEvents[1]).toMatchObject({
+      outcome: 'APPLIED',
+      operationId: renewal.operationId,
+      licenseId: LICENSE,
+      versionId: renewal.versionId,
+      renewedVersionId: target.versionId,
+      renewedFrom: HANDOVER,
+      renewedUntil: RENEWED_UNTIL,
+      previousLicenseId: null,
+      reason: null,
+    });
+
+    // Before the boundary the TARGET still governs…
+    expect(await harness.licensing.current(BEFORE_HANDOVER)).toMatchObject({
+      active: true,
+    });
+    expect(
+      (await harness.provider.versionHistory(BEFORE_HANDOVER))
+        .effectiveVersionId,
+    ).toBe(target.versionId);
+    // …and from the boundary the renewal does, with its own signed end.
+    expect(await harness.licensing.current(HANDOVER)).toMatchObject({
+      active: true,
+    });
+    expect(
+      (await harness.provider.versionHistory(HANDOVER)).effectiveVersionId,
+    ).toBe(renewal.versionId);
+    expect(await harness.licensing.current(AFTER_HANDOVER)).toMatchObject({
+      active: true,
+      validUntil: RENEWED_UNTIL,
+    });
+
+    // The read model answers the operator's question: which version do I renew
+    // next, and how far does my coverage actually run?
+    const history = await harness.provider.versionHistory(T0);
+    expect(history.coverageEnd).toBe(RENEWED_UNTIL.toISOString());
+    expect(history.scheduled?.operationId).toBe(renewal.operationId);
+    expect(history.scheduled?.effectiveFrom).toBe(HANDOVER.toISOString());
+    expect(
+      history.versions.find(
+        (version) => version.versionId === renewal.versionId,
+      ),
+    ).toMatchObject({
+      operationId: renewal.operationId,
+      validFrom: T0.toISOString(),
+      effectiveFrom: HANDOVER.toISOString(),
+    });
+  });
+
+  it('writes nothing when the renewal does not extend the term', async () => {
+    const target = await importTarget();
+    const versions = JSON.stringify(harness.stores.versions);
+    const appliedBefore = harness.stores.auditEvents.filter(
+      (event) => event.outcome === 'APPLIED',
+    ).length;
+
+    // An end equal to the target's end is not an extension: 422, not 409.
+    const refusal = await rejectionOf(
+      harness.service.importDocument(
+        renewalDocument(target.operationId, { validUntil: HANDOVER }),
+      ),
+    );
+    expect(refusal.status).toBe(422);
+    expect(refusal.details).toMatchObject({
+      reason: 'renewal-not-an-extension',
+    });
+    expect(JSON.stringify(harness.stores.versions)).toBe(versions);
+    expect(
+      harness.stores.auditEvents.filter((event) => event.outcome === 'APPLIED'),
+    ).toHaveLength(appliedBefore);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.rejected',
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses a repeated renewal artifact without touching the retained state', async () => {
+    const target = await importTarget();
+    const document = renewalDocument(target.operationId);
+    await harness.service.importDocument(document);
+    const versions = JSON.stringify(harness.stores.versions);
+
+    const replay = await rejectionOf(harness.service.importDocument(document));
+    expect(replay.status).toBe(409);
+    expect(replay.details).toMatchObject({ reason: 'duplicate-operation' });
+    expect(JSON.stringify(harness.stores.versions)).toBe(versions);
+    expect(
+      harness.stores.auditEvents.filter(
+        (event) => event.eventType === 'license.import.renewed',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('refuses a target that already carries a recorded supersession', async () => {
+    const target = await importTarget();
+    await harness.service.importDocument(renewalDocument(target.operationId));
+    const versions = JSON.stringify(harness.stores.versions);
+
+    const stale = await rejectionOf(
+      harness.service.importDocument(
+        renewalDocument(target.operationId, {
+          validUntil: new Date('2029-01-01T00:00:00.000Z'),
+        }),
+      ),
+    );
+    expect(stale.status).toBe(409);
+    expect(stale.details).toMatchObject({ reason: 'renewal-target-unknown' });
+    expect(JSON.stringify(harness.stores.versions)).toBe(versions);
+  });
+
+  it('refuses a renewal of a perpetual version but keeps the explicit term change working', async () => {
+    const perpetual = signedDocument(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        organizationLimit: 4,
+      },
+      AUTHORITY.privateKey,
+    );
+    await harness.service.importDocument(perpetual.file);
+
+    const refusal = await rejectionOf(
+      harness.service.importDocument(
+        renewalDocument(perpetual.payload.operationId),
+      ),
+    );
+    expect(refusal.status).toBe(409);
+    expect(refusal.details).toMatchObject({
+      reason: 'renewal-target-perpetual',
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+
+    // PDR-12's explicit supersession still performs the term change.
+    const limited = signedDocument(
+      {
+        installationId: INSTALLATION,
+        validFrom: T0,
+        validUntil: HANDOVER,
+        organizationLimit: 4,
+        supersedesOperationId: perpetual.payload.operationId,
+      },
+      AUTHORITY.privateKey,
+    );
+    await expect(
+      harness.service.importDocument(limited.file),
+    ).resolves.toMatchObject({ outcome: 'APPLIED' });
+  });
+
+  it('never creates a renewal from a legacy text code (VLIC1)', async () => {
+    const target = await importTarget();
+    // A legacy code cannot carry an operation id, so it can never express a
+    // renewal: it is adjacent to the target, and its import must leave no
+    // deferred start and no renewal evidence behind.
+    const code = signedCode(
+      {
+        installationId: INSTALLATION,
+        validFrom: HANDOVER,
+        validUntil: RENEWED_UNTIL,
+        organizationLimit: 4,
+        userLimit: 10,
+      },
+      AUTHORITY.privateKey,
+    ).code;
+
+    await harness.service.importDocument(code);
+    expect(
+      harness.stores.versions.filter((version) => version.governsFrom !== null),
+    ).toHaveLength(0);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.renewed',
+      ),
+    ).toBe(false);
+    expect(target.operationId).not.toBe('');
+  });
+
+  it('routes a conflicting reduction through the dedicated resolution at the target end', async () => {
+    harness = buildHarness({
+      usage: { organizations: 1, activeUsers: 12, registeredDevices: 0 },
+    });
+    const target = await importTarget();
+
+    // The renewal reduces the seat limit below current usage: the §8.6 guard
+    // refuses it unless the dedicated, authorized, audited route resolves it.
+    const reduced = renewalDocument(target.operationId, { userLimit: 8 });
+    const refusal = await rejectionOf(harness.service.importDocument(reduced));
+    expect(refusal.status).toBe(409);
+    expect(refusal.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+
+    const resolved = await harness.service.resolveReduction(
+      reduced,
+      'Owner approved a smaller seat count for the renewed term.',
+    );
+    expect(resolved).toMatchObject({ outcome: 'APPLIED' });
+    const applied = harness.stores.versions.at(-1)!;
+    expect(applied.governsFrom).toEqual(HANDOVER);
+    expect(applied.userLimit).toBe(8);
+    expect(harness.stores.auditEvents.map((event) => event.eventType)).toEqual(
+      expect.arrayContaining([
+        'license.import.renewed',
+        'license.import.reduction-resolved',
+      ]),
+    );
+    // The target still ends exactly where the renewed term begins.
+    expect(
+      harness.stores.versions.find(
+        (version) => version.versionId === target.versionId,
+      )?.governsUntil,
+    ).toEqual(HANDOVER);
+  });
+});

@@ -130,6 +130,12 @@ model LicenseVersion {
   keyId  String? @map("key_id") @db.VarChar(120)
   source String  @db.VarChar(20)
   validFrom DateTime  @map("valid_from") @db.Timestamptz(6)
+  /// Instant from which this version starts governing when it differs from the
+  /// signed valid_from (a renewal: the renewed term boundary). NULL = signed
+  /// valid_from, which is the value of every row written before OD-LIC-06.
+  /// Guarded by license_versions_governs_from_check: a deferred start requires
+  /// a supersession link and must precede valid_until.
+  governsFrom DateTime? @map("governs_from") @db.Timestamptz(6)
   /// Exclusive end. null means perpetual.
   validUntil DateTime? @map("valid_until") @db.Timestamptz(6)
   organizationLimit Int? @map("organization_limit")
@@ -242,6 +248,15 @@ model LicenseAuditEvent {
   /// transfer re-binds a license identity, so this is context, not a foreign
   /// key: a license id is retained forever, even if its rows were ever removed.
   previousLicenseId String?  @map("previous_license_id")
+  /// The retained version a renewal extended (OD-LIC-06 / OQ-88). Set only on
+  /// `license.import.renewed`; the signed `renewsOperationId` itself is not
+  /// persisted separately — the chain edge is `supersedes_version_id` and
+  /// `governs_from IS NOT NULL` is the renewal discriminator.
+  renewedVersionId String? @map("renewed_version_id")
+  /// The instant the renewal starts governing (the renewed version's end).
+  renewedFrom DateTime? @map("renewed_from") @db.Timestamptz(6)
+  /// The Owner-signed new end date the renewal applies, exactly as signed.
+  renewedUntil DateTime? @map("renewed_until") @db.Timestamptz(6)
   occurredAt DateTime @map("occurred_at") @db.Timestamptz(6)
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)

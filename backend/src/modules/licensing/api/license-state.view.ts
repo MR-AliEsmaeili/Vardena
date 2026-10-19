@@ -30,6 +30,13 @@ export interface LicenseStateView {
   licenseId: string | null;
   validFrom: string | null;
   validUntil: string | null;
+  /**
+   * The end of the installation's unbroken coverage chain (OD-LIC-06 §6, PO
+   * decision Q-2): the last signed instant the installation is covered to,
+   * including a scheduled renewal. Null when the chain is perpetual or the
+   * installation is unlicensed.
+   */
+  coverageEnd: string | null;
   organizationLimit: number | null;
   userLimit: number | null;
   deviceLimit: number | null;
@@ -61,6 +68,13 @@ export function toLicenseStateView(
     licenseId: license.licenseId,
     validFrom: license.validFrom?.toISOString() ?? null,
     validUntil: license.validUntil?.toISOString() ?? null,
+    // Providers without retained versions (the configuration-backed
+    // development authority) have exactly one license, so their coverage ends
+    // where it ends; a perpetual or unlicensed state reports null.
+    coverageEnd:
+      versions === null
+        ? (license.validUntil?.toISOString() ?? null)
+        : versions.coverageEnd,
     organizationLimit: license.organizationLimit,
     userLimit: license.userLimit,
     deviceLimit: license.deviceLimit,

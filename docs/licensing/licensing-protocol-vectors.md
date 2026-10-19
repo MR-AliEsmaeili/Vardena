@@ -290,6 +290,20 @@ real behaviour rather than a test-local label.
 | CAN-12 | `VDEA1`, `VDRQ1`, `VDRP1` canonical bytes | exact expected UTF-8, ASCII-only |
 | CAN-13 | re-serialization of a parsed payload | byte-identical to the signed body (round-trip rule) |
 
+**Committed corpus, 2026-10-19 (OD-LIC-06 / OQ-88).** The numbered table above
+is the descriptive set of canonicalization cases; the files under
+`docs/licensing/vectors/canonical/` are the executable corpus and are numbered by
+generation order, so file ids do not map one-to-one onto the table. This change
+appends exactly one file, **`CAN-09.json` — `renewal-reference`**: a `VLIC2`
+document that carries `renewsOperationId`, pinning that the key is emitted
+**between `supersedesOperationId` and `issuedAt`**. `CAN-01.json` … `CAN-08.json`
+are byte-identical to before, and so are every `OK-*`, `BAD-*` and `ROT-*`
+artifact: the new field is **omitted** when absent, so a non-renewal document
+keeps the exact pre-OQ-88 bytes, digest and signature. The generator
+(`backend/src/tools/generate-licensing-vectors.ts`) appends the new vector last,
+so no existing id is renumbered, and the CI determinism job re-runs it and diffs
+the corpus.
+
 ### 4.3 Valid artifacts
 
 Each with a **published, non-secret, test-only** Ed25519 key pair whose private

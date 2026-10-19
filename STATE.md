@@ -1,5 +1,24 @@
 # Vardena Project State
 
+> **OQ-88 / OD-LIC-06 renewal protocol and persistence, 2026-10-19 (unmerged
+> implementation for review):** starting `main` =
+> `8cd9b532a83682b730438b16949439833717bda9` (merge of PR #181; no open PRs at
+> start). Implements the Product Owner's approved renewal policy (PDR-18 §9,
+> `boundary` / `coverage_end` recorded in the §10 addendum): signed, optional
+> `renewsOperationId` (canonical between `supersedesOperationId` and
+> `issuedAt`, omitted when absent, so every existing artifact and vector is
+> byte-identical); nullable `license_versions.governs_from` plus its check
+> constraint and the three nullable renewal audit columns in an additive,
+> backfill-free migration; `windowStart = governs_from ?? valid_from` as the one
+> effective-window accessor; chain-tail renewal resolution inside
+> `evaluateImportConflicts` with in-transaction revalidation under the
+> installation lock; typed `license.import.renewed` / `license.version.superseded`
+> evidence; `operationId` / `effectiveFrom` / `coverageEnd` read model;
+> `--renews` issuance and the admin status/history surface. Tests A1–A17,
+> `CAN-09` added (`CAN-01`…`CAN-08` unchanged). No signer, key or secret is
+> added. Exact-head GitHub Actions verification is required; the PR stays open
+> and unmerged. Details in §52.
+
 > **OQ-45 Grace/Read-Only, 2026-10-16 (unmerged implementation for review):**
 > starting `main` = `74079fe83c6f0023e0ade10ca0d39c02246bf1fa` (merge of PR
 > #166; live-verified, no open PRs at start). Implements natural-expiry
@@ -2972,3 +2991,89 @@ in PR #115 (`1e3d407fd3f08650e0e70353f96b277e80ef03fd`).
   `d0b6184d44b67a65d15bc662f1ab9aca1f5d1309`. This documentation-only update
   triggers a fresh exact-head CI run; check current PR statuses for that head.
   No self-acceptance or merge is claimed.
+
+
+## 52. OQ-88 / OD-LIC-06 — signed renewal protocol, `governs_from` persistence and coverage read model (2026-10-19, unmerged implementation for review)
+
+- **Baseline and branch:** starting `main`
+  `8cd9b532a83682b730438b16949439833717bda9` (merge of PR #181; **no open pull
+  requests** at the start of this work). Implemented on
+  `arena/89ce682b-vardena`; the pull request is opened against `main` and must
+  stay OPEN and unmerged — no merge or Product Owner acceptance is inferred.
+- **Decision input:** PDR-18 §9 (approved renewal policy) plus the Product
+  Owner's answers to the two open implementation questions in
+  [PDR-18 §10](docs/decisions/product/PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md)
+  and [design §16.1](docs/tasks/od-lic-06-renewal-protocol-and-persistence-design.md):
+  **Q-1 = `boundary`** (the renewal governs from exactly the renewed version's
+  exclusive end; the signed `validUntil` is applied exactly; the predecessor's
+  term is never truncated) and **Q-2 = `coverage_end`** (`validUntil` keeps its
+  per-version meaning and a separate `coverageEnd` reports the end of the
+  unbroken coverage chain, `null` when perpetual or unlicensed).
+  `record_both` was chosen for the read model.
+- **Protocol (signed data only, never inferred):**
+  - `renewsOperationId` is an optional signed payload field, emitted between
+    `supersedesOperationId` and `issuedAt` and **omitted** when absent. A
+    non-renewal payload therefore canonicalizes to the pre-change bytes, so
+    every committed `OK`/`BAD`/`ROT` artifact and every already-signed license
+    keeps its digest and signature. `CAN-09` is the only new vector;
+    `CAN-01`…`CAN-08` are byte-identical.
+  - A renewal must not also carry a superseding reference, must not name its own
+    `operationId`, and must satisfy `validFrom <= issuedAt` (the rule is scoped
+    to renewals, so no existing artifact is invalidated). Malformed values are
+    `payload` 422 at parse/issue time.
+  - Renewal documents are `VLIC2` only: a legacy `VLIC1` text code has no
+    operation identity and is never a renewal (A16).
+- **Persistence:** additive migration
+  `20261023000000_licensing_renewal_governs_from` adds nullable
+  `license_versions.governs_from TIMESTAMPTZ(6)` (no backfill, no rewrite;
+  `NULL` means "govern from the signed `valid_from`"), the
+  `license_versions_governs_from_check` constraint (a deferred start requires a
+  recorded supersession and precedes the signed end) and nullable
+  `license_audit_events.renewed_version_id` / `renewed_from` / `renewed_until`.
+  The Prisma model maps the column; nothing is recomputed from it.
+- **One window accessor:** effective-window resolution, coverage, ordering,
+  scheduled-version selection, overlap and gap detection and the supersession
+  stamp all use `windowStart(v) = governsFrom ?? validFrom`. There is no second
+  path, so a persisted row and the read model cannot disagree.
+- **Target resolution:** inside `evaluateImportConflicts` (the single conflict
+  authority) the target must be the **tail of the installation's unbroken
+  coverage chain**, same customer and customer code; stale, interior,
+  already-renewed, unknown and foreign targets are `renewal-target-unknown` /
+  `renewal-target-not-current` (409), a perpetual target is
+  `renewal-target-perpetual` (409), a term that does not extend the target's end
+  is `renewal-not-an-extension` (422), and a renewal carrying the post-gap
+  recovery intent is `recovery-not-applicable`. The transaction re-evaluates
+  under the installation lock and refuses any disagreement before writing.
+- **Evidence:** `license.import.renewed` (APPLIED, built in the transaction)
+  records `renewed_version_id` / `renewed_from` / `renewed_until`;
+  `license.version.superseded` names the target actually retired;
+  `previous_license_id` is set only when the license identity changed; a
+  rejected renewal writes no APPLIED row and no generic
+  `license.import.applied` row is written for a renewal.
+- **Read model / API:** `LicenseVersionSummary` gains the signed `operationId`
+  and `effectiveFrom`; the license state gains `coverageEnd` (chain end, `null`
+  when perpetual/unlicensed) while `validUntil` stays per-version;
+  `scheduledVersion` is selected by the effective start. OpenAPI DTOs, the
+  contract spec, the hand-edited generated client and the frontend fixtures were
+  updated together.
+- **Frontend:** the license card shows the coverage end separately from the
+  governing version's end, the scheduled renewal's *effective* start and the
+  retained versions with their signed `operationId` (the value the Owner must
+  name as `renewsOperationId`). Presentation only — no licensing fact is
+  derived client-side.
+- **Tests (A1–A17, mapped in design §16.3):** `license-version.spec.ts`,
+  `license-document.spec.ts`, `canonical-byte-contract.spec.ts`,
+  `license-import.service.spec.ts`, `licensing-persistence-live.e2e-spec.ts`,
+  `license-openapi.contract.spec.ts`, the migration rehearsal
+  (`assertRenewalMigration` / `snapshotRetainedWindows`) and the frontend
+  status-card test.
+- **Local verification:** deliberately limited to `git diff --check`, source
+  inspection and a syntax-only check of the changed `.ts` files (no dependency
+  installation, no dependency-having build, no test execution, no database).
+  Nothing in this section is a test result; the first execution is CI on the
+  pushed head, and the PR records it.
+- **Not changed:** no signer, signing key or secret in any artifact; no VLIC3;
+  no rewrite of historical migrations or of any committed vector; OQ-81 replay
+  semantics, PDR-12/PDR-13, §8.6 reductions and the existing role/permission
+  model are untouched; a genuine lapse still requires PDR-13's dedicated
+  recovery.

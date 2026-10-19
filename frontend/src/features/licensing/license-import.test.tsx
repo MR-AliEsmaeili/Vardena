@@ -556,8 +556,27 @@ describe('license import', () => {
       await screen.findByText(t.license.statusScheduled),
     ).toBeInTheDocument();
     expect(screen.getByText(t.license.statusScheduledHint)).toBeInTheDocument();
+    // The chain end is shown separately from the governing version's end, so
+    // "renewal applied" is never misread as "the term ends sooner" (PO decision
+    // Q-2 = `coverage_end`).
+    expect(screen.getByText(t.license.statusCoverageEnd)).toBeInTheDocument();
+    expect(
+      screen.getByText(t.license.statusCoverageEndHint),
+    ).toBeInTheDocument();
+    // The retained-version history names each version's signed operation id, so
+    // an operator can identify the renewal target unambiguously.
+    expect(screen.getByText(t.license.statusHistory)).toBeInTheDocument();
+    expect(screen.getByText(t.license.statusHistoryHint)).toBeInTheDocument();
+    for (const version of testScheduledLicenseState.versions) {
+      expect(screen.getByText(version.operationId)).toBeInTheDocument();
+    }
     // Presentation only: the backend's signed validity Instants stay unchanged.
-    expect(await screen.findByText(/۱۴۰۴\/۱۰\/۱۱ ۰۰:۰۰/)).toBeInTheDocument();
+    // The same instant is shown by the status window and by the retained-version
+    // history (which now also exposes each version's signed operation id), so
+    // every occurrence is asserted rather than the first one only.
+    expect(
+      (await screen.findAllByText(/۱۴۰۴\/۱۰\/۱۱ ۰۰:۰۰/)).length,
+    ).toBeGreaterThan(0);
     expect(testScheduledLicenseState.validFrom).toBe(
       '2026-01-01T00:00:00.000Z',
     );

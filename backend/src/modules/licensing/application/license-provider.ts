@@ -29,6 +29,14 @@ export interface LicenseVersionSnapshot {
   scheduled: LicenseVersionSummary | null;
   /** Retained versions, newest first (the caller bounds how many it shows). */
   versions: LicenseVersionSummary[];
+  /**
+   * Where the installation's unbroken coverage chain ends: the effective end of
+   * the chain's tail, or null when the chain is perpetual or no version could be
+   * resolved (OD-LIC-06 §6, PO decision Q-2 = `coverage_end`). A scheduled
+   * renewal is inside the chain, so this is the end of the whole purchased
+   * coverage — not the end of the version that governs now.
+   */
+  coverageEnd: string | null;
 }
 
 export interface LicenseProvider {

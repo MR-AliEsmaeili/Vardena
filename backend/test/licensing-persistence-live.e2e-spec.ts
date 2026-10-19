@@ -23,6 +23,7 @@ import { licenseDocumentHash } from '../src/modules/licensing/domain/license-doc
 import { generateId } from '../src/kernel/ids/ulid.js';
 import { LicenseActivationService } from '../src/modules/licensing/application/license-activation.service.js';
 import { LicenseImportService } from '../src/modules/licensing/application/license-import.service.js';
+import { PersistentLicenseProvider } from '../src/modules/licensing/application/persistent-license.provider.js';
 import { LicensingService } from '../src/modules/licensing/application/licensing.service.js';
 import { LICENSING_PERMISSIONS } from '../src/modules/licensing/domain/licensing-permissions.js';
 import { RolesService } from '../src/modules/rbac/application/roles.service.js';
@@ -612,6 +613,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           keyId: null,
           source: 'file',
           validFrom: new Date('2029-01-01T00:00:00.000Z'),
+          governsFrom: null,
           validUntil: new Date('2030-01-01T00:00:00.000Z'),
           organizationLimit: null,
           userLimit: null,
@@ -694,6 +696,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           keyId: null,
           source: 'file',
           validFrom: new Date('2029-01-01T00:00:00.000Z'),
+          governsFrom: null,
           validUntil: new Date('2030-01-01T00:00:00.000Z'),
           organizationLimit: null,
           userLimit: null,
@@ -1351,6 +1354,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         keyId: null,
         source: 'file',
         validFrom: payload.validFrom,
+        governsFrom: null,
         validUntil: payload.validUntil,
         organizationLimit: payload.organizationLimit,
         userLimit: payload.userLimit,
@@ -2780,6 +2784,384 @@ describe.skipIf(DATABASE_URL === undefined)(
         ),
       ).rejects.toThrow();
       expect(await repository.findCustomerById(otherCustomer)).toBeNull();
+    }, 60_000);
+
+    /**
+     * OD-LIC-06 / OQ-88 — a signed renewal, committed by the real transaction.
+     *
+     * PO decisions (design §13): Q-1 = `boundary`, so the renewal starts
+     * governing at the target's exclusive end and the signed new end is applied
+     * exactly; Q-2 = `coverage_end`, so the state reports the end of the
+     * unbroken chain. What only PostgreSQL can prove is pinned here: the
+     * persisted `governs_from`, the target's `governs_until` being its OWN end,
+     * the typed audit row, the read-model projection and the atomicity of a
+     * refusal.
+     *
+     * The suite shares ONE installation across its cases (only `beforeAll` and
+     * `afterAll` clean the licensing tables), so every window below starts at
+     * the coverage end the earlier cases actually retained. A window placed
+     * anywhere else would overlap retained coverage or leave a gap, and both are
+     * refusals this change must not weaken.
+     */
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const YEAR_MS = 365 * DAY_MS;
+
+    /** The instant the installation's retained coverage currently ends. */
+    async function retainedCoverageEnd(): Promise<Date> {
+      const snapshot = await app
+        .get(PersistentLicenseProvider)
+        .versionHistory(new Date());
+      expect(snapshot.coverageEnd).not.toBeNull();
+      return new Date(snapshot.coverageEnd as string);
+    }
+
+    it('persists an early renewal at the target end, never truncating its term', async () => {
+      const identity = await app.get(InstallationIdentityService).current();
+      const installationId = identity.installationId;
+      // Adjacent to the retained chain: no overlap with it and no gap.
+      const termStart = await retainedCoverageEnd();
+      const termEnd = new Date(termStart.getTime() + YEAR_MS);
+      const renewedUntil = new Date(termEnd.getTime() + YEAR_MS);
+      // Issued a month before the term it continues: the whole point of the
+      // protocol is that the governance instant is derived, not signed.
+      const issuedAt = new Date(termStart.getTime() - 30 * DAY_MS);
+
+      const target = licenseFor({
+        installationId,
+        validFrom: termStart,
+        validUntil: termEnd,
+        organizationLimit: 4,
+        userLimit: 10,
+      });
+      const first = await importOutcome(target);
+      expect(first.applied).toBe(true);
+
+      const renewal = licenseFor({
+        installationId,
+        validFrom: issuedAt,
+        validUntil: renewedUntil,
+        organizationLimit: 4,
+        userLimit: 10,
+        issuedAt,
+        renewsOperationId: target.payload.operationId,
+      });
+      const second = await importOutcome(renewal);
+      expect(second.applied).toBe(true);
+
+      const rows = await query<{
+        operation_id: string;
+        governs_from: Date | null;
+        valid_from: Date;
+        valid_until: Date | null;
+        governs_until: Date | null;
+        superseded_by_version_id: string | null;
+      }>(
+        `SELECT "operation_id", "governs_from", "valid_from", "valid_until",
+                "governs_until", "superseded_by_version_id"
+           FROM "licensing"."license_versions"
+          WHERE "installation_id" = $1 AND "operation_id" IN ($2, $3)
+          ORDER BY "imported_at", "id"`,
+        installationId,
+        target.payload.operationId,
+        renewal.payload.operationId,
+      );
+      // Every earlier case in this file left retained rows behind on this
+      // installation, so the assertion is scoped to this renewal and its target.
+      expect(rows).toHaveLength(2);
+      const [targetRow, renewalRow] = rows;
+
+      // The renewal row stores the DERIVED start and keeps the signed facts.
+      expect(new Date(renewalRow!.governs_from!).toISOString()).toBe(
+        termEnd.toISOString(),
+      );
+      expect(new Date(renewalRow!.valid_from).toISOString()).toBe(
+        issuedAt.toISOString(),
+      );
+      expect(new Date(renewalRow!.valid_until!).toISOString()).toBe(
+        renewedUntil.toISOString(),
+      );
+      // The target is stamped at its OWN end: nothing was truncated, and the
+      // target's signed window is untouched.
+      expect(new Date(targetRow!.governs_until!).toISOString()).toBe(
+        termEnd.toISOString(),
+      );
+      expect(new Date(targetRow!.valid_until!).toISOString()).toBe(
+        termEnd.toISOString(),
+      );
+      expect(targetRow!.superseded_by_version_id).not.toBeNull();
+      expect(
+        (
+          await query<{ id: string }>(
+            `SELECT "id" FROM "licensing"."license_versions" WHERE "id" = $1`,
+            targetRow!.superseded_by_version_id,
+          )
+        ).length,
+      ).toBe(1);
+
+      // The typed audit facts are recorded, and no generic APPLIED row shadows
+      // them: exactly one `license.import.renewed` plus the target's
+      // `license.version.superseded`.
+      const events = await query<{
+        event_type: string;
+        reason: string | null;
+        renewed_version_id: string | null;
+        renewed_from: Date | null;
+        renewed_until: Date | null;
+        previous_license_id: string | null;
+        operation_id: string | null;
+      }>(
+        `SELECT "event_type", "reason", "renewed_version_id", "renewed_from",
+                "renewed_until", "previous_license_id", "operation_id"
+           FROM "licensing"."license_audit_events"
+          WHERE "installation_id" = $1
+          ORDER BY "occurred_at", "id"`,
+        installationId,
+      );
+      const renewed = events.filter(
+        (event) =>
+          event.event_type === 'license.import.renewed' &&
+          event.operation_id === renewal.payload.operationId,
+      );
+      expect(renewed).toHaveLength(1);
+      expect(renewed[0]).toMatchObject({
+        renewed_version_id: targetRow!.superseded_by_version_id,
+        previous_license_id: null,
+        operation_id: renewal.payload.operationId,
+      });
+      expect(new Date(renewed[0]!.renewed_from!).toISOString()).toBe(
+        termEnd.toISOString(),
+      );
+      expect(new Date(renewed[0]!.renewed_until!).toISOString()).toBe(
+        renewedUntil.toISOString(),
+      );
+      const superseded = events.filter(
+        (event) =>
+          event.event_type === 'license.version.superseded' &&
+          event.operation_id === target.payload.operationId,
+      );
+      expect(superseded).toHaveLength(1);
+      expect(superseded[0]!.reason).toBeNull();
+      expect(
+        events.filter(
+          (event) =>
+            event.event_type === 'license.import.applied' &&
+            event.operation_id === renewal.payload.operationId,
+        ),
+      ).toHaveLength(0);
+
+      // The read model reports the signed operation id, the derived effective
+      // start, and the chain end (PO decision Q-2). The instant is inside the
+      // target's term, so the renewal is genuinely scheduled there.
+      const duringTarget = new Date(termStart.getTime() + DAY_MS);
+      const history = await app
+        .get(PersistentLicenseProvider)
+        .versionHistory(duringTarget);
+      const renewalSummary = history.versions.find(
+        (version) => version.operationId === renewal.payload.operationId,
+      );
+      expect(renewalSummary).toMatchObject({
+        effectiveFrom: termEnd.toISOString(),
+        validFrom: issuedAt.toISOString(),
+      });
+      expect(history.coverageEnd).toBe(renewedUntil.toISOString());
+      expect(history.scheduled?.operationId).toBe(renewal.payload.operationId);
+
+      // Before the boundary the TARGET still governs and the renewal is only
+      // scheduled; at the boundary the renewal takes over.
+      const before = await app
+        .get(LicensingService)
+        .current(new Date(termEnd.getTime() - 1));
+      expect(before).toMatchObject({ active: true, organizationLimit: 4 });
+      const atBoundary = await app.get(LicensingService).current(termEnd);
+      expect(atBoundary).toMatchObject({ active: true, organizationLimit: 4 });
+      const after = await app
+        .get(LicensingService)
+        .current(new Date(termEnd.getTime() + 180 * DAY_MS));
+      expect(after).toMatchObject({ active: true });
+    }, 60_000);
+
+    it('refuses a stale renewal target in the transaction and writes nothing', async () => {
+      const identity = await app.get(InstallationIdentityService).current();
+      const installationId = identity.installationId;
+      const termStart = await retainedCoverageEnd();
+      const termEnd = new Date(termStart.getTime() + YEAR_MS);
+      const renewedUntil = new Date(termEnd.getTime() + YEAR_MS);
+      const issuedAt = new Date(termStart.getTime() - 30 * DAY_MS);
+
+      const first = licenseFor({
+        installationId,
+        validFrom: termStart,
+        validUntil: termEnd,
+        organizationLimit: 4,
+      });
+      await app.get(LicenseImportService).importDocument(first.file);
+      const renewal = licenseFor({
+        installationId,
+        validFrom: issuedAt,
+        validUntil: renewedUntil,
+        organizationLimit: 4,
+        issuedAt,
+        renewsOperationId: first.payload.operationId,
+      });
+      await app.get(LicenseImportService).importDocument(renewal.file);
+
+      const versionsBefore = await count(
+        `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+          WHERE "installation_id" = $1`,
+        installationId,
+      );
+      const auditBefore = await count(
+        `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
+          WHERE "installation_id" = $1`,
+        installationId,
+      );
+
+      // The tail is now the applied renewal, so renewing the ORIGINAL target
+      // again would stack two extensions of the same term.
+      const staleIssuedAt = new Date(renewedUntil.getTime() - 30 * DAY_MS);
+      const stale = licenseFor({
+        installationId,
+        validFrom: staleIssuedAt,
+        validUntil: new Date(renewedUntil.getTime() + YEAR_MS),
+        organizationLimit: 4,
+        issuedAt: staleIssuedAt,
+        renewsOperationId: first.payload.operationId,
+      });
+      const refused = await importOutcome(stale);
+      // The named version already carries a recorded supersession, which the
+      // design classifies as an unknown target (it is no longer renewable at
+      // all); nothing is written either way.
+      expect(refused).toMatchObject({
+        applied: false,
+        status: 409,
+        reason: 'renewal-target-unknown',
+      });
+
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "installation_id" = $1`,
+          installationId,
+        ),
+      ).toBe(versionsBefore);
+      // A refusal is audited as exactly one rejection — never as an APPLIED
+      // fact and never as a version.
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
+            WHERE "installation_id" = $1`,
+          installationId,
+        ),
+      ).toBe(auditBefore + 1);
+      const latest = await query<{
+        event_type: string;
+        outcome: string;
+        operation_id: string | null;
+        reason: string | null;
+      }>(
+        `SELECT "event_type", "outcome", "operation_id", "reason"
+           FROM "licensing"."license_audit_events"
+          WHERE "installation_id" = $1
+          ORDER BY "occurred_at" DESC, "id" DESC
+          LIMIT 1`,
+        installationId,
+      );
+      expect(latest[0]).toMatchObject({
+        event_type: 'license.import.rejected',
+        outcome: 'REJECTED',
+        operation_id: stale.payload.operationId,
+        reason: 'renewal-target-unknown',
+      });
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          stale.payload.operationId,
+        ),
+      ).toBe(0);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
+            WHERE "event_type" = 'license.import.renewed' AND "operation_id" = $1`,
+          stale.payload.operationId,
+        ),
+      ).toBe(0);
+    }, 60_000);
+
+    it('lets exactly one of two concurrent renewals of the same target commit', async () => {
+      const identity = await app.get(InstallationIdentityService).current();
+      const installationId = identity.installationId;
+      const termStart = await retainedCoverageEnd();
+      const termEnd = new Date(termStart.getTime() + YEAR_MS);
+
+      const target = licenseFor({
+        installationId,
+        validFrom: termStart,
+        validUntil: termEnd,
+        organizationLimit: 4,
+      });
+      await app.get(LicenseImportService).importDocument(target.file);
+
+      const leftIssuedAt = new Date(termEnd.getTime() - 30 * DAY_MS);
+      const rightIssuedAt = new Date(termEnd.getTime() - 15 * DAY_MS);
+      const left = licenseFor({
+        installationId,
+        validFrom: leftIssuedAt,
+        validUntil: new Date(termEnd.getTime() + YEAR_MS),
+        organizationLimit: 4,
+        issuedAt: leftIssuedAt,
+        renewsOperationId: target.payload.operationId,
+      });
+      const right = licenseFor({
+        installationId,
+        validFrom: rightIssuedAt,
+        validUntil: new Date(termEnd.getTime() + 2 * YEAR_MS),
+        organizationLimit: 4,
+        issuedAt: rightIssuedAt,
+        renewsOperationId: target.payload.operationId,
+      });
+
+      const outcomes = await raceImports([left, right]);
+      expect(outcomes.filter((outcome) => outcome.applied)).toHaveLength(1);
+      for (const refused of outcomes.filter((outcome) => !outcome.applied)) {
+        expect(refused.status).toBe(409);
+        // The loser resolves against the winner's committed rows: either the
+        // target now carries a recorded supersession (`renewal-target-unknown`)
+        // or the tail moved to the winner (`renewal-target-not-current`).
+        expect([
+          'renewal-target-unknown',
+          'renewal-target-not-current',
+        ]).toContain(refused.reason);
+      }
+
+      // One committed renewal at the target's end; the target is stamped once.
+      const rows = await query<{
+        operation_id: string;
+        governs_from: Date | null;
+        superseded_at: Date | null;
+      }>(
+        `SELECT "operation_id", "governs_from", "superseded_at"
+           FROM "licensing"."license_versions"
+          WHERE "installation_id" = $1 AND "operation_id" IN ($2, $3, $4)
+          ORDER BY "imported_at", "id"`,
+        installationId,
+        target.payload.operationId,
+        left.payload.operationId,
+        right.payload.operationId,
+      );
+      const renewals = rows.filter((row) => row.governs_from !== null);
+      expect(renewals).toHaveLength(1);
+      const winner =
+        outcomes.find((outcome) => outcome.applied)?.document.payload
+          .operationId ?? null;
+      expect(renewals[0]!.operation_id).toBe(winner);
+      expect(
+        rows.filter(
+          (row) =>
+            row.operation_id === target.payload.operationId &&
+            row.superseded_at !== null,
+        ),
+      ).toHaveLength(1);
     }, 60_000);
   },
 );

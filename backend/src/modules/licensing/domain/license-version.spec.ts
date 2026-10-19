@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { LicenseEntitlement, LicenseStatus } from './license.js';
 import {
   continuationBaselineFor,
+  coverageChainTail,
+  coverageEndOf,
   covers,
   effectiveWindow,
   evaluateImportConflicts,
@@ -21,6 +23,7 @@ import {
   supersessionCeaseInstant,
   supersessionRewritesPastGovernance,
   toInstallationLicense,
+  toLicenseVersionSummary,
   windowsOverlap,
   type RetainedLicenseVersion,
 } from './license-version.js';
@@ -65,6 +68,7 @@ function version(
     documentHash: `hash-${index}`,
     keyId: 'authority-2026',
     validFrom: new Date('2026-01-01T00:00:00.000Z'),
+    governsFrom: null,
     validUntil: null,
     organizationLimit: null,
     userLimit: null,
@@ -2976,5 +2980,373 @@ describe('post-gap recovery and the §8.6 reduction guard (contract)', () => {
         ],
       },
     });
+  });
+});
+
+/**
+ * OD-LIC-06 / OQ-88 — the renewal protocol, end to end at the domain boundary.
+ *
+ * PO decisions (recorded in the approved design §13): Q-1 = `boundary` (a
+ * renewal's effective start is the renewed term's exclusive end, and the
+ * partial mid-period term is applied exactly as signed), Q-2 = `coverage_end`
+ * (the read model reports the end of the unbroken coverage chain).
+ *
+ * Every case below is hermetic: a fixed instant set, no clock, no database. The
+ * transaction-level facts (row, stamp, audit rows, locks) are pinned by the
+ * service, live-persistence and migration-rehearsal suites.
+ */
+describe('OD-LIC-06 renewal protocol (OQ-88)', () => {
+  const TERM_START = '2026-01-01T00:00:00.000Z';
+  const TERM_END = '2027-01-01T00:00:00.000Z';
+  const ISSUED = '2026-10-01T00:00:00.000Z';
+  const RENEWED_UNTIL = '2028-01-01T00:00:00.000Z';
+
+  /** A signed renewal: issued on the issuance day, governing from TERM_END. */
+  function renewal(
+    overrides: Partial<RetainedLicenseVersion> = {},
+  ): RetainedLicenseVersion {
+    return version({
+      ...window(ISSUED, RENEWED_UNTIL),
+      ...overrides,
+    });
+  }
+
+  function evaluate(
+    candidate: Partial<RetainedLicenseVersion>,
+    overrides: Partial<Parameters<typeof evaluateImportConflicts>[0]> = {},
+  ): ReturnType<typeof evaluateImportConflicts> {
+    const full = version(candidate);
+    return evaluateImportConflicts({
+      candidate: full,
+      operationId: full.operationId,
+      documentHash: full.documentHash,
+      supersession: { kind: 'none' },
+      versions: [],
+      at: NOW,
+      ...overrides,
+    });
+  }
+
+  it('reads one window start: governsFrom when set, validFrom otherwise', () => {
+    const ordinary = version(window(TERM_START, TERM_END));
+    const deferred = renewal({ governsFrom: new Date(TERM_END) });
+
+    // A row written before OD-LIC-06 (governsFrom null) is unchanged.
+    expect(effectiveWindow(ordinary).start.toISOString()).toBe(TERM_START);
+    expect(covers(ordinary, new Date(TERM_START))).toBe(true);
+    expect(covers(ordinary, new Date(TERM_END))).toBe(false);
+
+    // The renewal covers from the renewed term boundary, not from its signed
+    // start: that is what makes an early import additive instead of a
+    // truncation of the term the customer already holds.
+    expect(effectiveWindow(deferred).start.toISOString()).toBe(TERM_END);
+    expect(covers(deferred, new Date(ISSUED))).toBe(false);
+    expect(covers(deferred, new Date(TERM_END))).toBe(true);
+    expect(covers(deferred, new Date(RENEWED_UNTIL))).toBe(false);
+  });
+
+  it('resolves the target as the tail of the unbroken coverage chain', () => {
+    const target = version(window(TERM_START, TERM_END));
+    const applied = renewal({ governsFrom: new Date(TERM_END) });
+
+    // Before the renewal exists, the target is the tail and coverage ends at
+    // its own end — the read model must report 2027-01-01, not "now".
+    expect(coverageChainTail([target], NOW)?.versionId).toBe(target.versionId);
+    expect(coverageEndOf([target], NOW)?.toISOString()).toBe(TERM_END);
+
+    // After it, the renewal is the tail and coverage ends at ITS end. The
+    // target is still inside the chain, so renewing it again is refused as
+    // `renewal-target-not-current` (an interior version, not stale data).
+    const chain = [target, applied];
+    expect(coverageChainTail(chain, NOW)?.versionId).toBe(applied.versionId);
+    expect(coverageEndOf(chain, NOW)?.toISOString()).toBe(RENEWED_UNTIL);
+    expect(
+      evaluate(renewal({ governsFrom: new Date(RENEWED_UNTIL) }), {
+        versions: chain,
+        supersession: { kind: 'renewal', operationId: target.operationId },
+      }).conflict?.reason,
+    ).toBe('renewal-target-not-current');
+
+    // A perpetual tail never ends, so coverage is reported as open.
+    expect(coverageEndOf([version(window(TERM_START, null))], NOW)).toBeNull();
+  });
+
+  it('accepts a renewal of the tail and hands over at the target end, never earlier', () => {
+    const target = version(window(TERM_START, TERM_END));
+    const candidate = renewal({ governsFrom: new Date(TERM_END) });
+
+    const result = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'renewal', operationId: target.operationId },
+      versions: [target],
+      at: NOW,
+    });
+
+    expect(result.conflict).toBeNull();
+    if (result.conflict !== null) return;
+    expect(result.supersedes?.versionId).toBe(target.versionId);
+    expect(result.renewal).toEqual({
+      renewedVersionId: target.versionId,
+      governsFrom: new Date(TERM_END),
+    });
+    // The target is stamped with the SAME instant the renewal starts at — the
+    // accessor is shared, so the two can never disagree.
+    expect(supersessionCeaseInstant(candidate).toISOString()).toBe(TERM_END);
+  });
+
+  it('fills the mid-period term exactly as signed (PO decision Q-1)', () => {
+    // A term that ends mid-day: the renewal starts at that exact instant and
+    // the new end date is applied as signed, with no rounding and no clamping.
+    const end = '2027-03-15T12:34:56.789Z';
+    const target = version(window(TERM_START, end));
+    const candidate = renewal({
+      governsFrom: new Date(end),
+      validUntil: new Date('2028-03-15T12:34:56.789Z'),
+    });
+
+    const result = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'renewal', operationId: target.operationId },
+      versions: [target],
+      at: NOW,
+    });
+
+    expect(result.conflict).toBeNull();
+    if (result.conflict !== null) return;
+    expect(result.renewal?.governsFrom.toISOString()).toBe(end);
+    expect(candidate.validUntil?.toISOString()).toBe(
+      '2028-03-15T12:34:56.789Z',
+    );
+  });
+
+  it('reports an early renewal as scheduled, not as the governing version', () => {
+    const target = version(window(TERM_START, TERM_END));
+    const applied = renewal({ governsFrom: new Date(TERM_END) });
+
+    // At the import instant the target still governs and the renewal is the
+    // scheduled version, even though the renewal's signed validFrom is past.
+    const atImport = new Date(ISSUED);
+    expect(
+      resolveEffectiveVersion([target, applied], atImport).version?.versionId,
+    ).toBe(target.versionId);
+    expect(findScheduledVersion([target, applied], atImport)?.versionId).toBe(
+      applied.versionId,
+    );
+
+    // At the boundary the renewal governs and nothing is scheduled.
+    expect(
+      resolveEffectiveVersion([target, applied], new Date(TERM_END)).version
+        ?.versionId,
+    ).toBe(applied.versionId);
+    expect(
+      findScheduledVersion([target, applied], new Date(TERM_END)),
+    ).toBeNull();
+  });
+
+  it('refuses an unknown, retired, or foreign renewal target', () => {
+    const target = version(window(TERM_START, TERM_END));
+    const candidate = renewal({ governsFrom: new Date(TERM_END) });
+
+    const of = (operationId: string, versions: RetainedLicenseVersion[]) =>
+      evaluateImportConflicts({
+        candidate,
+        operationId: candidate.operationId,
+        documentHash: candidate.documentHash,
+        supersession: { kind: 'renewal', operationId },
+        versions,
+        at: NOW,
+      }).conflict?.reason;
+
+    expect(of('01K7MISSINGOPERATION0000000', [target])).toBe(
+      'renewal-target-unknown',
+    );
+    // A retired target is never a renewal target.
+    expect(
+      of(target.operationId, [
+        superseded('2026-02-01T00:00:00.000Z', '01K7OTHER00000000000000000', {
+          ...window(TERM_START, TERM_END),
+        }),
+      ]),
+    ).toBe('renewal-target-unknown');
+    // Another customer's version of this installation is not renewable. Its
+    // license identity differs too, so the general binding rule (rule 2a)
+    // cannot answer first and the refusal is specifically the renewal's.
+    expect(
+      of(target.operationId, [
+        version({
+          ...window(TERM_START, TERM_END),
+          customerId: '01K7OTHER00000000000000000',
+          licenseId: '01K7OTHERLICENSE00000000000',
+        }),
+      ]),
+    ).toBe('renewal-target-unknown');
+  });
+
+  it('refuses a perpetual target and still allows the explicit term change', () => {
+    const perpetual = version(window(TERM_START, null));
+    const candidate = renewal({ governsFrom: new Date(TERM_END) });
+
+    expect(
+      evaluateImportConflicts({
+        candidate,
+        operationId: candidate.operationId,
+        documentHash: candidate.documentHash,
+        supersession: { kind: 'renewal', operationId: perpetual.operationId },
+        versions: [perpetual],
+        at: NOW,
+      }).conflict?.reason,
+    ).toBe('renewal-target-perpetual');
+
+    // PDR-12 keeps its own path: a signed explicit supersession may convert a
+    // perpetual grant to a time-limited one, at the successor's own start.
+    const limited = version({
+      ...window('2026-07-01T00:00:00.000Z', RENEWED_UNTIL),
+      supersedesOperationId: perpetual.operationId,
+    });
+    const explicit = evaluateImportConflicts({
+      candidate: limited,
+      operationId: limited.operationId,
+      documentHash: limited.documentHash,
+      supersession: { kind: 'explicit', operationId: perpetual.operationId },
+      versions: [perpetual],
+      at: NOW,
+    });
+    expect(explicit.conflict).toBeNull();
+    expect(explicit.supersedes?.versionId).toBe(perpetual.versionId);
+    if (explicit.conflict !== null) return;
+    expect(explicit.renewal).toBeNull();
+  });
+
+  it('refuses a term that does not extend, and accepts an extension to perpetual', () => {
+    const target = version(window(TERM_START, TERM_END));
+    const sameEnd = renewal({
+      governsFrom: new Date(TERM_END),
+      validUntil: new Date(TERM_END),
+    });
+    const shorter = renewal({
+      governsFrom: new Date(TERM_END),
+      validUntil: new Date('2027-06-01T00:00:00.000Z'),
+    });
+    const perpetual = renewal({
+      governsFrom: new Date(TERM_END),
+      validUntil: null,
+    });
+
+    const of = (candidate: RetainedLicenseVersion) =>
+      evaluateImportConflicts({
+        candidate,
+        operationId: candidate.operationId,
+        documentHash: candidate.documentHash,
+        supersession: { kind: 'renewal', operationId: target.operationId },
+        versions: [target],
+        at: NOW,
+      }).conflict?.reason;
+
+    expect(of(sameEnd)).toBe('renewal-not-an-extension');
+    expect(of(shorter)).toBe('renewal-not-an-extension');
+    // Extending a time-limited grant to perpetual is a grant increase, so it is
+    // allowed; only perpetual→time-limited needs the explicit term change.
+    expect(of(perpetual)).toBeUndefined();
+  });
+
+  it('never lets a renewal pass as a post-gap recovery', () => {
+    // Coverage ended long ago; a renewal of the ended version still starts AT
+    // that end, so it is adjacency on the old chain — never a post-gap start.
+    const lapsed = version(window(TERM_START, TERM_END));
+    const candidate = renewal({
+      governsFrom: new Date(TERM_END),
+      validUntil: new Date('2028-06-01T00:00:00.000Z'),
+    });
+
+    const asRecovery = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'renewal', operationId: lapsed.operationId },
+      versions: [lapsed],
+      at: new Date('2027-06-01T00:00:00.000Z'),
+      gapRecovery: { reason: 'coverage lapsed' },
+    });
+    expect(asRecovery.conflict?.reason).toBe('recovery-not-applicable');
+
+    // And the ordinary renewal still applies through the lapse, with no new
+    // license identity and no recovery bypass (PDR-13's post-gap path is for
+    // new identities only).
+    const ordinary = evaluateImportConflicts({
+      candidate,
+      operationId: candidate.operationId,
+      documentHash: candidate.documentHash,
+      supersession: { kind: 'renewal', operationId: lapsed.operationId },
+      versions: [lapsed],
+      at: new Date('2027-06-01T00:00:00.000Z'),
+    });
+    expect(ordinary.conflict).toBeNull();
+  });
+
+  it('keeps the target term intact when the renewal is imported mid-term', () => {
+    const target = version(window(TERM_START, TERM_END));
+    const candidate = renewal({ governsFrom: new Date(TERM_END) });
+
+    // The hand-over instant is the target's end, so removing [handOver, at)
+    // removes exactly nothing: no past governance is rewritten.
+    expect(supersessionRewritesPastGovernance(target, candidate, NOW)).toBe(
+      false,
+    );
+    // The historical overlap rule sees a disjoint (adjacent) window, so the
+    // renewal is never refused as an overlap with its own target.
+    expect(overlappingVersions(candidate, [target]).length).toBe(0);
+  });
+
+  it('uses the derived start for adjacency and gap detection', () => {
+    const target = version(window(TERM_START, TERM_END));
+    const candidate = renewal({ governsFrom: new Date(TERM_END) });
+
+    // `continuationBaselineFor` measures the grant actually continued: the
+    // target ends exactly where the renewal starts. The authority derives
+    // `effectiveStart` before calling it (it is never read from a caller).
+    expect(
+      continuationBaselineFor(
+        { ...candidate, effectiveStart: new Date(TERM_END) },
+        [target],
+        null,
+      )?.versionId,
+    ).toBe(target.versionId);
+    // A renewal that could start earlier than the target's end would rewrite
+    // history; the derived start prevents it structurally, not by a special
+    // case in the gap rule.
+    expect(
+      evaluateImportConflicts({
+        candidate,
+        operationId: candidate.operationId,
+        documentHash: candidate.documentHash,
+        supersession: { kind: 'renewal', operationId: target.operationId },
+        versions: [target],
+        at: new Date(ISSUED),
+      }).conflict,
+    ).toBeNull();
+  });
+
+  it('exposes the signed operation id and the effective start in the read model', () => {
+    const ordinary = version(window(TERM_START, TERM_END));
+    const applied = renewal({ governsFrom: new Date(TERM_END) });
+
+    const ordinarySummary = toLicenseVersionSummary(
+      ordinary,
+      ordinary.versionId,
+    );
+    expect(ordinarySummary.operationId).toBe(ordinary.operationId);
+    expect(ordinarySummary.validFrom).toBe(TERM_START);
+    expect(ordinarySummary.effectiveFrom).toBe(TERM_START);
+
+    const renewalSummary = toLicenseVersionSummary(applied, ordinary.versionId);
+    expect(renewalSummary.operationId).toBe(applied.operationId);
+    // The signed issuance-day fact is preserved…
+    expect(renewalSummary.validFrom).toBe(ISSUED);
+    // …while the governance instant is the renewed term boundary.
+    expect(renewalSummary.effectiveFrom).toBe(TERM_END);
   });
 });

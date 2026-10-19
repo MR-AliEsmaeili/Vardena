@@ -194,6 +194,14 @@ export interface IssueLicenseVersionOptions extends IssueLicenseOptions {
   operationId?: string;
   /** Operation id of the retained version this document retires. */
   supersedesOperationId?: string | null;
+  /**
+   * Operation id of the retained version this document RENEWS (OD-LIC-06).
+   * A renewal extends the named version's term: it starts governing at that
+   * version's effective end, never at its own `validFrom`. Mutually exclusive
+   * with `supersedesOperationId`; the payload validator (shared by signing and
+   * verification) refuses the combination before anything is signed.
+   */
+  renewsOperationId?: string | null;
   issuedAt?: Date;
 }
 
@@ -236,6 +244,7 @@ export function buildLicenseVersionPayload(
     moduleEntitlements: legacy.moduleEntitlements,
     featureEntitlements: legacy.featureEntitlements,
     supersedesOperationId: options.supersedesOperationId ?? null,
+    renewsOperationId: options.renewsOperationId ?? null,
     issuedAt: options.issuedAt ?? new Date(),
   };
 }

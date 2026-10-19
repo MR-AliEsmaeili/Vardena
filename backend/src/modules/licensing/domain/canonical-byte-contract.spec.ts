@@ -28,6 +28,9 @@ function basePayload(
     moduleEntitlements: ['accounting', 'inventory'],
     featureEntitlements: [],
     supersedesOperationId: null,
+    // Omitted from the canonical bytes when absent (OD-LIC-06 §3.1): every
+    // committed vector below keeps its exact bytes, digest and signature.
+    renewsOperationId: null,
     issuedAt: new Date('2026-10-11T00:00:00.000Z'),
     ...overrides,
   };
@@ -114,6 +117,27 @@ describe('canonical byte contract (D-2(b) ratification)', () => {
     };
     const out = canonicalizeEnrollmentChallenge(payload);
     expect(out).toContain('VDEA1');
+  });
+
+  it('omits renewsOperationId entirely when the document is not a renewal', () => {
+    const p = basePayload();
+    const out = canonicalizeLicenseVersion(p);
+    expect(out).not.toContain('renewsOperationId');
+    // The absence is what keeps every pre-OQ-88 artifact, vector and signature
+    // byte-identical: the field is not emitted as `null`.
+    expect(out).toContain(',"supersedesOperationId":null,"issuedAt":');
+  });
+
+  it('places renewsOperationId between supersedesOperationId and issuedAt', () => {
+    const target = generateId();
+    const p = basePayload({ renewsOperationId: target });
+    const out = canonicalizeLicenseVersion(p);
+    expect(out).toContain(
+      `"supersedesOperationId":null,"renewsOperationId":"${target}","issuedAt":`,
+    );
+    // The key order is fixed by construction, so the same logical version always
+    // signs the same bytes.
+    expect(out).toBe(canonicalizeLicenseVersion({ ...p }));
   });
 
   it('canonical output is valid JSON round-trip', () => {
