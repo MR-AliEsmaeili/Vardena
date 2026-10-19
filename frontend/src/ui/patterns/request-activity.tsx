@@ -106,7 +106,9 @@ export function GlobalRequestIndicator() {
       data-testid="global-request-indicator"
       data-visible={visible ? 'true' : 'false'}
       className={cn(
-        'pointer-events-none fixed bottom-4 start-4 z-40 max-w-[calc(100vw-2rem)] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-md',
+        // Toasts own the bottom-start corner; the loading status sits below
+        // the 3.5rem top bar on the opposite logical side, clear of both.
+        'pointer-events-none fixed top-16 end-4 z-40 max-w-[calc(100vw-2rem)] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-md',
         visible ? 'flex' : 'sr-only',
       )}
     >
