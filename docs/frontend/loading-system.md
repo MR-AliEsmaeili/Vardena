@@ -283,6 +283,7 @@ Relevant tests:
 | `src/ui/patterns/request-activity.test.tsx` | delayed global panel, no flash for fast requests, one panel for concurrent writes, mixed messages, RTL/live region, ambient vs global, local threshold |
 | `src/ui/thinking-orb.test.tsx` | real `thinking-orbs`: role/name, decorative mode, reduced-motion static frame, animation loop when allowed |
 | `src/ui/button.test.tsx` | double-submit prevention (`disabled`, `aria-busy`, `data-loading`), decorative orb, `asChild` safety |
+| `src/ui/patterns/data-table.test.tsx` | section-level skeleton, rows usable during a local refresh, one local label, failure rendered separately |
 | Existing feature suites | unchanged behavior of login, session expiry, documents, inventory, admin, dashboard and error copy |
 
 The 15 mandatory scenarios from the brief map as follows: success, HTTP error,
@@ -318,6 +319,21 @@ DOM still renders), and the orb integration test installs a no-op context.
   (delay, visibility, announcements, reduced motion) is covered in jsdom, while
   pixel-level canvas painting is a manual browser-review item, not an automated
   assertion.
+
+---
+
+## 8. Security review
+
+| Question | Finding |
+| --- | --- |
+| Does the registry store request data? | No. Entries hold only a scope and an enum message; no URL, body, header, token, tenant or error is kept. |
+| Can the loading UI leak server internals? | No. It renders fixed dictionary copy; errors, codes and correlation IDs never enter it. |
+| Does the loading system add a network surface? | No. It observes the existing Axios instance and issues no request (proven by the "never creates an extra request" test). |
+| Does `thinking-orbs` phone home, evaluate code or touch storage? | Inspected `dist/`: no `fetch`/`XMLHttpRequest`/`WebSocket`/`EventSource`, no `eval`/`new Function`, no cookie or web-storage access. It paints to a canvas only. |
+| Any HTML injection? | The system renders text nodes only; `dangerouslySetInnerHTML` is not used anywhere in `src/`. |
+| Dependency risk | Single MIT package, ESM+CJS, `sideEffects: false`, peer React ≥18; `npm audit --omit=dev` → **0 vulnerabilities**. |
+| Permission behavior | Unchanged: no route guard, permission check or endpoint was added, removed or bypassed. 401 handling still runs after finalization. |
+| Data loss / double submit | Buttons remain disabled while loading; no form data is reset by any indicator. |
 
 ---
 
