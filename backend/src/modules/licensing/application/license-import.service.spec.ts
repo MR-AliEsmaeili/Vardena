@@ -3812,3 +3812,603 @@ describe('stable customerCode across the license lifecycle (L-06, PDR-14)', () =
     });
   });
 });
+
+/**
+ * OD-LIC-06 / OQ-88 — the renewal protocol through the REAL import pipeline.
+ *
+ * PO decisions (design §13): Q-1 = `boundary` (a renewal starts governing at the
+ * renewed term's exclusive end; the signed new end is applied exactly) and Q-2 =
+ * `coverage_end` (the read model reports the end of the unbroken chain).
+ *
+ * Pinned timeline:
+ *   import instant  T0        = 2026-06-01T00:00:00Z
+ *   target                    [2026-01-01, 2027-01-01)
+ *   renewal (signed at T0)    governs [2027-01-01, 2028-01-01)
+ *
+ * The in-memory stores re-run `evaluateImportConflicts` inside `importVersion`
+ * and mirror the repository's agreement check on the derived start, so a service
+ * that derived `governsFrom` itself instead of taking the authority's verdict
+ * fails here.
+ */
+describe('renewal protocol (OD-LIC-06, OQ-88)', () => {
+  let harness: Harness;
+  const T0 = new Date('2026-06-01T00:00:00.000Z');
+  const BEFORE_HANDOVER = new Date('2026-12-31T23:59:59.999Z');
+  const HANDOVER = new Date('2027-01-01T00:00:00.000Z');
+  const AFTER_HANDOVER = new Date('2027-06-01T00:00:00.000Z');
+  const RENEWED_UNTIL = new Date('2028-01-01T00:00:00.000Z');
+  /** `HANDOVER + 14 × 24 h`: the approved Grace deadline (PDR-11 §9.3). */
+  const GRACE_ENDS_AT = new Date('2027-01-15T00:00:00.000Z');
+  /** Inside Grace: the signed term has ended, operation is still allowed. */
+  const DURING_GRACE = new Date('2027-01-10T00:00:00.000Z');
+  /** After Grace: the installation is Read-Only until a renewal lands. */
+  const AFTER_READ_ONLY = new Date('2027-02-01T00:00:00.000Z');
+  /** `RENEWED_UNTIL + 14 × 24 h`: Grace recomputed from the new signed end. */
+  const RENEWED_GRACE_ENDS_AT = new Date('2028-01-15T00:00:00.000Z');
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    harness = buildHarness();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function importTarget(): Promise<{
+    operationId: string;
+    versionId: string;
+  }> {
+    const target = signedDocument(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: HANDOVER,
+        organizationLimit: 4,
+        userLimit: 10,
+      },
+      AUTHORITY.privateKey,
+    );
+    await harness.service.importDocument(target.file);
+    return {
+      operationId: target.payload.operationId,
+      versionId: harness.stores.versions[0]!.versionId,
+    };
+  }
+
+  function renewalDocument(
+    targetOperationId: string,
+    overrides: Partial<Parameters<typeof issueLicenseFile>[0]> = {},
+  ): string {
+    return issuedFile({
+      validFrom: T0,
+      validUntil: RENEWED_UNTIL,
+      issuedAt: T0,
+      organizationLimit: 4,
+      userLimit: 10,
+      renewsOperationId: targetOperationId,
+      ...overrides,
+    });
+  }
+
+  it('applies an early renewal, hands over at the target end and records the typed evidence', async () => {
+    const target = await importTarget();
+
+    const applied = await harness.service.importDocument(
+      renewalDocument(target.operationId),
+    );
+    expect(applied).toMatchObject({ changed: true, outcome: 'APPLIED' });
+
+    // The target is retired NOW but keeps governing until its own end: the
+    // renewal record never shortens the term the customer already holds.
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(harness.stores.versions[0]).toMatchObject({
+      versionId: target.versionId,
+      supersededAt: T0,
+      governsUntil: HANDOVER,
+    });
+    const renewal = harness.stores.versions[1]!;
+    expect(renewal.governsFrom).toEqual(HANDOVER);
+    expect(renewal.validFrom).toEqual(T0);
+    expect(renewal.validUntil).toEqual(RENEWED_UNTIL);
+
+    // Exactly one typed APPLIED event, plus the target's retirement. No generic
+    // `license.import.applied` row shadows the renewal.
+    expect(harness.stores.auditEvents.map((event) => event.eventType)).toEqual([
+      // The target's own ordinary import (one generic APPLIED row), then the
+      // renewal's two typed rows — the renewal itself adds no generic row.
+      'license.import.applied',
+      'license.version.superseded',
+      'license.import.renewed',
+    ]);
+    expect(harness.stores.auditEvents[2]).toMatchObject({
+      outcome: 'APPLIED',
+      operationId: renewal.operationId,
+      licenseId: LICENSE,
+      versionId: renewal.versionId,
+      renewedVersionId: target.versionId,
+      renewedFrom: HANDOVER,
+      renewedUntil: RENEWED_UNTIL,
+      previousLicenseId: null,
+      reason: null,
+    });
+
+    // Before the boundary the TARGET still governs…
+    expect(await harness.licensing.current(BEFORE_HANDOVER)).toMatchObject({
+      active: true,
+    });
+    expect(
+      (await harness.provider.versionHistory(BEFORE_HANDOVER))
+        .effectiveVersionId,
+    ).toBe(target.versionId);
+    // …and from the boundary the renewal does, with its own signed end.
+    expect(await harness.licensing.current(HANDOVER)).toMatchObject({
+      active: true,
+    });
+    expect(
+      (await harness.provider.versionHistory(HANDOVER)).effectiveVersionId,
+    ).toBe(renewal.versionId);
+    expect(await harness.licensing.current(AFTER_HANDOVER)).toMatchObject({
+      active: true,
+      validUntil: RENEWED_UNTIL,
+    });
+
+    // The read model answers the operator's question: which version do I renew
+    // next, and how far does my coverage actually run?
+    const history = await harness.provider.versionHistory(T0);
+    expect(history.coverageEnd).toBe(RENEWED_UNTIL.toISOString());
+    expect(history.scheduled?.operationId).toBe(renewal.operationId);
+    expect(history.scheduled?.effectiveFrom).toBe(HANDOVER.toISOString());
+    expect(
+      history.versions.find(
+        (version) => version.versionId === renewal.versionId,
+      ),
+    ).toMatchObject({
+      operationId: renewal.operationId,
+      validFrom: T0.toISOString(),
+      effectiveFrom: HANDOVER.toISOString(),
+    });
+  });
+
+  it('writes nothing when the renewal does not extend the term', async () => {
+    const target = await importTarget();
+    const versions = JSON.stringify(harness.stores.versions);
+    const appliedBefore = harness.stores.auditEvents.filter(
+      (event) => event.outcome === 'APPLIED',
+    ).length;
+
+    // An end equal to the target's end is not an extension: 422, not 409.
+    const refusal = await rejectionOf(
+      harness.service.importDocument(
+        renewalDocument(target.operationId, { validUntil: HANDOVER }),
+      ),
+    );
+    expect(refusal.status).toBe(422);
+    expect(refusal.details).toMatchObject({
+      reason: 'renewal-not-an-extension',
+    });
+    expect(JSON.stringify(harness.stores.versions)).toBe(versions);
+    expect(
+      harness.stores.auditEvents.filter((event) => event.outcome === 'APPLIED'),
+    ).toHaveLength(appliedBefore);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.rejected',
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses a repeated renewal artifact without touching the retained state', async () => {
+    const target = await importTarget();
+    const document = renewalDocument(target.operationId);
+    await harness.service.importDocument(document);
+    const versions = JSON.stringify(harness.stores.versions);
+
+    const replay = await rejectionOf(harness.service.importDocument(document));
+    expect(replay.status).toBe(409);
+    expect(replay.details).toMatchObject({ reason: 'duplicate-operation' });
+    expect(JSON.stringify(harness.stores.versions)).toBe(versions);
+    expect(
+      harness.stores.auditEvents.filter(
+        (event) => event.eventType === 'license.import.renewed',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('refuses a target that already carries a recorded supersession', async () => {
+    const target = await importTarget();
+    await harness.service.importDocument(renewalDocument(target.operationId));
+    const versions = JSON.stringify(harness.stores.versions);
+
+    const stale = await rejectionOf(
+      harness.service.importDocument(
+        renewalDocument(target.operationId, {
+          validUntil: new Date('2029-01-01T00:00:00.000Z'),
+        }),
+      ),
+    );
+    expect(stale.status).toBe(409);
+    expect(stale.details).toMatchObject({ reason: 'renewal-target-unknown' });
+    expect(JSON.stringify(harness.stores.versions)).toBe(versions);
+  });
+
+  it('refuses a renewal of a perpetual version but keeps the explicit term change working', async () => {
+    const perpetual = signedDocument(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        organizationLimit: 4,
+      },
+      AUTHORITY.privateKey,
+    );
+    await harness.service.importDocument(perpetual.file);
+
+    const refusal = await rejectionOf(
+      harness.service.importDocument(
+        renewalDocument(perpetual.payload.operationId),
+      ),
+    );
+    expect(refusal.status).toBe(409);
+    expect(refusal.details).toMatchObject({
+      reason: 'renewal-target-perpetual',
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+
+    // PDR-12's explicit supersession still performs the term change.
+    const limited = signedDocument(
+      {
+        installationId: INSTALLATION,
+        validFrom: T0,
+        validUntil: HANDOVER,
+        organizationLimit: 4,
+        supersedesOperationId: perpetual.payload.operationId,
+      },
+      AUTHORITY.privateKey,
+    );
+    await expect(
+      harness.service.importDocument(limited.file),
+    ).resolves.toMatchObject({ outcome: 'APPLIED' });
+  });
+
+  it('never creates a renewal from a legacy text code (VLIC1)', async () => {
+    const target = await importTarget();
+    // A legacy code cannot carry an operation id, so it can never express a
+    // renewal: it is adjacent to the target, and its import must leave no
+    // deferred start and no renewal evidence behind.
+    const code = signedCode(
+      {
+        installationId: INSTALLATION,
+        validFrom: HANDOVER,
+        validUntil: RENEWED_UNTIL,
+        organizationLimit: 4,
+        userLimit: 10,
+      },
+      AUTHORITY.privateKey,
+    ).code;
+
+    // A legacy code cannot be future-dated (activation is not the signed
+    // import path), so the clock advances to the boundary it starts at.
+    vi.setSystemTime(HANDOVER);
+    await harness.service.importDocument(code);
+    expect(
+      harness.stores.versions.filter((version) => version.governsFrom !== null),
+    ).toHaveLength(0);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.renewed',
+      ),
+    ).toBe(false);
+    expect(target.operationId).not.toBe('');
+  });
+
+  it('routes a conflicting reduction through the dedicated resolution at the target end', async () => {
+    harness = buildHarness({
+      usage: { organizations: 1, activeUsers: 12, registeredDevices: 0 },
+    });
+    const target = await importTarget();
+
+    // The renewal reduces the seat limit below current usage: the §8.6 guard
+    // refuses it unless the dedicated, authorized, audited route resolves it.
+    const reduced = renewalDocument(target.operationId, { userLimit: 8 });
+    const refusal = await rejectionOf(harness.service.importDocument(reduced));
+    expect(refusal.status).toBe(409);
+    expect(refusal.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+
+    const resolved = await harness.service.resolveReduction(
+      reduced,
+      'Owner approved a smaller seat count for the renewed term.',
+    );
+    expect(resolved).toMatchObject({ outcome: 'APPLIED' });
+    const applied = harness.stores.versions.at(-1)!;
+    expect(applied.governsFrom).toEqual(HANDOVER);
+    expect(applied.userLimit).toBe(8);
+    expect(harness.stores.auditEvents.map((event) => event.eventType)).toEqual(
+      expect.arrayContaining([
+        'license.import.renewed',
+        'license.import.reduction-resolved',
+      ]),
+    );
+    // The target still ends exactly where the renewed term begins.
+    expect(
+      harness.stores.versions.find(
+        (version) => version.versionId === target.versionId,
+      )?.governsUntil,
+    ).toEqual(HANDOVER);
+  });
+
+  /**
+   * A9(a) — a renewal that arrives AFTER the signed term ended but inside
+   * Grace (OD-LIC-06 §12, PDR-11 §9.3).
+   *
+   * Grace is an access policy, not a state the version model is in: the
+   * target is expired, never retired, so the tail rule still names it and the
+   * renewal's derived start is exactly its own exclusive end. The ordinary
+   * import path must therefore accept it — no dedicated operation, no
+   * recovery intent, no special case.
+   */
+  it('applies a late renewal imported during Grace and restores ACTIVE with the new grace end', async () => {
+    const target = await importTarget();
+
+    // Pre-condition: the term has ended and the installation is in Grace,
+    // with the deadline computed from the OLD signed end.
+    vi.setSystemTime(DURING_GRACE);
+    expect(await harness.licensing.current(DURING_GRACE)).toMatchObject({
+      active: false,
+      inactiveReason: 'expired',
+      accessMode: 'GRACE',
+      validUntil: HANDOVER,
+      graceEndsAt: GRACE_ENDS_AT,
+    });
+
+    const renewal = renewalDocument(target.operationId, {
+      validFrom: DURING_GRACE,
+      issuedAt: DURING_GRACE,
+    });
+    const applied = await harness.service.importDocument(renewal);
+    expect(applied).toMatchObject({
+      changed: true,
+      outcome: 'APPLIED',
+      license: {
+        status: 'ACTIVE',
+        active: true,
+        inactiveReason: null,
+        accessMode: 'ACTIVE',
+        validUntil: RENEWED_UNTIL,
+        // Grace is recomputed from the NEW signed end, never carried over.
+        graceEndsAt: RENEWED_GRACE_ENDS_AT,
+      },
+    });
+
+    // The hand-over is the target's OWN exclusive end, derived by the one
+    // authority — and the target's signed window is untouched.
+    const [targetRow, renewalRow] = harness.stores.versions;
+    expect(renewalRow!.governsFrom).toEqual(HANDOVER);
+    expect(renewalRow!.governsFrom).toEqual(effectiveWindow(targetRow!).end);
+    expect(targetRow).toMatchObject({
+      versionId: target.versionId,
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      validUntil: HANDOVER,
+      governsUntil: HANDOVER,
+    });
+
+    // The renewal is the EFFECTIVE version at the import instant (not a
+    // scheduled one), and the retained coverage now runs to the new end.
+    expect(await harness.licensing.current(DURING_GRACE)).toMatchObject({
+      active: true,
+      accessMode: 'ACTIVE',
+    });
+    const history = await harness.provider.versionHistory(DURING_GRACE);
+    expect(history.effectiveVersionId).toBe(renewalRow!.versionId);
+    expect(history.scheduled).toBeNull();
+    expect(history.coverageEnd).toBe(RENEWED_UNTIL.toISOString());
+
+    // Atomic typed evidence: one retirement of the named target, one renewal,
+    // and still only the TARGET's own generic APPLIED row.
+    expect(harness.stores.auditEvents.map((event) => event.eventType)).toEqual([
+      'license.import.applied',
+      'license.version.superseded',
+      'license.import.renewed',
+    ]);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.rejected',
+      ),
+    ).toBe(false);
+    expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+      eventType: 'license.import.renewed',
+      outcome: 'APPLIED',
+      operationId: renewalRow!.operationId,
+      renewedVersionId: target.versionId,
+      renewedFrom: HANDOVER,
+      renewedUntil: RENEWED_UNTIL,
+      reason: null,
+    });
+  });
+
+  /**
+   * A9(b) — a renewal that arrives AFTER Grace ended, while the installation
+   * is Read-Only (OD-LIC-06 §12, PDR-11 §9.3).
+   *
+   * Read-Only is the consequence of an expired term, not a lock on the
+   * licensing surface: the dedicated renewal is the documented way back to
+   * normal operation, and it must work without a new identity or a recovery.
+   * The derived hand-over lies in the PAST at import time; that is not a
+   * backdated rewrite, because the target had already stopped governing at
+   * its own end, so the stamp removes no coverage it ever provided.
+   */
+  it('applies a late renewal imported after Read-Only began and restores normal operation', async () => {
+    const target = await importTarget();
+
+    // Pre-condition: Grace has ended; only reads are allowed.
+    vi.setSystemTime(AFTER_READ_ONLY);
+    expect(await harness.licensing.current(AFTER_READ_ONLY)).toMatchObject({
+      active: false,
+      inactiveReason: 'expired',
+      accessMode: 'READ_ONLY',
+      validUntil: HANDOVER,
+      graceEndsAt: GRACE_ENDS_AT,
+    });
+
+    const renewal = renewalDocument(target.operationId, {
+      validFrom: AFTER_READ_ONLY,
+      issuedAt: AFTER_READ_ONLY,
+    });
+    const applied = await harness.service.importDocument(renewal);
+
+    const [targetRow, renewalRow] = harness.stores.versions;
+    // The hand-over is derived from the target end and is already in the past
+    // when the document is imported…
+    expect(renewalRow!.governsFrom).toEqual(HANDOVER);
+    expect(renewalRow!.governsFrom).toEqual(effectiveWindow(targetRow!).end);
+    expect(renewalRow!.governsFrom!.getTime()).toBeLessThan(
+      AFTER_READ_ONLY.getTime(),
+    );
+
+    // …and normal licensed operation is restored with the signed term applied
+    // exactly and Grace recomputed from it.
+    expect(applied).toMatchObject({
+      changed: true,
+      outcome: 'APPLIED',
+      license: {
+        status: 'ACTIVE',
+        active: true,
+        inactiveReason: null,
+        accessMode: 'ACTIVE',
+        validUntil: RENEWED_UNTIL,
+        graceEndsAt: RENEWED_GRACE_ENDS_AT,
+      },
+    });
+    expect(await harness.licensing.current(AFTER_READ_ONLY)).toMatchObject({
+      active: true,
+      accessMode: 'ACTIVE',
+      validUntil: RENEWED_UNTIL,
+    });
+
+    // The predecessor keeps the terms it was signed with: its governance ends
+    // at its own end, not at the late import instant.
+    expect(targetRow).toMatchObject({
+      versionId: target.versionId,
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      validUntil: HANDOVER,
+      governsUntil: HANDOVER,
+    });
+
+    // The read model answers both questions with the same authority: the
+    // effective version is the renewal and the chain ends at its signed end.
+    const history = await harness.provider.versionHistory(AFTER_READ_ONLY);
+    expect(history.effectiveVersionId).toBe(renewalRow!.versionId);
+    expect(history.coverageEnd).toBe(RENEWED_UNTIL.toISOString());
+    expect(
+      history.versions.find(
+        (version) => version.versionId === renewalRow!.versionId,
+      ),
+    ).toMatchObject({
+      operationId: renewalRow!.operationId,
+      effectiveFrom: HANDOVER.toISOString(),
+      validFrom: AFTER_READ_ONLY.toISOString(),
+      validUntil: RENEWED_UNTIL.toISOString(),
+    });
+
+    // Atomic audit evidence, with no rejection and no generic APPLIED row for
+    // the renewal itself.
+    expect(harness.stores.auditEvents.map((event) => event.eventType)).toEqual([
+      'license.import.applied',
+      'license.version.superseded',
+      'license.import.renewed',
+    ]);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.rejected',
+      ),
+    ).toBe(false);
+    expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+      eventType: 'license.import.renewed',
+      outcome: 'APPLIED',
+      operationId: renewalRow!.operationId,
+      renewedVersionId: target.versionId,
+      renewedFrom: HANDOVER,
+      renewedUntil: RENEWED_UNTIL,
+    });
+  });
+
+  /**
+   * A9(c)/(d) — the late-renewal path is NOT a recovery bypass.
+   *
+   * A document with a NEW license identity that starts strictly after the
+   * retained coverage end is still a post-gap candidate (PDR-13): the ordinary
+   * import refuses it and only the dedicated recovery operation may apply it.
+   * Conversely that dedicated operation refuses a renewal, so neither path can
+   * stand in for the other — the same lapse needs the same proof either way.
+   */
+  it('keeps a new-identity post-gap candidate on the dedicated recovery path, never as a renewal', async () => {
+    const target = await importTarget();
+    vi.setSystemTime(AFTER_READ_ONLY);
+
+    const LATE_LICENSE = '01K7LATEGAPLICENSE0000000000';
+    const postGap = signedDocument(
+      {
+        licenseId: LATE_LICENSE,
+        validFrom: AFTER_READ_ONLY,
+        validUntil: new Date('2028-06-01T00:00:00.000Z'),
+        organizationLimit: 4,
+        userLimit: 10,
+      },
+      AUTHORITY.privateKey,
+    ).file;
+
+    // Ordinary import still refuses a genuine post-gap candidate: a later
+    // date on a new identity is not an extension of the lapsed one.
+    const refused = await rejectionOf(harness.service.importDocument(postGap));
+    expect(refused.status).toBe(409);
+    expect(refused.details).toMatchObject({
+      reason: 'post-gap-recovery-requires-dedicated-operation',
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+
+    // The dedicated recovery operation still refuses a renewal: the validated
+    // renewal protocol never becomes the recovery bypass.
+    const renewal = renewalDocument(target.operationId, {
+      validFrom: AFTER_READ_ONLY,
+      issuedAt: AFTER_READ_ONLY,
+    });
+    const asRecovery = await rejectionOf(
+      harness.service.recoverAfterGap(
+        renewal,
+        'Late renewal order arrived after the previous term had lapsed.',
+      ),
+    );
+    expect(asRecovery.status).toBe(409);
+    expect(asRecovery.details).toMatchObject({
+      reason: 'recovery-not-applicable',
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+
+    // The dedicated operation applies exactly the post-gap document and
+    // reports the lapse it recovered from (PDR-13).
+    const recovered = await harness.service.recoverAfterGap(
+      postGap,
+      'Signed renewal order arrived after the previous term had lapsed.',
+    );
+    expect(recovered).toMatchObject({
+      outcome: 'APPLIED',
+      changed: true,
+      lapsedLicenseId: LICENSE,
+      coverageEnd: HANDOVER.toISOString(),
+    });
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(
+      harness.stores.versions.some(
+        (version) => version.licenseId === LATE_LICENSE,
+      ),
+    ).toBe(true);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.renewed',
+      ),
+    ).toBe(false);
+  });
+});

@@ -58,6 +58,7 @@ function adaptVlic2(): LicenseVersionPayload {
     moduleEntitlements: ['inventory', 'accounting'],
     featureEntitlements: [],
     supersedesOperationId: null,
+    renewsOperationId: null,
     issuedAt: new Date('2026-10-11T00:00:00.000Z'),
   };
 }

@@ -207,6 +207,10 @@ export type LicenseImportRejectionReason =
   | 'transfer-requires-signed-document'
   | 'resolution-requires-signed-document'
   | 'renewal-gap'
+  | 'renewal-target-unknown'
+  | 'renewal-target-not-current'
+  | 'renewal-target-perpetual'
+  | 'renewal-not-an-extension'
   | 'reduction-requires-resolution'
   | 'post-gap-recovery-requires-dedicated-operation'
   | 'recovery-not-applicable'
@@ -241,6 +245,9 @@ const CONFLICT_REASONS: ReadonlySet<LicenseImportRejectionReason> = new Set([
   'installation-customer-mismatch',
   'transfer-requires-different-customer',
   'renewal-gap',
+  'renewal-target-unknown',
+  'renewal-target-not-current',
+  'renewal-target-perpetual',
   'reduction-requires-resolution',
   'post-gap-recovery-requires-dedicated-operation',
   'recovery-not-applicable',
@@ -590,10 +597,16 @@ export class LicenseImportService {
             installationCustomerId,
           })
         : { installationCustomerCode: null, knownCustomers: [] };
+    // The signed RENEWAL REFERENCE decides the intent (OD-LIC-06 §3.1). It is
+    // never inferred from dates, the license identity, the route or a flag; the
+    // payload validator has already refused a document that carries both
+    // fields, so the order below cannot silently prefer one.
     const supersession: ImportSupersessionIntent =
-      payload.supersedesOperationId === null
-        ? { kind: 'none' }
-        : { kind: 'explicit', operationId: payload.supersedesOperationId };
+      payload.renewsOperationId !== null
+        ? { kind: 'renewal', operationId: payload.renewsOperationId }
+        : payload.supersedesOperationId !== null
+          ? { kind: 'explicit', operationId: payload.supersedesOperationId }
+          : { kind: 'none' };
     const candidate: ImportCandidate = {
       validFrom: payload.validFrom,
       validUntil: payload.validUntil,
@@ -650,6 +663,7 @@ export class LicenseImportService {
         documentHash,
         supersession,
         supersedes,
+        governsFrom: precheck.renewal?.governsFrom ?? null,
         now,
         customerTransfer: options.customerTransfer ?? null,
         gapRecovery: options.gapRecovery ?? null,
@@ -946,6 +960,8 @@ export class LicenseImportService {
         documentHash,
         supersession,
         supersedes,
+        // A legacy text code carries no renewal reference, ever.
+        governsFrom: null,
         now,
         customerTransfer: null,
         gapRecovery: null,
@@ -1009,6 +1025,12 @@ export class LicenseImportService {
       supersession: ImportSupersessionIntent;
       /** Resolved by the read-side pass; the transaction must retire exactly it. */
       supersedes: RetainedLicenseVersion | null;
+      /**
+       * The renewal's derived effective start, or null for every other import.
+       * The transaction compares it with its own authoritative evaluation and
+       * refuses on any difference (OD-LIC-06 §4.3 step 5).
+       */
+      governsFrom: Date | null;
       now: Date;
       /** Explicit transfer intent; audited by the transaction that applies it. */
       customerTransfer: CustomerTransferIntent | null;
@@ -1041,8 +1063,15 @@ export class LicenseImportService {
     // conflicts for a resolution). A combined recovery/resolution writes both
     // typed events there. The service supplies no generic applied event on
     // these paths — only a supersession stamp it can already name.
+    // A renewal's own APPLIED event (`license.import.renewed`) is built by the
+    // transaction, exactly like the dedicated operations' events, so it names
+    // the target the lock actually validated (OD-LIC-06 §8.3). The service
+    // therefore writes no generic `license.import.applied` row for it.
+    const isRenewal = context.supersession.kind === 'renewal';
     const dedicated =
-      context.gapRecovery !== null || context.reductionResolution !== null;
+      context.gapRecovery !== null ||
+      context.reductionResolution !== null ||
+      isRenewal;
     try {
       return await this.licenses.importVersion({
         installationId: context.installationId,
@@ -1061,6 +1090,7 @@ export class LicenseImportService {
         keyId: context.keyId,
         source: context.source,
         validFrom: context.payload.validFrom,
+        governsFrom: context.governsFrom,
         validUntil: context.payload.validUntil,
         organizationLimit: context.payload.organizationLimit,
         userLimit: context.payload.userLimit,
@@ -1082,6 +1112,7 @@ export class LicenseImportService {
                   context.source,
                   context.now,
                   implicitPrecedence,
+                  isRenewal,
                 ),
               ]),
           ...(dedicated
@@ -1483,6 +1514,7 @@ function supersededAuditEvent(
   source: string,
   now: Date,
   implicitPrecedence: boolean,
+  renewal = false,
 ): LicenseAuditEventCommand {
   return {
     installationId: superseded.installationId,
@@ -1494,10 +1526,15 @@ function supersededAuditEvent(
     actorId: getPrincipal()?.userId ?? null,
     source,
     documentHash: null,
+    // A renewal retires its target by signed instruction, so the row keeps the
+    // explicit-retirement reason (null) and says "renewed" in its detail; only
+    // the OQ-80 precedence hand-over carries a machine reason.
     reason: implicitPrecedence ? 'implicit-precedence' : null,
-    detail: implicitPrecedence
-      ? 'superseded by a later-starting version, which governs from its own validFrom (OQ-80 Option B)'
-      : 'superseded by a later imported version',
+    detail: renewal
+      ? 'renewed; governance ends at the renewed term boundary'
+      : implicitPrecedence
+        ? 'superseded by a later-starting version, which governs from its own validFrom (OQ-80 Option B)'
+        : 'superseded by a later imported version',
     occurredAt: now,
   };
 }
@@ -1566,6 +1603,14 @@ function documentConflictMessage(
       return TRANSFER_REQUIRES_DIFFERENT_CUSTOMER_MESSAGE;
     case 'renewal-gap':
       return 'This renewal would start after the license it renews has ended, leaving a gap in coverage. Issue the renewal to start at or before the end of the version it follows.';
+    case 'renewal-target-unknown':
+      return 'This renewal names a version that is not an eligible retained version of this installation, belongs to another customer, or has already been renewed or replaced. Read the current license state and renew the version it reports. Nothing was changed.';
+    case 'renewal-target-not-current':
+      return "This renewal names a version that is not the last version of this installation's unbroken coverage chain (it is stale, interior, or already extended), so applying it would stack or split the term. Renew the version the current license state reports. Nothing was changed.";
+    case 'renewal-target-perpetual':
+      return 'This renewal names a version that never ends, so there is no term boundary at which a renewal could start. A perpetual grant is changed only by an explicit signed supersession (PDR-12). Nothing was changed.';
+    case 'renewal-not-an-extension':
+      return 'This renewal ends at or before the end of the version it renews, so it does not extend the license. Issue a renewed document whose signed end date is later than the current term. Nothing was changed.';
     case 'reduction-requires-resolution':
       if (operation === 'recovery') {
         return 'This post-gap recovery reduces capacity or entitlements in conflict with current usage or the lapsed grant; the concrete conflicts are in the response details. Nothing was changed. To authorize this reduction, retry the same dedicated gap-recovery operation with a reductionResolutionReason and hold Activate, RecoverAfterGap, and ResolveReduction permissions. Do not submit this post-gap document to the separate reduction-resolution route.';
@@ -1654,6 +1699,14 @@ function legacyConflictMessage(conflict: ImportConflict): string {
       return TRANSFER_REQUIRES_DIFFERENT_CUSTOMER_MESSAGE;
     case 'renewal-gap':
       return 'This license code would start after the license it renews has ended, leaving a gap in coverage. Start the code at or before the end of the version it follows.';
+    case 'renewal-target-unknown':
+    case 'renewal-target-not-current':
+    case 'renewal-target-perpetual':
+    case 'renewal-not-an-extension':
+      // A legacy text code cannot express a renewal at all (no operation id),
+      // so these reasons cannot arise on this path; the wording exists only to
+      // keep the refusal vocabulary total.
+      return 'A renewal requires a signed license document; the legacy text code cannot express one. Nothing was changed.';
     case 'reduction-requires-resolution':
       return 'This license code would reduce the modules or capacity of the version it replaces, and the reduction conflicts with current usage or the retained grant — the concrete limits, usage and entitlements are in the conflict details. Nothing was changed. A reduction may be applied only through the dedicated resolution operation, which requires its own permission and a recorded reason.';
     case 'post-gap-recovery-requires-dedicated-operation':
@@ -1697,6 +1750,18 @@ function conflictLostRaceMessage(
   }
   if (conflict.reason === 'renewal-gap') {
     return 'This renewal would start after the license it renews has ended, leaving a gap in coverage. Issue the renewal to start at or before the end of the version it follows.';
+  }
+  if (conflict.reason === 'renewal-target-unknown') {
+    return 'The license version this renewal names was changed by a concurrent import, so it is no longer an eligible retained version. Nothing was changed; read the current license state and renew the version it now reports.';
+  }
+  if (conflict.reason === 'renewal-target-not-current') {
+    return "A concurrent import moved this installation's coverage chain, so the version this renewal names is no longer its last version. Nothing was changed; read the current license state and renew the version it now reports.";
+  }
+  if (conflict.reason === 'renewal-target-perpetual') {
+    return 'This renewal names a version that never ends, so there is no term boundary at which it could start. Nothing was changed.';
+  }
+  if (conflict.reason === 'renewal-not-an-extension') {
+    return 'This renewal ends at or before the end of the version it renews, so it does not extend the license. Nothing was changed.';
   }
   if (conflict.reason === 'reduction-requires-resolution') {
     if (operation === 'recovery') {

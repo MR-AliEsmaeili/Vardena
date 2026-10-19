@@ -206,11 +206,24 @@ export class LicenseVersionSummaryDto implements LicenseVersionSummary {
   })
   licenseId!: string;
 
+  @ApiProperty({
+    description:
+      'The signed operation id of this version. An Owner renews a version by signing a new document whose renewsOperationId is exactly this value; the field is inside the signed artifact, not a secret.',
+  })
+  operationId!: string;
+
   @ApiProperty({ enum: ['ACTIVE', 'EXPIRED', 'SUSPENDED'] })
   status!: LicenseStatus;
 
   @ApiProperty({ format: 'date-time' })
   validFrom!: string;
+
+  @ApiProperty({
+    format: 'date-time',
+    description:
+      'When this version actually starts governing (governsFrom ?? validFrom). For a renewal this is the instant the renewed term ends; for every other version it equals validFrom.',
+  })
+  effectiveFrom!: string;
 
   @ApiProperty({
     type: String,
@@ -336,6 +349,15 @@ export class LicenseStateDto implements LicenseStateView {
     nullable: true,
   })
   validUntil!: string | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      "The end of the installation's unbroken coverage chain: the last instant the installation is covered to, including versions that are scheduled but not yet effective. Null for a perpetual chain or an unlicensed installation.",
+  })
+  coverageEnd!: string | null;
 
   @ApiProperty({ type: Number, nullable: true })
   organizationLimit!: number | null;
@@ -523,13 +545,25 @@ export class GapRecoveryResultDto extends LicenseImportResultDto {
   })
   lapsedLicenseId!: string | null;
 
+  /**
+   * Pre-existing receipt field (the lapse the recovery followed), kept with its
+   * exact name, meaning and position for compatibility. It intentionally
+   * shadows the state's `coverageEnd` (the end of the unbroken coverage chain,
+   * OD-LIC-06 §6) on this ONE response: renaming or re-meaning it would be a
+   * breaking contract change, and the two instants are different facts. The
+   * state surface — and every response that is only a state — reports the chain
+   * end under `coverageEnd`; after a recovery the caller can read
+   * `GET /license/current` for it. `declare` keeps the inherited value's runtime
+   * semantics (the controller overwrites it with the lapsed instant).
+   */
   @ApiProperty({
     type: String,
+    format: 'date-time',
     nullable: true,
     description:
       'When that coverage ended; the recovery started strictly after it (ISO instant).',
   })
-  coverageEnd!: string | null;
+  declare coverageEnd: string | null;
 
   @ApiPropertyOptional({
     description:

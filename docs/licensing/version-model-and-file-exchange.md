@@ -107,9 +107,21 @@ Canonical payload (fixed key order, sorted arrays, ISO-8601 UTC instants):
   "modules": ["accounting", "organization", "users"],
   "features": [],
   "supersedesOperationId": null,
+  "renewsOperationId": "01J…",
   "issuedAt": "2026-10-11T00:00:00.000Z"
 }
 ```
+
+`renewsOperationId` is **optional and omitted entirely when absent** (exactly like
+`deviceLimit`): a document that is not a renewal serializes the pre-OQ-88 bytes,
+which is why every already-signed artifact, committed vector and signature keeps
+verifying unchanged. When present it sits **between** `supersedesOperationId` and
+`issuedAt`. It is the signed operation id of the retained version the document
+**renews** (OD-LIC-06 / OQ-88); a document carrying it must not also carry a
+superseding reference, must not name its own `operationId`, and its
+`validFrom` (the issuance-day fact) must not be later than `issuedAt`. Renewal
+documents are only ever `VLIC2`; a legacy `VLIC1` text code has no operation
+identity and can never express one.
 
 **Normative canonical byte contract (ratified 2026-10-15 under D-2(b); verified against
 the implementation in `backend/src/modules/licensing/domain/license-document.ts`
@@ -168,7 +180,8 @@ as UTF-8 — not of the canonical payload and not of the file envelope.
 keys rejected; size limit 65 536 bytes before parsing.
 
 Rules: the payload must round-trip to **exactly** the signed bytes (canonical
-form), `customerId` and `customerCode` must be valid codes and distinct from
+form), a renewal reference must be a valid id, `customerId` and `customerCode`
+must be valid codes and distinct from
 each other (`customerCode !== customerId`, [PDR-14](../decisions/product/PDR-14-licensing-customer-code.md)),
 `validUntil` is exclusive and `null` means perpetual, limits are
 positive-or-null, module codes must be known to this build, feature codes must
@@ -628,6 +641,59 @@ that would overlap a different retained version while naming one — the
 explicit-retirement arm — is refused by the same rule, corrective slice
 2026-10-14).
 
+### 3.6 Renewal: the deferred effective start (OD-LIC-06 / OQ-88)
+
+A **renewal** is a signed `VLIC2` document whose `renewsOperationId` names the
+retained version it extends (PDR-18 §9, design §3). It is never inferred: no
+date, route, flag or `licenseId` can make a document a renewal.
+
+- **The signed facts stay signed.** `validFrom` is the issuance-day fact (it may
+  be before the term it continues), `validUntil` is the Owner-authorized new end
+  date and is applied **exactly** — no rounding, no clamping, no partial-term
+  arithmetic (PO decision Q-1 = `boundary`).
+- **The governance start is derived, not signed.** The document starts governing
+  at the renewed version's **exclusive effective end**. That instant is
+  persisted as `license_versions.governs_from` and the predecessor's
+  `governs_until` is set to the same instant — the predecessor is never
+  truncated, so importing early cannot shorten a term the customer already
+  holds. `governs_from` is nullable; `NULL` means "govern from the signed
+  `validFrom`", which is the exact meaning of every row written before this
+  feature (no backfill, no rewrite).
+- **One window accessor.** Effective-window resolution, coverage, ordering,
+  scheduled-version selection, overlap/gap detection and the supersession stamp
+  all read `windowStart(v) = governsFrom ?? validFrom`. There is deliberately no
+  second way to ask, so the persisted row and the read path cannot disagree.
+- **The target must be the tail of the installation's unbroken coverage chain**,
+  resolved inside the single conflict authority (`evaluateImportConflicts`) and
+  re-resolved inside the import transaction under the installation lock. Stale,
+  interior, already-renewed, unknown, foreign-customer and perpetual targets are
+  refused (`renewal-target-unknown` / `renewal-target-not-current` /
+  `renewal-target-perpetual`, 409), and a term that does not extend the target's
+  end is a document defect (`renewal-not-an-extension`, 422). Nothing is written
+  in any refusal.
+- **A renewal is not a recovery and not a transfer.** It can never carry the
+  dedicated post-gap recovery intent (`recovery-not-applicable`), and a genuine
+  lapse still requires PDR-13's dedicated recovery. A perpetual grant is changed
+  only through PDR-12's explicit supersession; converting one *to* a perpetual
+  term is an allowed extension.
+- **Evidence is typed.** The transaction writes `license.import.renewed` with
+  `renewed_version_id`, `renewed_from` (the hand-over instant) and
+  `renewed_until` (the signed end), plus the target's
+  `license.version.superseded`; no generic `license.import.applied` row is
+  written for a renewal. Reductions inside a renewal still go through PDR-11
+  §8.6's dedicated resolution.
+- **Read model.** `LicenseVersionSummary` exposes the signed `operationId` (what
+  an Owner names when issuing the next renewal) and `effectiveFrom`; the license
+  state adds `coverageEnd`, the end of the unbroken coverage chain including a
+  scheduled renewal (null when perpetual or unlicensed), while `validUntil`
+  keeps its per-version meaning (PO decision Q-2 = `coverage_end`). `Grace` and
+  enforcement keep reading the governing window, never `coverageEnd`. One
+  pre-existing receipt field keeps its older, narrower meaning: on
+  `GapRecoveryResultDto` the key `coverageEnd` still reports the lapse the
+  recovery followed (renaming or re-meaning it would break an existing
+  contract), so the chain end for that response is read from the state
+  endpoint, not from the receipt.
+
 ## 4. Import pipeline (strict order, nothing written until every stage passes)
 
 The ordering below records the **OQ-81 target** and labels the current-code
@@ -841,6 +907,13 @@ schemas with the generated document; the frontend generated client is regenerate
 from a dumped OpenAPI document and gated in CI (F-7). The request body carries
 exactly one field (`document`), so a client can never describe the license it wants.
 
+`LicenseVersionSummaryDto` carries `operationId` and `effectiveFrom`, and every
+license-state response carries `coverageEnd` (OD-LIC-06 §6), so an operator can
+name the renewal target from signed data and can see the end of the purchased
+coverage without confusing it with the governing version's `validUntil`. The
+gap-recovery receipt is the one exception: its `coverageEnd` is the pre-existing
+lapse instant, kept unchanged for compatibility.
+
 Frontend (`features/licensing/`): the license stage keeps its single source
 (`GET /license/current`) and its rule that a successful POST is not an active
 license — the mutation invalidates and awaits the canonical query. The form
@@ -898,10 +971,35 @@ starts earlier than the recorded instant); that historical case is the only one
 the defensive resolution of §3.2 rule 7 handles, and it is logged. Nothing is
 deleted or rewritten by either migration.
 
+A third, ordered migration
+(`20261023000000_licensing_renewal_governs_from`, OD-LIC-06 / OQ-88) adds the
+renewal's deferred effective start:
+
+9. `license_versions.governs_from TIMESTAMPTZ(6)`, nullable, **with no
+   backfill** — `NULL` means "govern from the signed `valid_from`", which is the
+   exact meaning of every existing row, so no window, stamp, digest or as-of
+   read changes;
+10. `license_versions_governs_from_check`: a deferred start exists only with a
+    recorded supersession (`supersedes_version_id IS NOT NULL`) and must precede
+    the signed end (`valid_until IS NULL OR governs_from < valid_until`);
+11. nullable audit columns `renewed_version_id`, `renewed_from`, `renewed_until`
+    on `license_audit_events`, set only on `license.import.renewed`.
+
+**Rollout floor.** The migration is additive and safe to apply before the
+release. Do **not** roll the application back below the release that reads
+`governs_from` while any row has a non-null value: the earlier release ignores
+the column and would treat the renewal's signed issuance day as its start, i.e.
+it would show a term that is shorter than the one the customer holds. The rows
+themselves stay correct, so re-deploying the reading release restores the
+projection.
+
 Evidence: `backend/prisma/rehearsal/licensing-version-model/rehearse.mjs`
 (disposable databases: the populated pre-migration fixture, a database carrying
 the premature-retirement defect that the backfill must repair, and a database the
-migration must refuse with a clear message) plus the live PostgreSQL suite.
+migration must refuse with a clear message — plus, for the renewal migration,
+schema/constraint assertions, the no-backfill proof and a window-for-window
+comparison of every retained row before and after) plus the live PostgreSQL
+suite.
 
 ### 11.1 L-06 `customer_code`: owner-assigned backfill before upgrading
 

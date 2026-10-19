@@ -96,6 +96,14 @@ export interface ImportLicenseVersionCommand {
   keyId: string | null;
   source: LicenseVersionSource;
   validFrom: Date;
+  /**
+   * The instant this version starts governing when it differs from the signed
+   * `validFrom` (a renewal's renewed-term boundary). Null on every ordinary
+   * import. Written as `governs_from` and used as the predecessor's
+   * `governs_until`, so the stamp and the new row cannot disagree
+   * (OD-LIC-06 §4.2/§4.3).
+   */
+  governsFrom: Date | null;
   validUntil: Date | null;
   organizationLimit: LicenseLimit;
   userLimit: LicenseLimit;
@@ -190,6 +198,12 @@ export interface LicenseAuditEventCommand {
    * `license.import.recovered` events; null everywhere else.
    */
   previousLicenseId?: string | null;
+  /** The version a renewal extended; set only on `license.import.renewed`. */
+  renewedVersionId?: string | null;
+  /** The instant a renewal starts governing (the renewed version's end). */
+  renewedFrom?: Date | null;
+  /** The Owner-signed new end date a renewal applies. */
+  renewedUntil?: Date | null;
   occurredAt: Date;
 }
 
@@ -234,6 +248,14 @@ function conflictErrorDefaultMessage(reason: ImportConflictReason): string {
       return 'The installation is already bound to the customer this transfer names.';
     case 'renewal-gap':
       return 'This renewal would leave a gap in the license coverage.';
+    case 'renewal-target-unknown':
+      return 'The license version this renewal names is not an eligible retained version of this installation.';
+    case 'renewal-target-not-current':
+      return "The license version this renewal names is not the last version of the installation's coverage chain.";
+    case 'renewal-target-perpetual':
+      return 'The license version this renewal names never ends, so there is no term boundary to renew.';
+    case 'renewal-not-an-extension':
+      return 'This renewal ends at or before the end of the version it renews, so it does not extend the license.';
     case 'reduction-requires-resolution':
       return 'This version reduces the entitlement or capacity it would take over, which requires an explicit resolution.';
     case 'post-gap-recovery-requires-dedicated-operation':
@@ -305,6 +327,7 @@ interface VersionRow {
   documentHash: string;
   keyId: string | null;
   validFrom: Date;
+  governsFrom?: Date | null;
   validUntil: Date | null;
   organizationLimit: number | null;
   userLimit: number | null;
@@ -378,6 +401,7 @@ interface VersionDelegate {
       keyId: string | null;
       source: string;
       validFrom: Date;
+      governsFrom: Date | null;
       validUntil: Date | null;
       organizationLimit: number | null;
       userLimit: number | null;
@@ -503,6 +527,9 @@ interface AuditDelegate {
       newCustomerId: string | null;
       newCustomerCode: string | null;
       previousLicenseId: string | null;
+      renewedVersionId: string | null;
+      renewedFrom: Date | null;
+      renewedUntil: Date | null;
       occurredAt: Date;
       createdAt: Date;
       updatedAt: Date;
@@ -533,6 +560,9 @@ interface AuditDelegate {
       newCustomerId: string | null;
       newCustomerCode: string | null;
       previousLicenseId: string | null;
+      renewedVersionId: string | null;
+      renewedFrom: Date | null;
+      renewedUntil: Date | null;
       occurredAt: Date;
     }>
   >;
@@ -864,8 +894,35 @@ export class LicensesRepository {
           reason:
             command.supersession.kind === 'implicit'
               ? 'overlapping-range'
-              : 'unknown-supersession',
+              : command.supersession.kind === 'renewal'
+                ? 'renewal-target-unknown'
+                : 'unknown-supersession',
           overlapping: supersedes === null ? 0 : 1,
+        });
+      }
+
+      // 3b. A renewal's effective start is derived INSIDE the locked
+      //     evaluation, and the row is written with exactly that instant. A
+      //     disagreement between the command and the authoritative evaluation
+      //     — or a `governs_from` on a document that is not a renewal — is
+      //     refused before anything is written, so the new row, the target's
+      //     stamp and the audit trail can never describe different terms
+      //     (OD-LIC-06 §4.3 step 5).
+      const authoritativeRenewalStart = evaluation.renewal?.governsFrom ?? null;
+      const commandRenewalStart = command.governsFrom ?? null;
+      if (
+        (authoritativeRenewalStart === null) !==
+          (commandRenewalStart === null) ||
+        (authoritativeRenewalStart !== null &&
+          commandRenewalStart !== null &&
+          authoritativeRenewalStart.getTime() !== commandRenewalStart.getTime())
+      ) {
+        throw new ImportConflictError({
+          reason:
+            command.supersession.kind === 'renewal'
+              ? 'renewal-target-not-current'
+              : 'overlapping-range',
+          overlapping: 0,
         });
       }
 
@@ -1063,6 +1120,25 @@ export class LicensesRepository {
         );
       }
 
+      // The renewal's APPLIED event is built HERE from the locked facts, like
+      // the transfer/recovery/resolution events above. It is the only
+      // `license.import.renewed` row any import can write, and it is written in
+      // the same transaction as the version, its entitlements and the target's
+      // stamp — a failure writes none of them.
+      if (evaluation.renewal !== null) {
+        const renewedPreviousLicenseId =
+          supersedes !== null && supersedes.licenseId !== command.licenseId
+            ? supersedes.licenseId
+            : null;
+        auditEvents.push(
+          renewalAuditEvent(
+            command,
+            evaluation.renewal,
+            renewedPreviousLicenseId,
+          ),
+        );
+      }
+
       const version = await tx.licenseVersion.create({
         data: {
           id: command.versionId,
@@ -1076,6 +1152,7 @@ export class LicensesRepository {
           keyId: command.keyId,
           source: command.source,
           validFrom: command.validFrom,
+          governsFrom: command.governsFrom,
           validUntil: command.validUntil,
           organizationLimit: command.organizationLimit,
           userLimit: command.userLimit,
@@ -1160,6 +1237,9 @@ export class LicensesRepository {
             newCustomerId: event.newCustomerId ?? null,
             newCustomerCode: event.newCustomerCode ?? null,
             previousLicenseId: event.previousLicenseId ?? null,
+            renewedVersionId: event.renewedVersionId ?? null,
+            renewedFrom: event.renewedFrom ?? null,
+            renewedUntil: event.renewedUntil ?? null,
             occurredAt: event.occurredAt,
             createdAt: event.occurredAt,
             updatedAt: event.occurredAt,
@@ -1219,6 +1299,9 @@ export class LicensesRepository {
         newCustomerId: command.newCustomerId ?? null,
         newCustomerCode: command.newCustomerCode ?? null,
         previousLicenseId: command.previousLicenseId ?? null,
+        renewedVersionId: command.renewedVersionId ?? null,
+        renewedFrom: command.renewedFrom ?? null,
+        renewedUntil: command.renewedUntil ?? null,
         occurredAt: command.occurredAt,
         createdAt: command.occurredAt,
         updatedAt: command.occurredAt,
@@ -1257,6 +1340,9 @@ export class LicensesRepository {
       newCustomerId: row.newCustomerId,
       newCustomerCode: row.newCustomerCode,
       previousLicenseId: row.previousLicenseId,
+      renewedVersionId: row.renewedVersionId,
+      renewedFrom: row.renewedFrom,
+      renewedUntil: row.renewedUntil,
       occurredAt: row.occurredAt,
     }));
   }
@@ -1285,7 +1371,11 @@ async function readVersions(
   });
   return rows
     .map(toRetainedVersion)
-    .sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
+    .sort(
+      (a, b) =>
+        (a.governsFrom ?? a.validFrom).getTime() -
+        (b.governsFrom ?? b.validFrom).getTime(),
+    );
 }
 
 async function readCustomersForImport(
@@ -1478,6 +1568,44 @@ export function recoveryAuditEvent(
 }
 
 /**
+ * The typed APPLIED event of an applied renewal (OD-LIC-06 §8.3, `license.import.renewed`).
+ *
+ * Built INSIDE the importing transaction from the authoritative evaluation, so
+ * the version it names as extended is the one the transaction actually
+ * validated and stamped under the installation lock — never the read-side
+ * pre-check's opinion. The signed new end date is recorded exactly as signed,
+ * and `previous_license_id` carries the identity change when the renewal used
+ * a different `licenseId` (the event's own `licenseId` is the new one).
+ */
+export function renewalAuditEvent(
+  command: ImportLicenseVersionCommand,
+  renewal: { renewedVersionId: string; governsFrom: Date },
+  previousLicenseId: string | null,
+): LicenseAuditEventCommand {
+  return {
+    installationId: command.installationId,
+    eventType: 'license.import.renewed',
+    outcome: 'APPLIED',
+    operationId: command.operationId,
+    licenseId: command.licenseId,
+    versionId: command.versionId,
+    actorId: command.actorId,
+    source: command.source,
+    documentHash: command.documentHash,
+    reason: null,
+    detail:
+      `renewed version ${renewal.renewedVersionId}: governs from ` +
+      `${renewal.governsFrom.toISOString()} until ` +
+      `${command.validUntil?.toISOString() ?? 'perpetual'}`,
+    previousLicenseId,
+    renewedVersionId: renewal.renewedVersionId,
+    renewedFrom: renewal.governsFrom,
+    renewedUntil: command.validUntil,
+    occurredAt: command.now,
+  };
+}
+
+/**
  * The typed audit event of an explicit reduction resolution (PDR-11 §8.6,
  * L-04). It is the operation's APPLIED event: the retained version, the
  * operator's reason, and the concrete conflicts the resolution authorized
@@ -1558,6 +1686,7 @@ function toRetainedVersion(row: VersionRow): RetainedLicenseVersion {
     documentHash: row.documentHash,
     keyId: row.keyId,
     validFrom: row.validFrom,
+    governsFrom: row.governsFrom ?? null,
     validUntil: row.validUntil,
     organizationLimit: row.organizationLimit,
     userLimit: row.userLimit,

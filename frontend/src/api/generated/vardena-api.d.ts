@@ -3733,10 +3733,17 @@ export interface components {
             versionId: string;
             /** @description The commercial license this version belongs to. */
             licenseId: string;
+            /** @description The signed operation id of this version. An Owner renews a version by signing a new document whose renewsOperationId is exactly this value; the field is inside the signed artifact, not a secret. */
+            operationId: string;
             /** @enum {string} */
             status: "ACTIVE" | "EXPIRED" | "SUSPENDED";
             /** Format: date-time */
             validFrom: string;
+            /**
+             * Format: date-time
+             * @description When this version actually starts governing (governsFrom ?? validFrom). For a renewal this is the instant the renewed term ends; for every other version it equals validFrom.
+             */
+            effectiveFrom: string;
             /** Format: date-time */
             validUntil: string | null;
             /** @description True for the one version that governs now. */
@@ -3785,6 +3792,11 @@ export interface components {
             validFrom: string | null;
             /** Format: date-time */
             validUntil: string | null;
+            /**
+             * Format: date-time
+             * @description The end of the installation's unbroken coverage chain: the last instant the installation is covered to, including versions that are scheduled but not yet effective. Null for a perpetual chain or an unlicensed installation.
+             */
+            coverageEnd: string | null;
             organizationLimit: number | null;
             userLimit: number | null;
             deviceLimit: number | null;
@@ -3835,6 +3847,11 @@ export interface components {
             validFrom: string | null;
             /** Format: date-time */
             validUntil: string | null;
+            /**
+             * Format: date-time
+             * @description The end of the installation's unbroken coverage chain: the last instant the installation is covered to, including versions that are scheduled but not yet effective. Null for a perpetual chain or an unlicensed installation.
+             */
+            coverageEnd: string | null;
             organizationLimit: number | null;
             userLimit: number | null;
             deviceLimit: number | null;
@@ -3901,6 +3918,11 @@ export interface components {
             validFrom: string | null;
             /** Format: date-time */
             validUntil: string | null;
+            /**
+             * Format: date-time
+             * @description The end of the installation's unbroken coverage chain: the last instant the installation is covered to, including versions that are scheduled but not yet effective. Null for a perpetual chain or an unlicensed installation.
+             */
+            coverageEnd: string | null;
             organizationLimit: number | null;
             userLimit: number | null;
             deviceLimit: number | null;
@@ -3999,6 +4021,11 @@ export interface components {
             validFrom: string | null;
             /** Format: date-time */
             validUntil: string | null;
+            /**
+             * Format: date-time
+             * @description When that coverage ended; the recovery started strictly after it (ISO instant).
+             */
+            coverageEnd: string | null;
             organizationLimit: number | null;
             userLimit: number | null;
             deviceLimit: number | null;
@@ -4019,8 +4046,6 @@ export interface components {
             outcome: "APPLIED" | "UNCHANGED";
             /** @description The license whose retained coverage had ended before the recovery. */
             lapsedLicenseId: string | null;
-            /** @description When that coverage ended; the recovery started strictly after it (ISO instant). */
-            coverageEnd: string | null;
             /** @description Present only when this recovery also resolved a §8.6 reduction; names the lapsed predecessor whose grant was measured. */
             resolvedPredecessorVersionId?: string;
             /** @description Present only for a combined recovery and reduction resolution; the concrete conflicts the resolution authorized. */
@@ -4066,6 +4091,11 @@ export interface components {
             validFrom: string | null;
             /** Format: date-time */
             validUntil: string | null;
+            /**
+             * Format: date-time
+             * @description The end of the installation's unbroken coverage chain: the last instant the installation is covered to, including versions that are scheduled but not yet effective. Null for a perpetual chain or an unlicensed installation.
+             */
+            coverageEnd: string | null;
             organizationLimit: number | null;
             userLimit: number | null;
             deviceLimit: number | null;

@@ -9,6 +9,7 @@ import { parsePrivateKey, parsePublicKey } from './license-code.js';
 import {
   LICENSE_FILE_FORMAT,
   LICENSE_FILE_VERSION,
+  canonicalizeLicenseVersion,
   decodeLicenseTransport,
   hashKeyMaterial,
   licenseDocumentHash,
@@ -490,5 +491,197 @@ describe('signed license document', () => {
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
     expect(licenseDocumentHash(` ${document} `)).toBe(hash);
     expect(hash).not.toContain('VLIC2');
+  });
+});
+
+/**
+ * OD-LIC-06 / OQ-88 — the signed renewal reference.
+ *
+ * The field is the only new signed fact the renewal protocol adds, so these
+ * tests pin exactly three things: where it sits in the canonical bytes, that its
+ * absence is byte-identical to the pre-OQ-88 format, and that every malformed
+ * combination is refused as a `payload` defect before anything is trusted.
+ */
+describe('signed renewal reference (OD-LIC-06, OQ-88)', () => {
+  const TARGET_OPERATION = '01K7TARGETOPERATION00000000';
+
+  function renewed(
+    overrides: Partial<Parameters<typeof issueLicenseFile>[0]> = {},
+  ) {
+    return issue({
+      installationId: INSTALLATION,
+      customerId: CUSTOMER,
+      customerCode: CUSTOMER_CODE,
+      organizationLimit: 3,
+      userLimit: 10,
+      renewsOperationId: TARGET_OPERATION,
+      ...overrides,
+    });
+  }
+
+  it('emits renewsOperationId after supersedesOperationId and before issuedAt', () => {
+    const { payload } = renewed();
+    const canonical = canonicalizeLicenseVersion(payload);
+
+    expect(canonical).toContain(
+      `"supersedesOperationId":null,"renewsOperationId":"${TARGET_OPERATION}","issuedAt":`,
+    );
+    expect(canonical.indexOf('"supersedesOperationId"')).toBeLessThan(
+      canonical.indexOf('"renewsOperationId"'),
+    );
+    expect(canonical.indexOf('"renewsOperationId"')).toBeLessThan(
+      canonical.indexOf('"issuedAt"'),
+    );
+  });
+
+  it('omits the field entirely when the document is not a renewal', () => {
+    const { payload } = issue({
+      installationId: INSTALLATION,
+      customerId: CUSTOMER,
+      customerCode: CUSTOMER_CODE,
+    });
+    const canonical = canonicalizeLicenseVersion(payload);
+
+    expect(canonical).not.toContain('renewsOperationId');
+    // …and null is the same absence, so an issuer that supplies null writes the
+    // exact pre-OQ-88 bytes (every committed vector keeps its digest).
+    expect(
+      canonicalizeLicenseVersion({ ...payload, renewsOperationId: null }),
+    ).toBe(canonical);
+    expect(canonical).toContain(',"supersedesOperationId":null,"issuedAt":');
+  });
+
+  it('round-trips the reference through verify and reports null for legacy bytes', () => {
+    const { document, payload } = renewed();
+    const verified = parseLicenseDocument(
+      document,
+      trusted(AUTHORITY.publicKey),
+    );
+
+    expect(verified.payload.renewsOperationId).toBe(TARGET_OPERATION);
+    // The signature covers the field: it is part of the canonical bytes, so a
+    // doctored reference cannot verify.
+    const body = Buffer.from(canonicalizeLicenseVersion(payload), 'utf8');
+    const tampered = Buffer.from(
+      canonicalizeLicenseVersion({
+        ...payload,
+        renewsOperationId: '01K7OTHEROPERATION0000000000',
+      }),
+      'utf8',
+    );
+    expect(tampered.equals(body)).toBe(false);
+
+    const ordinary = issue({ installationId: INSTALLATION });
+    expect(
+      parseLicenseDocument(ordinary.document, trusted(AUTHORITY.publicKey))
+        .payload.renewsOperationId,
+    ).toBeNull();
+  });
+
+  it('refuses a document that both renews and supersedes', () => {
+    expect(() =>
+      issue({
+        installationId: INSTALLATION,
+        customerId: CUSTOMER,
+        customerCode: CUSTOMER_CODE,
+        supersedesOperationId: '01K7SUPERSEDED0000000000000',
+        renewsOperationId: TARGET_OPERATION,
+      }),
+    ).toThrow(LicenseDocumentError);
+    expect(
+      reasonOf(() =>
+        parseLicenseDocument(
+          signWire(
+            wire({
+              supersedesOperationId: '01K7SUPERSEDED0000000000000',
+              renewsOperationId: TARGET_OPERATION,
+            }),
+          ),
+          trusted(AUTHORITY.publicKey),
+        ),
+      ),
+    ).toBe('payload');
+  });
+
+  it('refuses a document that renews itself', () => {
+    const operationId = generateId();
+    expect(
+      reasonOf(() =>
+        parseLicenseDocument(
+          signWire(wire({ operationId, renewsOperationId: operationId })),
+          trusted(AUTHORITY.publicKey),
+        ),
+      ),
+    ).toBe('payload');
+    expect(() =>
+      issue({
+        installationId: INSTALLATION,
+        customerId: CUSTOMER,
+        customerCode: CUSTOMER_CODE,
+        operationId,
+        renewsOperationId: operationId,
+      }),
+    ).toThrow(LicenseDocumentError);
+  });
+
+  it('refuses a renewal that starts after it was issued, and only a renewal', () => {
+    // PDR-18 §1.2: the renewal's activation-validity start is its issuance day
+    // and is never later. The rule is checked only when a renewal reference is
+    // present, so no already-signed document changes meaning.
+    expect(() =>
+      issue({
+        installationId: INSTALLATION,
+        validFrom: new Date('2027-01-01T00:00:00.000Z'),
+        issuedAt: new Date('2026-10-01T00:00:00.000Z'),
+        renewsOperationId: TARGET_OPERATION,
+      }),
+    ).toThrow(LicenseDocumentError);
+
+    expect(() =>
+      issue({
+        installationId: INSTALLATION,
+        validFrom: new Date('2027-01-01T00:00:00.000Z'),
+        issuedAt: new Date('2026-10-01T00:00:00.000Z'),
+      }),
+    ).not.toThrow();
+    expect(
+      reasonOf(() =>
+        parseLicenseDocument(
+          signWire(
+            wire({
+              validFrom: '2027-01-01T00:00:00.000Z',
+              issuedAt: '2026-10-01T00:00:00.000Z',
+              renewsOperationId: TARGET_OPERATION,
+            }),
+          ),
+          trusted(AUTHORITY.publicKey),
+        ),
+      ),
+    ).toBe('payload');
+  });
+
+  it('refuses a malformed renewal reference on both sides of the trust boundary', () => {
+    expect(
+      reasonOf(() =>
+        parseLicenseDocument(
+          signWire(wire({ renewsOperationId: 'not a valid id!' })),
+          trusted(AUTHORITY.publicKey),
+        ),
+      ),
+    ).toBe('payload');
+    expect(
+      reasonOf(() =>
+        parseLicenseDocument(
+          signWire(wire({ renewsOperationId: 42 })),
+          trusted(AUTHORITY.publicKey),
+        ),
+      ),
+    ).toBe('payload');
+    expect(() =>
+      issue({
+        installationId: INSTALLATION,
+        renewsOperationId: 'not a valid id!',
+      }),
+    ).toThrow(LicenseDocumentError);
   });
 });

@@ -35,6 +35,7 @@ import type {
 import {
   ImportConflictError,
   recoveryAuditEvent,
+  renewalAuditEvent,
   resolutionAuditEvent,
   transferAuditEvent,
 } from '../../src/modules/licensing/data/licenses.repository.js';
@@ -321,8 +322,30 @@ export function createLicensingStores(
           reason:
             command.supersession.kind === 'implicit'
               ? 'overlapping-range'
-              : 'unknown-supersession',
+              : command.supersession.kind === 'renewal'
+                ? 'renewal-target-unknown'
+                : 'unknown-supersession',
           overlapping: supersedes === null ? 0 : 1,
+        });
+      }
+      // The real repository refuses a command whose `governs_from` disagrees
+      // with the authoritative evaluation; the fake mirrors it so a service
+      // that derived the instant itself cannot pass the hermetic suite.
+      const authoritativeRenewalStart = evaluation.renewal?.governsFrom ?? null;
+      const commandRenewalStart = command.governsFrom ?? null;
+      if (
+        (authoritativeRenewalStart === null) !==
+          (commandRenewalStart === null) ||
+        (authoritativeRenewalStart !== null &&
+          commandRenewalStart !== null &&
+          authoritativeRenewalStart.getTime() !== commandRenewalStart.getTime())
+      ) {
+        throw new ImportConflictError({
+          reason:
+            command.supersession.kind === 'renewal'
+              ? 'renewal-target-not-current'
+              : 'overlapping-range',
+          overlapping: 0,
         });
       }
 
@@ -438,6 +461,18 @@ export function createLicensingStores(
               ),
             ]
           : []),
+        ...(evaluation.renewal !== null
+          ? [
+              renewalAuditEvent(
+                command,
+                evaluation.renewal,
+                supersedes !== null &&
+                  supersedes.licenseId !== command.licenseId
+                  ? supersedes.licenseId
+                  : null,
+              ),
+            ]
+          : []),
       ];
       const created: RetainedLicenseVersion = {
         versionId: command.versionId,
@@ -452,6 +487,7 @@ export function createLicensingStores(
         documentHash: command.documentHash,
         keyId: command.keyId,
         validFrom: command.validFrom,
+        governsFrom: command.governsFrom,
         validUntil: command.validUntil,
         organizationLimit: command.organizationLimit,
         userLimit: command.userLimit,

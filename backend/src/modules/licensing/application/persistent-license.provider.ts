@@ -3,6 +3,7 @@ import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { LicensesRepository } from '../data/licenses.repository.js';
 import type { InstallationLicense } from '../domain/license.js';
 import {
+  coverageEndOf,
   findScheduledVersion,
   resolveEffectiveVersion,
   sortVersionsNewestFirst,
@@ -81,7 +82,12 @@ export class PersistentLicenseProvider implements LicenseProvider {
       installation.installationId,
     );
     if (versions.length === 0) {
-      return { effectiveVersionId: null, scheduled: null, versions: [] };
+      return {
+        effectiveVersionId: null,
+        scheduled: null,
+        versions: [],
+        coverageEnd: null,
+      };
     }
     const resolution = resolveEffectiveVersion(versions, at);
     const effectiveVersionId = resolution.version?.versionId ?? null;
@@ -95,6 +101,10 @@ export class PersistentLicenseProvider implements LicenseProvider {
       versions: sortVersionsNewestFirst(versions).map((version) =>
         toLicenseVersionSummary(version, effectiveVersionId),
       ),
+      // The chain tail is resolved from the same rows and the same instant as
+      // the effective version above, so the reported coverage end is the end of
+      // the term the installation actually holds (OD-LIC-06 §6).
+      coverageEnd: coverageEndOf(versions, at)?.toISOString() ?? null,
     };
   }
 

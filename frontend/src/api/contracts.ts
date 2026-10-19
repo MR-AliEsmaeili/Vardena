@@ -115,8 +115,23 @@ export type LicenseVersionSource = 'file' | 'text' | 'legacy-code';
 export interface LicenseVersionSummary {
   versionId: string;
   licenseId: string;
+  /**
+   * The signed operation id of this version. It is what an Owner names when
+   * issuing a renewal (`--renews <operationId>`): the renewal extends exactly
+   * the version this id identifies, so an operator needs it to act
+   * unambiguously. It is inside the signed artifact, not a secret.
+   */
+  operationId: string;
   status: 'ACTIVE' | 'EXPIRED' | 'SUSPENDED';
+  /** The signed start fact (a renewal carries its issuance day here). */
   validFrom: string;
+  /**
+   * When this version actually starts governing (`governsFrom ?? validFrom`).
+   * For a renewal this is the instant the renewed term ends — importing it
+   * early never shortens the term the customer already holds — so the UI shows
+   * THIS instant for "from", not the signed `validFrom`.
+   */
+  effectiveFrom: string;
   validUntil: string | null;
   /** True for the one version the backend resolved as governing now. */
   effective: boolean;
@@ -161,6 +176,16 @@ export interface LicenseState {
   licenseId: string | null;
   validFrom: string | null;
   validUntil: string | null;
+  /**
+   * The end of the installation's unbroken coverage chain: the last instant the
+   * installation is covered to, including versions that are scheduled but not
+   * yet effective. Null when the chain is perpetual or nothing is licensed.
+   * This is the date to show as "covered until"; `validUntil` belongs to the
+   * version that governs right now. Exception: the gap-recovery receipt keeps
+   * its older `coverageEnd` (the lapse the recovery followed) for compatibility;
+   * the status card never renders that receipt as a license state.
+   */
+  coverageEnd: string | null;
   organizationLimit: number | null;
   userLimit: number | null;
   deviceLimit: number | null;

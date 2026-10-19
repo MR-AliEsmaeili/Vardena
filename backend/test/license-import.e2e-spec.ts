@@ -269,9 +269,13 @@ describe('License document import (e2e)', () => {
     // The API never echoes the document, its signature, its hash or the key.
     const serialized = JSON.stringify(response.body);
     expect(serialized).not.toContain(file);
-    expect(serialized).not.toContain(payload.operationId);
     expect(response.body).not.toHaveProperty('documentHash');
     expect(response.body).not.toHaveProperty('document');
+    // The signed operation identity IS part of the version read model since
+    // OD-LIC-06 / OQ-88: the Owner must name it as `renewsOperationId` to renew
+    // this version, and it lives inside the signed artifact rather than being a
+    // secret. It is the ONLY signed identity the response echoes.
+    expect(response.body.versions[0].operationId).toBe(payload.operationId);
     expect((await state()).active).toBe(true);
   });
 

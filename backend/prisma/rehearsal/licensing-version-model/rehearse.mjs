@@ -99,6 +99,15 @@ const TRANSFER_LICENSE_COMMENT_SQL = readMigration(
 const CLIENT_DEVICE_LIFECYCLE_SQL = readMigration(
   '20261022000000_licensing_client_device_lifecycle',
 );
+/**
+ * OD-LIC-06 / OQ-88: the renewal effective start. Purely additive — the column
+ * is nullable, nothing is backfilled, and no existing window is rewritten — so
+ * the rehearsal asserts the schema, the local check constraint and, above all,
+ * that every pre-existing row reads exactly as it did before.
+ */
+const RENEWAL_GOVERNS_FROM_SQL = readMigration(
+  '20261023000000_licensing_renewal_governs_from',
+);
 const PRE_DEVICE_VLIC2_ARTIFACT =
   'VLIC2.eyJ2IjoyLCJraW5kIjoic2VydmVyLWxpY2Vuc2UtdmVyc2lvbiIsIm9wZXJhdGlvbklkIjoiMDFLN09QRVJBVElPTkxFR0FDWVYyMDAwIn0.ZGV0ZXJtaW5pc3RpYy1yZWhlYXJzYWwtc2lnbmF0dXJl';
 const PRE_DEVICE_VLIC2_HASH = createHash('sha256')
@@ -1053,7 +1062,212 @@ async function rehearsal() {
     log(
       '  OQ-83 data preservation, UNSPECIFIED semantics, and schema assertions passed',
     );
+
+    const preRenewalState = await snapshotRetainedWindows(client);
+    await client.query(RENEWAL_GOVERNS_FROM_SQL);
+    log('  applied 20261023000000_licensing_renewal_governs_from');
+    await assertRenewalMigration(client, preRenewalState);
+    log(
+      '  OQ-88 governs_from / renewal-audit schema assertions and no-backfill proof passed',
+    );
   });
+}
+
+/**
+ * The retained windows of every version row, as text, so a later migration can
+ * be proven not to have rewritten any of them.
+ */
+async function snapshotRetainedWindows(client) {
+  const rows = await client.query(
+    `SELECT "id", "valid_from", "valid_until", "governs_until",
+            "superseded_at", "supersedes_version_id"
+       FROM "licensing"."license_versions" ORDER BY "id"`,
+  );
+  return rows.rows.map((row) => ({
+    id: row.id,
+    validFrom: new Date(row.valid_from).toISOString(),
+    validUntil:
+      row.valid_until === null ? null : new Date(row.valid_until).toISOString(),
+    governsUntil:
+      row.governs_until === null
+        ? null
+        : new Date(row.governs_until).toISOString(),
+    supersededAt:
+      row.superseded_at === null
+        ? null
+        : new Date(row.superseded_at).toISOString(),
+    supersedesVersionId: row.supersedes_version_id ?? null,
+  }));
+}
+
+/**
+ * OD-LIC-06 / OQ-88 — `license_versions.governs_from` and the typed renewal audit
+ * columns. The assertions are deliberately about the NEGATIVE space: the
+ * migration must add a nullable column and a local check, backfill nothing, and
+ * leave every existing window byte-identical (ADR-0046 Decision 2).
+ */
+async function assertRenewalMigration(client, preState) {
+  const columns = await client.query(
+    `SELECT column_name, data_type, is_nullable, datetime_precision
+       FROM information_schema.columns
+      WHERE table_schema = 'licensing' AND table_name = 'license_versions'
+        AND column_name = 'governs_from'`,
+  );
+  assert.equal(columns.rowCount, 1, 'governs_from exists');
+  assert.equal(columns.rows[0].data_type, 'timestamp with time zone');
+  assert.equal(columns.rows[0].datetime_precision, 6);
+  assert.equal(columns.rows[0].is_nullable, 'YES');
+
+  const constraint = await client.query(
+    `SELECT pg_get_constraintdef(c.oid) AS definition
+       FROM pg_constraint AS c
+       JOIN pg_class AS t ON t.oid = c.conrelid
+       JOIN pg_namespace AS n ON n.oid = t.relnamespace
+      WHERE n.nspname = 'licensing' AND t.relname = 'license_versions'
+        AND c.conname = 'license_versions_governs_from_check'`,
+  );
+  assert.equal(constraint.rowCount, 1, 'the governs_from check exists');
+
+  // No backfill: every row that existed before the migration is still NULL, and
+  // every retained window reads exactly as it did before.
+  const nulls = await client.query(
+    `SELECT COUNT(*)::int AS count FROM "licensing"."license_versions"
+      WHERE "governs_from" IS NOT NULL`,
+  );
+  assert.equal(nulls.rows[0].count, 0, 'the migration backfills nothing');
+  assert.deepEqual(
+    await snapshotRetainedWindows(client),
+    preState,
+    'no retained window changed',
+  );
+
+  // `supersedes_version_id` is a real foreign key to a retained version, so the
+  // constraint probes below reference a row this database actually holds. The
+  // repair-path fixture that defines REHEARSAL_SUCCESSOR lives in its own
+  // database and must not be borrowed here.
+  const retained = await client.query(
+    `SELECT "id" FROM "licensing"."license_versions" ORDER BY "id" LIMIT 1`,
+  );
+  assert.equal(
+    retained.rowCount,
+    1,
+    'a retained version exists to be named by the renewal',
+  );
+  const renewalTargetId = retained.rows[0].id;
+
+  // The check is local and strict: a deferred start needs a recorded
+  // supersession and must precede the signed end.
+  await client.query('BEGIN');
+  let message = null;
+  try {
+    await client.query(
+      `INSERT INTO "licensing"."license_versions"
+         ("id", "license_id", "installation_id", "operation_id", "status",
+          "provider", "document_version", "document_hash", "source",
+          "valid_from", "governs_from", "valid_until", "imported_at",
+          "created_at", "updated_at")
+       VALUES ('01K7REHEARSALRENEWAL00000', '01K7LICENSECURRENT0000000',
+               '01K7INSTALLATIONAAAAAAAAAA', '01K7REHEARSALRENEWALOP000',
+               'ACTIVE', 'persistent', 2, 'rehearsal-renewal-without-target',
+               'file', '2026-10-01T00:00:00Z', '2027-01-01T00:00:00Z',
+               '2028-01-01T00:00:00Z', '2026-10-01T00:00:00Z',
+               '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')`,
+    );
+  } catch (error) {
+    message = error.message;
+  }
+  await client.query('ROLLBACK');
+  assert.ok(
+    message !== null && /governs_from/i.test(message),
+    `a deferred start without a supersession link must be refused (got: ${String(message)})`,
+  );
+
+  await client.query('BEGIN');
+  message = null;
+  try {
+    await client.query(
+      `INSERT INTO "licensing"."license_versions"
+         ("id", "license_id", "installation_id", "operation_id", "status",
+          "provider", "document_version", "document_hash", "source",
+          "valid_from", "governs_from", "valid_until", "supersedes_version_id",
+          "imported_at", "created_at", "updated_at")
+       VALUES ('01K7REHEARSALRENEWAL00001', '01K7LICENSECURRENT0000000',
+               '01K7INSTALLATIONAAAAAAAAAA', '01K7REHEARSALRENEWALOP001',
+               'ACTIVE', 'persistent', 2, 'rehearsal-renewal-past-end',
+               'file', '2026-10-01T00:00:00Z', '2028-01-01T00:00:00Z',
+               '2028-01-01T00:00:00Z', $1,
+               '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z',
+               '2026-10-01T00:00:00Z')`,
+      [renewalTargetId],
+    );
+  } catch (error) {
+    message = error.message;
+  }
+  await client.query('ROLLBACK');
+  assert.ok(
+    message !== null && /governs_from/i.test(message),
+    `a deferred start at or after the signed end must be refused (got: ${String(message)})`,
+  );
+
+  // The valid shape is accepted, and the audit columns carry the typed facts.
+  await client.query('BEGIN');
+  await client.query(
+    `INSERT INTO "licensing"."license_versions"
+       ("id", "license_id", "installation_id", "operation_id", "status",
+        "provider", "document_version", "document_hash", "source",
+        "valid_from", "governs_from", "valid_until", "supersedes_version_id",
+        "imported_at", "created_at", "updated_at")
+     VALUES ('01K7REHEARSALRENEWAL00002', '01K7LICENSECURRENT0000000',
+             '01K7INSTALLATIONAAAAAAAAAA', '01K7REHEARSALRENEWALOP002',
+             'ACTIVE', 'persistent', 2, 'rehearsal-renewal-valid',
+             'file', '2026-10-01T00:00:00Z', '2027-01-01T00:00:00Z',
+             '2028-01-01T00:00:00Z', $1,
+             '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z',
+             '2026-10-01T00:00:00Z')`,
+    [renewalTargetId],
+  );
+  await client.query(
+    `INSERT INTO "licensing"."license_audit_events"
+       ("id", "installation_id", "event_type", "outcome", "source",
+        "renewed_version_id", "renewed_from", "renewed_until", "occurred_at")
+     VALUES ('rehearsal-renewal-event', '01K7INSTALLATIONAAAAAAAAAA',
+             'license.import.renewed', 'APPLIED', 'file', $1,
+             '2027-01-01T00:00:00Z', '2028-01-01T00:00:00Z',
+             '2026-10-01T00:00:00Z')`,
+    [renewalTargetId],
+  );
+  const stored = await client.query(
+    `SELECT "governs_from" FROM "licensing"."license_versions"
+      WHERE "id" = '01K7REHEARSALRENEWAL00002'`,
+  );
+  assert.equal(
+    new Date(stored.rows[0].governs_from).toISOString(),
+    '2027-01-01T00:00:00.000Z',
+    'a valid deferred start is stored exactly',
+  );
+  const auditColumns = await client.query(
+    `SELECT column_name, is_nullable
+       FROM information_schema.columns
+      WHERE table_schema = 'licensing' AND table_name = 'license_audit_events'
+        AND column_name IN ('renewed_version_id', 'renewed_from', 'renewed_until')
+      ORDER BY column_name`,
+  );
+  assert.deepEqual(
+    auditColumns.rows.map((row) => [row.column_name, row.is_nullable]),
+    [
+      ['renewed_from', 'YES'],
+      ['renewed_until', 'YES'],
+      ['renewed_version_id', 'YES'],
+    ],
+  );
+  await client.query('ROLLBACK');
+
+  // Nothing was left behind by the exercises.
+  assert.deepEqual(
+    await snapshotRetainedWindows(client),
+    preState,
+    'the constraint exercises wrote nothing',
+  );
 }
 
 /**

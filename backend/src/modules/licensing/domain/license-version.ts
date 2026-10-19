@@ -154,7 +154,21 @@ export interface RetainedLicenseVersion {
   /** Trusted key id that verified the signature (null for legacy rows). */
   keyId: string | null;
   validFrom: Date;
-  /** null means perpetual; the interval is half-open `[validFrom, validUntil)`. */
+  /**
+   * The instant this version starts GOVERNING when it differs from the signed
+   * `validFrom` (OD-LIC-06, OQ-88). Set only on a renewal, where it is the
+   * renewed version's effective end; `null` — every pre-existing row — means
+   * "govern from the signed `validFrom`" and keeps that row's exact window.
+   *
+   * The signed `validFrom` is still a signed fact: it is parsed, signed,
+   * round-tripped and displayed. It is simply not the hand-over instant for a
+   * renewal, which is what stops an early renewal from truncating the term the
+   * customer already paid for. The column carries a check constraint that
+   * allows it only together with a supersession link and only before
+   * `validUntil`.
+   */
+  governsFrom: Date | null;
+  /** null means perpetual; the interval is half-open `[governsFrom ?? validFrom, validUntil)`. */
   validUntil: Date | null;
   organizationLimit: LicenseLimit;
   userLimit: LicenseLimit;
@@ -229,8 +243,24 @@ export function isEligibleAt(
 }
 
 /**
- * The window during which a version can actually govern: its own half-open
- * `[validFrom, validUntil)` truncated at the instant a successor takes over.
+ * The ONE window-start accessor (OD-LIC-06 §4.2): the instant a version starts
+ * governing. `governsFrom` is set only on a renewal; every other row — and
+ * every row written before the renewal migration — reads its signed
+ * `validFrom`, so no existing window changes.
+ *
+ * Every window rule uses this accessor: effective-window resolution, coverage,
+ * ordering, scheduled-version selection, overlap/gap detection and the
+ * supersession hand-over. There is deliberately no second way to ask.
+ */
+export function windowStart(
+  version: Pick<RetainedLicenseVersion, 'validFrom' | 'governsFrom'>,
+): Date {
+  return version.governsFrom ?? version.validFrom;
+}
+
+/**
+ * The window during which a version can actually govern: its half-open
+ * `[windowStart, validUntil)` truncated at the instant a successor takes over.
  * A retired version never governs past `governsUntil`, and an eligible version
  * is unaffected.
  */
@@ -239,7 +269,7 @@ export function effectiveWindow(version: RetainedLicenseVersion): {
   end: Date | null;
 } {
   return {
-    start: version.validFrom,
+    start: windowStart(version),
     end: earliestInstant(version.validUntil, version.governsUntil),
   };
 }
@@ -273,10 +303,15 @@ export function effectiveWindow(version: RetainedLicenseVersion): {
  * L-02 migration backfilled (whose replaced-by pointer was never persisted, so
  * its hand-over is the recorded instant); see §3.3 of the design document.
  */
-export function supersessionCeaseInstant(
-  candidate: Pick<RetainedLicenseVersion, 'validFrom'>,
-): Date {
-  return candidate.validFrom;
+export function supersessionCeaseInstant(candidate: {
+  validFrom: Date;
+  governsFrom?: Date | null;
+}): Date {
+  // For a renewal the predecessor stops governing exactly where the renewal
+  // starts — the predecessor's OWN end — so nothing is truncated. Reading the
+  // same accessor the new row is written with is what makes the stamp and the
+  // new row unable to disagree (OD-LIC-06 §4.2/§4.3).
+  return candidate.governsFrom ?? candidate.validFrom;
 }
 
 /**
@@ -309,26 +344,36 @@ export function supersessionCeaseInstant(
 export function supersessionRewritesPastGovernance(
   target: Pick<
     RetainedLicenseVersion,
-    'validFrom' | 'validUntil' | 'governsUntil'
+    'validFrom' | 'governsFrom' | 'validUntil' | 'governsUntil'
   >,
-  candidate: Pick<RetainedLicenseVersion, 'validFrom'>,
+  candidate: { validFrom: Date; effectiveStart?: Date | null },
   at: Date,
 ): boolean {
   const currentEnd =
     earliestInstant(target.validUntil, target.governsUntil)?.getTime() ??
     Number.POSITIVE_INFINITY;
-  const handOver = Math.min(candidate.validFrom.getTime(), currentEnd);
-  const removedFrom = Math.max(target.validFrom.getTime(), handOver);
+  // A renewal hands over at the target's own end, so its removed interval is
+  // empty by construction (OD-LIC-06 §3.7 rule 8 keeps this call as defence in
+  // depth rather than dropping the check).
+  const handOver = Math.min(candidateStart(candidate).getTime(), currentEnd);
+  const removedFrom = Math.max(windowStart(target).getTime(), handOver);
   const removedTo = Math.min(currentEnd, at.getTime());
   return removedFrom < removedTo;
 }
 
-/** Half-open containment: `validFrom <= at < validUntil` (null = open end). */
+/**
+ * Half-open containment: `windowStart <= at < validUntil` (null = open end).
+ * A renewal therefore covers from the renewed term boundary, not from its own
+ * signed `validFrom`.
+ */
 export function covers(
-  version: Pick<RetainedLicenseVersion, 'validFrom' | 'validUntil'>,
+  version: Pick<
+    RetainedLicenseVersion,
+    'validFrom' | 'governsFrom' | 'validUntil'
+  >,
   at: Date,
 ): boolean {
-  if (at.getTime() < version.validFrom.getTime()) return false;
+  if (at.getTime() < windowStart(version).getTime()) return false;
   return (
     version.validUntil === null || at.getTime() < version.validUntil.getTime()
   );
@@ -361,13 +406,17 @@ export function windowsOverlap(
  * windows are part of the invariant.
  */
 export function overlappingVersions(
-  candidate: Pick<RetainedLicenseVersion, 'validFrom' | 'validUntil'>,
+  candidate: {
+    validFrom: Date;
+    validUntil: Date | null;
+    effectiveStart?: Date | null;
+  },
   versions: readonly RetainedLicenseVersion[],
 ): RetainedLicenseVersion[] {
   return versions.filter((version) => {
     const window = effectiveWindow(version);
     return windowsIntersect(
-      candidate.validFrom,
+      candidateStart(candidate),
       candidate.validUntil,
       window.start,
       window.end,
@@ -383,7 +432,11 @@ export function overlappingVersions(
  * ended.
  */
 export function eligibleOverlappingVersions(
-  candidate: Pick<RetainedLicenseVersion, 'validFrom' | 'validUntil'>,
+  candidate: {
+    validFrom: Date;
+    validUntil: Date | null;
+    effectiveStart?: Date | null;
+  },
   versions: readonly RetainedLicenseVersion[],
   at: Date,
 ): RetainedLicenseVersion[] {
@@ -503,13 +556,18 @@ export function lapsedLicenseContext(
  * the coverage end is adjacency, not a gap.
  */
 export function isPostGapRecoveryCandidate(
-  candidate: Pick<ImportCandidate, 'licenseId' | 'validFrom'>,
+  candidate: Pick<
+    ImportCandidate,
+    'licenseId' | 'validFrom' | 'effectiveStart'
+  >,
   versions: readonly RetainedLicenseVersion[],
 ): boolean {
   if (hasRetainedLicense(candidate.licenseId, versions)) return false;
   const coverageEnd = installationCoverageEnd(versions);
   if (coverageEnd === null) return false;
-  return candidate.validFrom.getTime() > coverageEnd.getTime();
+  // A renewal's derived start IS the coverage end, so it can never be post-gap
+  // (OD-LIC-06 §3.7 rule 5/11) — a renewal is not a recovery bypass.
+  return candidateStart(candidate).getTime() > coverageEnd.getTime();
 }
 
 /**
@@ -778,10 +836,14 @@ export function findScheduledVersion(
   versions: readonly RetainedLicenseVersion[],
   at: Date,
 ): RetainedLicenseVersion | null {
+  // Selected by the SAME start accessor resolution uses, so an early renewal
+  // appears as scheduled even though its signed `validFrom` is already past
+  // (OD-LIC-06 §6).
   const future = versions
     .filter(
       (version) =>
-        isEligibleAt(version, at) && version.validFrom.getTime() > at.getTime(),
+        isEligibleAt(version, at) &&
+        windowStart(version).getTime() > at.getTime(),
     )
     .sort(compareByStartThenImport);
   return future[0] ?? null;
@@ -839,7 +901,7 @@ export function resolveEffectiveVersion(
   }
 
   const future = eligible
-    .filter((version) => version.validFrom.getTime() > at.getTime())
+    .filter((version) => windowStart(version).getTime() > at.getTime())
     .sort(compareByStartThenImport);
   if (future.length > 0) {
     return { kind: 'inactive', reason: 'not-yet-valid', version: future[0]! };
@@ -895,6 +957,10 @@ export type ImportConflictReason =
   | 'installation-customer-mismatch'
   | 'transfer-requires-different-customer'
   | 'renewal-gap'
+  | 'renewal-target-unknown'
+  | 'renewal-target-not-current'
+  | 'renewal-target-perpetual'
+  | 'renewal-not-an-extension'
   | 'reduction-requires-resolution'
   | 'post-gap-recovery-requires-dedicated-operation'
   | 'recovery-not-applicable'
@@ -934,7 +1000,17 @@ export interface ImportConflict {
 export type ImportSupersessionIntent =
   | { kind: 'none' }
   | { kind: 'explicit'; operationId: string }
-  | { kind: 'implicit' };
+  | { kind: 'implicit' }
+  /**
+   * A signed RENEWAL of the named retained version (OD-LIC-06, OQ-88). It is
+   * carried only by a document whose signed `renewsOperationId` names that
+   * version; the service never constructs it from a flag, a date or a
+   * `licenseId`. The named version is the renewal's predecessor — it is
+   * stamped and audited exactly like an explicit target — but the hand-over
+   * instant is that version's own effective end, not the renewal's
+   * `validFrom`.
+   */
+  | { kind: 'renewal'; operationId: string };
 
 /**
  * The document's own content, as the conflict authority needs it: the declared
@@ -953,6 +1029,27 @@ export interface ImportCandidate {
   deviceLimit: LicenseLimit;
   deviceLimitSpecified: boolean;
   entitlements: readonly LicenseEntitlement[];
+  /**
+   * The instant this candidate starts GOVERNING, when that differs from the
+   * signed `validFrom` (OD-LIC-06 §4.2). DERIVED, never supplied: the conflict
+   * authority sets it on its own copy after resolving a renewal target, and
+   * overwrites whatever a caller may have put here. Every window rule reads
+   * {@link candidateStart}, so a renewal is evaluated on its real window
+   * `[target.end, validUntil)` while an ordinary document keeps the exact
+   * existing behaviour.
+   */
+  effectiveStart?: Date | null;
+}
+
+/**
+ * The ONE candidate window-start accessor: the derived effective start when the
+ * authority resolved one, the signed `validFrom` otherwise.
+ */
+export function candidateStart(candidate: {
+  validFrom: Date;
+  effectiveStart?: Date | null;
+}): Date {
+  return candidate.effectiveStart ?? candidate.validFrom;
 }
 
 /**
@@ -1051,6 +1148,15 @@ export type ImportConflictEvaluation =
       conflict: null;
       supersedes: RetainedLicenseVersion | null;
       /**
+       * Set only when this import applied a RENEWAL (OD-LIC-06 §3.7 rule 13):
+       * the retained version it renewed and the authoritative `governs_from`
+       * the transaction must persist on the new row (and stamp on the target).
+       * The repository compares it with the command it is about to write and
+       * refuses on any difference, so the pre-check, the committed row and the
+       * target's stamp can never disagree.
+       */
+      renewal: { renewedVersionId: string; governsFrom: Date } | null;
+      /**
        * The version whose grant an APPLIED resolution authorized reducing
        * (L-04/L-05/L-07): the retired predecessor on a hand-over path, the
        * deterministic continuation baseline on a contiguous renewal, or the
@@ -1096,14 +1202,17 @@ export type ImportConflictEvaluation =
  * has no continuation case at all.
  */
 export function continuationBaselineFor(
-  candidate: Pick<ImportCandidate, 'validFrom' | 'licenseId'>,
+  candidate: Pick<
+    ImportCandidate,
+    'validFrom' | 'licenseId' | 'effectiveStart'
+  >,
   versions: readonly RetainedLicenseVersion[],
   installationCustomerId: string | null,
 ): RetainedLicenseVersion | null {
   let adjacent: RetainedLicenseVersion[] = [];
   for (const version of versions) {
     const end = effectiveWindow(version).end;
-    if (end !== null && end.getTime() === candidate.validFrom.getTime()) {
+    if (end !== null && end.getTime() === candidateStart(candidate).getTime()) {
       adjacent.push(version);
     }
   }
@@ -1280,8 +1389,17 @@ export function continuationBaselineFor(
 export function evaluateImportConflicts(
   params: EvaluateImportConflictsParams,
 ): ImportConflictEvaluation {
-  const { candidate, operationId, documentHash, supersession, versions, at } =
-    params;
+  const { operationId, documentHash, supersession, versions, at } = params;
+  /**
+   * The authority's OWN copy: `effectiveStart` is derived here and nowhere
+   * else. Discarding any caller-supplied value is what makes the derived start
+   * impossible to inject — no document, endpoint, flag or test helper can
+   * choose the instant a candidate starts governing.
+   */
+  const candidate: ImportCandidate = {
+    ...params.candidate,
+    effectiveStart: null,
+  };
   const installationCustomerId = params.installationCustomerId ?? null;
   const installationCustomerCode = params.installationCustomerCode ?? null;
   const knownCustomers = params.knownCustomers ?? [];
@@ -1342,6 +1460,71 @@ export function evaluateImportConflicts(
     });
   }
 
+  let target: RetainedLicenseVersion | null = null;
+  /** Set only when this evaluation applied a renewal (OD-LIC-06 §3.7). */
+  let renewal: { renewedVersionId: string; governsFrom: Date } | null = null;
+
+  // Rule 3a — RENEWAL RESOLUTION (OD-LIC-06 §3.5/§3.6/§3.7 rule 4). It runs
+  // before the recovery and gap blocks, on signed data only: the target is the
+  // operation id the document names, resolved against the very rows this pass
+  // was handed (so the in-transaction pass resolves against committed state),
+  // and it must be the tail of the installation's unbroken coverage chain.
+  //
+  // A renewal is never a recovery and never a transfer: it extends the named
+  // version's term in place, it does not cover a lapse and it does not re-bind
+  // the customer. The refusals below are the documented stable ones.
+  if (supersession.kind === 'renewal') {
+    if (gapRecovery !== null) {
+      return conflictOnly({
+        reason: 'recovery-not-applicable',
+        overlapping: 0,
+      });
+    }
+    const found = findVersionByOperationId(versions, supersession.operationId);
+    if (
+      found === null ||
+      hasRecordedSupersession(found) ||
+      !isEligibleAt(found, at) ||
+      found.customerId !== candidate.customerId ||
+      found.customerCode !== candidate.customerCode
+    ) {
+      return conflictOnly({ reason: 'renewal-target-unknown', overlapping: 0 });
+    }
+    const tail = coverageChainTail(versions, at);
+    if (tail === null || tail.versionId !== found.versionId) {
+      return conflictOnly({
+        reason: 'renewal-target-not-current',
+        overlapping: 0,
+      });
+    }
+    const targetEnd = effectiveWindow(found).end;
+    if (found.validUntil === null || targetEnd === null) {
+      // There is no term boundary to hand over at. Converting a perpetual
+      // grant to a time-limited one stays on the explicit-supersession path
+      // PDR-12/OD-LIC-01 authorizes (OD-LIC-06 §3.8, A14).
+      return conflictOnly({
+        reason: 'renewal-target-perpetual',
+        overlapping: 0,
+      });
+    }
+    if (
+      candidate.validUntil !== null &&
+      candidate.validUntil.getTime() <= targetEnd.getTime()
+    ) {
+      // Equal or earlier is not an extension, and a renewal never shortens a
+      // term. The defect is in the document, so it is a 422 (OD-LIC-06 §3.9).
+      return conflictOnly({
+        reason: 'renewal-not-an-extension',
+        overlapping: 0,
+      });
+    }
+    target = found;
+    renewal = { renewedVersionId: found.versionId, governsFrom: targetEnd };
+    // The renewal governs exactly the renewed term. Every rule below reads
+    // this derived start instead of the signed `validFrom`.
+    candidate.effectiveStart = targetEnd;
+  }
+
   // Determine the narrow L-07 recovery case before resolving an explicit
   // supersession target. A true post-gap recovery never retires a version, so
   // any declared target — even an unknown or already-retired operation id —
@@ -1349,12 +1532,16 @@ export function evaluateImportConflicts(
   const postGapRecoveryCandidate =
     gapRecovery !== null &&
     supersession.kind !== 'implicit' &&
+    // Evaluated against the EFFECTIVE start, so a renewal (whose derived start
+    // is the coverage end) can never be classified as post-gap (rule 5).
     isPostGapRecoveryCandidate(candidate, versions);
-  if (postGapRecoveryCandidate && supersession.kind === 'explicit') {
+  if (
+    postGapRecoveryCandidate &&
+    (supersession.kind === 'explicit' || supersession.kind === 'renewal')
+  ) {
     return conflictOnly({ reason: 'recovery-not-applicable', overlapping: 0 });
   }
 
-  let target: RetainedLicenseVersion | null = null;
   if (supersession.kind === 'explicit') {
     const found = findVersionByOperationId(versions, supersession.operationId);
     if (
@@ -1516,6 +1703,7 @@ export function evaluateImportConflicts(
     return {
       conflict: null,
       supersedes: implicitTarget,
+      renewal: null,
       resolutionSubject,
     };
   }
@@ -1552,7 +1740,7 @@ export function evaluateImportConflicts(
   }
   if (target === null && overlap !== null) {
     // Rule 5 (OQ-80 Option B): the later start governs at the overlap.
-    if (overlap.validFrom.getTime() >= candidate.validFrom.getTime()) {
+    if (windowStart(overlap).getTime() >= candidateStart(candidate).getTime()) {
       return conflictOnly({ reason: 'overlapping-range', overlapping: 1 });
     }
     supersedes = overlap;
@@ -1677,7 +1865,7 @@ export function evaluateImportConflicts(
       overlapping: 0,
     });
   }
-  return { conflict: null, supersedes, resolutionSubject };
+  return { conflict: null, supersedes, resolutionSubject, renewal };
 }
 
 /**
@@ -1773,7 +1961,7 @@ function leavesRenewalGap(
 ): boolean {
   const coverageEnd = retainedCoverageEnd(candidate.licenseId, versions);
   if (coverageEnd === null) return false;
-  return candidate.validFrom.getTime() > coverageEnd.getTime();
+  return candidateStart(candidate).getTime() > coverageEnd.getTime();
 }
 
 /**
@@ -1904,6 +2092,66 @@ function hasCustomerCodeMismatch(
   return false;
 }
 
+/**
+ * The installation's unbroken coverage chain at `at` (OD-LIC-06 §3.6): the
+ * version that governs (or last governed) at the instant, followed by each
+ * version whose effective start is exactly the previous member's effective end.
+ *
+ * Deterministic and derived only from signed facts, so it is recomputed inside
+ * the transaction from the same rows the resolution reads. It stops at a
+ * perpetual tail, at the first gap, and at the first ambiguity (two retained
+ * versions claiming the same start) instead of guessing.
+ *
+ * The chain is what makes a renewal target unambiguous: the target must be its
+ * LAST member, which refuses stale, interior and already-renewed targets and
+ * makes a double extension impossible even with a fresh operation id.
+ */
+export function coverageChain(
+  versions: readonly RetainedLicenseVersion[],
+  at: Date,
+): RetainedLicenseVersion[] {
+  const first = resolveEffectiveVersion(versions, at).version;
+  if (first === null) return [];
+  const chain: RetainedLicenseVersion[] = [first];
+  for (;;) {
+    const end = effectiveWindow(chain[chain.length - 1]!).end;
+    if (end === null) break;
+    const next = versions.filter(
+      (version) =>
+        isEligibleAt(version, at) &&
+        windowStart(version).getTime() === end.getTime(),
+    );
+    if (next.length !== 1) break;
+    const candidate = next[0]!;
+    if (chain.some((version) => version.versionId === candidate.versionId)) {
+      break;
+    }
+    chain.push(candidate);
+  }
+  return chain;
+}
+
+/** The tail of {@link coverageChain} — the only valid renewal target. */
+export function coverageChainTail(
+  versions: readonly RetainedLicenseVersion[],
+  at: Date,
+): RetainedLicenseVersion | null {
+  return coverageChain(versions, at).at(-1) ?? null;
+}
+
+/**
+ * Where the installation's continuous coverage ends: the effective end of the
+ * chain's tail. `null` for no coverage chain at all or a perpetual tail, which
+ * is exactly the read-model `coverageEnd` (OD-LIC-06 §6, PO decision Q-2).
+ */
+export function coverageEndOf(
+  versions: readonly RetainedLicenseVersion[],
+  at: Date,
+): Date | null {
+  const tail = coverageChainTail(versions, at);
+  return tail === null ? null : effectiveWindow(tail).end;
+}
+
 /** The single shape of a conflict evaluation (no supersession is resolved). */
 function conflictOnly(conflict: ImportConflict): ImportConflictEvaluation {
   return { conflict, supersedes: null };
@@ -1953,8 +2201,21 @@ export function toInstallationLicense(
 export interface LicenseVersionSummary {
   versionId: string;
   licenseId: string;
+  /**
+   * The signed operation identity. The Owner must name it as
+   * `renewsOperationId` to renew this version (OD-LIC-06 §6), so it is part of
+   * the authenticated read model. It is not a secret: it is inside the signed
+   * artifact.
+   */
+  operationId: string;
   status: LicenseStatus;
   validFrom: string;
+  /**
+   * When this version actually starts governing (`governsFrom ?? validFrom`).
+   * For a renewal this is the renewed term boundary, while `validFrom` stays
+   * the signed issuance-day fact; for every other version the two are equal.
+   */
+  effectiveFrom: string;
   validUntil: string | null;
   effective: boolean;
   supersededAt: string | null;
@@ -1973,8 +2234,10 @@ export function toLicenseVersionSummary(
   return {
     versionId: version.versionId,
     licenseId: version.licenseId,
+    operationId: version.operationId,
     status: version.status,
     validFrom: version.validFrom.toISOString(),
+    effectiveFrom: windowStart(version).toISOString(),
     validUntil: version.validUntil?.toISOString() ?? null,
     effective: version.versionId === effectiveVersionId,
     supersededAt: version.supersededAt?.toISOString() ?? null,
@@ -1996,12 +2259,16 @@ export function entitlementsByKind(
     .map((entry) => entry.code);
 }
 
-/** Latest start wins; then latest import; then the id — always total. */
+/**
+ * Latest START wins (the governing start — `windowStart`, so a renewal is
+ * ordered by the term boundary it begins at, not by its signed issuance date);
+ * then latest import; then the id — always total.
+ */
 function compareByStartThenImport(
   a: RetainedLicenseVersion,
   b: RetainedLicenseVersion,
 ): number {
-  const byStart = a.validFrom.getTime() - b.validFrom.getTime();
+  const byStart = windowStart(a).getTime() - windowStart(b).getTime();
   if (byStart !== 0) return byStart;
   const byImport = a.importedAt.getTime() - b.importedAt.getTime();
   if (byImport !== 0) return byImport;

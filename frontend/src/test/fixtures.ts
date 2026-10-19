@@ -87,8 +87,10 @@ export const secondOrganization: Organization = {
 export const testLicenseVersion: LicenseVersionSummary = {
   versionId: '01K7VERSIONAAAAAAAAAAAAAA',
   licenseId: '01K7LICENSEAAAAAAAAAAAAAAA',
+  operationId: '01K7OPERATIONAAAAAAAAAAAAAA',
   status: 'ACTIVE',
   validFrom: '2026-01-01T00:00:00.000Z',
+  effectiveFrom: '2026-01-01T00:00:00.000Z',
   validUntil: null,
   effective: true,
   supersededAt: null,
@@ -104,7 +106,11 @@ export const testLicenseVersion: LicenseVersionSummary = {
 export const testScheduledLicenseVersion: LicenseVersionSummary = {
   ...testLicenseVersion,
   versionId: '01K7SCHEDULEDVERSIONAAAAA',
-  validFrom: '2027-01-01T00:00:00.000Z',
+  operationId: '01K7SCHEDULEDOPERATIONAAAA',
+  // A renewal is signed now but governs from the instant the renewed term
+  // ends, which is why the two instants differ here (OD-LIC-06 §6).
+  validFrom: '2026-06-01T00:00:00.000Z',
+  effectiveFrom: '2027-01-01T00:00:00.000Z',
   validUntil: '2028-01-01T00:00:00.000Z',
   effective: false,
   importedAt: '2026-06-01T00:00:00.000Z',
@@ -125,6 +131,9 @@ export const testActiveLicenseState: LicenseState = {
   licenseId: '01K7LICENSEAAAAAAAAAAAAAAA',
   validFrom: '2026-01-01T00:00:00.000Z',
   validUntil: null,
+  // A perpetual governing version inside an unbroken chain: the chain never
+  // ends, so coverageEnd is null (PO decision Q-2).
+  coverageEnd: null,
   organizationLimit: null,
   userLimit: null,
   deviceLimit: 2,
@@ -183,6 +192,11 @@ export const testReadOnlyLicenseState: LicenseState = {
 /** An active installation that already retained a future-dated renewal. */
 export const testScheduledLicenseState: LicenseState = {
   ...testActiveLicenseState,
+  // A coherent chain: the governing version ends where the scheduled one
+  // starts, and the retained renewal carries coverage to ITS own end. This is
+  // the state that must not be read as "the term ends now" (OD-LIC-06 §6).
+  validUntil: '2027-01-01T00:00:00.000Z',
+  coverageEnd: '2028-01-01T00:00:00.000Z',
   scheduledVersion: testScheduledLicenseVersion,
   versions: [testLicenseVersion, testScheduledLicenseVersion],
 };

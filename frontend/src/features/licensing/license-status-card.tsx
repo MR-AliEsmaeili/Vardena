@@ -135,16 +135,93 @@ export function LicenseStatusCard(): ReactElement | null {
               </p>
             )}
 
+            {/*
+              The end of the whole purchased coverage (OD-LIC-06 §6, PO
+              decision Q-2). It differs from the governing version's
+              `validUntil` exactly when a renewal is already retained, which is
+              the fact an operator must not misread: the term does not end where
+              the current row ends.
+            */}
+            {state.coverageEnd !== null &&
+              state.coverageEnd !== state.validUntil && (
+                <p className="text-xs text-slate-600">
+                  <span>{t.license.statusCoverageEnd}</span>:{' '}
+                  <span className="num" dir="ltr">
+                    {formatDateTime(state.coverageEnd)}
+                  </span>{' '}
+                  <span className="text-slate-500">
+                    {t.license.statusCoverageEndHint}
+                  </span>
+                </p>
+              )}
+
             {scheduled !== null && (
               <div className="rounded-md border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-xs text-indigo-900">
                 <p className="font-medium">{t.license.statusScheduled}</p>
+                {/*
+                  `effectiveFrom`, not `validFrom`: a renewal is issued early
+                  but governs from the renewed term boundary, and showing the
+                  signed issuance day here would claim the current term ends
+                  earlier than it does.
+                */}
                 <p className="num" dir="ltr">
                   {t.license.statusEffectiveFrom}:{' '}
-                  {windowLabel(scheduled.validFrom, scheduled.validUntil)}
+                  {windowLabel(scheduled.effectiveFrom, scheduled.validUntil)}
                 </p>
                 <p className="mt-1 text-indigo-800">
                   {t.license.statusScheduledHint}
                 </p>
+              </div>
+            )}
+
+            {/*
+              Retained versions (bounded by the backend) so an operator can
+              name the renewal target unambiguously: the signed operation id is
+              what the Owner must sign as `renewsOperationId`, and only a
+              version the state reports can be extended (OD-LIC-06 §4F). This is
+              display-only; the backend re-resolves every rule on import.
+            */}
+            {state.versions.length > 0 && (
+              <div className="rounded-md border border-slate-100 px-3 py-2 text-xs text-slate-600">
+                <p className="font-medium text-slate-700">
+                  {t.license.statusHistory}
+                </p>
+                <p className="mt-1 text-slate-500">
+                  {t.license.statusHistoryHint}
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {state.versions.map((version) => (
+                    <li
+                      key={version.versionId}
+                      className="flex flex-wrap items-center gap-x-2 gap-y-1"
+                    >
+                      <Badge
+                        variant={
+                          version.versionId === state.effectiveVersionId
+                            ? 'success'
+                            : version.governsUntil !== null
+                              ? 'neutral'
+                              : 'info'
+                        }
+                      >
+                        {version.versionId === state.effectiveVersionId
+                          ? t.license.statusVersionEffective
+                          : version.governsUntil !== null
+                            ? t.license.statusVersionRetired
+                            : t.license.statusVersionScheduled}
+                      </Badge>
+                      <span className="num" dir="ltr">
+                        {windowLabel(version.effectiveFrom, version.validUntil)}
+                      </span>
+                      <span className="text-slate-500">
+                        {t.license.statusOperationId}:{' '}
+                        <span className="code" dir="ltr">
+                          {version.operationId}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 

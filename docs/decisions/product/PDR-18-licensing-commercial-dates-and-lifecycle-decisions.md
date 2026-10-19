@@ -124,6 +124,30 @@ decision):** the protocol/persistence design this section asks for is
 It is a design document; nothing in it is implemented, and it does not change
 the policy recorded above.
 
+## 10. Addendum — Q-1 / Q-2 answers and implementation status (2026-10-19)
+
+§9 asked engineering to design the renewal protocol and left two questions to the
+Product Owner. Both are answered; the answers are **binding** for the
+implementation and close the only open policy choices in
+[OD-LIC-06](../../tasks/od-lic-06-renewal-protocol-and-persistence-design.md).
+
+| Question | Answer | Consequence (implemented) |
+|---|---|---|
+| **Q-1** — when does a renewal start governing? | **`boundary`** | A renewal starts governing at the renewed version's **exclusive effective end** (`governsFrom = effectiveWindow(target).end`). The term it is signed with is applied exactly as signed — no rounding, no clamping, no partial mid-period term — and the predecessor is never truncated: its own `governs_until` is its own end. An early renewal therefore never shortens the current term; it only extends after it. |
+| **Q-2** — what does the UI show as "expires"? | **`coverage_end`** | `validUntil` keeps its meaning (the governing version's signed end) and enforcement/Grace keep reading the governing window. A new read-model `coverageEnd` reports the end of the installation's **unbroken coverage chain**, including a scheduled renewal; it is null for a perpetual chain or an unlicensed installation. The admin surface shows both, so "renewal applied" is never reported as "the term ends sooner". |
+
+The Product Owner also confirmed that §9 stands as written for everything else:
+renewal identity is unchanged (`licenseId` reuse is not required), a perpetual
+grant is changed only through the explicit-supersession path of PDR-12, a
+reduction inside a renewal follows PDR-11 §8.6, and a genuine lapse remains the
+dedicated post-gap recovery of PDR-13.
+
+**Implementation status:** the protocol and persistence design of §9 is
+implemented on `arena/89ce682b-vardena` (signed `renewsOperationId`, nullable
+`governs_from` with a local check, in-transaction target resolution, typed
+`license.import.renewed` evidence, `coverageEnd`, `--renews` issuance and tests
+A1–A17). The policy recorded in §9 and this addendum is unchanged by that work.
+
 ## Related records
 
 - [PDR-11 — Licensing requirements](PDR-11-vardena-licensing-product-requirements.md)
