@@ -1234,3 +1234,14 @@ The later binding policy is recorded in [PDR-18](PDR-18-licensing-commercial-dat
 - Customer Vardena System Administrators may manually deactivate client devices and atomically transfer quota; active-device limits and history remain enforced.
 
 **Status discipline:** these are approved product policies, not claims that implementation, tests, CI, or operational readiness are complete. See PDR-18 and the registry/traceability records for follow-up.
+
+## OQ-74 administrative implementation cross-reference — 2026-10-19
+
+The [OQ-74 implementation record](../../tasks/licensing-oq-74-signing-key-compromise-response.md)
+traces metadata registration/status/notes, nullable license-observation links,
+derived administrative safety and attributable audit. Replacement generation and
+trusted-key rollout remain separate Owner-controlled operations; none was executed
+or claimed by the metadata feature. No automatic invalidation, production signer,
+new role, cryptographic proof or OQ-78 artifact is introduced. U-1 custody,
+provenance/containment and offline recovery design remain open. Exact-head CI and
+Product Owner acceptance are distinct from policy approval and source presence.

@@ -112,6 +112,7 @@ export function ActivationFormPage() {
       reason: '',
       evidenceReference: '',
       observedValidityEnd: '',
+      signingKeyId: '',
       acknowledged: false,
     },
   });
@@ -125,6 +126,7 @@ export function ActivationFormPage() {
           reason: values.reason,
           evidenceReference: values.evidenceReference,
         }),
+        ...(values.signingKeyId ? { signingKeyId: values.signingKeyId } : {}),
         // The recording day is never sent: the server derives it from the
         // immutable record instant (PDR-18 §1.2, PDR-17).
         ...(values.observedValidityEnd.trim()
@@ -162,6 +164,15 @@ export function ActivationFormPage() {
             form.setValue('customerId', id, { shouldValidate: true })
           }
           error={form.formState.errors.customerId?.message}
+        />
+        <SigningKeyPicker
+          value={form.watch('signingKeyId')}
+          onChange={(value) =>
+            form.setValue('signingKeyId', value, {
+              shouldDirty: true,
+              shouldValidate: true,
+            })
+          }
         />
         <FormField
           id="installationReference"
@@ -371,5 +382,98 @@ export function ReplacementFormPage() {
         </div>
       </form>
     </section>
+  );
+}
+
+/** No automatic key choice. Historical mode explicitly includes non-active keys. */
+function SigningKeyPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [historical, setHistorical] = useState(false);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const debounced = useDebouncedValue(search, 300);
+  const query = useQuery({
+    queryKey: ['owner', 'signing-keys', 'picker', debounced, page, historical],
+    queryFn: ({ signal }) =>
+      api.signingKeys(
+        debounced,
+        page,
+        historical ? {} : { status: 'ACTIVE' },
+        signal,
+      ),
+  });
+  return (
+    <fieldset className="space-y-2 rounded border p-3">
+      <legend>{o.signingKeyId}</legend>
+      <p>{o.signingKeyObservationHelp}</p>
+      <label className="block">
+        <input
+          type="checkbox"
+          checked={historical}
+          onChange={(e) => {
+            setHistorical(e.target.checked);
+            setPage(1);
+            onChange('');
+          }}
+        />{' '}
+        {o.signingKeyHistorical}
+      </label>
+      <label className="block">
+        {o.search}
+        <Input
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
+        />
+      </label>
+      {query.isPending ? (
+        <LoadingState rows={1} />
+      ) : query.isError ? (
+        <OperationError error={query.error} />
+      ) : (
+        <>
+          <label className="block">
+            {o.signingKeyLinkedTo}
+            <select
+              className="w-full rounded border p-2"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+            >
+              <option value="">{o.signingKeyNoLinked}</option>
+              {query.data.items.map((key) => (
+                <option key={key.id} value={key.id}>
+                  {key.label} ({key.id}) — {key.status}
+                </option>
+              ))}
+              {value && !query.data.items.some((key) => key.id === value) && (
+                <option value={value}>{value}</option>
+              )}
+            </select>
+          </label>
+          {!query.data.items.length && <p>{o.signingKeyEmpty}</p>}
+          <Button
+            type="button"
+            disabled={page === 1}
+            onClick={() => setPage(page - 1)}
+          >
+            {o.previous}
+          </Button>
+          <Button
+            type="button"
+            disabled={page * 50 >= (query.data.total ?? 0)}
+            onClick={() => setPage(page + 1)}
+          >
+            {o.next}
+          </Button>
+        </>
+      )}
+    </fieldset>
   );
 }

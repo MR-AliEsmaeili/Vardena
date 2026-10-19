@@ -85,3 +85,17 @@ persistence, separate archive batching, SHA-256 verification, and recovery), and
 the routes in `src/app.ts`. Tests: `test/unit.test.ts` and
 `test/audit-query.test.ts` (pure, in `npm test`) and the explorer/archive/recovery
 cases in `test/api.test.ts` (PostgreSQL + filesystem store, `test:integration`).
+
+## OQ-74 signing-key metadata
+
+Migration 006 adds Owner-only signing_keys and nullable immutable LICENSE links.
+GET /api/v1/signing-keys (search/page/status) and GET /signing-keys/:id use
+customers.view; POST /signing-keys, POST /signing-keys/:id/status and
+PATCH /signing-keys/:id/notes use customers.write (Owner Admin only). Registration
+accepts id/label and optional notes/evidenceReference. Status requires status and
+reason (optional evidenceReference); notes accepts notes (empty clears). Opaque
+IDs are 1–120 characters with no whitespace/control/secret/artifact markers;
+paths must be URI-encoded. A conflicting duplicate returns 409 without overwrite;
+an identical retry is a no-op. Observations optionally submit signingKeyId using
+operations.record. Safety is administrative, derived from live persisted state.
+See [decision, deployment and evidence](../../docs/tasks/licensing-oq-74-signing-key-compromise-response.md).

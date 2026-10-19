@@ -1,3 +1,4 @@
+import { SigningKeySafetyLine } from './operations-page';
 import { formatOwnerBusinessDay, formatOwnerInstant } from '@/lib/date-time';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -283,6 +284,12 @@ export function OperationPage() {
           </div>
         ) : null}
       </dl>
+      {record.kind === 'LICENSE' && (
+        <SigningKeySafetyLine
+          signingKeyId={record.signingKeyId}
+          safety={record.signingKeySafety}
+        />
+      )}
       <h2 className="font-semibold">{o.history}</h2>
       {record.transitions && record.transitions.length > 0 ? (
         <ol className="space-y-3">

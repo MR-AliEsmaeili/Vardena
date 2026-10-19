@@ -11,6 +11,7 @@ export function AppShell() {
     ['/app', o.home, null],
     ['/app/customers', o.customers, 'customers.view'],
     ['/app/users', o.users, 'users.manage'],
+    ['/app/signing-keys', o.signingKeys, 'customers.view'],
     ['/app/audit', o.audit, 'audit.view'],
     ['/app/operations', o.operations, 'operations.view'],
     ['/app/lifecycle', o.lifecycle, null],

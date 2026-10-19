@@ -17,6 +17,7 @@ vi.mock('@/api/identity.api', () => ({
   getEffectivePermissions: vi.fn(),
 }));
 vi.mock('@/api/owner.api', () => ({
+  signingKeys: vi.fn(),
   customers: vi.fn(),
   customer: vi.fn(),
   createCustomer: vi.fn(),
@@ -82,6 +83,12 @@ beforeEach(() => {
       'replacements.authorize',
     ],
   });
+  vi.mocked(api.signingKeys).mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 50,
+  });
   vi.mocked(api.customers).mockResolvedValue({
     items: [customer],
     total: 1,
@@ -115,6 +122,9 @@ beforeEach(() => {
     cryptographicVerification: 'NOT_IMPLEMENTED',
     signedArtifactProduced: false,
     customerServerContacted: false,
+    signingKeyId: null,
+    signingKeyStatus: null,
+    signingKeySafety: 'UNKNOWN',
     createdAt: '2026-10-15T00:00:00.000Z',
     updatedAt: '2026-10-15T00:00:00.000Z',
     createdBy: admin.id,
@@ -240,7 +250,27 @@ describe('manual operations UI', () => {
     expect(await screen.findByText(o.forbidden)).toBeInTheDocument();
     expect(api.operationalRecords).not.toHaveBeenCalled();
   });
-  it('submits only a selected customer id after explicit manual confirmation', async () => {
+  it('submits a selected customer and signingKeyId through the normal observation form', async () => {
+    vi.mocked(api.signingKeys).mockResolvedValue({
+      items: [
+        {
+          id: 'authority-2026',
+          label: 'Authority',
+          status: 'ACTIVE',
+          statusDetectedAt: null,
+          statusReason: null,
+          evidenceRef: null,
+          notes: null,
+          createdAt: admin.createdAt,
+          updatedAt: admin.createdAt,
+          createdBy: admin.id,
+          updatedBy: admin.id,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 50,
+    });
     mount('/app/operations/activation/new');
     const user = userEvent.setup();
     expect(await screen.findByText(o.manualBanner)).toBeInTheDocument();
@@ -249,6 +279,16 @@ describe('manual operations UI', () => {
       'Acme',
     );
     await user.click(await screen.findByRole('radio', { name: /مشتری/ }));
+    await user.selectOptions(
+      await screen.findByLabelText(o.signingKeyLinkedTo),
+      'authority-2026',
+    );
+    expect(api.signingKeys).toHaveBeenCalledWith(
+      '',
+      1,
+      { status: 'ACTIVE' },
+      expect.anything(),
+    );
     await user.type(screen.getByLabelText(o.installation), 'INST-1');
     await user.type(screen.getByLabelText(o.reason), 'صدور خارجی مشاهده شد');
     await user.click(screen.getByRole('button', { name: o.recordIssuance }));
@@ -259,6 +299,7 @@ describe('manual operations UI', () => {
     await user.click(screen.getByRole('button', { name: o.recordIssuance }));
     expect(api.recordLicenseObservation).toHaveBeenCalledWith({
       customerId: customer.id,
+      signingKeyId: 'authority-2026',
       installationReference: 'INST-1',
       reason: 'صدور خارجی مشاهده شد',
       evidenceReference: undefined,
@@ -266,5 +307,30 @@ describe('manual operations UI', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(
       o.savedObservation,
     );
+  });
+  it('includes non-active keys only in explicit historical mode and resets the selection', async () => {
+    mount('/app/operations/activation/new');
+    const user = userEvent.setup();
+    await screen.findByLabelText(o.signingKeyLinkedTo);
+    await user.click(screen.getByLabelText(o.signingKeyHistorical));
+    await screen.findByLabelText(o.signingKeyLinkedTo);
+    expect(api.signingKeys).toHaveBeenLastCalledWith(
+      '',
+      1,
+      {},
+      expect.anything(),
+    );
+    expect(screen.getByLabelText(o.signingKeyLinkedTo)).toHaveValue('');
+  });
+  it('renders UNKNOWN for legacy observations with no key association', async () => {
+    const record = await api.recordLicenseObservation(
+      {} as Parameters<typeof api.recordLicenseObservation>[0],
+    );
+    vi.mocked(api.operationalRecord).mockResolvedValue(record);
+    mount(`/app/operations/${record.id}`);
+    expect(
+      await screen.findByText(o.signingKeySafetyUnknown),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(o.signingKeySafetySafe)).not.toBeInTheDocument();
   });
 });

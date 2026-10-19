@@ -1210,3 +1210,10 @@ module" at runtime. See `docs/integrations.md` and ADR-0004.
 - **Concurrency (AR-11 raw-SQL exemption):** one import transaction per installation takes a `SELECT … FOR UPDATE` row lock on the installation row and re-runs the conflict evaluation under it (READ COMMITTED), so concurrent imports cannot commit incompatible windows: the loser gets the documented 409 and writes nothing. The lock is the database row — multi-process safe; the unique indexes remain defence in depth. Details and evidence: `docs/licensing/version-model-and-file-exchange.md` §3.4, `docs/adr/0046-…` Decision 11.
 - **Deferred (decision-gated, not faked):** full revocation/reactivation and any login-blocking state (OQ-78), Grace/Read-Only enforcement (OQ-45), server replacement and activation receipts (OQ-82/OQ-84), the installation identity key (blocked by the backup-encryption design, PDR-11 U-2), client-device licensing (OQ-83), clock-rollback detection (OQ-76), audit retention (OQ-77), the Owner-side system home (OQ-85). See ADR-0030/ADR-0045/ADR-0046 and `docs/licensing-architecture.md`.
 - **Approved product requirements (not fully implemented):** [PDR-11](decisions/product/PDR-11-vardena-licensing-product-requirements.md) is the licensing product source of truth. Its §19 conflicts are reconciled in §19.4 and in `docs/tasks/pdr-11-conflict-reconciliation.md`; §15 items remain OPEN where registered.
+
+### Owner signing-key metadata (OQ-74, 2026-10-19)
+
+The separate Owner application records non-secret signing-key IDs/status/notes and
+immutable license-observation associations with auditable administrative safety.
+This is not a customer module or a signer and changes no customer validation.
+See [implementation and evidence](tasks/licensing-oq-74-signing-key-compromise-response.md).

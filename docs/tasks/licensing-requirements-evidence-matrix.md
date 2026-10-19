@@ -193,3 +193,12 @@ This matrix describes the **implemented slice plus corrective slices** on the PR
 branch; it does not close any OQ, promote ADR-0049 (still Proposed), or claim the
 licensing subsystem/roadmap is complete. OD-LIC-05 acceptance is limited to the
 C10 policy and does not authorize merging PR #171.
+
+## OQ-74 administrative tracking addendum (2026-10-19)
+
+The [implementation/requirement/test/CI matrix](licensing-oq-74-signing-key-compromise-response.md)
+records the Owner metadata slice, review A/B/C corrections, additive migration
+006 and exact-head verification policy. Source is implemented on the linked PR;
+CI conclusions are recorded there after execution, not assumed here. Existing
+U-1 security/custody/trust rollout and OQ-78 gaps are **not closed** by this slice.
+Customer signature verification, signed bytes and license validity are unchanged.

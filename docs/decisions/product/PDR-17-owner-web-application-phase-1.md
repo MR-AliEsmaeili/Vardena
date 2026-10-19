@@ -334,3 +334,14 @@ See [PDR-18](PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) for t
 - Engineering must propose a design that preserves license-to-Installation binding and handles activation failure, retries, pending/finalization consistency, and recovery before implementation. Existing period/timeout and evidence details not superseded by PDR-18 remain subject to the current PDR-17/OQ-82 record and require reconciliation rather than inference.
 
 These are product decisions, not implementation claims. OQ-82 remains open for specification/evidence until the conflict-safe replacement protocol is reviewed.
+
+## OQ-74 administrative implementation cross-reference — 2026-10-19
+
+The [OQ-74 implementation record](../../tasks/licensing-oq-74-signing-key-compromise-response.md)
+traces metadata registration/status/notes, nullable license-observation links,
+derived administrative safety and attributable audit. Replacement generation and
+trusted-key rollout remain separate Owner-controlled operations; none was executed
+or claimed by the metadata feature. No automatic invalidation, production signer,
+new role, cryptographic proof or OQ-78 artifact is introduced. U-1 custody,
+provenance/containment and offline recovery design remain open. Exact-head CI and
+Product Owner acceptance are distinct from policy approval and source presence.

@@ -13,6 +13,7 @@ import type {
   Paginated,
   RecoverAuditArchiveResult,
   Role,
+  SigningKey,
   VerifyAuditArchiveResult,
 } from './contracts';
 export const customers = (search: string, page: number, signal?: AbortSignal) =>
@@ -82,6 +83,11 @@ export const recordLicenseObservation = (body: {
    * server and can never be supplied by a client.
    */
   observedValidityEnd?: string;
+  /**
+   * OQ-74: optional signing-key id observed on the license artifact. Must
+   * match a registered signing key. Null/omitted when no key was recorded.
+   */
+  signingKeyId?: string;
 }) =>
   apiPost<OperationalRecord>('/operational-records/license-observations', body);
 export const recordActivationObservation = (
@@ -152,3 +158,41 @@ export const verifyAuditArchive = (body: {
 }) => apiPost<VerifyAuditArchiveResult>('/audit-archive/verify', body);
 export const recoverAuditArchive = (body: { reason: string }) =>
   apiPost<RecoverAuditArchiveResult>('/audit-archive/recover', body);
+// OQ-74 (2026-10-18): signing-key tracking. Read access for both roles; write
+// access is Owner-Admin only (enforced by the backend route permission).
+export const signingKeys = (
+  search: string,
+  page: number,
+  filters: { status?: string },
+  signal?: AbortSignal,
+) =>
+  apiGet<Paginated<SigningKey>>('/signing-keys', {
+    params: {
+      search: search || undefined,
+      page,
+      status: filters.status || undefined,
+    },
+    ...(signal ? { signal } : {}),
+  });
+export const signingKey = (id: string, signal?: AbortSignal) =>
+  apiGet<SigningKey>(
+    `/signing-keys/${encodeURIComponent(id)}`,
+    signal ? { signal } : {},
+  );
+export const registerSigningKey = (body: {
+  id: string;
+  label: string;
+  notes?: string;
+  evidenceReference?: string;
+}) => apiPost<SigningKey>('/signing-keys', body);
+export const updateSigningKeyStatus = (
+  id: string,
+  body: {
+    status: 'ACTIVE' | 'COMPROMISED' | 'REVOKED';
+    reason: string;
+    evidenceReference?: string;
+  },
+) =>
+  apiPost<SigningKey>(`/signing-keys/${encodeURIComponent(id)}/status`, body);
+export const updateSigningKeyNotes = (id: string, body: { notes?: string }) =>
+  apiPatch<SigningKey>(`/signing-keys/${encodeURIComponent(id)}/notes`, body);

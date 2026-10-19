@@ -11,6 +11,7 @@ import {
   ReplacementFormPage,
 } from '@/features/operations/operation-forms';
 import { OperationsPage } from '@/features/operations/operations-page';
+import { SigningKeysPage } from '@/features/signing-keys/signing-keys-page';
 import { AppShell, OwnerHome, LifecyclePage } from './layouts/app-shell';
 import { NotFoundPage } from './routes/not-found-page';
 import { RequireAuth } from './routes/require-auth';
@@ -33,6 +34,7 @@ export function AppRoutes() {
             element={<CustomerPage mode="edit" />}
           />
           <Route path="users" element={<UsersPage />} />
+          <Route path="signing-keys" element={<SigningKeysPage />} />
           <Route path="audit" element={<AuditPage />} />
           <Route path="operations" element={<OperationsPage />} />
           <Route

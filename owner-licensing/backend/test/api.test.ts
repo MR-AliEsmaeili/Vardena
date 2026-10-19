@@ -592,6 +592,7 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
       "003-two-role-authorization.sql",
       "004-audit-retention-archive.sql",
       "005-contract-and-activation-dates.sql",
+      "006-signing-key-tracking.sql",
     ]);
     await expect(
       db.pool.query("UPDATE owner.users SET role='SYSTEM_ADMIN' WHERE id=$1", [
@@ -657,6 +658,80 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
       "SUPPORT_SPECIALIST->LICENSE_OPERATOR:true",
       "SYSTEM_ADMIN->OWNER_ADMIN:true",
     ]);
+  });
+});
+
+describe("OQ-74 populated migration 005 upgrade", () => {
+  it("preserves existing observed facts and leaves unknown associations null; runner retries safely", async () => {
+    await resetToMigration002();
+    await db.transaction(async (tx) => {
+      for (const name of [
+        "003-two-role-authorization.sql",
+        "004-audit-retention-archive.sql",
+        "005-contract-and-activation-dates.sql",
+      ]) {
+        const sql = await readFile(`${migrationsFolder}/${name}`, "utf8");
+        await tx.query(sql);
+        await tx.query(
+          "INSERT INTO public.owner_migrations(name,checksum) VALUES($1,$2)",
+          [name, digest(sql)],
+        );
+      }
+    });
+    await bootstrap(db, "migration74", initial);
+    const actor = (await db.pool.query("SELECT id FROM owner.users LIMIT 1"))
+      .rows[0].id;
+    const customerId = ulid(),
+      recordId = ulid();
+    await db.pool.query(
+      "INSERT INTO owner.customers(id,customer_code,display_name,created_by,updated_by) VALUES($1,'MIG74','Historical',$2,$2)",
+      [customerId, actor],
+    );
+    await db.transaction(async (tx) => {
+      await tx.query(
+        `INSERT INTO owner.operational_records(id,customer_id,kind,observed_status,observation_category,installation_reference,observed_validity_end,created_by,updated_by)
+      VALUES($1,$2,'LICENSE','ISSUED','EXTERNAL_ISSUANCE_OBSERVED','MIG74','2020-01-01',$3,$3)`,
+        [recordId, customerId, actor],
+      );
+      await insertTransition(
+        tx,
+        recordId,
+        actor,
+        "UNRECORDED",
+        "ISSUED",
+        "Historical observation",
+      );
+    });
+    const before = (
+      await db.pool.query(
+        "SELECT * FROM owner.operational_records WHERE id=$1",
+        [recordId],
+      )
+    ).rows[0];
+    const ledger = (
+      await db.pool.query(
+        "SELECT name,checksum FROM public.owner_migrations ORDER BY name",
+      )
+    ).rows;
+    await migrate(db);
+    await migrate(db);
+    const after = (
+      await db.pool.query(
+        "SELECT * FROM owner.operational_records WHERE id=$1",
+        [recordId],
+      )
+    ).rows[0];
+    expect(after).toEqual({ ...before, signing_key_id: null });
+    expect(
+      (
+        await db.pool.query(
+          "SELECT name,checksum FROM public.owner_migrations ORDER BY name LIMIT 5",
+        )
+      ).rows,
+    ).toEqual(ledger);
+    expect(
+      (await db.pool.query("SELECT * FROM owner.signing_keys")).rows,
+    ).toEqual([]);
   });
 });
 
@@ -1136,6 +1211,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       "003-two-role-authorization.sql",
       "004-audit-retention-archive.sql",
       "005-contract-and-activation-dates.sql",
+      "006-signing-key-tracking.sql",
     ]);
     await db.pool.query("TRUNCATE owner.login_limits");
     for (let n = 0; n < 10; n++)
@@ -2731,6 +2807,289 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
     expect(customerTrail.body.items[0].afterState).toMatchObject({
       customerCode: created.body.customerCode,
     });
+  });
+
+  it("OQ-74 tracks opaque IDs, role boundaries, live safety joins, constraints and attributable audits", async () => {
+    const keyId = "authority-2026";
+    const get = (path: string, cookie = adminCookie) =>
+      request(app).get(`/api/v1${path}`).set("Cookie", cookie);
+    expect((await request(app).get("/api/v1/signing-keys")).status).toBe(401);
+    expect(
+      (
+        await write("post", "/signing-keys").send({
+          id: keyId,
+          label: "Authority",
+        })
+      ).status,
+    ).toBe(401);
+    const registered = await write("post", "/signing-keys", adminCookie).send({
+      id: keyId,
+      label: "Authority",
+    });
+    expect(registered.status).toBe(201);
+    expect((await get(`/signing-keys/${keyId}`)).body).toEqual(registered.body);
+    expect((await get("/signing-keys/missing")).status).toBe(404);
+    expect((await get("/signing-keys")).body.items).toEqual(
+      expect.arrayContaining([registered.body]),
+    );
+    const retries = await Promise.all(
+      [1, 2].map(() =>
+        write("post", "/signing-keys", adminCookie).send({
+          id: keyId,
+          label: "Authority",
+        }),
+      ),
+    );
+    expect(retries.map((r) => r.status)).toEqual([201, 201]);
+    expect(
+      (
+        await write("post", "/signing-keys", adminCookie).send({
+          id: keyId,
+          label: "conflict",
+        })
+      ).status,
+    ).toBe(409);
+    const uid = ulid(),
+      pw = "Disposable_oq74_47";
+    await db.pool.query(
+      "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$1,$2,'LICENSE_OPERATOR',false)",
+      [uid, await hashPassword(pw)],
+    );
+    const operator = (await login(uid, pw)).cookie;
+    expect((await get(`/signing-keys/${keyId}`, operator)).status).toBe(200);
+    for (const [method, path, body] of [
+      ["post", "/signing-keys", { id: "denied-key", label: "Denied" }],
+      [
+        "post",
+        `/signing-keys/${keyId}/status`,
+        { status: "COMPROMISED", reason: "denied" },
+      ],
+      ["patch", `/signing-keys/${keyId}/notes`, { notes: "denied" }],
+    ] as const)
+      expect((await write(method, path, operator).send(body)).status).toBe(403);
+    for (const id of [" x", "x y", "VLIC2.payload", "x".repeat(121)]) {
+      expect(
+        (
+          await write("post", "/signing-keys", adminCookie).send({
+            id,
+            label: "Invalid",
+          })
+        ).status,
+      ).toBe(400);
+      expect(
+        (await get(`/signing-keys/${encodeURIComponent(id)}`)).status,
+      ).toBe(400);
+      expect(
+        (
+          await write(
+            "post",
+            `/signing-keys/${encodeURIComponent(id)}/status`,
+            adminCookie,
+          ).send({ status: "REVOKED", reason: "invalid" })
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await write(
+            "patch",
+            `/signing-keys/${encodeURIComponent(id)}/notes`,
+            adminCookie,
+          ).send({ notes: "invalid" })
+        ).status,
+      ).toBe(400);
+    }
+    // Max-length identifiers survive both the audit source and independent archive.
+    const maxId = "k".repeat(120);
+    expect(
+      (
+        await write("post", "/signing-keys", adminCookie).send({
+          id: maxId,
+          label: "Boundary",
+        })
+      ).status,
+    ).toBe(201);
+    expect((await get(`/signing-keys/${maxId}`)).status).toBe(200);
+    const made = await customer();
+    const observe = (signingKeyId?: string) =>
+      write("post", "/operational-records/license-observations", operator).send(
+        {
+          customerId: made.body.id,
+          installationReference: uniq("OQ74"),
+          reason: "Observed externally",
+          ...(signingKeyId ? { signingKeyId } : {}),
+        },
+      );
+    const observed = await observe(keyId);
+    expect(observed.status).toBe(201);
+    expect(observed.body).toMatchObject({
+      signingKeyId: keyId,
+      signingKeyStatus: "ACTIVE",
+      signingKeySafety: "SAFE",
+      cryptographicVerification: "NOT_IMPLEMENTED",
+    });
+    expect((await observe()).body.signingKeySafety).toBe("UNKNOWN");
+    expect((await observe("missing")).status).toBe(404);
+    expect((await observe(" invalid ")).status).toBe(400);
+    const status = await write(
+      "post",
+      `/signing-keys/${keyId}/status`,
+      adminCookie,
+    ).send({
+      status: "COMPROMISED",
+      reason: "Incident review",
+      evidenceReference: "CASE-74",
+    });
+    expect(status.status).toBe(200);
+    expect(status.body.statusDetectedAt).toMatch(/Z$/);
+    const detail = await get(`/operational-records/${observed.body.id}`);
+    const list = await get(`/operational-records?customerId=${made.body.id}`);
+    expect(detail.body).toMatchObject({
+      signingKeyId: keyId,
+      signingKeySafety: "NEEDS_REVIEW",
+      observedStatus: "ISSUED",
+    });
+    expect(
+      list.body.items.find((r: { id: string }) => r.id === observed.body.id)
+        .signingKeySafety,
+    ).toBe("NEEDS_REVIEW");
+    expect((await observe(keyId)).body.signingKeySafety).toBe("NEEDS_REVIEW"); // explicit historical association is permitted
+    const activated = await write(
+      "post",
+      `/operational-records/${observed.body.id}/activation-observations`,
+      operator,
+    ).send({ reason: "Activation observed" });
+    expect(activated.body).toMatchObject({
+      signingKeyId: keyId,
+      signingKeySafety: "NEEDS_REVIEW",
+      observedStatus: "ACTIVATED",
+    });
+    expect(
+      (
+        await write("post", `/signing-keys/${keyId}/status`, adminCookie).send({
+          status: "REVOKED",
+          reason: "Reviewed disposition",
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await get(`/operational-records/${observed.body.id}`)).body
+        .signingKeySafety,
+    ).toBe("NEEDS_REVIEW");
+    expect(
+      (
+        await write("patch", `/signing-keys/${keyId}/notes`, adminCookie).send({
+          notes: "Reviewed CASE-74",
+        })
+      ).body.notes,
+    ).toBe("Reviewed CASE-74");
+    const events = await explorer(adminCookie, {
+      targetType: "SigningKey",
+      targetId: keyId,
+    });
+    expect(events.status).toBe(200);
+    expect(events.body.items).toHaveLength(4);
+    expect(events.body.items[0]).toMatchObject({
+      actorId: adminId,
+      eventType: "SIGNING_KEY_NOTES_UPDATED",
+      afterState: { notes: "Reviewed CASE-74" },
+    });
+    const auditObservation = await explorer(adminCookie, {
+      targetType: "OperationalRecord",
+      targetId: observed.body.id,
+      eventType: "LICENSE_ISSUANCE_OBSERVED",
+    });
+    expect(auditObservation.body.items[0].afterState.signingKeyId).toBe(keyId);
+    await expect(
+      db.pool.query(
+        "UPDATE owner.operational_records SET signing_key_id=NULL WHERE id=$1",
+        [observed.body.id],
+      ),
+    ).rejects.toThrow(/immutable/);
+    await expect(
+      db.pool.query("DELETE FROM owner.signing_keys WHERE id=$1", [keyId]),
+    ).rejects.toMatchObject({ code: "23503" });
+    await expect(
+      db.pool.query(
+        "INSERT INTO owner.signing_keys(id,label,created_by,updated_by) VALUES('invalid id','Bad',$1,$1)",
+        [adminId],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+    const replacement = await write(
+      "post",
+      "/operational-records/server-replacements",
+      adminCookie,
+    ).send({
+      customerId: made.body.id,
+      oldInstallationReference: uniq("OLD74"),
+      replacementInstallationReference: uniq("NEW74"),
+      emergencyOldServerLost: false,
+      reason: "Authorized",
+    });
+    await expect(
+      db.pool.query(
+        "UPDATE owner.operational_records SET signing_key_id=$2 WHERE id=$1",
+        [replacement.body.id, keyId],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+    // Direct inserts test the FK independently of API existence validation.
+    await expect(
+      db.transaction(async (tx) => {
+        const recordId = ulid();
+        await tx.query(
+          `INSERT INTO owner.operational_records(id,customer_id,kind,observed_status,observation_category,installation_reference,signing_key_id,created_by,updated_by)
+      VALUES($1,$2,'LICENSE','ISSUED','EXTERNAL_ISSUANCE_OBSERVED',$3,'missing',$4,$4)`,
+          [recordId, made.body.id, uniq("FK74"), adminId],
+        );
+        await insertTransition(
+          tx,
+          recordId,
+          adminId,
+          "UNRECORDED",
+          "ISSUED",
+          "FK probe",
+        );
+      }),
+    ).rejects.toMatchObject({ code: "23503" });
+    await db.pool
+      .query(`CREATE FUNCTION owner.test_fail_key_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'audit fault'; END $$;
+    CREATE TRIGGER test_key_audit BEFORE INSERT ON owner.audit_events FOR EACH ROW EXECUTE FUNCTION owner.test_fail_key_audit()`);
+    try {
+      expect(
+        (
+          await write(
+            "post",
+            `/signing-keys/${keyId}/status`,
+            adminCookie,
+          ).send({ status: "ACTIVE", reason: "Must roll back" })
+        ).status,
+      ).toBe(500);
+      expect(
+        (
+          await write(
+            "patch",
+            `/signing-keys/${keyId}/notes`,
+            adminCookie,
+          ).send({ notes: "Must roll back" })
+        ).status,
+      ).toBe(500);
+      expect(
+        (
+          await write("post", "/signing-keys", adminCookie).send({
+            id: "rollback74",
+            label: "Must roll back",
+          })
+        ).status,
+      ).toBe(500);
+    } finally {
+      await db.pool.query(
+        "DROP TRIGGER test_key_audit ON owner.audit_events; DROP FUNCTION owner.test_fail_key_audit()",
+      );
+    }
+    expect((await get(`/signing-keys/${keyId}`)).body).toMatchObject({
+      status: "REVOKED",
+      notes: "Reviewed CASE-74",
+    });
+    expect((await get("/signing-keys/rollback74")).status).toBe(404);
   });
 
   it("enforces OQ-77 3-year retention boundaries, unresolved security-incident holds, independent durable archive persistence, rollback safety, crash retry reconciliation, tamper detection, and DB restore recovery", async () => {

@@ -46,6 +46,13 @@ export const licenseObservationSchema = z.object({
   reason,
   evidenceReference: evidence,
   observedValidityEnd,
+  signingKeyId: z
+    .string()
+    .max(120)
+    .refine(
+      (v) => v === '' || (!/\s/.test(v) && !unsafeEvidence(v)),
+      o.signingKeyInvalidId,
+    ),
   acknowledged,
 });
 export const activationObservationSchema = z.object({
