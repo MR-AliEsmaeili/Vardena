@@ -3228,7 +3228,8 @@ describe('OD-LIC-06 renewal protocol (OQ-88)', () => {
     });
     const shorter = renewal({
       governsFrom: new Date(TERM_END),
-      validUntil: new Date('2027-06-01T00:00:00.000Z'),
+      // Ends before the term it would renew: the renewal never shortens a term.
+      validUntil: new Date('2026-12-01T00:00:00.000Z'),
     });
     const perpetual = renewal({
       governsFrom: new Date(TERM_END),
@@ -3296,8 +3297,16 @@ describe('OD-LIC-06 renewal protocol (OQ-88)', () => {
       false,
     );
     // The historical overlap rule sees a disjoint (adjacent) window, so the
-    // renewal is never refused as an overlap with its own target.
-    expect(overlappingVersions(candidate, [target]).length).toBe(0);
+    // renewal is never refused as an overlap with its own target. The derived
+    // start is the authority's to set — a retained row carries `governsFrom`,
+    // not `effectiveStart` — so the fixture supplies exactly what the evaluator
+    // would have derived.
+    expect(
+      overlappingVersions(
+        { ...candidate, effectiveStart: new Date(TERM_END) },
+        [target],
+      ).length,
+    ).toBe(0);
   });
 
   it('uses the derived start for adjacency and gap detection', () => {

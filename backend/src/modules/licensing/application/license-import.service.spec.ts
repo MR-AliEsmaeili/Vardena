@@ -3908,10 +3908,13 @@ describe('renewal protocol (OD-LIC-06, OQ-88)', () => {
     // Exactly one typed APPLIED event, plus the target's retirement. No generic
     // `license.import.applied` row shadows the renewal.
     expect(harness.stores.auditEvents.map((event) => event.eventType)).toEqual([
+      // The target's own ordinary import (one generic APPLIED row), then the
+      // renewal's two typed rows — the renewal itself adds no generic row.
+      'license.import.applied',
       'license.version.superseded',
       'license.import.renewed',
     ]);
-    expect(harness.stores.auditEvents[1]).toMatchObject({
+    expect(harness.stores.auditEvents[2]).toMatchObject({
       outcome: 'APPLIED',
       operationId: renewal.operationId,
       licenseId: LICENSE,
@@ -4076,6 +4079,9 @@ describe('renewal protocol (OD-LIC-06, OQ-88)', () => {
       AUTHORITY.privateKey,
     ).code;
 
+    // A legacy code cannot be future-dated (activation is not the signed
+    // import path), so the clock advances to the boundary it starts at.
+    vi.setSystemTime(HANDOVER);
     await harness.service.importDocument(code);
     expect(
       harness.stores.versions.filter((version) => version.governsFrom !== null),
