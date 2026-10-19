@@ -144,3 +144,23 @@ a manual browser/assistive-technology acceptance pass remains a review activity.
 - Early typechecks exposed an extra validator argument, Zod input/output default
   mismatch and inherited wrong test-provider prop. Corrected; final local
   typechecks passed. Early formatting was corrected before final checks.
+
+### First Actions attempt and correction
+
+Run [39209199908](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39209199908),
+head `5373cc127106c60d152947c3bb57504c77037ae7`: classify/docs passed;
+frontend failed in Owner UI verification because the notes test matched both
+registration and existing-key fields. Backend Owner static/unit/API/PostgreSQL
+steps completed successfully before the corrective push; later customer artifact
+and E2E work was not yet final and is not claimed green. Generated API skipped
+as classified. The correction scopes the existing-key notes control and upgrades
+the status test to navigate back to an infinitely-fresh cached observations list
+and assert the newly displayed NEEDS_REVIEW result. All heavy tests remain in CI.
+Final run/head evidence is maintained in the PR description to avoid recursive
+SHA-changing documentation commits.
+
+Customer compatibility checks already present in CI include
+`licensing-protocol-vectors.spec.ts` (ROT-01/ROT-02),
+`license-document.spec.ts` (rotated-away key trusted only while listed), and
+`license-import.service.spec.ts` (untrusted-key refusal and retained-license
+validity across rotation). No customer code changes were needed for this slice.

@@ -69,7 +69,10 @@ const operator = {
 
 function makeClient() {
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, staleTime: Infinity },
+      mutations: { retry: false },
+    },
   });
   return client;
 }
@@ -297,7 +300,7 @@ describe('OQ-74 signing-key tracking UI', () => {
     ).toBeInTheDocument();
     const user = userEvent.setup();
     await user.type(
-      screen.getByLabelText(o.signingKeyNotesField),
+      screen.getAllByLabelText(o.signingKeyNotesField).at(-1)!,
       'CASE-74 reviewed',
     );
     await user.click(screen.getByRole('button', { name: o.save }));
@@ -319,13 +322,27 @@ describe('OQ-74 signing-key tracking UI', () => {
       ...key,
       status: 'COMPROMISED',
     });
-    const client = makeClient();
-    client.setQueryData(['owner', 'operation', 'cached'], {
-      signingKeySafety: 'SAFE',
+    let compromised = false;
+    vi.mocked(api.operationalRecords).mockImplementation(async () => ({
+      items: [
+        {
+          ...operationFixture(),
+          signingKeyStatus: compromised ? 'COMPROMISED' : 'ACTIVE',
+          signingKeySafety: compromised ? 'NEEDS_REVIEW' : 'SAFE',
+        },
+      ],
+      page: 1,
+      pageSize: 50,
+      total: 1,
+    }));
+    vi.mocked(api.updateSigningKeyStatus).mockImplementation(async () => {
+      compromised = true;
+      return { ...key, status: 'COMPROMISED' };
     });
-    client.setQueryData(['owner', 'operations', 'cached'], { items: [] });
-    renderAt('/app/signing-keys', client);
+    renderAt('/app/operations');
+    expect(await screen.findByText(o.signingKeySafetySafe)).toBeInTheDocument();
     const user = userEvent.setup();
+    await user.click(screen.getByRole('link', { name: o.signingKeys }));
     await user.click(
       await screen.findByRole('button', { name: o.signingKeyStatus }),
     );
@@ -351,14 +368,12 @@ describe('OQ-74 signing-key tracking UI', () => {
         evidenceReference: 'CASE-74',
       }),
     );
-    await waitFor(() =>
-      expect(
-        client.getQueryState(['owner', 'operation', 'cached'])?.isInvalidated,
-      ).toBe(true),
-    );
+    await screen.findByText(o.signingKeyStatusChangeSuccess);
+    await user.click(screen.getByRole('link', { name: o.operations }));
     expect(
-      client.getQueryState(['owner', 'operations', 'cached'])?.isInvalidated,
-    ).toBe(true);
+      await screen.findByText(o.signingKeySafetyNeedsReview),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(o.signingKeySafetySafe)).not.toBeInTheDocument();
   });
   it('shows empty/error/permission states without a fabricated SAFE badge', async () => {
     vi.mocked(api.signingKeys).mockRejectedValue(new Error('unavailable'));
@@ -394,6 +409,38 @@ function keyFixture(): import('@/api/contracts').SigningKey {
     notes: null,
     createdAt: '2026-10-08T21:00:00.000Z',
     updatedAt: '2026-10-08T21:00:00.000Z',
+    createdBy: admin.id,
+    updatedBy: admin.id,
+  };
+}
+
+function operationFixture(): import('@/api/contracts').OperationalRecord {
+  return {
+    id: admin.id,
+    customerId: admin.id,
+    customerCode: 'ACME.01',
+    displayName: 'Customer',
+    kind: 'LICENSE',
+    observationCategory: 'EXTERNAL_ISSUANCE_OBSERVED',
+    observedStatus: 'ISSUED',
+    installationReference: 'INST-74',
+    oldInstallationReference: null,
+    replacementInstallationReference: null,
+    oldServerObservedState: null,
+    replacementObservedState: null,
+    emergencyOldServerLost: false,
+    replacesRecordId: null,
+    recordedOn: '2026-10-18',
+    observedValidityEnd: null,
+    evidenceBasis: 'OPERATOR_OBSERVED',
+    cryptographicVerification: 'NOT_IMPLEMENTED',
+    signedArtifactProduced: false,
+    customerServerContacted: false,
+    signingKeyId: 'authority-2026',
+    signingKeyStatus: 'ACTIVE',
+    signingKeySafety: 'SAFE',
+    createdAt: admin.createdAt,
+    updatedAt: admin.createdAt,
     createdBy: admin.id,
     updatedBy: admin.id,
   };
