@@ -163,7 +163,51 @@ CI job names below are the ones the workflow actually runs
 | L-18.6 | A PostgreSQL `date` is never read back as a shifted local day | Implemented (2026-10-17) | `persistedBusinessDay` — the single UTC-component conversion | `unit.test.ts` (local-midnight round-trip, UTC/Tehran/US offsets) | `backend` |
 | L-18.7 | Activation-validity start enforcement on the signed `VLIC2` artifact | **Implemented 2026-10-19, scoped to renewals** (OD-LIC-06 / OQ-88). **Owner-side separation is complete** — the Owner application claims no issuance date at all. The 2026-10-18 design ([`od-lic-06-renewal-protocol-and-persistence-design.md`](od-lic-06-renewal-protocol-and-persistence-design.md) §3.4) removes the conflict in principle: the `validFrom <= issuedAt` rule is scoped to renewal documents only, so no already-signed license or committed vector is invalidated. Boundary pinned by `assertLicenseVersionPayload`, which applies the rule only when `renewsOperationId` is present, so every already-signed artifact and committed vector keeps its exact bytes; the boundary is pinned by `license-document.spec.ts` (`refuses a renewal that starts after it was issued, and only a renewal`). | `license-document.spec.ts` (renewal-only rule, legacy bytes unchanged); `licensing-protocol-vectors.spec.ts` (corpus unchanged) | Existing customer-side vector and licensing suites, unchanged | `backend` |
 | L-18.8 | Contract termination Grace, cancellation and revocation outcomes (PDR-18 §4) | **Blocked — OQ-78** (no signed termination/cancellation instrument; matrix F2–F5) | — | — | No status semantics changed; no Grace widened |
-| L-18.9 | **Implemented 2026-10-19 (OD-LIC-06 / OQ-88; unmerged PR)** — the approved design is implemented end to end: signed `renewsOperationId` (canonical between `supersedesOperationId` and `issuedAt`, omitted when absent), nullable `governs_from` + `license_versions_governs_from_check` (migration `20261023000000_licensing_renewal_governs_from`, no backfill), chain-tail target resolution inside `evaluateImportConflicts` with in-transaction revalidation, typed `license.import.renewed` evidence, read-model `operationId`/`effectiveFrom`/`coverageEnd`, `--renews` issuance and the admin renewal surface. | [`od-lic-06-renewal-protocol-and-persistence-design.md`](od-lic-06-renewal-protocol-and-persistence-design.md) §16 (implementation record); `backend/prisma/migrations/20261023000000_licensing_renewal_governs_from/`; `backend/src/modules/licensing/**`; `docs/licensing/vectors/canonical/CAN-09.json` | `license-version.spec.ts` (A1/A4/A6–A10/A14/A15), `license-document.spec.ts` (A1/A2/A13), `canonical-byte-contract.spec.ts` (A1), `license-import.service.spec.ts` (A2/A6/A9–A13/A16), `licensing-persistence-live.e2e-spec.ts` (A3/A8/A12), migration rehearsal (A3/A16), `license-openapi.contract.spec.ts` (A11) | `backend`, `docs`, `generated-api-client`, `frontend` |
+| L-18.9 | **Implemented 2026-10-19 (OD-LIC-06 / OQ-88; unmerged PR)** — the approved design is implemented end to end: signed `renewsOperationId` (canonical between `supersedesOperationId` and `issuedAt`, omitted when absent), nullable `governs_from` + `license_versions_governs_from_check` (migration `20261023000000_licensing_renewal_governs_from`, no backfill), chain-tail target resolution inside `evaluateImportConflicts` with in-transaction revalidation, typed `license.import.renewed` evidence, read-model `operationId`/`effectiveFrom`/`coverageEnd`, `--renews` issuance and the admin renewal surface. | [`od-lic-06-renewal-protocol-and-persistence-design.md`](od-lic-06-renewal-protocol-and-persistence-design.md) §16 (implementation record); `backend/prisma/migrations/20261023000000_licensing_renewal_governs_from/`; `backend/src/modules/licensing/**`; `docs/licensing/vectors/canonical/CAN-09.json` | `license-version.spec.ts` (A1/A4/A6–A10/A14/A15), `license-document.spec.ts` (A1/A2/A13), `canonical-byte-contract.spec.ts` (A1), `license-import.service.spec.ts` (A2/A6/**A9(a)/A9(b)/A9(c)/A9(d)**/A10–A13/A16), `licensing-persistence-live.e2e-spec.ts` (A3/A8/A12), migration rehearsal (A3/A16), `license-openapi.contract.spec.ts` (A11) | `backend`, `docs`, `generated-api-client`, `frontend` |
+
+**A9 late-renewal evidence (2026-10-19, OD-LIC-06 / OQ-88).** The two late
+renewal scenarios required by design §12 A9 have direct, deterministic tests in
+`license-import.service.spec.ts`, in the `renewal protocol (OD-LIC-06, OQ-88)`
+suite with its pinned `Date` clock (no sleeps, no wall-clock reads):
+
+- **A9(a) renewal during Grace** — *"applies a late renewal imported during
+  Grace and restores ACTIVE with the new grace end"*. Proves: the signed term
+  has ended and the installation is `expired`/`GRACE` (`graceEndsAt` =
+  old end + 14×24 h); the ordinary import of a signed renewal that names the
+  retained tail (`renewsOperationId`) applies; the renewal is the effective
+  version at the import instant and the state is `ACTIVE` (not `GRACE`, not
+  `READ_ONLY`); `graceEndsAt` is recomputed from the **new** signed end
+  (+ 14×24 h UTC); `governsFrom = effectiveWindow(target).end`; the target's
+  signed `validFrom`/`validUntil` are unchanged and its governance ends at its
+  own end; `coverageEnd` is the new chain end; and exactly one
+  `license.import.renewed` plus one `license.version.superseded` are written,
+  with no generic `license.import.applied` row for the renewal.
+- **A9(b) renewal after Read-Only** — *"applies a late renewal imported after
+  Read-Only began and restores normal operation"*. Proves: the state is
+  `expired`/`READ_ONLY` at import; the renewal applies through the ordinary
+  protocol (no new identity, no recovery intent) even though its derived
+  hand-over instant is already in the past; normal licensed operation is
+  restored (`ACTIVE`) with the signed new end applied exactly and Grace
+  recomputed; the predecessor keeps its signed window and governance end; the
+  read model reports the renewal as `effectiveVersionId` with `coverageEnd`
+  equal to the new end; the audit trail is the same atomic typed pair with no
+  rejection row.
+- **A9(c)/(d) negative control** — *"keeps a new-identity post-gap candidate on
+  the dedicated recovery path, never as a renewal"*. Proves: a new identity
+  starting strictly after the retained coverage end is still refused by the
+  ordinary import (409 `post-gap-recovery-requires-dedicated-operation`,
+  nothing written) and is applied only by `recoverAfterGap` (PDR-13, receipt
+  `lapsedLicenseId`/`coverageEnd`); the same dedicated operation refuses a
+  renewal with 409 `recovery-not-applicable`. The domain-level counterpart is
+  `license-version.spec.ts` → "never lets a renewal pass as a post-gap
+  recovery".
+
+Layer statement: these tests drive the real `LicenseImportService`,
+`LicensingService` and `PersistentLicenseProvider` (the production effective-
+version resolution) over the in-memory repository, so they cover the state,
+Grace/Read-Only, read-model and audit behaviour; the HTTP route's availability
+in `READ_ONLY` is the pre-existing `Licensing.*` platform-permission exemption
+(`isPlatformPermission`) and is not weakened here.
 
 ## M. Test and delivery hygiene
 

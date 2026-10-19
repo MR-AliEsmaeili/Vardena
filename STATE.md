@@ -3067,6 +3067,17 @@ in PR #115 (`1e3d407fd3f08650e0e70353f96b277e80ef03fd`).
   `license-openapi.contract.spec.ts`, the migration rehearsal
   (`assertRenewalMigration` / `snapshotRetainedWindows`) and the frontend
   status-card test.
+- **A9 late-renewal evidence (corrective slice, 2026-10-19):** the two
+  late-renewal scenarios required by design §12 A9 now have direct tests in
+  `license-import.service.spec.ts` — "applies a late renewal imported during
+  Grace and restores ACTIVE with the new grace end" (A9a) and "applies a late
+  renewal imported after Read-Only began and restores normal operation" (A9b) —
+  plus the negative control "keeps a new-identity post-gap candidate on the
+  dedicated recovery path, never as a renewal" (A9c/A9d). They pin the pinned
+  `Date` clock, the pre-import `GRACE`/`READ_ONLY` state, the derived
+  `governsFrom`, the preserved predecessor window, the recomputed
+  `graceEndsAt`/`coverageEnd` and the atomic typed audit pair. The design §16.3
+  row and the licensing evidence matrix carry the exact names and outcomes.
 - **Local verification:** deliberately limited to `git diff --check`, source
   inspection and a syntax-only check of the changed `.ts` files (no dependency
   installation, no dependency-having build, no test execution, no database).
