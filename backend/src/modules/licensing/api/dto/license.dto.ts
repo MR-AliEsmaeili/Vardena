@@ -545,13 +545,25 @@ export class GapRecoveryResultDto extends LicenseImportResultDto {
   })
   lapsedLicenseId!: string | null;
 
+  /**
+   * Pre-existing receipt field (the lapse the recovery followed), kept with its
+   * exact name, meaning and position for compatibility. It intentionally
+   * shadows the state's `coverageEnd` (the end of the unbroken coverage chain,
+   * OD-LIC-06 §6) on this ONE response: renaming or re-meaning it would be a
+   * breaking contract change, and the two instants are different facts. The
+   * state surface — and every response that is only a state — reports the chain
+   * end under `coverageEnd`; after a recovery the caller can read
+   * `GET /license/current` for it. `declare` keeps the inherited value's runtime
+   * semantics (the controller overwrites it with the lapsed instant).
+   */
   @ApiProperty({
     type: String,
+    format: 'date-time',
     nullable: true,
     description:
       'When that coverage ended; the recovery started strictly after it (ISO instant).',
   })
-  coverageEnd!: string | null;
+  declare coverageEnd: string | null;
 
   @ApiPropertyOptional({
     description:

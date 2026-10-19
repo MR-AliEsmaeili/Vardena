@@ -344,7 +344,7 @@ export function supersessionCeaseInstant(candidate: {
 export function supersessionRewritesPastGovernance(
   target: Pick<
     RetainedLicenseVersion,
-    'validFrom' | 'validUntil' | 'governsUntil'
+    'validFrom' | 'governsFrom' | 'validUntil' | 'governsUntil'
   >,
   candidate: { validFrom: Date; effectiveStart?: Date | null },
   at: Date,

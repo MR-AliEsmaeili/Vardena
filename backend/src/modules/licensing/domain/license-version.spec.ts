@@ -3205,7 +3205,6 @@ describe('OD-LIC-06 renewal protocol (OQ-88)', () => {
     // perpetual grant to a time-limited one, at the successor's own start.
     const limited = version({
       ...window('2026-07-01T00:00:00.000Z', RENEWED_UNTIL),
-      supersedesOperationId: perpetual.operationId,
     });
     const explicit = evaluateImportConflicts({
       candidate: limited,

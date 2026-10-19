@@ -687,7 +687,12 @@ date, route, flag or `licenseId` can make a document a renewal.
   state adds `coverageEnd`, the end of the unbroken coverage chain including a
   scheduled renewal (null when perpetual or unlicensed), while `validUntil`
   keeps its per-version meaning (PO decision Q-2 = `coverage_end`). `Grace` and
-  enforcement keep reading the governing window, never `coverageEnd`.
+  enforcement keep reading the governing window, never `coverageEnd`. One
+  pre-existing receipt field keeps its older, narrower meaning: on
+  `GapRecoveryResultDto` the key `coverageEnd` still reports the lapse the
+  recovery followed (renaming or re-meaning it would break an existing
+  contract), so the chain end for that response is read from the state
+  endpoint, not from the receipt.
 
 ## 4. Import pipeline (strict order, nothing written until every stage passes)
 
@@ -905,7 +910,9 @@ exactly one field (`document`), so a client can never describe the license it wa
 `LicenseVersionSummaryDto` carries `operationId` and `effectiveFrom`, and every
 license-state response carries `coverageEnd` (OD-LIC-06 §6), so an operator can
 name the renewal target from signed data and can see the end of the purchased
-coverage without confusing it with the governing version's `validUntil`.
+coverage without confusing it with the governing version's `validUntil`. The
+gap-recovery receipt is the one exception: its `coverageEnd` is the pre-existing
+lapse instant, kept unchanged for compatibility.
 
 Frontend (`features/licensing/`): the license stage keeps its single source
 (`GET /license/current`) and its rule that a successful POST is not an active

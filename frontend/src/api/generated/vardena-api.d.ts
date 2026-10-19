@@ -4023,7 +4023,7 @@ export interface components {
             validUntil: string | null;
             /**
              * Format: date-time
-             * @description The end of the installation's unbroken coverage chain: the last instant the installation is covered to, including versions that are scheduled but not yet effective. Null for a perpetual chain or an unlicensed installation.
+             * @description When that coverage ended; the recovery started strictly after it (ISO instant).
              */
             coverageEnd: string | null;
             organizationLimit: number | null;
@@ -4046,8 +4046,6 @@ export interface components {
             outcome: "APPLIED" | "UNCHANGED";
             /** @description The license whose retained coverage had ended before the recovery. */
             lapsedLicenseId: string | null;
-            /** @description When that coverage ended; the recovery started strictly after it (ISO instant). */
-            coverageEnd: string | null;
             /** @description Present only when this recovery also resolved a §8.6 reduction; names the lapsed predecessor whose grant was measured. */
             resolvedPredecessorVersionId?: string;
             /** @description Present only for a combined recovery and reduction resolution; the concrete conflicts the resolution authorized. */

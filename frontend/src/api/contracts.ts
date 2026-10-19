@@ -181,7 +181,9 @@ export interface LicenseState {
    * installation is covered to, including versions that are scheduled but not
    * yet effective. Null when the chain is perpetual or nothing is licensed.
    * This is the date to show as "covered until"; `validUntil` belongs to the
-   * version that governs right now.
+   * version that governs right now. Exception: the gap-recovery receipt keeps
+   * its older `coverageEnd` (the lapse the recovery followed) for compatibility;
+   * the status card never renders that receipt as a license state.
    */
   coverageEnd: string | null;
   organizationLimit: number | null;
