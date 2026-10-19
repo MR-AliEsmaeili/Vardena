@@ -3,7 +3,7 @@
 - **Date:** 2026-10-17
 - **Authority:** Product Owner approval in the conversation dated 2026-10-17.
 - **Status:** **Decided — documentation reconciliation only; no runtime implementation authorized by this record.**
-- **Scope:** Consolidates the Owner's decisions on contract versus activation dates, future/backdated activation, C11, audit archive/WORM, contract termination, cancellation/revocation, replay semantics, server replacement and client-device deactivation.
+- **Scope:** Consolidates the Owner's decisions on contract versus activation dates, future/backdated activation, C11, audit archive/WORM, contract termination, cancellation/revocation, replay semantics, server replacement and client-device deactivation. §11 (added 2026-10-19) records **PO-78-01** — offline revocation of a perpetual license is permitted (OQ-78).
 - **Canonical licensing source:** [PDR-11](PDR-11-vardena-licensing-product-requirements.md) and [Open Questions](../../open-questions.md).
 
 ## 1. Contract dates and activation validity are separate concepts
@@ -147,6 +147,73 @@ implemented on `arena/89ce682b-vardena` (signed `renewsOperationId`, nullable
 `governs_from` with a local check, in-transaction target resolution, typed
 `license.import.renewed` evidence, `coverageEnd`, `--renews` issuance and tests
 A1–A17). The policy recorded in §9 and this addendum is unchanged by that work.
+
+## 11. PO-78-01 — offline revocation of a perpetual license (OQ-78; 2026-10-19)
+
+**Product Owner decision — PO-78-01, Option A (گزینه A): ابطال آفلاین لایسنس دائمی مجاز است.**
+English: *offline revocation of a perpetual license is permitted.* Items 1–8 below
+transcribe the Product Owner's instruction of 2026-10-19 in English, keeping its
+wording; this section is the canonical location of the decision. Recording it does
+**not** resolve OQ-78.
+
+1. A perpetual license (`validUntil = null`), even one issued in error, may be
+   revoked by an authorized revocation operation.
+2. For an offline server, the local effect of a revocation occurs only after a
+   signed revocation file for that same license and operation is imported and
+   validated.
+3. The operation is cryptographically bound to the license and to the operation,
+   and the authority of the issuing Owner is verified.
+4. The cause, actor, time, result and history of the operation are recorded in
+   the Owner system under the approved audit model.
+5. Importing a revocation file does not restore ordinary commercial access.
+6. Revocation does not automatically delete customer data.
+7. This decision does not authorize changing the signature template to an
+   unsigned/relaxed form, trusting a signature made by an invalid key, trusting a
+   compromised key, or claiming a cryptographic capability that is not implemented.
+8. The earlier decisions on perpetual licenses, signed files, offline operation
+   and separation of the Owner from the customer environment remain in force.
+
+**Consequences recorded with this decision (no new decision is made here):**
+
+- Under §4 of this PDR, a revocation has the operational outcome *inactive* and
+  receives **no** natural-expiry Grace. Distinct reason/actor/audit events remain.
+- Under PDR-11 §10.3/§10.4 the revocation import is performed through the
+  restricted administrative path; it does not restore ordinary user access.
+- Under PDR-11 §10.6 reactivation requires a new valid Owner-signed artifact and
+  does not change the original license dates.
+- The revocation mechanism is **not** an alternative to OQ-74's compromise policy:
+  already-issued licenses are still not automatically invalidated by key compromise.
+
+**What remains open for OQ-78 (not decided here):** the revocation artifact
+format and verification, revocation scope within a version chain (see
+[the OQ-78 assessment](../../tasks/oq-78-revocation-recovery-assessment.md) §5),
+the replay-safe response contract (OQ-81), the restricted-recovery
+authentication/session model, and the implementation and acceptance evidence.
+
+**Status:** Product decision recorded (PO-78-01). OQ-78 **remains OPEN**. No
+implementation, schema, migration, endpoint or artifact type is authorized or
+claimed by this section.
+
+### 11.1 Product Owner answers to the OQ-78 policy questions (2026-10-19)
+
+The Product Owner answered the six questions that blocked the OQ-78 design. These answers fix policy only. They implement nothing and do **not** resolve OQ-78.
+
+| # | Question | Answer (recorded) | Consequence to carry into design |
+|---|---|---|---|
+| Q1 | Scope of a revocation within a version chain | **Option (a):** the whole license identity, including scheduled successor versions. | Reactivation must rebuild the chain explicitly; it is never restored implicitly. |
+| Q2a | Expiry of a revocation file | **Yes — the file expires 2 days after its anchor instant.** | **The anchor is not yet confirmed** (signed `issuedAt`, or the instant the file is first presented or imported). See the open clarification below. |
+| Q2b | Revocation of a license that has not been imported | **Option (a):** refused. The Owner must import the license before revoking it. | Nothing is retained for a later import. |
+| Q3 | Revocation or reactivation signed by a key later declared compromised | **Option (a):** still effective until that key is removed from the installation's trust list. | A residual window is accepted, consistent with OQ-74 (no automatic invalidation). |
+| Q4 | Credential for the restricted recovery path | **Option (a):** the existing System Administrator account, with its normal password and recovery authorization. | No separate credential or second factor. The PDR-11 §10.3 wording "independently of ordinary commercial login" must be reconciled with this answer; this record does not change that wording. OQ-06 (MFA) stays open. |
+| Q5a | License issued after a revocation | **Yes:** recovery after lapse is governed by PDR-13 (dedicated operation). | Consistent with the Q1 chain rule. |
+| Q5b | Expression of contract termination | **Option (a):** an earlier signed `validUntil`; natural-expiry Grace under §4.1 applies. | Uses the existing expiry path; no terminal revocation is needed for termination. |
+| Q6 | Replay response shape for revocation and reactivation | **Option A:** current state in the main fields, plus `replay: true` and a separate `historicalResult`. | Approves the shape only. The exact field schema, the HTTP status code and the API change still need technical design and review before any implementation. |
+
+**Consequence of Q2a that the Owner must accept explicitly:** if the anchor is the signed issuance instant, a revocation file that is not imported within 2 days no longer applies. A wrongly issued perpetual license would then remain effective until the Owner issues a new revocation file. This does not violate PO-78-01 or the OQ-74 no-blanket rule, but it must be communicated to the Owner and to customers.
+
+**Open clarification (the only remaining product question for OQ-78 design):** which instant anchors the 2-day expiry of a revocation file — the signed `issuedAt`, or the first presentation or import at the customer?
+
+**Gate after these answers:** `BLOCKED — TECHNICAL DESIGN REQUIRED`. The policy is now clear enough for design, except for the anchor clarification above. Implementation is still not authorized.
 
 ## Related records
 

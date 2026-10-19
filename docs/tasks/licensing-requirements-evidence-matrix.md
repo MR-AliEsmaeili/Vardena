@@ -94,10 +94,10 @@ CI job names below are the ones the workflow actually runs
 | # | Requirement | Status | Implementation | Tests | CI evidence |
 |---|---|---|---|---|---|
 | F1 | Natural expiry is not revocation and grants Grace; a validated Owner stop is not natural expiry | Partial | `BLOCKED` (suspended/`EXPIRED` status) gets no Grace; a signed revocation artifact does not exist | `license-grace.spec.ts` (suspended/EXPIRED → BLOCKED) | `backend` |
-| F2 | A wrongly issued perpetual license can be withdrawn offline | **Open — decision** (OQ-78; no instrument) | — | — | — |
-| F3 | Signed offline revocation artifact, verified and accepted by the customer | **Open — decision** (protocol + ADR gate) | — | — | — |
-| F4 | Revocation state persists, cannot be replayed or silently reactivated | **Open — decision** | — | — | — |
-| F5 | Restricted independent-administrator recovery with approved backup access | **Open — decision** (PDR-11 §§10/21) | — | — | — |
+| F2 | A wrongly issued perpetual license can be withdrawn offline | **Product policy decided — PO-78-01, Option A (PDR-18 §11, 2026-10-19); implementation open** (no revocation instrument exists) | — | — | — |
+| F3 | Signed offline revocation artifact, verified and accepted by the customer | **Open — technical design** (PO-78-01 items 2–3, 7 constrain it; artifact format, scope and ADR gate open — see [assessment](oq-78-revocation-recovery-assessment.md) §5) | — | — | — |
+| F4 | Revocation state persists, cannot be replayed or silently reactivated | **Open — technical design + decision** (replay contract depends on OQ-81; reactivation per PDR-11 §10.6) | — | — | — |
+| F5 | Restricted independent-administrator recovery with approved backup access | **Open — decision + technical design** (PDR-11 §§10.3/21; authentication/session model not specified) | — | — | — |
 | F6 | Post-gap recovery (commercial lapse, not revocation) | Implemented | see C9 | see C9 | `backend` |
 | F7 | Installation customer transfer is explicit, authorized and audited | Implemented (PDR-14 §3.5 / OD-LIC-03) | `license-customer-transfer.controller.ts`, `license.installation.customer-transferred` event, migration `20261021000000_license_audit_previous_license_id_transfer` | live suite, `license-version.spec.ts` | `backend` |
 | F8 | Login/backup remain available in every restricted state | Partial | no login-blocking state exists; backup is an ops runbook (OQ-53) | `authorization-readonly.spec.ts` (reads allowed), `license-gate.test.tsx` | `backend`, `frontend` |
@@ -224,8 +224,7 @@ in `READ_ONLY` is the pre-existing `Licensing.*` platform-permission exemption
 ## Summary of what is not done
 
 - **Decision/acceptance required:** C11 (interior/backdated gap-fill measurement); E8
-  (does Grace permit device operations); F2–F5 (revocation/recovery instrument and
-  semantics); G3–G5 (time-integrity evidence model and unlock); H5 (audit retention);
+  (does Grace permit device operations); F3–F5 (revocation artifact design, replay contract and recovery authentication; F2 is decided by PO-78-01); G3–G5 (time-integrity evidence model and unlock); H5 (audit retention);
   J2 (Owner role matrix/operational acceptance). OD-LIC-05 Option 1 for C10 is
   accepted; OQ-87 remains open under the registry convention and is not closed.
 - **Implementation / delivery still pending:** the remaining open items above,
@@ -246,3 +245,11 @@ records the Owner metadata slice, review A/B/C corrections, additive migration
 CI conclusions are recorded there after execution, not assumed here. Existing
 U-1 security/custody/trust rollout and OQ-78 gaps are **not closed** by this slice.
 Customer signature verification, signed bytes and license validity are unchanged.
+
+## OQ-78 PO-78-01 addendum (2026-10-19)
+
+The Product Owner decided PO-78-01 (Option A: offline revocation of a perpetual license is permitted), recorded in [PDR-18 §11](../decisions/product/PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md). Only row F2 changes status. OQ-78 remains **OPEN**; rows F3–F5 and the implementation/evidence for all revocation and recovery behaviour are not claimed. The assessment is [oq-78-revocation-recovery-assessment.md](oq-78-revocation-recovery-assessment.md).
+
+## OQ-78 PO answers addendum (2026-10-19)
+
+The Product Owner answered the six OQ-78 policy questions; see [PDR-18 §11.1](../decisions/product/PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) and the [assessment §9](oq-78-revocation-recovery-assessment.md). Effects on this matrix: F3 (artifact design) now has an approved scope rule (whole identity), a 2-day file expiry whose anchor is unresolved, refusal of unimported identities, and trust-list-bound compromise handling. F4 (persistence and replay) has an approved replay shape (A) pending schema review. F5 (recovery) uses the existing System Administrator account with no separate credential. No row's implementation status changed. OQ-78 remains **OPEN**.
