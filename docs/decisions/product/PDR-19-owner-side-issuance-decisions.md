@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-19
 - **Authority:** Product Owner Ali Esmaeili, answering the four blocking questions B-1…B-4 of [the issuance assessment](../../tasks/licensing-owner-side-issuance-blocked-assessment.md) §4.
-- **Status:** **Decided — product policy approved for D-1…D-4 below. Two forks in §5 remain OPEN and are explicitly *not* decided by this record. No implementation, schema, migration, endpoint, artifact or UI is claimed or authorized as delivered by this record.**
+- **Status:** **Decided — product policy approved for D-1…D-4 below, and the two forks of §5 (F-1 limit model, F-2 configurable permission scope/default/revocation) were answered by the Product Owner the same day; §5 records the answers and their consequences. No implementation, schema, migration, endpoint, artifact or UI is claimed or authorized as delivered by this record.**
 - **Decision ids:** **OD-LIC-07** (permission split and per-operator grants), **OD-LIC-08** (air-gapped signing custody and issuance flow), **OD-LIC-09** (installation identity registration), **OD-LIC-10** (signed-artifact storage).
 - **Scope:** Owner-side issuance only. Changes no signed byte format, no canonicalization rule, no vector, no customer runtime behaviour and no `VLIC1`/`VLIC2` verification semantics.
 - **Companions:** [PDR-14](./PDR-14-licensing-customer-code.md) · [PDR-16](./PDR-16-licensing-protocol-canonical-byte-contract-and-vectors.md) · [PDR-17](./PDR-17-owner-web-application-phase-1.md) · [PDR-18](./PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) · [ADR-0046](../../adr/0046-signed-license-documents-and-version-lifecycle.md) · [ADR-0048](../../adr/0048-owner-side-licensing-separation-boundary.md) · [open questions](../../open-questions.md)
@@ -15,14 +15,20 @@ The assessment gate was **`BLOCKED — PRODUCT OWNER DECISION REQUIRED`** on fou
 decisions. This record answers all four at product-policy level. The gate
 therefore moves to:
 
-> **`BLOCKED — TECHNICAL DESIGN REQUIRED`**, plus the two product forks of §5.
+> **`BLOCKED — TECHNICAL DESIGN REQUIRED`**.
+
+**Update (2026-10-19, later the same day):** the two product forks this record
+originally left open in §5 are now **answered** — F-1 is the hybrid optional
+per-customer limit profile (§5.1) and F-2 is "every operator-eligible permission
+configurable, fail-closed default, revocation blocks new signing requests only"
+(§5.2). The data model is therefore fixed and technical design is the only
+remaining gate.
 
 That is a real change and not a formality. OD-LIC-08 in particular replaces the
 "instant issuance" flow the assessment was written against with a four-step
 offline-signing flow, and OD-LIC-07 introduces per-user permission grants, which
 is a change to the approved two-role authorization model of PDR-17 rather than an
-addition to it. Both need engineering design before code, and §5 needs answers
-before the data model can be fixed.
+addition to it. Both need engineering design before code.
 
 ---
 
@@ -237,40 +243,102 @@ the Owner audit archive.
 
 ---
 
-## 5. Two forks that this record does **not** decide
+## 5. The two forks — **answered by the Product Owner on 2026-10-19**
 
-Recorded explicitly so nothing is inferred. **Implementation of the affected data
-model must not start on a guess.**
+§5 was originally recorded as two undecided forks, with the warning that
+implementation of the affected data model must not start on a guess. The Product
+Owner answered both the same day. The original options are kept so the choice is
+auditable; the answers and their consequences control.
 
-### F-1 — what does "licenses whose limits the Owner has specified" mean? (from §1.3)
+### 5.1 F-1 — **answered: hybrid (option C)**
 
-The Persian wording admits two materially different data models:
+**Decision.** The grant-profile model is **optional per customer**:
 
-| Reading | Model | Consequence |
-|---|---|---|
-| **F-1(a)** | The Owner pre-defines the limits — a persisted grant profile/template per customer (or per grant) that the operator selects and may not exceed | Requires a new domain entity, its own validation, lifecycle and audit; the operator's issuance form becomes a selection, not a free entry; "the Owner determines the customer's limits" is enforced structurally |
-| **F-1(b)** | The operator enters limits at issuance time, bounded only by the permissions `OWNER_ADMIN` granted that operator under §1.4 | No new entity; the bound is per-user permission, not per-customer limit; §1.2's "the Owner determines the customer's limits" is then a statement about who may decide, not about a stored ceiling |
+- **When `OWNER_ADMIN` has defined a limit profile for a customer**, the operator
+  is bounded by it and may not exceed it. Over-limit issuance is then
+  structurally impossible, not merely forbidden.
+- **When no profile exists for that customer**, the operator enters the limits at
+  issuance time, bounded by the permissions `OWNER_ADMIN` granted that operator
+  under §5.2.
 
-These produce different schemas, different UIs and different guarantees. F-1(a)
-makes an over-limit operator issuance structurally impossible; F-1(b) does not.
+**Consequences carried into design.**
 
-### F-2 — which permissions are configurable per operator, and what is the default? (from §1.4)
+- A new domain entity exists: a per-customer limit profile (organization cap, user
+  cap, allowed modules, and any other constraint the license contract supports),
+  with its own validation, lifecycle and audit. It is Owner-authored; an operator
+  never creates or edits one.
+- **Two validation paths and two UI states are required**, and the UI must make
+  visible which one is in force, because the operator's freedom differs between
+  them. An operator must not be able to mistake "no profile" for "profile with no
+  ceiling".
+- **Absence of a profile means "no stored ceiling", not "issuance forbidden".**
+  This reading is taken from the wording of the option the Product Owner selected
+  ("اگر نساخت، اپراتور در حد permissionهای خودش آزادانه وارد می‌کند"). It is
+  recorded here explicitly because the alternative reading would have blocked
+  issuance for every customer without a profile.
+- The residual risk is **not** eliminated: for a customer with no profile, an
+  operator may enter limits up to whatever their granted permissions allow, and a
+  wrongly issued grant is irrevocable in practice (§6, B-5 / OQ-78). Whether
+  `OWNER_ADMIN` wants a policy of "every customer must have a profile before an
+  operator may issue" is an operational choice this record does **not** make, and
+  no such rule may be inferred.
+- The profile is an Owner-side ceiling on what an operator may sign. It is **not**
+  a customer entitlement, **not** a commercial contract record, and **not** a
+  substitute for the PDR-18 §1 date rules — contract dates stay separate from
+  activation validity.
 
-§1.4 decides that `OWNER_ADMIN` configures an operator's permissions per user. It
-does not decide:
+### 5.2 F-2 — **answered: every operator-eligible permission is configurable; fail-closed default; revocation blocks new requests only**
 
-- the exact configurable set (every `LICENSE_OPERATOR`-eligible permission, or
-  only issuance-related ones);
-- whether the configurable set includes the existing `operations.record`,
-  `operations.view`, `customers.view` and `audit.view`, or only new issuance
-  permissions;
-- the default for a newly created operator (fail-closed reading: no issuance
-  grant until given);
-- whether a grant can be **revoked** as well as given, and what happens to
-  in-flight issuances when it is;
-- whether `OWNER_ADMIN` itself is ever configurable (this record assumes **not**,
-  since §1.1 reserves perpetual issuance to that role and PDR-17 gives it
-  Owner-admin decision authority — but the assumption is recorded, not decided).
+**Decision (scope).** `OWNER_ADMIN` may configure **every `LICENSE_OPERATOR`-eligible
+permission per user**, including the existing `customers.view`, `operations.view`,
+`operations.record` and `audit.view`, not only the new issuance permissions.
+`LICENSE_OPERATOR` effective access therefore becomes the intersection of the role
+and that user's explicit grants.
+
+**Decision (default).** **Fail-closed:** a newly created operator holds **no
+issuance grant** until `OWNER_ADMIN` explicitly gives one.
+
+**Decision (revocation).** A grant may be revoked, and **revocation blocks only
+new signing requests**. A signing request already produced is **not** invalidated
+by a later revocation, and the operator may still import and record the signed
+artifact that comes back.
+
+**Consequences carried into design.**
+
+- The static `permissions(role)` model of PDR-17 is replaced for
+  `LICENSE_OPERATOR` by role ∩ explicit per-user grants. `OWNER_ADMIN` is **not**
+  configurable (§1.1 reserves perpetual issuance to that role, and PDR-17 gives
+  it Owner-admin decision authority); the Product Owner did not choose the option
+  that would have made it configurable.
+- The perpetual-issuance permission remains **outside** the configurable set, so
+  no grant can give an operator the power §1.1 reserves to `OWNER_ADMIN`.
+- The guarantees that must survive unchanged: explicit allowlist grants only, **no
+  wildcard and no prefix expansion**, unknown actions deny, superseded four-role
+  identifiers deny, server-enforced on every request, and attributable. A
+  per-user grant model that could widen access implicitly would violate OQ-75's
+  "no new signing, custody, or recovery permission is inferred".
+- Grant and revocation are sensitive operations: audited with actor, before/after
+  state, reason and server time, and not editable or deletable from the UI.
+- **Accepted trade-off, recorded verbatim so it is never silently re-decided:**
+  the revocation choice leaves a window in which a user who **no longer holds the
+  issuance permission can complete an issuance**, and that issuance is
+  irrevocable in practice because OQ-78 remains OPEN. The Product Owner selected
+  this option with that consequence stated in the option text. It is a deliberate
+  acceptance, not an oversight, and it does **not** license weakening any other
+  control: the importing actor must still be authenticated, active, not under
+  `must_change_password`, and attributable, and the revocation must be visible in
+  the audit trail of the completed issuance.
+- Which actor may import a returned artifact when the original grant has been
+  revoked is **engineering design**, not product policy. The fail-closed reading
+  adopted in the design is that only the request's creator (or an `OWNER_ADMIN`)
+  may complete it, so attribution stays exact.
+
+### 5.3 What §5 no longer blocks
+
+With F-1 and F-2 answered, the data model is fixed: the issuance ledger, the
+optional per-customer limit profile, and the per-user grant table may now be
+designed and built. The remaining gate is **technical design only** (§6), plus the
+unchanged open items.
 
 ---
 
@@ -279,14 +347,14 @@ does not decide:
 | Item | Status |
 |---|---|
 | **U-1 / OQ-74** signing-key compromise, containment, rotation cadence, trust rollout, provenance for issued-but-not-imported artifacts | **OPEN.** OD-LIC-08 answers *where the key lives*, nothing else |
-| **OQ-75** Owner permission mapping | **Advances, does not close.** OD-LIC-07 sets the direction; the exact permission vocabulary, per-user grant model and default are F-2 |
+| **OQ-75** Owner permission mapping | **Advances, does not close.** OD-LIC-07 sets the direction and §5.2 fixes the configurable scope, the fail-closed default and the revocation semantics; the exact permission-code vocabulary and its implementation evidence remain |
 | **OQ-78** revocation and recovery | **OPEN.** Unchanged. PO-78-01 remains policy-only |
 | **OQ-81** replay/receipt contract | **OPEN.** Directly relevant to OD-LIC-08 steps 3–4 |
 | **OQ-85** Owner infrastructure operational evidence | **OPEN.** A new artifact store and an offline signer both add deployment surface |
 | **OQ-90** installation identity | **Direction decided (OD-LIC-09); design open; not closed** |
 | **OQ-91** artifact storage | **Direction decided (OD-LIC-10); design open; not closed** |
-| **F-1, F-2** above | **OPEN — Product Owner decision required** |
-| Signing-request artifact format, offline signer packaging and isolation, issuance ledger schema, migration numbering, download authorization, UI states | **Engineering design required** before implementation |
+| **F-1, F-2** above | **ANSWERED 2026-10-19 — see §5.1 and §5.2.** No longer blocking |
+| Signing-request artifact format, offline signer packaging and isolation, issuance ledger schema, migration numbering, download authorization, UI states | **Engineering design delivered 2026-10-19** (documentation only, nothing implemented): [`owner-side-issuance-technical-design.md`](../../tasks/owner-side-issuance-technical-design.md) — `VLSR1` request envelope and payload, digest pinning for tamper-evidence across the human transport, which instant is "the issuance day", signer packaging/validation, the four new tables, the permission vocabulary, staged-then-transactional import, the separate `OWNER_LICENSE_ARTIFACT_DIR` store, the state machine, audit events, API and Persian RTL UI states, and the conformance test plan. Awaiting review |
 
 ---
 
@@ -302,6 +370,7 @@ format, canonicalization rule, vector or customer runtime behaviour.
 ## 8. Related records
 
 - [Owner-side issuance blocked assessment](../../tasks/licensing-owner-side-issuance-blocked-assessment.md) — the four questions this record answers
+- [Owner-side issuance technical design](../../tasks/owner-side-issuance-technical-design.md) — the engineering design this record's gate asks for (documentation only)
 - [PDR-17](./PDR-17-owner-web-application-phase-1.md) — two-role model and permission matrix (superseded for `LICENSE_OPERATOR` by OD-LIC-07)
 - [PDR-18](./PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) — §1 issuance dates, §9 renewal, §11 PO-78-01
 - [PDR-16](./PDR-16-licensing-protocol-canonical-byte-contract-and-vectors.md) — canonical bytes and `VECTORS_ONLY`

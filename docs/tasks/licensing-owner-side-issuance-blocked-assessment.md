@@ -43,6 +43,17 @@ existing record without inventing a security or product rule.
 > synchronous transaction but a two-artifact offline round trip. U-1/OQ-74,
 > OQ-75, OQ-78, OQ-81 and OQ-85 all remain OPEN; OQ-90 and OQ-91 gained a
 > product direction and are not closed.
+>
+> **Second update (2026-10-19):** the Product Owner also answered the two forks
+> PDR-19 §5 originally left open — F-1 is the hybrid optional per-customer limit
+> profile, F-2 is "every operator-eligible permission configurable, fail-closed
+> default, revocation blocks new signing requests only" — and the engineering
+> design the gate asks for is delivered as
+> [`owner-side-issuance-technical-design.md`](./owner-side-issuance-technical-design.md)
+> (documentation only; nothing implemented). The gate is therefore
+> `BLOCKED — TECHNICAL DESIGN REQUIRED` **awaiting review of that design**, with no
+> product decision outstanding except the items its §15 lists as deliberately
+> undecided.
 
 
 **Baseline:** `main` = `510aca58ffdc7cb31b5d0b295d561a4db5d330fb` (merge of PR
