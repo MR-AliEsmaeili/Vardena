@@ -5,8 +5,10 @@ import type { Issuance, RevocationReason } from '@/api/licensing';
 import { normalizeApiError } from '@/api/errors';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { o } from '@/lib/owner-i18n';
+import { formatOwnerInstant, calendarDayStartInstant } from '@/lib/date-time';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
+import { DateInput } from '@/ui/patterns/date-input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { EmptyState, LoadingState } from '@/ui/patterns/states';
 import { Pagination } from '@/ui/patterns/owner-states';
@@ -85,11 +87,9 @@ function prepareError(inputs: {
   if (!inputs.signingKeyId.trim()) return o.licenses.errorKey;
   if (inputs.modules.length === 0) return o.licenses.errorModules;
   if (inputs.kind === 'TIME_LIMITED') {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(inputs.validUntil))
-      return o.licenses.errorEndDate;
-    const instant = new Date(`${inputs.validUntil}T00:00:00.000Z`);
-    if (Number.isNaN(instant.getTime()) || instant.getTime() <= Date.now())
-      return o.licenses.errorEndFuture;
+    const instant = calendarDayStartInstant(inputs.validUntil, 'UTC');
+    if (instant === undefined) return o.licenses.errorEndDate;
+    if (Date.parse(instant) <= Date.now()) return o.licenses.errorEndFuture;
   }
   return null;
 }
@@ -151,7 +151,7 @@ function PrepareForm() {
         validUntil:
           kind === 'PERPETUAL'
             ? null
-            : new Date(`${validUntil}T00:00:00.000Z`).toISOString(),
+            : (calendarDayStartInstant(validUntil, 'UTC') ?? null),
         organizationLimit: limit(
           organizationLimit,
           o.licenses.organizationLimit,
@@ -245,11 +245,10 @@ function PrepareForm() {
         {kind === 'TIME_LIMITED' ? (
           <label className="space-y-1 text-sm">
             <span>{o.licenses.endDate}</span>
-            <Input
-              dir="ltr"
-              type="date"
+            <DateInput
+              id="license-valid-until"
               value={validUntil}
-              onChange={(event) => setValidUntil(event.target.value)}
+              onChange={setValidUntil}
             />
           </label>
         ) : (
@@ -569,7 +568,7 @@ function IssuanceCard({ issuance }: { issuance: Issuance }) {
         <div>
           <dt className="inline font-semibold">{o.licenses.requestedAt}: </dt>
           <dd className="inline" dir="ltr">
-            {issuance.requestedAt}
+            {formatOwnerInstant(issuance.requestedAt)}
           </dd>
         </div>
         <div>

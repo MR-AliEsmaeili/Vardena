@@ -190,7 +190,8 @@ describe('Owner license issuance page', () => {
       prepared.signingKeyId,
     );
     const end = screen.getByLabelText(o.licenses.endDate);
-    fireEvent.change(end, { target: { value: '2027-10-20' } });
+    // Jalali-first input, converted by the shared date foundation.
+    fireEvent.change(end, { target: { value: '1406/07/28' } });
     await userEvent.click(
       screen.getByRole('button', { name: o.licenses.prepare }),
     );
