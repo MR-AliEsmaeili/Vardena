@@ -1214,6 +1214,52 @@ describe("prepared-request maximum age (OD-LIC-20)", () => {
  * row is read, locked and enforced first, and the import dependencies are
  * required only by the paths that actually verify or store an artifact.
  */
+/** The durable facts an expiry must leave behind — and nothing else. */
+async function expectExpiredAndAbandoned(
+  issuanceId: string,
+  requestedAt: Date,
+  before: IssuanceFacts,
+) {
+  const after = await issuanceFacts(issuanceId);
+  expect(after.status).toBe("ABANDONED");
+  expect(after.abandonment_reason).toBe(EXPIRED_REQUEST_REASON);
+  expect(after.abandoned_by).toBe(operatorId);
+  expect(after.signed_at).toBeNull();
+  expect(after.imported_at).toBeNull();
+  expect(after.artifact_sha256).toBeNull();
+  expect(after.artifact_store_key).toBeNull();
+  expect(snapshotOf(after)).toEqual(snapshotOf(before));
+
+  const events = (
+    await db.pool.query<{
+      actor_id: string | null;
+      outcome: string;
+      reason: string;
+      after_state: { origin?: string };
+    }>(
+      `SELECT actor_id,outcome,reason,after_state FROM owner.audit_events
+        WHERE event_type='LICENSE_REQUEST_ABANDONED' AND target_id=$1
+        ORDER BY sequence`,
+      [issuanceId],
+    )
+  ).rows;
+  expect(events).toHaveLength(1);
+  expect(events[0]!.actor_id).toBeNull();
+  expect(events[0]!.outcome).toBe("SUCCESS");
+  expect(events[0]!.reason).toContain("SYSTEM_EXPIRY");
+  expect(events[0]!.reason).toContain(requestedAt.toISOString());
+  expect(events[0]!.after_state.origin).toBe("SYSTEM_EXPIRY");
+
+  // Never an issuance, an archive row or a success audit.
+  expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", issuanceId)).toBe(0);
+  expect(
+    await count(
+      "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+      [issuanceId],
+    ),
+  ).toBe(0);
+}
+
 describe("import dependencies never mask expiry (OD-LIC-20)", () => {
   let appWithoutStore: Express;
   let appWithoutTrust: Express;
@@ -1261,52 +1307,6 @@ describe("import dependencies never mask expiry (OD-LIC-20)", () => {
   afterEach(() => {
     clockNow = null;
   });
-
-  /** The durable facts an expiry must leave behind — and nothing else. */
-  async function expectExpiredAndAbandoned(
-    issuanceId: string,
-    requestedAt: Date,
-    before: IssuanceFacts,
-  ) {
-    const after = await issuanceFacts(issuanceId);
-    expect(after.status).toBe("ABANDONED");
-    expect(after.abandonment_reason).toBe(EXPIRED_REQUEST_REASON);
-    expect(after.abandoned_by).toBe(operatorId);
-    expect(after.signed_at).toBeNull();
-    expect(after.imported_at).toBeNull();
-    expect(after.artifact_sha256).toBeNull();
-    expect(after.artifact_store_key).toBeNull();
-    expect(snapshotOf(after)).toEqual(snapshotOf(before));
-
-    const events = (
-      await db.pool.query<{
-        actor_id: string | null;
-        outcome: string;
-        reason: string;
-        after_state: { origin?: string };
-      }>(
-        `SELECT actor_id,outcome,reason,after_state FROM owner.audit_events
-          WHERE event_type='LICENSE_REQUEST_ABANDONED' AND target_id=$1
-          ORDER BY sequence`,
-        [issuanceId],
-      )
-    ).rows;
-    expect(events).toHaveLength(1);
-    expect(events[0]!.actor_id).toBeNull();
-    expect(events[0]!.outcome).toBe("SUCCESS");
-    expect(events[0]!.reason).toContain("SYSTEM_EXPIRY");
-    expect(events[0]!.reason).toContain(requestedAt.toISOString());
-    expect(events[0]!.after_state.origin).toBe("SYSTEM_EXPIRY");
-
-    // Never an issuance, an archive row or a success audit.
-    expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", issuanceId)).toBe(0);
-    expect(
-      await count(
-        "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
-        [issuanceId],
-      ),
-    ).toBe(0);
-  }
 
   it("expires a request even when artifact storage is unconfigured", async () => {
     const requestedAt = new Date("2026-06-10T08:00:00.000Z");
@@ -1451,6 +1451,139 @@ describe("import dependencies never mask expiry (OD-LIC-20)", () => {
         [id],
       ),
     ).toBe(1);
+  });
+});
+
+/**
+ * Payload validation must never decide the fate of an expired request.
+ *
+ * OD-LIC-20 says the first authorized completion attempt at or after
+ * `requested_at + 14 × 24 h` abandons the request. A missing, wrongly typed,
+ * unparsable or oversized `fileContent` is still such an attempt: it must not be
+ * answered with a validation error while the row stays `REQUEST_PREPARED`.
+ * Requests that are still eligible keep the ordinary validation errors and stay
+ * untouched.
+ */
+describe("import payload validation never masks expiry (OD-LIC-20)", () => {
+  afterEach(() => {
+    clockNow = null;
+  });
+
+  const post = (id: string, cookie: string, body: unknown) =>
+    write("post", `/license-issuances/${id}/import`, cookie).send(
+      body as object,
+    );
+
+  it("abandons an expired request when fileContent is missing", async () => {
+    const requestedAt = new Date("2026-06-12T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    const before = await issuanceFacts(seeded.id);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+
+    const refused = await post(seeded.id, operatorCookie, {});
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("InvalidTransition");
+    expect(refused.body.message).toContain("expired");
+    await expectExpiredAndAbandoned(seeded.id, requestedAt, before);
+  });
+
+  it("abandons an expired request when fileContent has the wrong type", async () => {
+    const requestedAt = new Date("2026-06-13T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    const before = await issuanceFacts(seeded.id);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+
+    const refused = await post(seeded.id, operatorCookie, { fileContent: 42 });
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("InvalidTransition");
+    await expectExpiredAndAbandoned(seeded.id, requestedAt, before);
+  });
+
+  it("abandons an expired request when fileContent exceeds the byte limit", async () => {
+    const requestedAt = new Date("2026-06-14T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    const before = await issuanceFacts(seeded.id);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+
+    // 70 000 bytes exceeds the service's 64 KiB artifact limit and the
+    // transport's 16 KiB JSON limit, so the parser refuses the body before the
+    // route; the expiry guard still runs and commits the abandonment.
+    const refused = await post(seeded.id, operatorCookie, {
+      fileContent: "x".repeat(70_000),
+    });
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("InvalidTransition");
+    await expectExpiredAndAbandoned(seeded.id, requestedAt, before);
+  });
+
+  it("abandons an expired request when the body is not valid JSON", async () => {
+    const requestedAt = new Date("2026-06-15T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    const before = await issuanceFacts(seeded.id);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+
+    const refused = await request(app)
+      .post(`/api/v1/license-issuances/${seeded.id}/import`)
+      .set("Origin", origin)
+      .set("x-owner-request", "1")
+      .set("Content-Type", "application/json")
+      .set("Cookie", operatorCookie)
+      .send('{"fileContent":');
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("InvalidTransition");
+    await expectExpiredAndAbandoned(seeded.id, requestedAt, before);
+  });
+
+  it("keeps an eligible request prepared when fileContent is missing", async () => {
+    const pending = await prepare();
+    expect(pending.status).toBe(201);
+    const id = pending.body.issuance.id as string;
+    const before = await issuanceFacts(id);
+
+    const refused = await post(id, operatorCookie, {});
+    expect(refused.status).toBe(400);
+    expect(refused.body.code).toBe("ValidationFailed");
+    const after = await issuanceFacts(id);
+    expect(after.status).toBe("REQUEST_PREPARED");
+    expect(after.abandonment_reason).toBeNull();
+    expect(snapshotOf(after)).toEqual(snapshotOf(before));
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", id)).toBe(0);
+    expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", id)).toBe(0);
+    expect(
+      await count(
+        "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+        [id],
+      ),
+    ).toBe(0);
+  });
+
+  it("keeps an eligible request prepared when fileContent exceeds the byte limit", async () => {
+    const pending = await prepare();
+    expect(pending.status).toBe(201);
+    const id = pending.body.issuance.id as string;
+    const before = await issuanceFacts(id);
+
+    const refused = await post(id, operatorCookie, {
+      fileContent: "x".repeat(70_000),
+    });
+    expect(refused.status).toBe(400);
+    expect(refused.body.code).toBe("ValidationFailed");
+    const after = await issuanceFacts(id);
+    expect(after.status).toBe("REQUEST_PREPARED");
+    expect(snapshotOf(after)).toEqual(snapshotOf(before));
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", id)).toBe(0);
+    expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", id)).toBe(0);
+  });
+
+  it("refuses an unauthorized actor before body validation, even when expired", async () => {
+    const requestedAt = new Date("2026-06-16T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+
+    const denied = await post(seeded.id, viewerCookie, {});
+    expect(denied.status).toBe(403);
+    expect((await issuanceFacts(seeded.id)).status).toBe("REQUEST_PREPARED");
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", seeded.id)).toBe(0);
   });
 });
 

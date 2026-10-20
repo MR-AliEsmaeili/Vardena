@@ -1510,6 +1510,36 @@ export interface IssuanceImportDependencies {
   trustedLicenseKeys: () => readonly TrustedLicenseKey[];
 }
 
+/**
+ * OD-LIC-20 entry guard, shared by the import route and the body-parser
+ * rejection hook in `app.ts`.
+ *
+ * The order is the policy: authorization of an active actor holding
+ * `licenses.import`, then the target identifier, then the `FOR UPDATE` row
+ * lock, and only then the fixed-boundary decision. When the row is a prepared
+ * request at or past `requested_at + 14 × 24 h`, the `ABANDONED` transition and
+ * the system-origin audit are staged in the caller's transaction and
+ * `PreparedRequestExpired` is thrown, so the caller commits the refusal and
+ * answers `409`. Nothing here reads the request body, the artifact store or the
+ * trust list, so a malformed, unparsable or oversized payload cannot keep an
+ * expired request prepared.
+ */
+export async function lockIssuanceForImport(
+  tx: PoolClient,
+  actor: ServiceActor,
+  rawId: unknown,
+  now: () => number,
+): Promise<IssuanceRow> {
+  assertActiveAuthorizedActor(actor, "licenses.import");
+  const row = await readIssuance(tx, ulidValue(rawId, "issuanceId"), true);
+  if (
+    row.status === "REQUEST_PREPARED" &&
+    isPreparedRequestExpired(row.requested_at, now())
+  )
+    await abandonExpiredRequest(tx, row, actor);
+  return row;
+}
+
 export async function importIssuanceArtifact(
   tx: PoolClient,
   actor: ServiceActor,
@@ -1523,26 +1553,18 @@ export async function importIssuanceArtifact(
    */
   now: () => number = Date.now,
 ) {
-  assertActiveAuthorizedActor(actor, "licenses.import");
-  const issuanceId = ulidValue(rawId, "issuanceId");
+  // OD-LIC-20 (and OD-LIC-12): authorization, the identifier, the row lock and
+  // the expiry decision all precede payload validation. A missing, wrong-typed
+  // or oversized `fileContent` must never answer a validation error for a
+  // request that has already expired; the guard above has already staged the
+  // terminal transition and its system-origin audit in this transaction.
+  const row = await lockIssuanceForImport(tx, actor, rawId, now);
+  const issuanceId = row.id;
   const input = object(body, ["fileContent"]);
   if (typeof input.fileContent !== "string")
     invalid("fileContent is required.");
   if (Buffer.byteLength(input.fileContent, "utf8") > REQUEST_MAX_BYTES)
     invalid("The artifact is too large.");
-  const row = await readIssuance(tx, issuanceId, true);
-
-  // OD-LIC-20: authorization above and the row lock here come first; only a
-  // genuinely prepared request can be expired, so an already recorded artifact
-  // (`SIGNED_RECORDED`) keeps its historical replay untouched. An expired
-  // request is refused after this transition commits, and the request is
-  // terminal: nothing below runs, so no artifact, archive row or success audit
-  // can be created by this attempt.
-  if (
-    row.status === "REQUEST_PREPARED" &&
-    isPreparedRequestExpired(row.requested_at, now())
-  )
-    await abandonExpiredRequest(tx, row, actor);
 
   // OD-LIC-18: a duplicate import returns the historical result and creates
   // nothing new. Authorization has already been checked above.

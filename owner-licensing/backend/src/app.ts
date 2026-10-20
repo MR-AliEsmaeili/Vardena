@@ -81,6 +81,7 @@ import {
   listLimitProfiles,
   listRevocations,
   listUserPermissions,
+  lockIssuanceForImport,
   prepareIssuance,
   prepareRevocation,
   reactivateLimitProfile,
@@ -462,6 +463,54 @@ export async function createApp(
     next();
   });
   app.use(express.json({ limit: "16kb", strict: true }));
+  // OD-LIC-20: `express.json` refuses a body that cannot be parsed or is larger
+  // than the transport limit before the route runs, so a malformed or oversized
+  // `fileContent` would otherwise answer a validation error without ever
+  // reaching the expiry decision. Payload validation must not bypass the rule,
+  // so an authorized attempt that fails in the parser still runs the identical
+  // authorization, row lock, `ABANDONED` transition and system-origin audit
+  // here. Only an expired prepared request changes the answer (409); every other
+  // outcome — unauthenticated, unknown id, still-eligible request, replay —
+  // falls through unchanged to the parser's existing 400.
+  app.use(
+    async (error: unknown, req: Request, res: Response, next: NextFunction) => {
+      const type = (error as { type?: unknown } | null)?.type;
+      const target = /^\/api\/v1\/license-issuances\/([^/]+)\/import$/.exec(
+        req.path,
+      );
+      if (
+        req.method !== "POST" ||
+        !target ||
+        (type !== "entity.parse.failed" && type !== "entity.too.large")
+      )
+        return next(error);
+      const refusal = await db
+        .transaction(async (tx) => {
+          const actor = await authenticate(
+            tx,
+            cookieToken(req, cfg.production),
+            true,
+            "licenses.import",
+          );
+          try {
+            await lockIssuanceForImport(tx, actor.user, target[1], now);
+          } catch (inner) {
+            // The service staged the transition and its audit before throwing;
+            // returning instead of rethrowing lets the transaction COMMIT.
+            if (inner instanceof PreparedRequestExpired) return inner;
+            throw inner;
+          }
+          return null;
+        })
+        .catch(() => null);
+      if (!refusal) return next(error);
+      res.status(refusal.status).json({
+        code: refusal.code,
+        message: refusal.message,
+        correlationId: randomUUID(),
+      });
+    },
+  );
   const router = express.Router();
   const cookieName = cfg.production ? "__Host-owner_session" : "owner_session";
   const cookieOptions = {
