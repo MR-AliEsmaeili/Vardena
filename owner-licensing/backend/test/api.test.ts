@@ -72,12 +72,16 @@ const operatorGrants = [
   "operations.view",
   "operations.record",
 ] as const;
-async function grant(userId: string, permissions: readonly string[]) {
+async function grant(
+  userId: string,
+  permissions: readonly string[],
+  grantedBy = adminId,
+) {
   for (const permission of permissions)
     await db.pool.query(
       `INSERT INTO owner.user_permission_grants(user_id, permission, granted_by)
        VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,
-      [userId, permission, adminId],
+      [userId, permission, grantedBy],
     );
 }
 /** A unique, installation-reference-safe token for one test. */
@@ -649,7 +653,7 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
     expect(existingOpLogin.r.body.id).toBe(existingOperatorId);
     expect((await login("mix_observer", pw)).r.status).toBe(401);
 
-    await grant(issuanceId, operatorGrants);
+    await grant(issuanceId, operatorGrants, sysAdminId);
     const preservedOp = await request(app)
       .get(`/api/v1/operational-records/${opId}`)
       .set("Cookie", operatorLogin.cookie);
