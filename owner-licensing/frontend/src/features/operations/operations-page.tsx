@@ -1,3 +1,6 @@
+import { LocalFetchingIndicator } from '@/ui/patterns/request-activity';
+import { Select } from '@/ui/select';
+import { PageHeading } from '@/ui/patterns/page-heading';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import * as api from '@/api/owner.api';
@@ -24,9 +27,9 @@ export function SigningKeySafetyLine({
     UNKNOWN: o.signingKeySafetyUnknown,
   };
   const classes: Record<typeof safety, string> = {
-    SAFE: 'bg-emerald-100 text-emerald-800',
-    NEEDS_REVIEW: 'bg-red-100 text-red-800',
-    UNKNOWN: 'bg-slate-100 text-slate-700',
+    SAFE: 'bg-success-soft text-success',
+    NEEDS_REVIEW: 'bg-danger-soft text-danger',
+    UNKNOWN: 'bg-muted text-secondary',
   };
   const helpMap: Record<typeof safety, string> = {
     SAFE: o.signingKeySafetySafeHelp,
@@ -35,13 +38,13 @@ export function SigningKeySafetyLine({
   };
   return (
     <p className="text-xs">
-      <span className="text-slate-500">{o.operationsSigningKeyColumn}: </span>
+      <span className="text-muted-ink">{o.operationsSigningKeyColumn}: </span>
       {signingKeyId ? (
-        <span className="code text-slate-600" dir="ltr">
+        <span className="code text-secondary" dir="ltr">
           {signingKeyId}
         </span>
       ) : (
-        <span className="text-slate-400">—</span>
+        <span className="text-subtle">—</span>
       )}
       <span
         className={`ms-2 inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${classes[safety]}`}
@@ -70,11 +73,14 @@ export function OperationsPage() {
   const setFilter = (next: Record<string, string>) =>
     setParams({ search, kind, status, page: '1', ...next });
   if (!permissions.loaded) return <LoadingState />;
-  if (!permissions.has('operations.view')) return <p>{o.forbidden}</p>;
+  if (!permissions.has('operations.view'))
+    return (
+      <p className="owner-panel p-4 text-sm text-secondary">{o.forbidden}</p>
+    );
   return (
     <section className="space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold">{o.operations}</h1>
+        <PageHeading>{o.operations}</PageHeading>
         {(permissions.has('operations.record') ||
           permissions.has('replacements.authorize')) && (
           <div className="flex flex-wrap gap-2">
@@ -96,7 +102,7 @@ export function OperationsPage() {
         )}
       </header>
       <ManualNotice />
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="owner-toolbar sm:grid-cols-3">
         <label className="block space-y-2">
           <span>{o.search}</span>
           <Input
@@ -109,8 +115,7 @@ export function OperationsPage() {
         </label>
         <label className="block space-y-2">
           <span>{o.kindFilter}</span>
-          <select
-            className="w-full rounded border p-2"
+          <Select
             value={kind}
             onChange={(event) => setFilter({ kind: event.target.value })}
           >
@@ -119,12 +124,11 @@ export function OperationsPage() {
             <option value="SERVER_REPLACEMENT">
               {o.kinds.SERVER_REPLACEMENT}
             </option>
-          </select>
+          </Select>
         </label>
         <label className="block space-y-2">
           <span>{o.statusFilter}</span>
-          <select
-            className="w-full rounded border p-2"
+          <Select
             value={status}
             onChange={(event) => setFilter({ status: event.target.value })}
           >
@@ -144,9 +148,10 @@ export function OperationsPage() {
                   {label}
                 </option>
               ))}
-          </select>
+          </Select>
         </label>
       </div>
+      <LocalFetchingIndicator active={query.isFetching && !query.isPending} />
       {query.isPending ? (
         <LoadingState />
       ) : query.isError ? (
@@ -157,16 +162,16 @@ export function OperationsPage() {
           description={o.emptyOperationsHelp}
         />
       ) : (
-        <ul className="divide-y rounded-lg border border-slate-200 bg-white">
+        <ul className="divide-y owner-panel">
           {query.data.items.map((item) => (
             <li key={item.id} className="space-y-1 p-4">
               <Link
-                className="font-semibold text-indigo-700 underline"
+                className="font-semibold text-accent-strong underline"
                 to={`/app/operations/${item.id}`}
               >
                 {item.displayName}
               </Link>
-              <p className="code text-sm text-slate-500" dir="ltr">
+              <p className="code text-sm text-muted-ink" dir="ltr">
                 {item.customerCode}
               </p>
               <p className="text-sm">
@@ -181,7 +186,7 @@ export function OperationsPage() {
                   safety={item.signingKeySafety}
                 />
               )}
-              <p className="text-xs text-slate-500">{o.operatorObserved}</p>
+              <p className="text-xs text-muted-ink">{o.operatorObserved}</p>
             </li>
           ))}
         </ul>

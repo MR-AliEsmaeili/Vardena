@@ -37,7 +37,7 @@ export function ApiErrorAlert({
       <AlertBody>
         <p>{description ?? apiError.message}</p>
         {apiError.correlationId !== undefined && (
-          <p className="mt-2 text-xs text-rose-800/80">
+          <p className="mt-2 text-xs text-danger/80">
             {t.errors.correlationId}:{' '}
             <span className="code">{apiError.correlationId}</span>
           </p>

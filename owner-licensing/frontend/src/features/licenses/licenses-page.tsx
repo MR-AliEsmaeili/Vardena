@@ -1,3 +1,6 @@
+import { LocalFetchingIndicator } from '@/ui/patterns/request-activity';
+import { Select } from '@/ui/select';
+import { PageHeading } from '@/ui/patterns/page-heading';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as lic from '@/api/licensing';
@@ -34,14 +37,18 @@ export function LicensesPage() {
     enabled: permissions.has('licenses.view'),
   });
   if (!permissions.loaded) return <LoadingState />;
-  if (!permissions.has('licenses.view')) return <p>{o.forbidden}</p>;
+  if (!permissions.has('licenses.view'))
+    return (
+      <p className="owner-panel p-4 text-sm text-secondary">{o.forbidden}</p>
+    );
   return (
     <section className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-xl font-bold">{o.licenses.title}</h1>
-        <p className="text-sm text-slate-600">{o.licenses.intro}</p>
+        <PageHeading>{o.licenses.title}</PageHeading>
+        <p className="text-sm text-secondary">{o.licenses.intro}</p>
       </header>
       <PrepareForm />
+      <LocalFetchingIndicator active={query.isFetching && !query.isPending} />
       {query.isPending ? (
         <LoadingState />
       ) : query.isError ? (
@@ -194,14 +201,14 @@ function PrepareForm() {
 
   if (!permissions.has('licenses.issue.time_limited'))
     return (
-      <output className="block rounded border border-slate-200 bg-white p-4 text-sm text-slate-600">
+      <output className="block owner-panel p-4 text-sm text-secondary">
         {o.licenses.noPrepare}
       </output>
     );
   return (
-    <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+    <section className="space-y-3 owner-panel p-4">
       <h2 className="font-bold">{o.licenses.prepareTitle}</h2>
-      <p className="text-sm text-slate-600">{o.licenses.prepareHelp}</p>
+      <p className="text-sm text-secondary">{o.licenses.prepareHelp}</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="space-y-1 text-sm">
           <span>{o.licenses.customerId}</span>
@@ -224,7 +231,7 @@ function PrepareForm() {
               }
             />
           </label>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted-ink">
             {o.licenses.installationIdentityHelp}
           </p>
         </div>
@@ -238,8 +245,7 @@ function PrepareForm() {
         </label>
         <label className="space-y-1 text-sm">
           <span>{o.licenses.kind}</span>
-          <select
-            className="w-full rounded border border-slate-300 bg-white px-2 py-2"
+          <Select
             value={kind}
             onChange={(event) => setKind(event.target.value as lic.LicenseKind)}
           >
@@ -247,7 +253,7 @@ function PrepareForm() {
             {permissions.has('licenses.issue.perpetual') && (
               <option value="PERPETUAL">{o.licenses.perpetual}</option>
             )}
-          </select>
+          </Select>
         </label>
         {kind === 'TIME_LIMITED' ? (
           <label className="space-y-1 text-sm">
@@ -259,11 +265,11 @@ function PrepareForm() {
             />
           </label>
         ) : (
-          <p className="self-end text-sm text-slate-600">
+          <p className="self-end text-sm text-secondary">
             {o.licenses.perpetualHelp}
           </p>
         )}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid gap-2 sm:grid-cols-3">
           <label className="space-y-1 text-sm">
             <span>{o.licenses.organizationLimit}</span>
             <Input
@@ -331,8 +337,13 @@ function PrepareForm() {
           onChange={(event) => setFeatures(event.target.value)}
         />
       </label>
-      {error && <p className="text-sm text-red-700">{error}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      )}
       <Button
+        loading={mutation.isPending}
         disabled={mutation.isPending || !canPrepare}
         onClick={() => mutation.mutate()}
       >
@@ -369,7 +380,7 @@ function Digest({ label, value }: { label: string; value: string }) {
       </div>
       <code
         dir="ltr"
-        className="block break-all rounded bg-slate-50 p-2 font-mono text-xs"
+        className="block break-all rounded bg-canvas p-2 font-mono text-xs"
       >
         {value}
       </code>
@@ -400,17 +411,18 @@ function PreparedPanel({
     onError: (cause) => setError(normalizeApiError(cause).message),
   });
   return (
-    <div className="space-y-3 rounded border border-indigo-200 bg-indigo-50 p-3">
+    <div className="space-y-3 rounded border border-accent-line bg-accent-soft p-3">
       <h3 className="font-semibold">{o.licenses.preparedTitle}</h3>
       <p className="text-sm">{o.licenses.digestWarning}</p>
       <Digest label={o.licenses.payloadDigest} value={requestPayloadSha256} />
       <Digest label={o.licenses.bindingDigest} value={requestBindingSha256} />
-      <p className="text-sm text-slate-700">
+      <p className="text-sm text-secondary">
         {o.licenses.operationId}: <span dir="ltr">{issuance.operationId}</span>
       </p>
       <div className="flex flex-wrap gap-2">
         <Button
           variant="outline"
+          loading={download.isPending}
           disabled={download.isPending}
           onClick={() => download.mutate()}
         >
@@ -419,8 +431,12 @@ function PreparedPanel({
             : o.licenses.downloadRequest}
         </Button>
       </div>
-      {fileName && <p className="text-xs text-slate-600">{fileName}</p>}
-      {error && <p className="text-sm text-red-700">{error}</p>}
+      {fileName && <p className="text-xs text-secondary">{fileName}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      )}
       <ArtifactImporter issuanceId={issuance.id} />
     </div>
   );
@@ -470,8 +486,12 @@ function ArtifactImporter({ issuanceId }: { issuanceId: string }) {
         />
       </label>
       {busy && <p className="text-sm">{o.licenses.importing}</p>}
-      {message && <p className="text-sm text-emerald-700">{message}</p>}
-      {error && <p className="text-sm text-red-700">{error}</p>}
+      {message && <p className="text-sm text-success">{message}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -526,20 +546,20 @@ function IssuanceCard({ issuance }: { issuance: Issuance }) {
         ? o.licenses.statusAbandoned
         : o.licenses.statusPrepared;
   return (
-    <li className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+    <li className="space-y-3 owner-panel p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="space-y-1">
           <h3 className="font-semibold">
             {issuance.customerName}{' '}
-            <span dir="ltr" className="text-sm text-slate-500">
+            <span dir="ltr" className="text-sm text-muted-ink">
               ({issuance.customerCode})
             </span>
           </h3>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-secondary">
             {o.licenses.operationId}:{' '}
             <span dir="ltr">{issuance.operationId}</span>
           </p>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-secondary">
             {issuance.licenseKind === 'PERPETUAL'
               ? o.licenses.perpetual
               : `${o.licenses.validFrom} ${issuance.validFrom.slice(0, 10)} — ${o.licenses.validUntil} ${issuance.validUntil?.slice(0, 10) ?? ''}`}
@@ -548,16 +568,16 @@ function IssuanceCard({ issuance }: { issuance: Issuance }) {
         <span
           className={`rounded-full px-3 py-1 text-xs font-semibold ${
             issuance.status === 'SIGNED_RECORDED'
-              ? 'bg-emerald-100 text-emerald-800'
+              ? 'bg-success-soft text-success'
               : issuance.status === 'ABANDONED'
-                ? 'bg-slate-200 text-slate-700'
-                : 'bg-amber-100 text-amber-900'
+                ? 'bg-line text-secondary'
+                : 'bg-warning-soft text-warning'
           }`}
         >
           {statusLabel}
         </span>
       </div>
-      <dl className="grid gap-1 text-xs text-slate-600 sm:grid-cols-2">
+      <dl className="grid gap-1 text-xs text-secondary sm:grid-cols-2">
         <div>
           <dt className="inline font-semibold">
             {o.licenses.installationId}:{' '}
@@ -584,19 +604,19 @@ function IssuanceCard({ issuance }: { issuance: Issuance }) {
         </div>
       </dl>
       {issuance.customerImportAdvisory === 'TERM_ENDED' && (
-        <p className="rounded bg-amber-50 p-2 text-sm text-amber-900">
+        <p className="rounded bg-warning-soft p-2 text-sm text-warning">
           {o.licenses.termEnded}
         </p>
       )}
       {issuance.revocation && (
-        <div className="space-y-1 rounded bg-red-50 p-2 text-sm text-red-800">
+        <div className="space-y-1 rounded bg-danger-soft p-2 text-sm text-danger">
           <p>
             {o.licenses.revokedWith}: {issuance.revocation.reason} —{' '}
             {issuance.revocation.status === 'SIGNED_RECORDED'
               ? o.licenses.revocationStatusSigned
               : o.licenses.revocationStatusPrepared}
           </p>
-          <p className="text-xs text-red-900">
+          <p className="text-xs text-danger">
             {o.licenses.revocationNotApplied}
           </p>
         </div>
@@ -606,6 +626,7 @@ function IssuanceCard({ issuance }: { issuance: Issuance }) {
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
+              loading={download.isPending}
               disabled={
                 !permissions.has('licenses.download') || download.isPending
               }
@@ -623,18 +644,17 @@ function IssuanceCard({ issuance }: { issuance: Issuance }) {
           </div>
           {permissions.has('licenses.issue.perpetual') &&
             issuance.revocation === null && (
-              <details className="rounded border border-slate-200 p-2">
+              <details className="rounded border border-line p-2">
                 <summary className="cursor-pointer text-sm font-semibold">
                   {o.licenses.revokeTitle}
                 </summary>
-                <p className="mt-2 text-sm text-slate-600">
+                <p className="mt-2 text-sm text-secondary">
                   {o.licenses.revokeHelp}
                 </p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   <label className="space-y-1 text-sm">
                     <span>{o.licenses.reason}</span>
-                    <select
-                      className="w-full rounded border border-slate-300 bg-white px-2 py-2"
+                    <Select
                       value={revocationReason}
                       onChange={(event) =>
                         setRevocationReason(
@@ -647,7 +667,7 @@ function IssuanceCard({ issuance }: { issuance: Issuance }) {
                           {reason}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                   <label className="space-y-1 text-sm">
                     <span>{o.licenses.signingKey}</span>
@@ -673,6 +693,7 @@ function IssuanceCard({ issuance }: { issuance: Issuance }) {
                 <Button
                   className="mt-2"
                   variant="outline"
+                  loading={revoke.isPending}
                   disabled={revoke.isPending}
                   onClick={() => revoke.mutate()}
                 >
@@ -681,20 +702,24 @@ function IssuanceCard({ issuance }: { issuance: Issuance }) {
                     : o.licenses.revokePrepare}
                 </Button>
                 {revocationMessage && (
-                  <p className="mt-2 text-sm text-slate-700">
+                  <p className="mt-2 text-sm text-secondary">
                     {revocationMessage}
                   </p>
                 )}
-                <p className="mt-2 text-xs text-slate-500">
+                <p className="mt-2 text-xs text-muted-ink">
                   {o.licenses.revokeImportHint}
                 </p>
               </details>
             )}
         </div>
       ) : issuance.status === 'REQUEST_PREPARED' ? (
-        <p className="text-sm text-slate-600">{o.licenses.waitingSignature}</p>
+        <p className="text-sm text-secondary">{o.licenses.waitingSignature}</p>
       ) : null}
-      {error && <p className="text-sm text-red-700">{error}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      )}
     </li>
   );
 }

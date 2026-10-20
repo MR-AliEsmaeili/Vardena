@@ -5,6 +5,12 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from 'axios';
 import { normalizeApiError, type ApiError } from './errors';
+import {
+  beginRequest,
+  endRequest,
+  type RequestActivityMessage,
+  type RequestActivityScope,
+} from './request-activity';
 
 /**
  * The single Axios instance of the application (AR-28: "all server data flows
@@ -29,6 +35,69 @@ export const API_BASE_URL: string =
 
 /** Correlation header the backend echoes on every response/error. */
 export const CORRELATION_ID_HEADER = 'x-correlation-id';
+
+export interface RequestActivityOptions {
+  scope?: RequestActivityScope | 'silent';
+  message?: RequestActivityMessage;
+}
+
+export interface RequestActivityTracker {
+  token?: number;
+}
+
+class ActivityTracker implements RequestActivityTracker {
+  token?: number;
+}
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    vardenaRequestActivity?: RequestActivityOptions;
+    vardenaRequestActivityTracker?: RequestActivityTracker;
+  }
+
+  interface InternalAxiosRequestConfig {
+    vardenaRequestActivityToken?: number;
+  }
+}
+
+function defaultActivityMessage(method: string): RequestActivityMessage {
+  switch (method) {
+    case 'get':
+    case 'head':
+    case 'options':
+      return 'receiving';
+    case 'post':
+      return 'saving';
+    case 'put':
+    case 'patch':
+      return 'updating';
+    case 'delete':
+      return 'deleting';
+    default:
+      return 'processing';
+  }
+}
+
+function resolveRequestActivity(config: InternalAxiosRequestConfig): {
+  scope: RequestActivityScope;
+  message: RequestActivityMessage;
+} | null {
+  const override = config.vardenaRequestActivity;
+  if (override?.scope === 'silent') return null;
+
+  const method = (config.method ?? 'get').toLowerCase();
+  const isRead = method === 'get' || method === 'head' || method === 'options';
+  return {
+    scope: override?.scope ?? (isRead ? 'background' : 'global'),
+    message: override?.message ?? defaultActivityMessage(method),
+  };
+}
+
+function endTrackedRequest(
+  config: InternalAxiosRequestConfig | undefined,
+): void {
+  endRequest(config?.vardenaRequestActivityToken);
+}
 
 type UnauthorizedHandler = (error: ApiError) => void;
 
@@ -77,22 +146,38 @@ export const apiClient: AxiosInstance = axios.create({
   // Session cookie transport (ADR-0007). Required for the cookie to travel.
   withCredentials: true,
   headers: { Accept: 'application/json', 'x-owner-request': '1' },
-  // Query parameters are plain scalars; drop undefined values so optional
-  // filters never reach the API as `?accountId=undefined` (the backend
-  // rejects unknown/invalid values with 400 — whitelist validation).
+  // Query parameters stay scalar; unset optional filters are omitted.
   paramsSerializer: {
     indexes: null,
   },
 });
 
+apiClient.interceptors.request.use((config) => {
+  const activity = resolveRequestActivity(config);
+  if (activity !== null) {
+    const token = beginRequest(activity);
+    config.vardenaRequestActivityToken = token;
+    if (config.vardenaRequestActivityTracker !== undefined) {
+      config.vardenaRequestActivityTracker.token = token;
+    }
+  }
+  return config;
+});
+
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    endTrackedRequest(response.config);
+    return response;
+  },
   (error: unknown) => {
-    const apiError = normalizeApiError(error);
     const failed = error as AxiosError | undefined;
     const config: InternalAxiosRequestConfig | undefined =
       failed?.config ??
       (failed?.response?.config as InternalAxiosRequestConfig | undefined);
+
+    endTrackedRequest(config);
+
+    const apiError = normalizeApiError(error);
 
     if (
       apiError.isUnauthorized &&
@@ -124,12 +209,30 @@ export function cleanParams<T extends Record<string, unknown>>(
   return result;
 }
 
+async function runTrackedRequest<TResponse>(
+  config: AxiosRequestConfig | undefined,
+  run: (config: AxiosRequestConfig) => Promise<TResponse>,
+): Promise<TResponse> {
+  const tracker = new ActivityTracker();
+  const requestConfig: AxiosRequestConfig = {
+    ...config,
+    vardenaRequestActivityTracker: tracker,
+  };
+  try {
+    return await run(requestConfig);
+  } finally {
+    endRequest(tracker.token);
+  }
+}
+
 /** GET helper: normalized errors, typed payload, cancellation support. */
 export async function apiGet<TResponse>(
   url: string,
   config?: AxiosRequestConfig,
 ): Promise<TResponse> {
-  const response = await apiClient.get<TResponse>(url, config);
+  const response = await runTrackedRequest(config, (requestConfig) =>
+    apiClient.get<TResponse>(url, requestConfig),
+  );
   return response.data;
 }
 
@@ -139,7 +242,9 @@ export async function apiPatch<TResponse, TBody = unknown>(
   body?: TBody,
   config?: AxiosRequestConfig,
 ): Promise<TResponse> {
-  const response = await apiClient.patch<TResponse>(url, body, config);
+  const response = await runTrackedRequest(config, (requestConfig) =>
+    apiClient.patch<TResponse>(url, body, requestConfig),
+  );
   return response.data;
 }
 
@@ -149,7 +254,9 @@ export async function apiPost<TResponse, TBody = unknown>(
   body?: TBody,
   config?: AxiosRequestConfig,
 ): Promise<TResponse> {
-  const response = await apiClient.post<TResponse>(url, body, config);
+  const response = await runTrackedRequest(config, (requestConfig) =>
+    apiClient.post<TResponse>(url, body, requestConfig),
+  );
   return response.data;
 }
 
@@ -158,6 +265,8 @@ export async function apiDelete<TResponse>(
   url: string,
   config?: AxiosRequestConfig,
 ): Promise<TResponse> {
-  const response = await apiClient.delete<TResponse>(url, config);
+  const response = await runTrackedRequest(config, (requestConfig) =>
+    apiClient.delete<TResponse>(url, requestConfig),
+  );
   return response.data;
 }

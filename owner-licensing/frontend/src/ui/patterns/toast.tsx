@@ -104,7 +104,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div
-        className="pointer-events-none fixed bottom-4 start-4 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2"
+        className="pointer-events-none fixed bottom-20 start-4 z-50 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2"
         aria-label={t.toasts.regionLabel}
       >
         {toasts.map((toast) => (
@@ -129,10 +129,10 @@ export function useToast(): ToastContextValue {
 }
 
 const KIND_STYLES: Record<ToastKind, string> = {
-  success: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-  info: 'border-indigo-200 bg-indigo-50 text-indigo-900',
-  warning: 'border-amber-200 bg-amber-50 text-amber-900',
-  error: 'border-rose-200 bg-rose-50 text-rose-900',
+  success: 'border-success-line bg-success-soft text-success',
+  info: 'border-accent-line bg-accent-soft text-accent-strong',
+  warning: 'border-warning-line bg-warning-soft text-warning',
+  error: 'border-danger-line bg-danger-soft text-danger',
 };
 
 function ToastCard({

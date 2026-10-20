@@ -1,0 +1,162 @@
+{
+  "id": 118842472787,
+  "run_id": 39484617508,
+  "workflow_name": "CI",
+  "head_branch": "feat/owner-ui-loading-thinking-orbs",
+  "run_url": "https://api.github.com/repos/MR-AliEsmaeili/Vardena/actions/runs/39484617508",
+  "run_attempt": 1,
+  "node_id": "CR_kwDOUUcmWs8AAAAbq5A5Uw",
+  "head_sha": "2ba7b89b2778028e34119028b7147c284e355a69",
+  "url": "https://api.github.com/repos/MR-AliEsmaeili/Vardena/actions/jobs/118842472787",
+  "html_url": "https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39484617508/job/118842472787",
+  "status": "completed",
+  "conclusion": "failure",
+  "created_at": "2026-10-20T19:36:07Z",
+  "started_at": "2026-10-20T19:36:10Z",
+  "completed_at": "2026-10-20T19:37:58Z",
+  "name": "frontend",
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 1,
+      "started_at": "2026-10-20T19:36:11Z",
+      "completed_at": "2026-10-20T19:36:11Z"
+    },
+    {
+      "name": "Checkout",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 2,
+      "started_at": "2026-10-20T19:36:12Z",
+      "completed_at": "2026-10-20T19:36:13Z"
+    },
+    {
+      "name": "Cross-project date contract guard",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 3,
+      "started_at": "2026-10-20T19:36:13Z",
+      "completed_at": "2026-10-20T19:36:13Z"
+    },
+    {
+      "name": "Setup Node.js",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 4,
+      "started_at": "2026-10-20T19:36:13Z",
+      "completed_at": "2026-10-20T19:36:15Z"
+    },
+    {
+      "name": "Upgrade npm to v11",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 5,
+      "started_at": "2026-10-20T19:36:15Z",
+      "completed_at": "2026-10-20T19:36:17Z"
+    },
+    {
+      "name": "Install dependencies",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 6,
+      "started_at": "2026-10-20T19:36:17Z",
+      "completed_at": "2026-10-20T19:36:23Z"
+    },
+    {
+      "name": "Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 7,
+      "started_at": "2026-10-20T19:36:23Z",
+      "completed_at": "2026-10-20T19:36:23Z"
+    },
+    {
+      "name": "Typecheck",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 8,
+      "started_at": "2026-10-20T19:36:23Z",
+      "completed_at": "2026-10-20T19:36:33Z"
+    },
+    {
+      "name": "Format check",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 9,
+      "started_at": "2026-10-20T19:36:33Z",
+      "completed_at": "2026-10-20T19:36:38Z"
+    },
+    {
+      "name": "Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 10,
+      "started_at": "2026-10-20T19:36:38Z",
+      "completed_at": "2026-10-20T19:37:41Z"
+    },
+    {
+      "name": "Build",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 11,
+      "started_at": "2026-10-20T19:37:41Z",
+      "completed_at": "2026-10-20T19:37:55Z"
+    },
+    {
+      "name": "Verify customer frontend artifact excludes Owner",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 12,
+      "started_at": "2026-10-20T19:37:55Z",
+      "completed_at": "2026-10-20T19:37:56Z"
+    },
+    {
+      "name": "Owner UI verification",
+      "status": "completed",
+      "conclusion": "failure",
+      "number": 13,
+      "started_at": "2026-10-20T19:37:56Z",
+      "completed_at": "2026-10-20T19:37:56Z"
+    },
+    {
+      "name": "Independent Owner UI image with canonical date sources",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 14,
+      "started_at": "2026-10-20T19:37:56Z",
+      "completed_at": "2026-10-20T19:37:56Z"
+    },
+    {
+      "name": "Post Setup Node.js",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 27,
+      "started_at": "2026-10-20T19:37:56Z",
+      "completed_at": "2026-10-20T19:37:56Z"
+    },
+    {
+      "name": "Post Checkout",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 28,
+      "started_at": "2026-10-20T19:37:56Z",
+      "completed_at": "2026-10-20T19:37:56Z"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 29,
+      "started_at": "2026-10-20T19:37:56Z",
+      "completed_at": "2026-10-20T19:37:56Z"
+    }
+  ],
+  "check_run_url": "https://api.github.com/repos/MR-AliEsmaeili/Vardena/check-runs/118842472787",
+  "labels": ["ubuntu-latest"],
+  "runner_id": 1000001983,
+  "runner_name": "GitHub Actions 1000001983",
+  "runner_group_id": 0,
+  "runner_group_name": "GitHub Actions"
+}

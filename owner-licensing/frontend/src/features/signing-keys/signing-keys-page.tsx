@@ -1,3 +1,6 @@
+import { LocalFetchingIndicator } from '@/ui/patterns/request-activity';
+import { Select } from '@/ui/select';
+import { PageHeading } from '@/ui/patterns/page-heading';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { formatOwnerInstant } from '@/lib/date-time';
 import { useState } from 'react';
@@ -71,17 +74,24 @@ export function SigningKeysPage() {
   const setFilter = (next: Record<string, string>) =>
     setParams({ search, status, page: '1', ...next });
   if (!permissions.loaded) return <LoadingState />;
-  if (!permissions.has('customers.view')) return <p>{o.forbidden}</p>;
+  if (!permissions.has('customers.view'))
+    return (
+      <p className="owner-panel p-4 text-sm text-secondary">{o.forbidden}</p>
+    );
   const canMutate = permissions.has('customers.write');
   return (
     <section className="space-y-5">
       <header className="space-y-2">
-        <h1 className="text-xl font-bold">{o.signingKeys}</h1>
-        <p className="text-sm text-slate-600">{o.signingKeysHelp}</p>
+        <PageHeading>{o.signingKeys}</PageHeading>
+        <p className="text-sm text-secondary">{o.signingKeysHelp}</p>
       </header>
-      {saved && <output>{o.signingKeyStatusChangeSuccess}</output>}
+      {saved && (
+        <output className="owner-success">
+          {o.signingKeyStatusChangeSuccess}
+        </output>
+      )}
       {canMutate && <RegisterKeyForm />}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="owner-toolbar sm:grid-cols-2">
         <label className="block space-y-2">
           <span>{o.search}</span>
           <Input
@@ -94,8 +104,7 @@ export function SigningKeysPage() {
         </label>
         <label className="block space-y-2">
           <span>{o.signingKeyStatus}</span>
-          <select
-            className="w-full rounded border p-2"
+          <Select
             value={status}
             onChange={(event) => setFilter({ status: event.target.value })}
           >
@@ -103,9 +112,10 @@ export function SigningKeysPage() {
             <option value="ACTIVE">{o.signingKeyStatusActive}</option>
             <option value="COMPROMISED">{o.signingKeyStatusCompromised}</option>
             <option value="REVOKED">{o.signingKeyStatusRevoked}</option>
-          </select>
+          </Select>
         </label>
       </div>
+      <LocalFetchingIndicator active={query.isFetching && !query.isPending} />
       {query.isPending ? (
         <LoadingState />
       ) : query.isError ? (
@@ -119,13 +129,13 @@ export function SigningKeysPage() {
           description={o.signingKeyEmptyHelp}
         />
       ) : (
-        <ul className="divide-y rounded-lg border border-slate-200 bg-white">
+        <ul className="divide-y owner-panel">
           {query.data.items.map((key) => (
             <li key={key.id} className="space-y-2 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
                   <p className="font-semibold">{key.label}</p>
-                  <p className="code text-xs text-slate-500" dir="ltr">
+                  <p className="code text-xs text-muted-ink" dir="ltr">
                     {key.id}
                   </p>
                 </div>
@@ -148,12 +158,12 @@ export function SigningKeysPage() {
               </p>
               {key.statusReason && (
                 <p className="text-sm">
-                  <span className="text-slate-500">{o.signingKeyReason}: </span>
+                  <span className="text-muted-ink">{o.signingKeyReason}: </span>
                   {key.statusReason}
                 </p>
               )}
               {key.statusDetectedAt && (
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-ink">
                   {o.signingKeyDetectedAt}:{' '}
                   <time
                     dateTime={key.statusDetectedAt}
@@ -164,12 +174,12 @@ export function SigningKeysPage() {
                 </p>
               )}
               {key.evidenceRef && (
-                <p className="text-xs text-slate-500" dir="ltr">
+                <p className="text-xs text-muted-ink" dir="ltr">
                   {key.evidenceRef}
                 </p>
               )}
               {key.notes && (
-                <p className="whitespace-pre-wrap text-sm text-slate-600">
+                <p className="whitespace-pre-wrap text-sm text-secondary">
                   {key.notes}
                 </p>
               )}
@@ -204,9 +214,9 @@ export function SigningKeysPage() {
 
 function StatusBadge({ status }: { status: SigningKey['status'] }) {
   const classes: Record<SigningKey['status'], string> = {
-    ACTIVE: 'bg-emerald-100 text-emerald-800',
-    COMPROMISED: 'bg-red-100 text-red-800',
-    REVOKED: 'bg-amber-100 text-amber-800',
+    ACTIVE: 'bg-success-soft text-success',
+    COMPROMISED: 'bg-danger-soft text-danger',
+    REVOKED: 'bg-warning-soft text-warning',
   };
   const label: Record<SigningKey['status'], string> = {
     ACTIVE: o.signingKeyStatusActive,
@@ -247,7 +257,7 @@ function RegisterKeyForm() {
   });
   return (
     <form
-      className="max-w-xl space-y-3 rounded border bg-white p-4"
+      className="max-w-xl space-y-3 owner-panel p-4"
       onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
     >
       <h2 className="font-semibold">{o.signingKeyRegister}</h2>
@@ -300,8 +310,10 @@ function RegisterKeyForm() {
         )}
       </FormField>
       {mutation.isError && <ApiErrorAlert error={mutation.error} />}
-      {mutation.isSuccess && <output>{o.signingKeyRegisterSuccess}</output>}
-      <Button disabled={mutation.isPending}>
+      {mutation.isSuccess && (
+        <output className="owner-success">{o.signingKeyRegisterSuccess}</output>
+      )}
+      <Button loading={mutation.isPending} disabled={mutation.isPending}>
         {mutation.isPending ? o.saving : o.signingKeyRegister}
       </Button>
     </form>
@@ -344,28 +356,25 @@ function StatusChangeForm({
   });
   return (
     <form
-      className="space-y-3 rounded border bg-white p-4"
+      className="space-y-3 owner-panel p-4"
       onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
     >
       <h2 className="font-semibold">
         {signingKey.label}{' '}
-        <span className="code text-xs text-slate-500" dir="ltr">
+        <span className="code text-xs text-muted-ink" dir="ltr">
           ({signingKey.id})
         </span>
       </h2>
-      <p className="text-sm text-slate-500">
+      <p className="text-sm text-muted-ink">
         {o.signingKeyStatus}: {signingKey.status}
       </p>
       <label className="block space-y-2">
         <span>{o.signingKeyStatus}</span>
-        <select
-          className="w-full rounded border p-2"
-          {...form.register('status')}
-        >
+        <Select {...form.register('status')}>
           <option value="ACTIVE">{o.signingKeyMarkActive}</option>
           <option value="COMPROMISED">{o.signingKeyMarkCompromised}</option>
           <option value="REVOKED">{o.signingKeyMarkRevoked}</option>
-        </select>
+        </Select>
       </label>
       <FormField
         id="status-change-reason"
@@ -386,8 +395,12 @@ function StatusChangeForm({
         )}
       </FormField>
       {mutation.isError && <ApiErrorAlert error={mutation.error} />}
-      {mutation.isSuccess && <output>{o.signingKeyStatusChangeSuccess}</output>}
-      <Button disabled={mutation.isPending}>
+      {mutation.isSuccess && (
+        <output className="owner-success">
+          {o.signingKeyStatusChangeSuccess}
+        </output>
+      )}
+      <Button loading={mutation.isPending} disabled={mutation.isPending}>
         {mutation.isPending ? o.saving : o.save}
       </Button>
     </form>
@@ -422,8 +435,12 @@ function NotesForm({ signingKey }: { signingKey: SigningKey }) {
         {(props) => <Input {...props} {...form.register('notes')} />}
       </FormField>
       {mutation.isError && <ApiErrorAlert error={mutation.error} />}
-      {mutation.isSuccess && <output>{o.success}</output>}
-      <Button disabled={mutation.isPending}>{o.save}</Button>
+      {mutation.isSuccess && (
+        <output className="owner-success">{o.success}</output>
+      )}
+      <Button loading={mutation.isPending} disabled={mutation.isPending}>
+        {o.save}
+      </Button>
     </form>
   );
 }

@@ -1,3 +1,4 @@
+import { PageHeading } from '@/ui/patterns/page-heading';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type UseFormSetError } from 'react-hook-form';
 import { useState } from 'react';
@@ -5,7 +6,7 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { normalizeApiError } from '@/api/errors';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
+import { Card, CardContent, CardHeader } from '@/ui/card';
 import { Input } from '@/ui/input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { FormField } from '@/ui/patterns/form-field';
@@ -213,22 +214,24 @@ export function ChangePasswordPage() {
   const isBusy = session.isChangingPassword || session.isLoggingOut;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-muted px-4 py-10">
       <div className="w-full max-w-md space-y-4">
         <div className="text-center">
-          <p className="text-2xl font-bold text-indigo-700">{t.app.name}</p>
-          <p className="mt-1 text-sm text-slate-600">{t.app.tagline}</p>
+          <p className="text-2xl font-bold text-accent-strong">{t.app.name}</p>
+          <p className="mt-1 text-sm text-secondary">{t.app.tagline}</p>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>{t.auth.changePasswordTitle}</CardTitle>
-            <p className="text-sm text-slate-600">
+            <PageHeading className="text-lg sm:text-xl">
+              {t.auth.changePasswordTitle}
+            </PageHeading>
+            <p className="text-sm text-secondary">
               {t.auth.changePasswordSubtitle}
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-ink">
               {t.auth.signedInAs}:{' '}
-              <span className="font-medium text-slate-700">
+              <span className="font-medium text-secondary">
                 {session.user.username}
               </span>
             </p>
@@ -297,7 +300,12 @@ export function ChangePasswordPage() {
                 )}
 
               <div className="space-y-2 pt-1">
-                <Button type="submit" className="w-full" disabled={isBusy}>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  loading={session.isChangingPassword}
+                  disabled={isBusy}
+                >
                   {session.isChangingPassword
                     ? t.auth.changingPassword
                     : t.auth.submitChangePassword}
@@ -306,6 +314,7 @@ export function ChangePasswordPage() {
                   type="button"
                   variant="outline"
                   className="w-full"
+                  loading={session.isLoggingOut}
                   disabled={isBusy}
                   onClick={() => void handleLogout()}
                 >

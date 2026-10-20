@@ -24,3 +24,7 @@ if (!('matchMedia' in globalThis.window)) {
     }),
   });
 }
+
+// jsdom has no canvas context. Real engine scheduling is tested with a no-op
+// context in thinking-orb.test.tsx; feature suites exercise the actual DOM.
+HTMLCanvasElement.prototype.getContext = () => null;

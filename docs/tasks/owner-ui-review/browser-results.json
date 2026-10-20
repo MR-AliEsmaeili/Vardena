@@ -1,0 +1,572 @@
+{
+  "capturedAt": "2026-10-20T22:00:24.525Z",
+  "baseline": "main 1ad7c602f3b820b7439e09b9ea472baf51d47cd9 (fresh independent install/build)",
+  "source": "PR 190 audit source; exact delivery HEAD and CI links are in the PR body (avoids a self-referential evidence commit)",
+  "browser": "Chromium 131 (npm @sparticuz/chromium)",
+  "api": "Intercepted test fixtures only. No live Owner API, DB or signer used.",
+  "results": [
+    {
+      "name": "before-app-licenses-1440-empty-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "before-app-licenses-360-empty-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-licenses-1440-empty-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-licenses-360-empty-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-1440-empty-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-customers-1440-empty-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-customers-new-1440-empty-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-users-1440-empty-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-signing-keys-1440-empty-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-audit-1440-empty-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-operations-1440-empty-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-operations-activation-new-1440-empty-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-operations-replacement-new-1440-empty-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-lifecycle-1440-empty-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-change-password-1440-empty-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-768-empty-fixture",
+      "motion": "reduce",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-customers-768-empty-fixture",
+      "motion": "reduce",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-customers-new-768-empty-fixture",
+      "motion": "reduce",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-users-768-empty-fixture",
+      "motion": "reduce",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-signing-keys-768-empty-fixture",
+      "motion": "reduce",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-audit-768-empty-fixture",
+      "motion": "reduce",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-operations-768-empty-fixture",
+      "motion": "reduce",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-operations-activation-new-768-empty-fixture",
+      "motion": "reduce",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-operations-replacement-new-768-empty-fixture",
+      "motion": "reduce",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-lifecycle-768-empty-fixture",
+      "motion": "reduce",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-change-password-768-empty-fixture",
+      "motion": "reduce",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-360-empty-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-customers-360-empty-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-customers-new-360-empty-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-users-360-empty-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-signing-keys-360-empty-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-audit-360-empty-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-operations-360-empty-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-operations-activation-new-360-empty-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-operations-replacement-new-360-empty-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-lifecycle-360-empty-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-change-password-360-empty-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-login-1440-login-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+        }
+      ],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-customers-1440-loading-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-customers-1440-error-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+        }
+      ],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-customers-new-1440-submit-fixture",
+      "motion": "reduce",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+        }
+      ],
+      "unexpectedConsole": [],
+      "writeCalls": 1
+    },
+    {
+      "name": "after-login-360-login-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+        }
+      ],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-customers-360-loading-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-customers-360-error-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+        }
+      ],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-customers-new-360-submit-fixture",
+      "motion": "reduce",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+        }
+      ],
+      "unexpectedConsole": [],
+      "writeCalls": 1
+    },
+    {
+      "name": "after-app-customers-1440-loading-fixture-motion",
+      "motion": "no-preference",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    },
+    {
+      "name": "after-app-customers-360-loading-fixture-motion",
+      "motion": "no-preference",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": [],
+      "consoleMessages": [],
+      "unexpectedConsole": [],
+      "writeCalls": 0
+    }
+  ]
+}

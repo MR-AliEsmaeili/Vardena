@@ -1,3 +1,5 @@
+import { Select } from '@/ui/select';
+import { PageHeading } from '@/ui/patterns/page-heading';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,7 +43,7 @@ function CustomerPicker({
   return (
     <fieldset className="space-y-2">
       <legend className="text-sm font-medium">{o.customerPick}</legend>
-      <p className="text-xs text-slate-500">{o.customerPickHint}</p>
+      <p className="text-xs text-muted-ink">{o.customerPickHint}</p>
       <Input
         value={search}
         maxLength={100}
@@ -70,7 +72,7 @@ function CustomerPicker({
         ))}
       </div>
       {error ? (
-        <p role="alert" className="text-xs text-rose-700">
+        <p role="alert" className="text-xs text-danger">
           {error}
         </p>
       ) : null}
@@ -148,14 +150,16 @@ export function ActivationFormPage() {
     !permissions.has('operations.record') ||
     !permissions.has('customers.view')
   )
-    return <p>{o.forbidden}</p>;
+    return (
+      <p className="owner-panel p-4 text-sm text-secondary">{o.forbidden}</p>
+    );
   return (
     <section className="max-w-2xl space-y-4">
-      <h1 className="text-xl font-bold">{o.recordIssuance}</h1>
+      <PageHeading>{o.recordIssuance}</PageHeading>
       <ManualNotice />
       <p className="text-sm">{o.notReceipt}</p>
       <form
-        className="space-y-4 rounded-lg border bg-white p-5"
+        className="space-y-4 owner-panel p-5"
         onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
       >
         <CustomerPicker
@@ -219,7 +223,7 @@ export function ActivationFormPage() {
           <legend className="px-1 text-sm font-semibold">
             {o.observationDatesTitle}
           </legend>
-          <p className="text-sm text-slate-500">{o.observationDatesHelp}</p>
+          <p className="text-sm text-muted-ink">{o.observationDatesHelp}</p>
           <FormField
             id="observedValidityEnd"
             label={o.observedValidityEnd}
@@ -242,13 +246,17 @@ export function ActivationFormPage() {
           form={form as unknown as UseFormReturn<{ acknowledged: boolean }>}
         />
         {form.formState.errors.acknowledged ? (
-          <p role="alert" className="text-xs text-rose-700">
+          <p role="alert" className="text-xs text-danger">
             {form.formState.errors.acknowledged.message}
           </p>
         ) : null}
         {mutation.isError ? <OperationError error={mutation.error} /> : null}
-        <div className="flex gap-3">
-          <Button type="submit" disabled={mutation.isPending}>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            type="submit"
+            loading={mutation.isPending}
+            disabled={mutation.isPending}
+          >
             {mutation.isPending ? o.saving : o.recordIssuance}
           </Button>
           <Button asChild variant="outline">
@@ -305,12 +313,14 @@ export function ReplacementFormPage() {
     !permissions.has('replacements.authorize') ||
     !permissions.has('customers.view')
   )
-    return <p>{o.forbidden}</p>;
+    return (
+      <p className="owner-panel p-4 text-sm text-secondary">{o.forbidden}</p>
+    );
   return (
     <section className="max-w-2xl space-y-4">
-      <h1 className="text-xl font-bold">{o.recordReplacement}</h1>
+      <PageHeading>{o.recordReplacement}</PageHeading>
       <ManualNotice />
-      <div className="rounded border bg-white p-4 text-sm">
+      <div className="owner-panel p-4 text-sm">
         <h2 className="font-semibold">{o.sequenceTitle}</h2>
         <ol className="mt-2 list-decimal space-y-1 pe-5">
           <li>تصمیم مجاز برای همان مشتری ثبت می‌شود.</li>
@@ -320,7 +330,7 @@ export function ReplacementFormPage() {
         </ol>
       </div>
       <form
-        className="space-y-4 rounded-lg border bg-white p-5"
+        className="space-y-4 owner-panel p-5"
         onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
       >
         <CustomerPicker
@@ -367,13 +377,17 @@ export function ReplacementFormPage() {
           form={form as unknown as UseFormReturn<{ acknowledged: boolean }>}
         />
         {form.formState.errors.acknowledged ? (
-          <p role="alert" className="text-xs text-rose-700">
+          <p role="alert" className="text-xs text-danger">
             {form.formState.errors.acknowledged.message}
           </p>
         ) : null}
         {mutation.isError ? <OperationError error={mutation.error} /> : null}
-        <div className="flex gap-3">
-          <Button type="submit" disabled={mutation.isPending}>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            type="submit"
+            loading={mutation.isPending}
+            disabled={mutation.isPending}
+          >
             {mutation.isPending ? o.saving : o.recordReplacement}
           </Button>
           <Button asChild variant="outline">
@@ -441,11 +455,7 @@ function SigningKeyPicker({
         <>
           <label className="block">
             {o.signingKeyLinkedTo}
-            <select
-              className="w-full rounded border p-2"
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
-            >
+            <Select value={value} onChange={(e) => onChange(e.target.value)}>
               <option value="">{o.signingKeyNoLinked}</option>
               {query.data.items.map((key) => (
                 <option key={key.id} value={key.id}>
@@ -455,7 +465,7 @@ function SigningKeyPicker({
               {value && !query.data.items.some((key) => key.id === value) && (
                 <option value={value}>{value}</option>
               )}
-            </select>
+            </Select>
           </label>
           {!query.data.items.length && <p>{o.signingKeyEmpty}</p>}
           <Button

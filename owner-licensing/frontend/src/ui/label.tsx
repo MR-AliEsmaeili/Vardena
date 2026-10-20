@@ -14,7 +14,7 @@ export function Label({
 }: ComponentProps<'label'>) {
   return (
     <label
-      className={cn('text-sm font-medium text-slate-700', className)}
+      className={cn('text-sm font-medium text-secondary', className)}
       {...props}
     >
       {children}

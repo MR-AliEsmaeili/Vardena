@@ -281,3 +281,33 @@ describe('Owner browser vertical slice (mocked API boundary, CI)', () => {
     ).toBeInTheDocument();
   });
 });
+
+it('keeps the customer save disabled and visibly busy until the existing mutation settles', async () => {
+  let rejectSave: (error: unknown) => void = () => undefined;
+  vi.mocked(api.createCustomer).mockImplementation(
+    () =>
+      new Promise((_resolve, reject) => {
+        rejectSave = reject;
+      }),
+  );
+  const user = userEvent.setup();
+  mount('/app/customers/new');
+  await user.type(await screen.findByLabelText(o.code), 'UI.TEST');
+  await user.type(screen.getByLabelText(o.name), 'مشتری تست');
+  await user.click(screen.getByRole('button', { name: o.save }));
+  const save = await screen.findByRole('button', { name: o.saving });
+  expect(save).toBeDisabled();
+  expect(save).toHaveAttribute('aria-busy', 'true');
+  expect(save.querySelector('canvas')).toHaveAttribute('aria-hidden', 'true');
+  await user.click(save);
+  expect(api.createCustomer).toHaveBeenCalledTimes(1);
+  rejectSave(
+    new ApiError({
+      code: 'ServiceUnavailable',
+      message: 'offline',
+      status: 503,
+    }),
+  );
+  expect(await screen.findByRole('button', { name: o.save })).toBeEnabled();
+  expect(screen.getByLabelText(o.name)).toHaveValue('مشتری تست');
+});
