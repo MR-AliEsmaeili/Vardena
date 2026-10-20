@@ -69,9 +69,9 @@ the design is not mistaken for evidence.
   canonicalization, signatures, vectors) is untouched.
 - **Not delivered:** a dedicated renewal/replacement UI, artifact backup/restore
   drill (reconciliation and quarantine are tested, a real backup/restore is
-  not), human Persian RTL smoke, prepared-request expiry (blocked on the
-  Product Owner decision recorded in
-  [`owner-side-issuance-traceability.md`](owner-side-issuance-traceability.md)
+  not), human Persian RTL smoke, prepared-request expiry (policy now decided as OD-LIC-20:
+  fixed 14-day maximum age; implementation and conformance tests remain pending
+  in [`owner-side-issuance-traceability.md`](owner-side-issuance-traceability.md)
   §2.2), and the 14-step acceptance run. The customer live-PostgreSQL revocation
   case passed locally (PostgreSQL 18.4) and is re-run by CI; no customer
   installation has been observed applying a revocation.
