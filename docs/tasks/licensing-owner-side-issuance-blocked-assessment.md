@@ -600,6 +600,60 @@ artifact, DTO or UI exists. **No OQ was closed.**
 
 ---
 
+## 8.4 Addendum — the Product Owner answers the review's three stopped questions (2026-10-20)
+
+**Status after this addendum: `BLOCKED — TECHNICAL DESIGN REQUIRED`, awaiting design
+approval.** The three questions §8.3 stopped on are now decided. Still nothing is
+implemented.
+
+The security review of §8.3 corrected three defects on engineering authority and
+**stopped** on three questions that are product policy, recording them as OQ-92,
+OQ-93 and OQ-94 (in two parts). The Product Owner answered all of them on
+2026-10-20. The canonical record is
+[PDR-19 §6](../decisions/product/PDR-19-owner-side-issuance-decisions.md), which now
+carries **OD-LIC-11…OD-LIC-14** alongside OD-LIC-07…OD-LIC-10; this assessment, the
+technical design, the registry rows and `STATE.md` are reconciled to that record.
+
+| Decision | Answer | Effect on the findings in §8.3 |
+|---|---|---|
+| **OD-LIC-11** (OQ-92) | **O-A** — the offline signer must confirm the request's **full 64-hex** `request_payload_sha256` over a path **independent of the request file**, validated **before the private key is read or loaded**; absent, invalid, shortened or mismatched ⇒ refusal, non-zero exit, key not read. **O-B not adopted**; shortening **forbidden** | Closes RV-1's open question. The control the review recommended is the control the Product Owner chose, and the stronger option (an Owner-held request-signing key) is **not** authorized — so no new key, no second signed format, no canonicalization change, no vector change and no customer-side change |
+| **OD-LIC-12** (OQ-93) | **R-1** — a newly created `LICENSE_OPERATOR` has **zero effective access**; creation writes no grant rows; role or eligibility is not access; effective access stays the **intersection** and a grant can **never widen** it; `OWNER_ADMIN` is not under the grant model and is unchanged | Closes RV-3(a)'s open question **against** engineering's recommendation (R-3 is rejected). The four permissions `LICENSE_OPERATOR` holds today become *eligible but not effective* |
+| **OD-LIC-13** (OQ-94A) | Reactivating the **same** retired limit profile is allowed as an explicit authorized operation; **at most one `ACTIVE` profile per customer must hold before reactivation takes effect**, so reactivation must fail rather than bypass uniqueness; actor, time, target and outcome audited; history never deleted or rewritten; ceiling columns immutable; "no stored ceiling" still does **not** mean "issuance forbidden" | Resolves RV-3(b)'s lifecycle question and **supersedes** the design's original retire-plus-create recovery path, removing the trap the review found |
+| **OD-LIC-14** (OQ-94B) | An existing request stays completable on its **creation-time snapshot**; retirement, replacement or reactivation does not automatically stop it; a later change must not rewrite the older request's ceiling history; **new** requests use current state | Promotes the rule §8.3 flagged as an engineering analogy to a recorded decision, and explicitly forbids reading it as permission to alter a payload after creation, bypass OD-LIC-11's integrity checks, or ignore any other control |
+
+**Accepted consequences now recorded with the decisions, not softened.**
+
+- Under **OD-LIC-11**, one manual out-of-band confirmation of a 64-hex value per
+  issuance is the price of an air-gapped signer, and the residual dependence on
+  channel integrity and operator behaviour must remain documented: O-A fails against
+  an attacker who controls both the file and the out-of-band value.
+- Under **OD-LIC-12 / R-1**, a newly created operator can do **nothing at all** — not
+  even open the customer list — until each permission is granted. Provisioning
+  becomes a two-step, two-person act, and a provisioning gap presents as an operator
+  that *appears broken*. PDR-17's static matrix and the `domain.ts` role comment
+  become **contradictory** once R-1 is implemented and must be updated with that code
+  (design §15.1.11).
+- Under **OD-LIC-14**, for a bounded window an issuance can complete against a ceiling
+  that no longer applies, and because OQ-78 is OPEN that completion is irrevocable in
+  practice. The window cannot smuggle *different* terms, since the snapshot is exactly
+  what the signer confirms and what the Owner verifies at import.
+
+**What this addendum does not do.** It reopens nothing: OD-LIC-07…OD-LIC-10, F-1, F-2,
+readiness D-5 and every ADR/PDR stand. It closes no OQ row — OQ-92, OQ-93 and OQ-94
+record their decisions and stay OPEN for implementation and conformance evidence, per
+this registry's own convention. U-1/OQ-74, OQ-75, OQ-78, OQ-81, OQ-85, OQ-90 and
+OQ-91 all remain OPEN, and OD-LIC-14 does **not** answer the pending-request expiry
+question. No signer, key, migration, schema, endpoint, DTO, UI or vector was added or
+changed, and the signed `VLIC2` contract, canonicalization rules, corpus and
+separation boundary are untouched.
+
+**The full remaining dependency set**, re-extracted from the current documents with
+options, technical recommendations, advanceability and a decision owner for each, is
+tabled in [the technical design](./owner-side-issuance-technical-design.md) §15.1 —
+13 dependencies plus a step-by-step "what can be built today" summary at §15.1.14.
+
+---
+
 ## 9. Related records
 
 - [ADR-0046 — signed license documents and version lifecycle](../adr/0046-signed-license-documents-and-version-lifecycle.md) (Decisions 1, 2, 6, 7, 9)

@@ -76,11 +76,25 @@ present** in the canonical bytes (`null` when absent) and is *not* omitted like
 census of all 23 corpus files (§16). No signed format, canonicalization rule or
 vector is changed by any of these corrections.
 
-**Two points raised by the review are not engineering's to settle** and are
-recorded as stopped, with options and consequences, in §4.4 and §15: whether to
-adopt an Owner-held request-signing key (a new key and a second signed format),
-and what the **default grant state** of a newly created operator's non-issuance
-permissions is.
+**Two points raised by the review were not engineering's to settle** and were
+recorded as stopped, with options and consequences, in §4.4 and §15.
+
+**Amended again 2026-10-20 — the Product Owner answered them.** The stopped
+questions, plus the limit-profile lifecycle the review raised as **RV-3**, are now
+decided canonically in
+[PDR-19 §6](../decisions/product/PDR-19-owner-side-issuance-decisions.md) as
+**OD-LIC-11…OD-LIC-14**, and this document is reconciled to that record:
+
+| Decision | Answer | Effect on this design |
+|---|---|---|
+| **OD-LIC-11** (OQ-92) | **O-A** — full 64-hex `request_payload_sha256` confirmed over a path independent of the request file, validated **before the key is read or loaded**. **O-B not adopted**; shortening forbidden | §4.2 check 10 and §4.4 are now decided, not proposed. The §15 items on O-B and on shortening are closed |
+| **OD-LIC-12** (OQ-93) | **R-1** — a new operator has **zero effective access**; creation writes no grant rows. **R-3 rejected** | §5.4's R-1/R-3 question and §6.2's open row are closed in favour of R-1; the §13.5 matrix test is no longer parameterized |
+| **OD-LIC-13** (OQ-94A) | Reactivating the **same** retired profile is allowed, with at most one `ACTIVE` per customer enforced **before** reactivation takes effect | §5.2's "retired rows are terminal" and its retire-plus-create recovery path are corrected; §9 gains a profile state machine; migration `007`'s status trigger must permit `RETIRED → ACTIVE` |
+| **OD-LIC-14** (OQ-94B) | An in-flight request completes on its **creation-time snapshot**; new requests use current state | §5.2's snapshot rule is promoted from an engineering analogy to a recorded decision; the §15 item is closed |
+
+No signed byte format, canonicalization rule, vector or separation boundary is
+changed by any of these, and **nothing is implemented** — this remains a design
+awaiting approval.
 
 ---
 
@@ -481,16 +495,24 @@ that establishes that this file is the file the Owner produced, and it runs
 8. `supersedesOperationId` and `renewsOperationId` mutually exclusive, and neither
    equal to this request's own `operationId`.
 9. `status === "ACTIVE"`.
-10. **[REVIEW RV-1] Out-of-band request-digest confirmation.** The signer computes
-    the canonical bytes of the request payload it was given, derives `sha256` over
-    them, and **requires the operator to enter the expected digest**. It refuses to
-    sign unless the entered value equals the computed one, character-for-character,
-    as 64 lowercase hex. The expected value comes from the Owner UI (§12) over a
-    channel **independent of the request file itself** — the file is what is under
-    attack, so a digest read out of the same file, or from anything derived from it,
-    proves nothing. On mismatch the signer exits non-zero, prints both digests,
-    names the request as **not signed**, and never reads the key. This is what makes
-    T-1…T-9 detectable *before* a signature exists.
+10. **[REVIEW RV-1; DECIDED — OD-LIC-11, PDR-19 §6.1] Out-of-band request-digest
+    confirmation.** The signer computes the canonical bytes of the request payload it
+    was given, derives `sha256` over them, and **requires the operator to enter the
+    expected digest**. It refuses to sign unless the entered value equals the computed
+    one, character-for-character, as **exactly 64 lowercase hex**. The expected value
+    comes from the Owner UI (§12) over a channel **independent of the request file
+    itself** — the file is what is under attack, so a digest read out of the same
+    file, or from anything derived from it, proves nothing and **is not an independent
+    path**. An **absent, empty, malformed, shortened or mismatched** value causes
+    refusal, a **non-zero exit**, and the private key **not being read or loaded**.
+    This is what makes T-1…T-9 detectable *before* a signature exists.
+
+    Now a **decision**, not a proposal. OD-LIC-11 fixes all of: the full 64-hex value
+    (shortening or omission **forbidden** — a truncated code is grindable by an
+    attacker who can rewrite the file), the independent-path requirement, the
+    ordering (validate before reading **or loading** the key), and the failure
+    behaviour. `request_binding_sha256` remains a **separate** import-time control and
+    is never substituted for this value.
 11. **[REVIEW RV-1, T-10] Duplicate-suppression record.** The signer keeps a local,
     append-only record of the `operationId`s it has signed, in the operator's
     offline environment only, and refuses to sign an `operationId` it has already
@@ -539,7 +561,7 @@ file, what the operator brings separately, and what is pinned in its own offline
 environment. Four options exist. One is adopted, one is documented and **stopped**,
 two are rejected.
 
-**O-A — out-of-band digest confirmation. ADOPTED (§4.2 check 10).**
+**O-A — out-of-band digest confirmation. ADOPTED and DECIDED (OD-LIC-11, PDR-19 §6.1; §4.2 check 10).**
 The Owner displays `request_payload_sha256` in its UI; the operator carries that
 value to the offline environment over a channel independent of the file; the signer
 refuses to sign on mismatch.
@@ -557,13 +579,13 @@ refuses to sign on mismatch.
   option below removes it either, because in every option a human moves the file.
 - *The confirmation value must not be shortened.* A truncated code is grindable: an
   attacker who can rewrite the file can search for a tampered payload whose digest
-  matches a short code, so shortening converts an infeasible attack into a cheap
-  one. 64 hex is required. Any shorter human-friendly code is a **security
-  weakening** and is recorded in §15 as needing explicit approval, not chosen here.
+  matches a short code, so shortening converts an infeasible attack into a cheap one.
+  **OD-LIC-11 makes 64 hex mandatory and forbids shortening or omission**, so this is
+  no longer an open question in §15.
 - *Cost:* a manual step per issuance, and a 64-hex transcription. This is the real
   price of an air-gapped signer and is not hidden.
 
-**O-B — Owner-signed request (a separate Owner-held request-signing key). DOCUMENTED, NOT ADOPTED — requires a Product Owner decision.**
+**O-B — Owner-signed request (a separate Owner-held request-signing key). DOCUMENTED AND NOT ADOPTED — the Product Owner chose O-A (OD-LIC-11, 2026-10-20), so this option is closed unless a new decision reopens it.**
 The Owner signs the `VLSR1` payload with a key of its own; its public part is pinned
 in the offline signer; the signer verifies that signature before using the license
 authority key.
@@ -583,12 +605,14 @@ authority key.
   no signed byte format change" constraints, and it adds an offline key-distribution
   and rotation dependency to an air-gapped tool: pinned public keys must be updated
   by hand, out of band, forever.
-- *Why it is stopped and not chosen:* it needs a new key, a request signature and a
-  new protocol element. The review instruction is explicit that such a solution must
-  be documented with its consequences and **not adopted without approval**. It is
-  therefore recorded here as the stronger option, with its costs, and §15 carries it
-  as an open decision. **O-A is what the design builds; O-B is what the Product Owner
-  may choose to upgrade to.**
+- *Why it was stopped, and its disposition:* it needs a new key, a request signature
+  and a new protocol element, so the review recorded it with its consequences and did
+  **not** adopt it. **On 2026-10-20 the Product Owner chose O-A (OD-LIC-11), which
+  authorizes no new key, no new signed format, no canonicalization change, no vector
+  change and no customer-side change.** O-B is therefore **not adopted**. It is kept
+  here because it is the stronger control and a future decision may want it, but
+  building it would require a **new** product decision plus a custody answer for the
+  second key while U-1/OQ-74 is OPEN. **O-A is what this design builds.**
 
 **O-C — structural validation only. REJECTED.** This is the design as originally
 written (§4.2 checks 1–9). It cannot distinguish a well-formed substitution, so
@@ -662,7 +686,7 @@ customer, the operator is bounded by it.
 | `organization_limit`, `user_limit` | `integer NULL`, CHECK `> 0` when not null; `NULL` means the profile places **no** ceiling on that dimension, which is different from `0` |
 | `allowed_modules` | `text[]`, non-empty, no duplicates, catalog-validated |
 | `perpetual_allowed` | `boolean NOT NULL DEFAULT false` — recorded so a profile can state that this customer may never receive a perpetual grant from an operator, which is the natural Owner-side use of the ceiling. `OWNER_ADMIN`-only perpetual issuance (OD-LIC-07) is unaffected and stays enforced by permission |
-| `status` | `'ACTIVE' \| 'RETIRED'` — retired profiles never bind a new issuance but must remain readable, because past issuances reference them |
+| `status` | `'ACTIVE' \| 'RETIRED'` — retired profiles never bind a new issuance but must remain readable, because past issuances reference them. **[OD-LIC-13]** The transition `RETIRED → ACTIVE` is **legal** (reactivation), so status is not terminal in the `RETIRED` direction |
 | `created_by`, `updated_by`, `created_at`, `updated_at` | `OWNER_ADMIN` only |
 
 **[REVIEW RV-3] Constraint correction — the table contradicted itself.** The column
@@ -705,19 +729,53 @@ already provides and adds no JSONB, no trigger and no new state.
   profile means "no stored ceiling, **not** issuance forbidden", and explicitly says
   no "profile required before issuance" rule may be inferred. Retirement is therefore
   permitted but must be **loud**, never silent.
-- **Creating a replacement after retirement:** **allowed.** The design adopts this
-  because its own declared lifecycle (a `RETIRED` status plus readable history) is
-  only meaningful if more than one row per customer can exist, and because the
-  alternative creates the unrecoverable widening above. If the Product Owner wants
-  retirement to be **permanent** instead, that is a product limitation and must be
-  recorded as one with its consequence — engineering must not guess it, and it is
-  carried in §15.
-- **Editing a profile:** the ceiling columns of an `ACTIVE` profile are **immutable**.
-  Changing a ceiling is retire-plus-create, so the profile that bound a past issuance
-  can never be rewritten underneath it. `updated_by`/`updated_at` therefore record
-  status transitions only.
-- **Retired rows are immutable** and never deleted, consistent with the append-only
-  discipline elsewhere in the Owner schema.
+- **Reactiving the same retired profile: ALLOWED — decided by OD-LIC-13 (PDR-19 §6.3,
+  2026-10-20).** `RETIRED → ACTIVE` on the *same row*, as an explicit authorized
+  operation. This supersedes the retire-plus-create recovery path this section
+  originally proposed, and removes the trap the review found: because F-1's no-profile
+  branch is the *more permissive* one, a mistaken retirement widened operator freedom,
+  and under the original column-level `UNIQUE` it was unrecoverable inside the product.
+  Reactivation restores **exactly** the same ceiling on the same row, so the
+  `limit_profile_id` snapshots past issuances hold stay meaningful.
+
+  Constraints OD-LIC-13 makes binding:
+
+  - **At most one `ACTIVE` profile per customer must hold *before* the reactivation
+    takes effect.** If another profile for that customer is already `ACTIVE`,
+    reactivation must **fail** — it may not bypass, defer, or silently retire the
+    other one. The partial unique index above enforces this **at the database level on
+    the `UPDATE` itself** (PostgreSQL checks the index when the updated row newly
+    satisfies the predicate), so the guarantee does not rest on the service layer
+    alone; the service must still refuse first, with a clear reason.
+  - **Reactivation is not concurrent multiplicity.** Two `ACTIVE` profiles for one
+    customer at any instant remain impossible.
+  - **The ceiling columns stay immutable across reactivation.** Reactivation restores
+    the identical `organization_limit`, `user_limit`, `allowed_modules` and
+    `perpetual_allowed`; it is **not** a way to edit a profile. Changing a ceiling is
+    still retire-plus-create.
+  - **History is never deleted or rewritten.** Both the retirement and the
+    reactivation stay visible, with actor, server time, target profile and outcome
+    (§10). Transitions may repeat, so a retire→reactivate→retire sequence remains
+    fully legible.
+  - **Authorization is `limit_profiles.manage`**, which is `OWNER_ADMIN`-only and
+    ineligible for `LICENSE_OPERATOR` (§6.1) — an operator can never reactivate the
+    ceiling that bounds them.
+  - **Absence semantics unchanged.** "No stored ceiling" still does **not** mean
+    "issuance forbidden" (F-1, PDR-19 §5.1), and no "profile required before
+    issuance" rule may be inferred.
+
+  **Migration consequence:** whatever status trigger `007` defines must **permit**
+  `RETIRED → ACTIVE`. This section originally described retired rows as terminal and
+  its trigger wording forbade the transition; that wording is corrected here and must
+  not be carried into the migration.
+- **Editing a profile:** the ceiling columns of an `ACTIVE` **or `RETIRED`** profile
+  are **immutable**. Changing a ceiling is retire-plus-create, so the profile that
+  bound a past issuance can never be rewritten underneath it. `updated_by`/`updated_at`
+  therefore record **status transitions only**, never value changes.
+- **Retired rows are never deleted**, and their ceiling values are never rewritten —
+  only their status, actor and timestamp advance. This is the append-only discipline
+  the rest of the Owner schema follows, narrowed to the one column OD-LIC-13 makes
+  mutable.
 
 **Binding rule.** At request creation, if an `ACTIVE` profile exists for the
 customer, every requested limit must be within it: a requested cap must be `NULL`
@@ -738,14 +796,30 @@ ceiling".
   profile that was `ACTIVE` at request creation, or `NULL` when none was. It is part
   of the immutable fact set (§5.1), so a later retirement or replacement never
   rewrites which ceiling a past issuance was measured against.
-- The ceiling is evaluated **once, at request creation**. A profile retired or
-  replaced *after* the request exists does **not** invalidate that request, and the
-  returned artifact is still imported and recorded. This mirrors the shape of the
-  recorded F-2 revocation semantics — a later restriction blocks **new** work, not
-  work already authorized — and it is the only reading consistent with a flow whose
-  round trip takes days. It is an engineering rule derived by analogy, labelled as
-  such, and §15 carries the alternative (retirement blocking pending imports) as a
-  point the Product Owner may change.
+- **The ceiling is evaluated once, at request creation — DECIDED by OD-LIC-14
+  (PDR-19 §6.4, 2026-10-20).** A profile retired, replaced or reactivated *after* the
+  request exists does **not** invalidate that request, and the returned artifact is
+  still imported and recorded. **New** requests are evaluated against the **current**
+  profile state. This design originally adopted the rule as an engineering analogy to
+  F-2's revocation semantics and flagged it as changeable; the Product Owner has now
+  confirmed it, so it is a recorded decision and the §15 item is closed.
+
+  What OD-LIC-14 explicitly does **not** permit, and what this design must not be read
+  as allowing: altering a request payload after creation (the §5.1 immutable-facts
+  trigger still freezes identity, dates, limits, entitlements and **both** digests);
+  bypassing OD-LIC-11's integrity controls (the signer's out-of-band digest check and
+  the Owner's `request_binding_sha256` comparison both still apply to an in-flight
+  request); or ignoring any other security or state control — permission checks
+  including §7.4's revoked-grant rule, actor validity, key trust and `ACTIVE` status,
+  the §9.1 state machine, and the artifact store's digest re-verification. In-flight
+  behaviour also stays **distinct** from new-request behaviour and from the
+  replay/supersession rules of PDR-12 and PDR-18 §9.
+
+  **Accepted consequence, to stay visible:** for a bounded window an issuance can
+  complete against a ceiling that no longer applies, and because OQ-78 is OPEN that
+  completion is irrevocable in practice. The window cannot be used to smuggle
+  *different* terms through, because the snapshot is exactly what the signer confirms
+  and what the Owner verifies at import.
 - The binding digest of §3.4 makes this safe: the limits that were checked against
   the profile at creation are the limits the projection pins, so a post-retirement
   attempt to raise them is refused at the signer (check 10) and again at import.
@@ -856,43 +930,54 @@ Resolution happens **inside the same locked transaction** as the work, using the
 existing `assertActiveAuthorizedActor` shape, so no stale decision is taken from a
 session, a cookie or the frontend.
 
-**Default for a new operator.** A newly created `LICENSE_OPERATOR` gets **no
-issuance grant** — that part is decided (PDR-19 §5.2, fail-closed) and is not
-reopened.
+**Default for a new operator — DECIDED: R-1 (OD-LIC-12, PDR-19 §6.2, 2026-10-20).**
+A newly created `LICENSE_OPERATOR` has an **empty effective permission set**.
+Operator creation writes **no** grant rows. Without an active explicit grant the
+permission is **denied**; holding the role, or being *eligible* for a permission, is
+**not** by itself access.
 
-**[REVIEW RV-3] The sentence that followed was wrong and is withdrawn.** This
-section previously said *"Non-issuance access follows the role until `OWNER_ADMIN`
-narrows it."* That is baseline/union semantics for the non-issuance permissions and
-it **contradicts** the intersection rule recorded in PDR-19 §5.2 and stated two
-paragraphs above. Under intersection, a user with no grant rows has an **empty**
-effective set — so the withdrawn sentence was not a detail, it silently replaced the
-decided mechanism with its opposite for four permissions the role holds today
-(`customers.view`, `audit.view`, `operations.view`, `operations.record`,
-`domain.ts:33-38`).
+**This closes the question the review stopped on.** The withdrawn sentence above had
+asserted union semantics; the review replaced it with two candidate readings (R-1 no
+seeding, R-3 seed the baseline as explicit grant rows) and recommended R-3. **The
+Product Owner chose R-1 and rejected R-3.** Nothing here may be read as preserving an
+implicit operator baseline.
 
-What the product record does **not** settle is the **initial state of the grant rows**
-for those non-issuance permissions. PDR-19 §5.2's default decision is worded
-specifically about *issuance* grants ("holds **no issuance grant**"), so it does not
-say whether a new operator also starts with no `customers.view`. Two readings satisfy
-the intersection mechanism; a third does not:
+**Consequence for the four permissions the role holds today.** `customers.view`,
+`audit.view`, `operations.view` and `operations.record`
+(`owner-licensing/backend/src/domain.ts:33-38`) become **eligible but not effective**.
+An `OWNER_ADMIN` must grant each one explicitly before the operator can use it. The
+static `permissions(role)` function therefore **must not** be used as the effective
+check once this is implemented — it now describes *eligibility*, not access. That is a
+real behavioural change for `LICENSE_OPERATOR` and PDR-17's matrix documentation must
+be updated with the code (§14).
 
-| | Reading | Satisfies intersection? | Consequence |
-|---|---|---|---|
-| **R-1** | **No seeding.** A new operator starts with zero grant rows, so effective access is empty until `OWNER_ADMIN` grants each permission | yes, literally | maximally fail-closed; but a newly created operator **cannot open the customer list** at all until configured, so a configuration gap becomes an operational outage, and today's role capability is removed by default |
-| **R-3** | **Seed the role baseline as explicit active grant rows** at operator creation (`customers.view`, `audit.view`, `operations.view`, `operations.record`) | yes, literally | today's access is preserved, every permission is visible, auditable, narrowable and revocable, and **no access is implicit anywhere** — the "default" becomes data rather than inference. Cost: creating an operator writes grant rows as an audited side effect |
-| **R-2** | Baseline for non-issuance, intersection only for issuance (what the withdrawn sentence said) | **no** | contradicts PDR-19 §5.2 as written, and leaves non-issuance permissions non-narrowable unless narrowing is separately modelled. **Rejected** |
+**Operational consequence, to be surfaced rather than softened.** A newly created
+operator can do **nothing at all** — not even open the customer list — until
+`OWNER_ADMIN` grants permissions one by one. Provisioning becomes a two-step,
+two-person act (create the user, then grant), and a provisioning gap presents as an
+operator that *appears broken* rather than as an error. The UI must make this
+legible (§12): an operator with no grants needs a visible empty state naming what is
+missing, and the admin surface must show which permissions each operator actually
+holds. None of this is a reason to weaken R-1; it is the cost of "no permission is
+inferred" being literally true for every permission rather than only the issuance
+ones.
 
-**R-3 is the engineering recommendation**, because it is the only reading that
-satisfies both recorded sentences of PDR-19 §5.2 simultaneously — the intersection
-mechanism *and* preservation of existing operator access — without weakening either,
-and because it makes every effective permission traceable to an explicit audited row.
+**What R-1 does not change.**
 
-**But it changes what a newly created operator can do by default, so it is
-enforcement policy and is NOT adopted here.** The matrix in §6 is written to be
-correct under both R-1 and R-3 (they differ in exactly one cell group: the initial
-rows, not the resolution rule). §15 carries the question, and implementation of
-operator creation must not start until it is answered. No PDR-19 text is amended by
-this review.
+- `OWNER_ADMIN` is **not** placed under the grant model, appears in no grant table,
+  and its access is **unchanged** — OD-LIC-12 forbids changing it without an explicit
+  decision. A trigger refuses any grant row naming an `OWNER_ADMIN`.
+- Effective access is still `eligible(role) ∩ active grants` — intersection, never
+  union — so a grant can narrow but **never widen**.
+- `licenses.issue.perpetual` and `limit_profiles.manage` stay **ineligible** for
+  operators under OD-LIC-07 and F-2. R-1 does not make them grantable; issuance,
+  perpetual issuance and limit-profile management continue to be governed by the §6.1
+  matrix and their own separate rules.
+- A revoked grant confers nothing, but the revocation history and the revoking actor
+  are preserved; revocation stays a row update, never a delete.
+- The F-2 revocation trade-off of PDR-19 §5.2 — a revoked user may still complete a
+  request already produced — is **unchanged** by R-1, and §7.4 still narrows it as far
+  as that decision allows.
 
 ---
 
@@ -957,11 +1042,15 @@ Reading the matrix:
 |---|---|---|
 | `licenses.issue.time_limited`, `licenses.import`, `licenses.view`, `licenses.download` | **Denied** — no grant row. Fail-closed | **Yes** (PDR-19 §5.2) |
 | `licenses.issue.perpetual`, `limit_profiles.manage` | **Denied** — ineligible, cannot be granted | **Yes** (OD-LIC-07, F-2 scope) |
-| `customers.view`, `audit.view`, `operations.view`, `operations.record` | **Open question R-1 vs R-3** (§5.4): denied until granted, or seeded as explicit active grants | **No — stopped, see §15** |
+| `customers.view`, `audit.view`, `operations.view`, `operations.record` | **Denied** — eligible but **not effective**; no grant row is written at creation, so `OWNER_ADMIN` must grant each one explicitly | **Yes — OD-LIC-12 chose R-1** (PDR-19 §6.2); R-3 rejected |
 | Everything else | **Denied** — ineligible | Yes |
 
-The resolution *rule* is settled and identical under R-1 and R-3; only the initial
-rows differ. Implementation of operator creation waits on that answer.
+**Every row of this table is now decided.** Under OD-LIC-12 (R-1) no permission is
+effective for a new operator without an explicit active grant, so the four baseline
+permissions join the issuance ones in requiring a grant — the difference from R-3 is
+that **no rows are seeded at creation**. Implementation of operator creation no longer
+waits on a product answer; it waits on the permission-code vocabulary (OQ-75) and on
+this design's approval.
 
 ### 6.3 Denial rules that do not depend on the matrix
 
@@ -1204,6 +1293,36 @@ reach a terminal state illegally. Status may only advance along the arrows above
 `signed_at`/`imported_at` must be set together with `SIGNED_RECORDED` and must be
 null otherwise; `artifact_sha256` and `artifact_store_key` likewise.
 
+### 9.3 Limit-profile state machine — **[OD-LIC-13] new**
+
+Profiles have their own, much smaller lifecycle. Unlike the issuance states it is
+**not** linear and has **no terminal state**, because OD-LIC-13 makes reactivation
+legal:
+
+```
+(no row) ──create──▶ ACTIVE ⇄ RETIRED
+                       ▲          │
+                       └─reactivate┘      (repeatable)
+```
+
+- `ACTIVE` — binds new requests for that customer (§5.2). At most one per customer,
+  enforced by the partial unique index.
+- `RETIRED` — binds nothing, stays readable and referenced, and **may be reactivated**.
+- Both transitions are `OWNER_ADMIN`-only (`limit_profiles.manage`), explicit,
+  reasoned and audited.
+- The trigger must permit **both** directions. The wording this design originally
+  implied — retired rows terminal — is corrected; a migration that forbids
+  `RETIRED → ACTIVE` would contradict OD-LIC-13.
+- **Reactivation must fail if another profile for the same customer is already
+  `ACTIVE`.** The partial unique index enforces this on the `UPDATE` itself, and the
+  service refuses first with a clear reason, so the constraint holds at two layers.
+- The ceiling columns are immutable in **both** states; only `status`,
+  `updated_by` and `updated_at` may change (§5.2).
+
+Installation identities keep the `ACTIVE | RETIRED` vocabulary of §5.3 but have **no**
+reactivation decision behind them, so none is implemented — OD-LIC-13 is about limit
+profiles only, and extending it by analogy would be inferring a decision.
+
 ---
 
 ## 10. Audit events
@@ -1226,9 +1345,18 @@ no artifact content.
 | `CUSTOMER_CREATED_DURING_ISSUANCE` | a new customer created inside step 1 | `SUCCESS` |
 | `LIMIT_PROFILE_CREATED` / `LIMIT_PROFILE_RETIRED` | §5.2 management. **[REVIEW RV-3]** A retirement that leaves the customer with **no** `ACTIVE` profile is recorded with an explicit `ceiling_removed` marker, so the widening of operator freedom is visible in the trail rather than inferred from absence | `SUCCESS` |
 | `LIMIT_PROFILE_REPLACED` | **[REVIEW RV-3] new.** retire-plus-create in one act, naming both profile ids | `SUCCESS` |
+| `LIMIT_PROFILE_REACTIVATED` | **[OD-LIC-13] new.** `RETIRED → ACTIVE` on the same row, recording actor, server time, the **target profile id** and the outcome, per the Owner audit pattern | `SUCCESS` |
+| `LIMIT_PROFILE_REACTIVATION_DENIED` | **[OD-LIC-13] new.** refused because another profile for that customer is already `ACTIVE`, or because the actor lacks `limit_profiles.manage` | `DENIED` → `security_incident` where it is a permission denial |
 | `USER_PERMISSION_GRANT_CHANGED` | grant or revocation, with before/after and reason | `SUCCESS` |
 | `USER_PERMISSION_GRANT_SEEDED` | **[REVIEW RV-3] new, conditional on R-3 (§5.4).** The baseline rows written at operator creation, listed explicitly | `SUCCESS` |
 | `INSTALLATION_IDENTITY_REGISTERED` | §5.3, with `source` and confirmation actor | `SUCCESS` |
+
+**[OD-LIC-13] Reactivation history is never deleted or rewritten.** A
+retire→reactivate→retire sequence stays fully legible: each transition is its own
+audit row with its own actor and server time, and the profile row's
+`updated_by`/`updated_at` show only the latest. The ceiling values are never restated
+as new facts, so an auditor can always tell that the *same* ceiling was restored
+rather than a similar one created.
 
 **[REVIEW RV-1] A real audit gap, stated rather than papered over.** The signer's
 check-10 and check-11 refusals happen in an **air-gapped** environment with no
@@ -1331,6 +1459,19 @@ signature — never as issued.
   profile for a customer requires an explicit confirmation naming the consequence in
   Persian: after retirement **no ceiling is in force** and issuance falls back to the
   no-profile branch. Retirement is permitted but never silent (§5.2).
+- **[OD-LIC-13]** The same screen offers **reactivation** of a retired profile —
+  `OWNER_ADMIN` only, explicit, reasoned, and showing that the *identical* ceiling
+  will be restored (the values are immutable, so there is nothing to re-enter). When
+  another profile for that customer is already `ACTIVE` the action is **refused with a
+  comprehensible Persian error**, not silently disabled and not offered as if it would
+  succeed (§9.3). No inert control: the action exists only where the backend can
+  really perform it.
+- **[OD-LIC-12 / R-1]** The operator-administration surface must make empty effective
+  access legible, because under R-1 a newly created operator can do nothing at all
+  until granted. That means a visible empty state naming the missing permissions, and
+  a per-operator view of the permissions actually held — eligibility and role are
+  never shown as if they were access. Grant and revocation stay audited, non-editable
+  and non-deletable from the UI (PDR-19 §5.2).
 - Perpetual is offered only to a user holding `licenses.issue.perpetual`.
 - A summary review step, then an explicit final confirmation that names the
   consequence: the request will be produced for offline signing and **no license
@@ -1450,6 +1591,28 @@ case-varied digest entry is refused**; **an empty or absent digest entry is refu
 any path that derives the expected value from the file (§4.4 O-D); and **the signer
 leaves no key material in memory, log, exit message or output on any refusal**.
 
+**[OD-LIC-13] Limit-profile lifecycle.** Reactivate a retired profile with no other
+active profile → succeeds, **identical** ceiling values, audited · attempt to
+reactivate while another profile for that customer is `ACTIVE` → refused by the
+service **and** by the partial unique index, nothing changed · attempt to edit a
+ceiling column as part of reactivation → refused in both `ACTIVE` and `RETIRED` ·
+an issuance created before retirement still references the same `limit_profile_id`
+afterwards · a retire→reactivate→retire sequence leaves all three transitions visible
+with distinct actors and server times.
+
+**[OD-LIC-14] In-flight requests against a changing profile.** Request created under
+a profile → profile retired → import still succeeds and keeps the original
+`limit_profile_id` · request created under a profile → profile replaced by a
+**stricter** one → the in-flight import still succeeds against the snapshot while a
+**new** request for the same terms is refused by the stricter ceiling · request
+created with **no** profile → a profile is created afterwards → the in-flight request
+still completes unbounded and a new request is bounded · snapshot values never mutated
+by any profile operation · replayed import of an already-recorded artifact returns the
+recorded result **without** re-evaluating the ceiling · an in-flight request is still
+refused by a revoked `licenses.import` grant (§7.4), an unknown or non-`ACTIVE`
+signing key, and a binding-digest mismatch — proving OD-LIC-14 overrides no other
+control.
+
 **A stale request is not a tampering case and must not be "fixed" by inventing an
 expiry.** §15 records that no automatic expiry exists, so NEG-T10's staleness arm
 asserts only what is decided: duplicate detection, and that a time-limited artifact
@@ -1492,6 +1655,9 @@ hand per case:
 | `LICENSE_OPERATOR` attempting `licenses.issue.perpetual` | denied at vocabulary, trigger, service and intersection — four independent layers, each asserted |
 | Unknown code / superseded four-role identifier | denied, `[]` |
 | Grant of `limit_profiles.manage` to an operator | refused by trigger **and** service |
+| **[OD-LIC-12]** freshly created operator, **zero grant rows** | denied on all four baseline permissions *and* all issuance permissions |
+| **[OD-LIC-12]** `OWNER_ADMIN` with no grant rows at all | every permission allowed — the grant model is not consulted |
+| **[OD-LIC-13]** operator attempts to reactivate a retired profile | denied — `limit_profiles.manage` is ineligible |
 
 Two assertions guard the guarantees rather than the cases: **no grant ever widens**
 (effective ⊆ eligible for every generated combination) and **revocation blocks only
@@ -1499,12 +1665,25 @@ new signing requests** while an already-prepared request stays completable by it
 creator or an `OWNER_ADMIN` (§7.4) — the accepted trade-off PDR-19 §5.2 records, so
 it is tested rather than trusted.
 
-The **R-1 vs R-3** seeding question (§5.4) changes exactly one group of expectations
-— the initial rows for `customers.view`, `audit.view`, `operations.view`,
-`operations.record` — so this suite is parameterized on that answer and **must not be
-written with the answer assumed**. Until the Product Owner decides, the parameterized
-cases stay `todo` with the reason recorded, which is a documented gap, not a skipped
-test.
+**[OD-LIC-12] No longer parameterized.** The R-1 vs R-3 question is decided in favour
+of **R-1**, so the expectations for `customers.view`, `audit.view`, `operations.view`
+and `operations.record` are now fixed: a **freshly created operator is denied all
+four**, because creation writes no grant rows. The suite is written against R-1
+directly and the previously deferred `todo` cases become real assertions.
+
+Two R-1-specific cases are added, because they are the ones a seeded-default design
+would never have exercised:
+
+- **Fresh operator, zero grants:** denied on every permission in §6.1, including the
+  four the role is *eligible* for — and the denial reason distinguishes "not granted"
+  from "not eligible".
+- **Provisioning gap is legible, not silent:** the empty state and the per-operator
+  holdings view of §12 are asserted, so R-1's operational consequence is a tested
+  behaviour rather than a surprise.
+
+Also asserted, per OD-LIC-12: `OWNER_ADMIN` is **unaffected** by the grant model and
+never appears in the grant table, and the static `permissions(role)` result is treated
+as **eligibility**, never as effective access.
 
 ### 13.6 Environments
 
@@ -1526,27 +1705,63 @@ on a disposable PostgreSQL, not asserted from a fixture.
 - Creates the four tables of §5, their constraints, indexes and triggers; extends
   the audit target-type vocabulary; commits with the ledger entry in one
   transaction under the existing advisory lock.
+- **[OD-LIC-13]** `customer_limit_profiles` carries the **partial** unique index
+  `UNIQUE (customer_id) WHERE status = 'ACTIVE'` — not a column-level `UNIQUE` — and
+  its status trigger must permit **both** `ACTIVE → RETIRED` and `RETIRED → ACTIVE`,
+  while forbidding any change to the ceiling columns in either state. A trigger
+  written from this document's pre-OD-LIC-13 wording would have made retired rows
+  terminal and contradicted the decision.
+- **[OD-LIC-12]** No grant rows are seeded for any user, at any point, by the
+  migration or by the runtime. `user_permission_grants` is created **empty**; R-1's
+  empty-default is a property of the data, not of a backfill.
 - **Runtime grants are deployment-specific and are not applied by the migration**,
   matching migration `002`'s closing note. The README's role-grant section must be
   extended with SELECT/INSERT/UPDATE on the new tables and USAGE/SELECT on their
   sequences, and must continue to withhold DDL and any DELETE on audit or on
   immutable facts.
-- Order of delivery, each independently reviewable: **(1)** permission grants and
-  effective-permission resolution + audit; **(2)** limit profiles; **(3)**
-  installation identities; **(4)** Owner canonicalizer/signer/verifier with the
-  conformance suite of §13.1–13.2 — mergeable before any endpoint exists, and the
-  highest-risk piece, so it lands first; **(5)** issuance ledger, request creation
-  and the signer CLI; **(6)** artifact store, import and download; **(7)** UI.
+- **Order of delivery.** The order originally proposed here put the conformance suite
+  fourth while calling it "the highest-risk piece, so it lands first" — a
+  self-contradiction. It is corrected, and the dependency-aware version is tabled in
+  **§15.1.14**, which states for each step what blocks it and whether it can start
+  today. In brief: **(1)** Owner canonicalizer/signer/verifier with the conformance
+  suite of §13.1–13.2, plus the request-integrity control of OD-LIC-11 (§4.2 check 10)
+  and the proof that a refusal never reads the key — nothing blocks these and they are
+  the highest-risk work; **(2)** permission grants, effective resolution under R-1 and
+  their audit, once **OQ-75** fixes the code names; **(3)** the permission matrix and
+  grant lifecycle; **(4)** limit profiles with reactivation and the creation-time
+  snapshot (OD-LIC-13/14 decide both, so no product decision is outstanding);
+  **(5)** installation identities; **(6)** issuance ledger, request creation and the
+  signer CLI; **(7)** durable artifact store, import and download; **(8)** endpoints
+  and orchestration; **(9)** Persian RTL UI and the full operator round trip; then
+  integration and customer tests with full CI and a manual evidence review.
+
+  Two capabilities are blocked by a missing product decision and nothing else: the
+  permission vocabulary (**OQ-75**) and whether an operator may set
+  `supersedesOperationId`/`renewsOperationId` (§15.1.10).
 - Documentation updates land with the code they describe, never ahead of it:
   `owner-licensing/README.md` (API summary, security, role grants, the OD-LIC-10
   supersession note already added, and removal of "no signer … in this phase" only
   when a signer actually exists), PDR-17's matrix, and the OQ-74/75/90/91 rows.
+- **[OD-LIC-12]** PDR-17's matrix update is now **mandatory rather than cosmetic**:
+  R-1 removes the `LICENSE_OPERATOR` implicit baseline, so a document that still
+  describes that role as holding `customers.view`/`audit.view`/`operations.view`/
+  `operations.record` outright would contradict the implemented behaviour. The same
+  applies to `owner-licensing/README.md`'s role-grant section and to any comment in
+  `domain.ts` describing the static set as the operator's access rather than its
+  eligibility.
 
 ---
 
 ## 15. What this design deliberately does **not** decide
 
-Engineering may not settle these, and none may be inferred from silence:
+Engineering may not settle these, and none may be inferred from silence. The five
+struck-through rows below were decided by the Product Owner on 2026-10-20
+(**OD-LIC-11…OD-LIC-14**, PDR-19 §6) and are kept visible with their disposition so
+the record shows what was stopped and how it was resolved; they are **no longer open**.
+The rows that remain genuinely undecided are listed **above** them; the five closed
+rows are kept at the **end** of the same table, marked and dated, so a reader can see
+both what is still open and what was stopped and then resolved. §15.1 tables every
+remaining dependency with its options, owner and whether work can proceed.
 
 | Item | Why it is not decided here |
 |---|---|
@@ -1558,11 +1773,242 @@ Engineering may not settle these, and none may be inferred from silence:
 | Whether an operator may set `supersedesOperationId` or `renewsOperationId` at all | PDR-12 makes explicit supersession the **only** term-changing path and forbids reducing limits or entitlements on any path. Giving an operator that field is a product decision, not a schema detail |
 | Whether `OWNER_ADMIN` is ever configurable | PDR-19 §5.2 records **not** — the Product Owner did not choose the option that would have made it so |
 | Exact permission-code names | §6 proposes them following the existing `noun.verb` convention; OQ-75 requires the vocabulary to be explicit and tested before implementation, so the names are a review item |
-| **[REVIEW RV-1] Whether to adopt O-B — an Owner-held request-signing key** | §4.4 documents it as the *stronger* control (cryptographic authenticity of origin, no human step) and **stops**. It would place a new private key in the Owner web process/host/config — the custody shape readiness D-5 rejected for the license key — re-open U-1/OQ-74 for that key, create a **second signed format** needing its own PDR-16 assessment, and add a permanent offline key-rotation dependency. Needs a new key, a request signature and a protocol element, so it is not engineering's to choose. **O-A (§4.2 check 10) is what the design builds meanwhile** |
-| **[REVIEW RV-1] The out-of-band channel, and whether the confirmation value may ever be shortened** | §4.4 O-A requires a channel independent of the request file and 64-hex confirmation. *What counts as an acceptable independent channel* in Vardena's real operation (printed slip, second media, spoken) is an operational/security policy. **Shortening the value is a security weakening** — a truncated code is grindable by an attacker who can rewrite the file — so it needs explicit approval and is not assumed |
-| **[REVIEW RV-3] R-1 vs R-3: the default grant state of a new operator's non-issuance permissions** | §5.4 records the contradiction and withdraws the wrong sentence; the intersection **mechanism** is settled by PDR-19 §5.2 and is not reopened. What is undecided is whether `customers.view` / `audit.view` / `operations.view` / `operations.record` start **denied** (R-1, maximally fail-closed, removes today's capability until configured) or are **seeded as explicit active grants** (R-3, preserves today's access, makes every permission an audited row — engineering's recommendation). PDR-19 §5.2's default decision is worded only about *issuance* grants, so it does not settle this. **Implementation of operator creation must not start until it is answered.** No PDR-19 text is amended |
-| **[REVIEW RV-3] Whether retiring a limit profile may be permanent** | §5.2 adopts retire-plus-replace because the design's own `RETIRED` status and readable history only make sense with more than one row per customer, and because the alternative leaves an unrecoverable **widening** of operator freedom (no `ACTIVE` profile = the F-1 no-ceiling branch). If the Product Owner wants retirement to be irreversible, that is a product limitation and must be recorded with this consequence |
-| **[REVIEW RV-3] Whether retiring or replacing a profile should block a request already in flight** | §5.2 mirrors F-2's recorded revocation semantics — a later restriction blocks **new** work, not work already authorized — and labels the analogy as engineering. The opposite rule is coherent and would need a decision |
+| **[OD-LIC-11] ~~Whether to adopt O-B — an Owner-held request-signing key~~** | **CLOSED 2026-10-20.** The Product Owner chose **O-A** and did **not** adopt O-B (PDR-19 §6.1). No new key, signed format, canonicalization change, vector change or customer-side change is authorized. O-B stays documented in §4.4 as the stronger option; building it would need a **new** decision plus a custody answer for the second key while U-1/OQ-74 is OPEN |
+| **[OD-LIC-11] ~~Whether the confirmation value may ever be shortened~~** | **CLOSED 2026-10-20.** The value is **exactly 64 hex**; shortening or omission is **forbidden** (PDR-19 §6.1). The independent-path requirement is decided at the level of a testable rule — a digest taken from the request file itself does not qualify — so *which* independent medium is used (printed slip, second media, spoken) is operational practice inside that rule, not an open decision |
+| **[OD-LIC-12] ~~R-1 vs R-3: default grant state of a new operator~~** | **CLOSED 2026-10-20 — R-1** (PDR-19 §6.2). A new operator has zero effective access and creation writes no grant rows; R-3 is rejected. Operator-creation implementation is unblocked; what remains is OQ-75's vocabulary |
+| **[OD-LIC-13] ~~Whether retiring a limit profile may be permanent~~** | **CLOSED 2026-10-20 — reactivation of the same retired profile is allowed** (PDR-19 §6.3), never two `ACTIVE` at once, ceiling columns immutable, history never rewritten |
+| **[OD-LIC-14] ~~Whether a profile change should block a request already in flight~~** | **CLOSED 2026-10-20 — it does not** (PDR-19 §6.4). An in-flight request completes on its creation-time snapshot; new requests use current state. Payload alteration, integrity bypass and every other control remain forbidden |
+
+---
+
+## 15.1 Every remaining dependency, re-extracted from the current documents
+
+Re-derived on 2026-10-20 from the live registry and the live documents — not carried
+over from any earlier list. Each entry states the real identifier as it exists in the
+repository today, the decision that is still missing, what it blocks, the practical
+options (without choosing for the Product Owner), a technical recommendation where one
+is legitimately engineering's, and who owns the decision.
+
+**Advanceability vocabulary.** `BLOCKED` = no work may start. `INDEPENDENT` = can be
+built now, nothing waits on it. `AFTER PREREQ` = can be built once the named
+prerequisite exists, which need not be a product decision.
+
+### 15.1.1 **U-1 / OQ-74** — Signing-key compromise, containment, rotation and trust rollout
+
+| Field | Content |
+|---|---|
+| **Identifier** | **U-1 / OQ-74** |
+| **Precise question** | A compromised or retired authority key: how is compromise detected and contained, what happens to artifacts signed by it, what is the rotation cadence, and how is a new public key rolled out to customers? |
+| **Decision still required** | A compromise-response and rotation **policy** plus its trust-rollout mechanism. The registry records policy as decided only in the negative direction (already-issued licenses are **not** automatically invalidated solely because of compromise) and explicitly warns not to assume compromised-key signatures are distinguishable or to claim safe rotation. |
+| **Impact on development** | **Blocks the production key path entirely, but not this design's code.** No production key may be generated or placed in custody until U-1 is answered (readiness D-5: *"approval required? YES — blocking"*). It also gates §8.3's trust list beyond first use: the list is configuration precisely so nothing pre-empts U-1, but rotating it is a deployment act with no defined procedure. Issuance can be **built and tested** with the quarantined TEST-ONLY vector key without answering this. |
+| **Options** | (a) Manual rotation: a documented offline ceremony, `signing_keys` status flipped to `REVOKED`, trust list updated by deployment, customers re-import. (b) Overlap window: two trusted keys valid simultaneously for a bounded period. (c) Out of MVP scope: single key, no rotation procedure, compromise handled as an incident outside the product. |
+| **Technical recommendation** | **Engineering may recommend (a) for the first slice**, because it needs no new mechanism and matches §8.3's configuration-based trust list; the risk is that customers on an old trust list refuse a new key, which is exactly why the overlap window (b) exists. **Engineering must not choose** the containment or provenance policy for artifacts already signed by a compromised key — that is the substance of U-1 and is a Product Owner decision. |
+| **Depends on** | OD-LIC-08 (custody answered), OQ-78 (revocation), §8.3 trust list, readiness D-5, `docs/tasks/licensing-oq-74-signing-key-compromise-response.md`. |
+| **Can work proceed?** | **INDEPENDENT** for building and testing issuance with the TEST-ONLY key. **BLOCKED** for any production key or live rotation. |
+| **Document location** | `docs/open-questions.md` OQ-74 row; `docs/tasks/licensing-oq-74-signing-key-compromise-response.md`; PDR-11 §15 U-1; readiness D-5. |
+| **Decision owner** | **Product Owner** — compromise containment and rotation cadence are commercial and security policy, and the registry already records the policy as OPEN with an explicit warning against claiming safe rotation. |
+
+### 15.1.2 **OQ-75** — Exact permission-code vocabulary and its audit evidence
+
+| Field | Content |
+|---|---|
+| **Identifier** | **OQ-75** |
+| **Precise question** | What are the **exact** permission-code strings for issuance, and what audit evidence proves each is server-enforced on every request? |
+| **Decision still required** | Approval of the code names in §6.1 (`licenses.issue.time_limited`, `licenses.issue.perpetual`, `licenses.import`, `licenses.view`, `licenses.download`, `limit_profiles.manage`) and of the eligibility matrix, plus the implementation evidence the registry demands. |
+| **Impact on development** | **Blocks step 1 of the delivery order** (permission grants and effective-permission resolution) and therefore everything downstream: no endpoint can be authorized, no matrix test can be written against fixed strings, and migration `007`'s CHECK constraint on `user_permission_grants.permission` cannot be written. OD-LIC-12 (R-1) fixed the *semantics*; this fixes the *names*. |
+| **Options** | (a) Adopt §6.1 as written. (b) Adopt it with different names (e.g. a single `licenses.issue` plus a kind argument, or `issuance.*` instead of `licenses.*`). (c) Defer naming and implement behind an internal enum mapped later. |
+| **Technical recommendation** | **Engineering recommends (a)**: it follows the existing `noun.verb` convention already in `domain.ts` (`customers.write`, `operations.record`, `replacements.authorize`), keeps perpetual issuance a distinct code so OD-LIC-07's reservation is enforced by vocabulary rather than by an argument check, and (c) is unsafe because OQ-75 requires the mapping to be **explicit** and unknown actions to deny — an internal enum defers exactly the thing the registry says must not be inferred. Risk of (a): renaming later is a migration plus a data update, so the names should be settled before `007` is written. |
+| **Depends on** | OD-LIC-07, OD-LIC-12 (R-1), F-2 scope, PDR-17's superseded static matrix, §6.1 matrix, migration `007`. |
+| **Can work proceed?** | **BLOCKED** for step 1 and everything after it. The conformance suite (step 2) does **not** depend on it. |
+| **Document location** | `docs/open-questions.md` OQ-75 row; design §6.1; PDR-17 role matrix; PDR-11 §21. |
+| **Decision owner** | **Product Owner** — OQ-75 records that *"exact mapping must be explicit"* and that no signing, custody or recovery permission may be inferred; naming the vocabulary is the act that makes it explicit, so it is a decision, not a detail. |
+
+### 15.1.3 **OQ-78** — Revocation and recovery of an issued license
+
+| Field | Content |
+|---|---|
+| **Identifier** | **OQ-78** |
+| **Precise question** | Once a signed artifact exists, what can the Owner actually do about it — is there any revocation instrument, and what does a wrongly issued license cost? |
+| **Decision still required** | A revocation/recovery **protocol**, not just policy. PO-78-01 decided only that offline revocation of a perpetual license is *permitted* as policy; the registry records the row as OPEN for protocol and implementation. |
+| **Impact on development** | **Does not block building issuance, and must not be allowed to.** It is the reason several accepted trade-offs are accepted rather than solved: OD-LIC-14's in-flight window, F-2's revoked-grant window (PDR-19 §5.2), and risk **B-5**. Every one of them ends in *"irrevocable in practice"* because this row is open. It also gates OQ-90's sub-question about correcting an installation identity after issuance. |
+| **Options** | (a) No instrument in MVP: rely on supersession (PDR-12) to replace terms and accept that a bad artifact keeps verifying. (b) Signed revocation artifact the customer imports. (c) Trust-list/key-level revocation, which is U-1 territory and would invalidate far more than intended. |
+| **Technical recommendation** | **Engineering recommends (a) for this phase with (b) recorded as the next instrument**, because (b) is a new signed artifact kind and therefore a protocol change requiring its own PDR-16 assessment, and (c) is disproportionate — it is a key-level response to a per-license mistake. Risk of (a): a wrongly issued perpetual license remains valid at the customer until its term ends, which is precisely risk B-5 and is why the design concentrates perpetual issuance in `OWNER_ADMIN` (OD-LIC-07). |
+| **Depends on** | U-1/OQ-74, PDR-12 supersession, PDR-18 §11 PO-78-01, OD-LIC-14, F-2 revocation trade-off, OQ-90 correction-after-issuance. |
+| **Can work proceed?** | **INDEPENDENT** — issuance may be built and shipped while this stays open, provided every affected UI and audit surface keeps saying *irrevocable in practice* rather than implying recovery. |
+| **Document location** | `docs/open-questions.md` OQ-78 row; `docs/tasks/oq-78-revocation-recovery-assessment.md`; PDR-18 §11. |
+| **Decision owner** | **Product Owner** — whether a wrong license can be taken back is commercial and legal exposure, not an engineering trade. |
+
+### 15.1.4 **OQ-81** — Replay and receipt contract for the import endpoint
+
+| Field | Content |
+|---|---|
+| **Identifier** | **OQ-81** |
+| **Precise question** | When the same signed artifact is imported twice, what exactly does the Owner return — the persisted historical result, the current state, or both — and with what status code and DTO? |
+| **Decision still required** | The response schema and status code for a committed retry. The registry records the *semantics* as decided (a new `operationId` is a new operation; the fingerprint excludes `customerName`/`issuedAt` and includes `supersedesOperationId`; a committed retry re-checks authorization, canonical form, signature, trust and scope, then takes a read-only receipt path) and the **exact replay DTO as open**. |
+| **Impact on development** | **Blocks only the final response shape of §11's import endpoint and §7.2's replay row.** Everything else — verification, digest comparison, storage, state transition, audit — is unaffected. PDR-18 §5 approves the shape this design follows but does not fix the schema. |
+| **Options** | (a) Reuse the customer side's replay response shape verbatim for consistency across the two apps. (b) Define an Owner-specific DTO naming `status`, `recordedAt`, `replay: true` and the artifact digest. (c) Return the same body as a first-time import plus a replay indicator header. |
+| **Technical recommendation** | **Engineering recommends (a) if the customer shape is a published contract, otherwise (b)**, because an operator facing two different vocabularies for the same concept is a training and support cost, and (c) hides the replay signal where the UI cannot show it. Risk of (b): a second vocabulary diverges from the customer side over time. **Engineering must not fix the DTO unilaterally** — the registry explicitly keeps it open. |
+| **Depends on** | PDR-18 §5, §7.2 of this design, §11 API surface, OQ-81's technical design document. |
+| **Can work proceed?** | **AFTER PREREQ** — implementable as soon as the DTO is fixed; the endpoint's logic can be built against a placeholder internal type in the meantime, but not shipped. |
+| **Document location** | `docs/open-questions.md` OQ-81 row; `docs/tasks/oq-81-idempotent-replay-technical-design.md`; PDR-18 §5; design §7.2, §11. |
+| **Decision owner** | **Product Owner** for the observable contract (what an operator sees and what a receipt means); **engineering** for the internal shape once that is fixed. |
+
+### 15.1.5 **OQ-85** — Owner infrastructure operational evidence
+
+| Field | Content |
+|---|---|
+| **Identifier** | **OQ-85** |
+| **Precise question** | What operational evidence demonstrates that the Owner-controlled infrastructure and trust boundary actually hold in deployment — now with two new pieces of surface? |
+| **Decision still required** | Not a design decision but an **acceptance criterion**: the evidence that the artifact store and the offline signer are deployed, isolated and operated as designed. The registry records the boundary as decided and the row OPEN for implementation/operational evidence. |
+| **Impact on development** | **Blocks acceptance, not construction.** OD-LIC-10 adds a durable file store outside PostgreSQL and OD-LIC-08 adds an offline signing station; both are new deployment surface with no evidence yet. Specifically: proof the signer is absent from every deployable web image (§4.1's CI gate), proof the artifact directory is outside the database's backup scope or correctly inside it, and proof the customer needs no continuous Owner connectivity. |
+| **Options** | (a) Evidence pack per component: CI assertions, deployment checklist, restore rehearsal. (b) Defer to a single operational-readiness review after all components exist. (c) Treat existing Owner deployment evidence as sufficient and extend it. |
+| **Technical recommendation** | **Engineering recommends (a) incrementally, landing each component's evidence with its code** — the signer-image CI assertion is cheap and belongs with step 5, and the artifact store's restore rehearsal belongs with step 6. Risk of (b): deferring evidence until the end is how a store that cannot be restored reaches production. |
+| **Depends on** | OD-LIC-08, OD-LIC-10, §4.1 signer packaging, §8.1 artifact store, migration `007`, `scripts/check-production-artifacts.py`. |
+| **Can work proceed?** | **INDEPENDENT** — evidence for each component is produced alongside that component; nothing waits. |
+| **Document location** | `docs/open-questions.md` OQ-85 row; design §4.1, §8.1; PDR-17; PDR-11 §21. |
+| **Decision owner** | **Engineering** to produce the evidence; **Product Owner** to accept it as sufficient. The boundary itself is already decided. |
+
+### 15.1.6 **OQ-90** — Installation identity — correction after issuance, and the confirmation step's shape
+
+| Field | Content |
+|---|---|
+| **Identifier** | **OQ-90** |
+| **Precise question** | Two sub-questions survive OD-LIC-09: may a registered `installationId` be **corrected after** an issuance already names it, and what exactly is the confirmation step that makes a transcription error less likely? |
+| **Decision still required** | For correction-after-issuance: a **product** answer, because a signed payload already names the identity and OQ-78 leaves no revocation instrument. For the confirmation shape: an engineering design detail that OD-LIC-09 explicitly delegates (*"its exact shape is design work"*). |
+| **Impact on development** | **Correction-after-issuance blocks nothing today but must not be silently assumed away**: §5.3 registers identities and §5.1 snapshots `installation_id`, so the schema already prevents a silent rewrite, and an operator who mistypes an identifier has **no in-product recovery**. The confirmation shape blocks only §5.3's UI slice. |
+| **Options** | Correction: (a) never — a wrong binding is permanent, matching the schema as designed. (b) Retire the identity and issue a superseding license (PDR-12), so the signed history stays truthful. (c) Allow an audited correction of the identity row, which would falsify what a past artifact actually names. Confirmation shape: (i) type twice, (ii) type once plus an explicit consequence screen, (iii) show the resolved customer and identifier for a deliberate confirm. |
+| **Technical recommendation** | **Engineering recommends (b) for correction** — it keeps every signed fact truthful and reuses the only authorized term-changing path; **(c) must be rejected** because it rewrites the meaning of an artifact that already exists and cannot be revoked. **For the confirmation shape, engineering adopts (i)+(ii)+(iii) together for the first slice** (§5.3 already proposes re-entry), since a transcription error here is the one mistake the signature cannot detect. Risk of (b): the customer must import a second artifact, which costs a round trip. |
+| **Depends on** | OD-LIC-09, OQ-78 (no revocation instrument), PDR-12 supersession, ADR-0048 Decision 5 (claims never identity), §5.3, §5.1. |
+| **Can work proceed?** | **AFTER PREREQ** for the confirmation UI (engineering may proceed). **BLOCKED** for any correction-after-issuance capability — do not build one. |
+| **Document location** | `docs/open-questions.md` OQ-90 row; PDR-19 §3; design §5.3; ADR-0048 Decision 5. |
+| **Decision owner** | **Product Owner** for correction-after-issuance (it decides whether a mistake is recoverable and at what commercial cost); **engineering** for the confirmation step's shape. |
+
+### 15.1.7 **OQ-91** — Artifact store retention, backup and restore
+
+| Field | Content |
+|---|---|
+| **Identifier** | **OQ-91** |
+| **Precise question** | OD-LIC-10 decided *where* signed artifacts live; it explicitly did **not** decide how long they are kept, how they are backed up, or how they are restored. |
+| **Decision still required** | A retention period, a backup scope, and a restore procedure — including whether the store is inside or outside the PostgreSQL backup boundary, and what a restore proves. |
+| **Impact on development** | **Blocks the artifact store's operational acceptance (with OQ-85) but not its construction.** §8.1 can be built to the audit-archive pattern now. It also interacts with the disclosure surface OD-LIC-10 recorded: a readable archive of signed customer grants is a disclosure risk even though it cannot be forged, and retention length is directly proportional to that exposure. |
+| **Options** | (a) Retain indefinitely, back up with the database, rehearse restore per release. (b) Retain for the license term plus a bounded tail, then purge on a schedule. (c) Retain the digest and metadata indefinitely but the artifact only for a bounded window, re-deriving nothing. |
+| **Technical recommendation** | **Engineering recommends (a) for the first slice with (b) recorded as the eventual policy**, because a signed artifact is **not re-derivable** — unlike a row it cannot be recomputed from other data, so purging it before the customer no longer needs it makes a lost file unrecoverable, and PDR-18 §9 / OD-LIC-06 make re-download the recovery path. Risk of (a): the disclosure surface grows without bound, which is why access stays permission-gated and every retrieval audited (§8.2). |
+| **Depends on** | OD-LIC-10, OQ-85, §8.1 store, §8.2 download, PDR-18 §9 re-download, migration `004` retention rules. |
+| **Can work proceed?** | **INDEPENDENT** for construction; **BLOCKED** for the retention/backup policy itself. |
+| **Document location** | `docs/open-questions.md` OQ-91 row; PDR-19 §4; design §8.1, §8.2. |
+| **Decision owner** | **Product Owner** — retention and backup are commercial, legal and disclosure-exposure decisions; engineering implements whatever is chosen. |
+
+### 15.1.8 **(no OQ id)** — Whether a prepared signing request expires
+
+| Field | Content |
+|---|---|
+| **Identifier** | **(no OQ id)** |
+| **Precise question** | Does a `REQUEST_PREPARED` issuance stop being completable after some period, and if so measured from what — request creation, the signer's clock, or the license's own `validUntil`? |
+| **Decision still required** | Whether to introduce an expiry at all, and its anchor and duration. **No automatic expiry is invented by this design.** |
+| **Impact on development** | **Blocks nothing, but leaves two real exposures.** First, §1.4: the customer's importer refuses a time-limited document whose end has passed (`expired-document`, `license-import.service.ts:567-582`), so an unbounded offline delay can make an artifact **permanently unimportable** — work is silently destroyed with no error until import. Second, OD-LIC-14 keeps an in-flight request completable on its snapshot, so without an expiry a request can complete against a ceiling that changed arbitrarily long ago. |
+| **Options** | (a) No expiry: the row stays completable forever; the UI shows request age (§12.3) and the customer-side refusal is the only backstop. (b) Configurable expiry anchored at request creation, mirroring PDR-17's replacement-confirmation window (1h–7d, default 24h). (c) Expiry anchored to `validUntil` for time-limited requests only, so a request dies exactly when its artifact would become unimportable. |
+| **Technical recommendation** | **Engineering recommends (c) for time-limited requests plus (a) for perpetual**, because (c) is derived from an existing verified refusal rather than invented, and it makes the failure visible at the Owner instead of at the customer. Risk: PDR-17 explicitly warns that the comparable replacement window's **start/end semantics remain unspecified**, so (b)'s analogy is unsafe and must not be applied by engineering. **This is a product decision** — it determines whether authorized work can be silently discarded. |
+| **Depends on** | §1.4, OD-LIC-14, §9.1 state machine (no expiry state exists), §12.3 request age, PDR-17's unspecified window semantics. |
+| **Can work proceed?** | **INDEPENDENT** — issuance is fully buildable under (a), which is the current design. An expiry would be additive. |
+| **Document location** | design §15 (this row), §1.4, §9.1, §12.3; PDR-17:301-302. |
+| **Decision owner** | **Product Owner** — it decides whether the Owner may discard authorized work, and on what clock. |
+
+### 15.1.9 **(no OQ id)** — Confidentiality and handling of the request file in transport
+
+| Field | Content |
+|---|---|
+| **Identifier** | **(no OQ id)** |
+| **Precise question** | OD-LIC-11 proves the request's **integrity**. Nothing decides its **confidentiality**: the file carries a real customer's commercial terms on removable media. What handling is required? |
+| **Decision still required** | A transport-handling rule: permitted media, encryption at rest on the media, whether the file may traverse mail or shared folders, and disposal after signing. |
+| **Impact on development** | **Blocks nothing technically and must not be closed by silence.** The request payload contains customer identity, caps, module entitlements and commercial dates — the same class of data OD-LIC-10 recorded as a disclosure surface for the artifact store, but here on media leaving the building with **no** permission gate and **no** audit trail. OD-LIC-11's independent-channel requirement already implies two items in transit, not one. |
+| **Options** | (a) Document a handling procedure, no technical control. (b) Encrypt the request file with a pre-shared transport key — note this is a **new key**, which OD-LIC-11 forbids in this phase. (c) Split the payload so the file alone is not commercially meaningful — this changes the request format. (d) Accept the exposure and record it. |
+| **Technical recommendation** | **Engineering recommends (a) plus (d) recorded explicitly**, because (b) is excluded by OD-LIC-11's *"no new key"* constraint and (c) would alter the request artifact for a non-integrity reason. Risk of (a): a procedure is only as strong as its enforcement, and the Owner cannot audit what happens offline (§10's recorded audit gap). **Engineering must not choose (b) or (c)** — both need a decision. |
+| **Depends on** | OD-LIC-11 (no new key, no format change), §3.4 (integrity not confidentiality), §10 (offline audit gap), OD-LIC-10 disclosure reasoning. |
+| **Can work proceed?** | **INDEPENDENT** — a handling procedure can be written and adopted at any time without touching the design. |
+| **Document location** | design §3.4, §15 (this row), §10; PDR-19 §6.1. |
+| **Decision owner** | **Product Owner** with security — it is a data-handling policy about commercially sensitive customer data leaving the premises. |
+
+### 15.1.10 **(no OQ id)** — Whether an operator may set `supersedesOperationId` or `renewsOperationId`
+
+| Field | Content |
+|---|---|
+| **Identifier** | **(no OQ id)** |
+| **Precise question** | May a `LICENSE_OPERATOR` create a request that supersedes or renews an existing license, or is that reserved to `OWNER_ADMIN`? |
+| **Decision still required** | A permission answer, and it is **not** settled by the §6.1 matrix: the matrix makes both fields reachable through `licenses.issue.time_limited`, which an operator may hold. |
+| **Impact on development** | **Blocks the request-creation form and its server validation** (§12.2, §11), because whether the fields are offered and accepted depends on it. PDR-12 makes explicit supersession the **only** term-changing path and forbids reducing limits or entitlements on any path, so an operator holding this field holds a term-changing power. |
+| **Options** | (a) `OWNER_ADMIN`-only, like perpetual issuance. (b) Operator-allowed for renewal but not supersession. (c) Operator-allowed for both, bounded by the customer's limit profile. |
+| **Technical recommendation** | **Engineering recommends (a)**, because supersession changes terms on an existing customer relationship and OD-LIC-07 already established the principle that the irreversible, term-defining act concentrates in `OWNER_ADMIN`; (c) is inconsistent, since a profile bounds *magnitudes* but supersession is a *relationship* change. Risk of (a): renewals become an admin bottleneck, which is the same trade-off OD-LIC-07 already accepted for perpetual grants. **Engineering must not pick (b) or (c)** — both grant a term-changing power the recorded decisions do not. |
+| **Depends on** | PDR-12, PDR-18 §9 renewal, OD-LIC-07, §6.1 matrix, §9.1 (renewal and supersession are fields, not statuses), F-1 profiles. |
+| **Can work proceed?** | **BLOCKED** for the two fields specifically. Time-limited issuance **without** them is fully buildable now, so this blocks a sub-feature rather than the capability. |
+| **Document location** | design §3.2, §9.1, §15 (this row), §12.2; PDR-12; PDR-18 §9. |
+| **Decision owner** | **Product Owner** — it allocates a term-changing commercial power between roles. |
+
+### 15.1.11 **(no OQ id)** — PDR-17's static matrix and `domain.ts` comments now contradict OD-LIC-12
+
+| Field | Content |
+|---|---|
+| **Identifier** | **(no OQ id)** |
+| **Precise question** | PDR-17 documents `LICENSE_OPERATOR` as holding four permissions outright, and `domain.ts:14-18,33-38` returns them from `permissions(role)`. Under R-1 those become **eligibility**, not access. Which document is corrected, and when? |
+| **Decision still required** | Not a product decision — the decision is made (OD-LIC-12). What remains is the **order**: whether PDR-17 is amended before, with, or after the code. |
+| **Impact on development** | **Blocks nothing, but creates a live contradiction that will mislead the next reader.** This is the same class of defect the review found as RV-3: two authoritative documents stating opposite things about the same access rule. |
+| **Options** | (a) Amend PDR-17 and the `domain.ts` comment in the same PR that implements R-1. (b) Amend them now, ahead of the code, as a documentation-only change. (c) Leave PDR-17 as historical and record the supersession only in PDR-19. |
+| **Technical recommendation** | **Engineering recommends (a)**, matching §14's existing rule that documentation lands with the code it describes and never ahead of it — (b) would make PDR-17 describe behaviour that does not exist yet, which is how the OD-LIC-10 README conflict arose in the first place. (c) is insufficient because PDR-17 is still the document a reader reaches for the role matrix. **This is engineering's to sequence**; no product decision is needed. |
+| **Depends on** | OD-LIC-12, OD-LIC-07 (already superseded PDR-17's matrix for this role), §14 documentation rule, `domain.ts:14-18`. |
+| **Can work proceed?** | **AFTER PREREQ** — lands with the R-1 implementation (delivery step 1). |
+| **Document location** | PDR-17 role matrix; `owner-licensing/backend/src/domain.ts:14-18,33-38`; design §14; PDR-19 §6.2. |
+| **Decision owner** | **Engineering** — the policy is decided; only the sequencing of documentation is open, and §14 already states the rule. |
+
+### 15.1.12 **(no OQ id)** — Owner→customer import direction is unpoliced
+
+| Field | Content |
+|---|---|
+| **Identifier** | **(no OQ id)** |
+| **Precise question** | `scripts/check-owner-isolation.py` polices only the customer→Owner direction. Nothing fails a build if Owner code imports customer code, which is exactly how a second canonicalizer could silently become a *copied* one. |
+| **Decision still required** | Whether to extend the isolation gate to the Owner→customer direction, and with what exceptions (the vector corpus is shared **data** and must stay readable). |
+| **Impact on development** | **Blocks nothing, but it is the cheapest available mitigation of readiness risk R-3** — the risk that the Owner's independent implementation of the canonical byte contract drifts from the customer's. RV-2 in this very review was an instance of that drift, found by a human reading `canonicalizeLicenseVersion` rather than by any gate. |
+| **Options** | (a) Extend the script to fail on Owner→customer **source** imports while allowing reads of `docs/licensing/vectors/**` as data. (b) Leave it and rely on §13.1's conformance suite to catch drift at test time. (c) Add both. |
+| **Technical recommendation** | **Engineering recommends (c)**: the gate prevents the structural mistake and the conformance suite catches the semantic one; they fail differently and both are cheap. Risk of (a) alone: an import ban does not stop a hand-copied rule, which is what RV-2 was. **No product decision needed.** |
+| **Depends on** | §1.1, §1.2, §13.1, readiness R-3, `scripts/check-owner-isolation.py`, `docs/licensing/licensing-protocol-vectors.md` §5 rule 5 and §5.1. |
+| **Can work proceed?** | **INDEPENDENT** — can be added at any time, and is cheapest before any Owner licensing code exists. |
+| **Document location** | `scripts/check-owner-isolation.py`; design §1.1, §1.2, §13.1. |
+| **Decision owner** | **Engineering** — it is a build-gate scope question with no product or commercial content. |
+
+### 15.1.13 **(no OQ id)** — Whether the signer's duplicate-suppression record (§4.2 check 11) is required
+
+| Field | Content |
+|---|---|
+| **Identifier** | **(no OQ id)** |
+| **Precise question** | Check 11 keeps a local append-only record of signed `operationId`s in the offline environment. Is that a **requirement** of the signer, or optional hardening — and what happens when a second signing station exists? |
+| **Decision still required** | Whether check 11 is mandatory, and how duplicate suppression works across more than one offline station. |
+| **Impact on development** | **Blocks the signer's specification (delivery step 5).** The Owner-side controls are unaffected and remain authoritative: `operation_id` is unique (§5.1) and the §9.1 state machine refuses a second import. But check 11 is the **only** defence against T-10 that runs before the key is used. |
+| **Options** | (a) Mandatory single-station record, accepted as best-effort. (b) Mandatory plus a documented rule that only one signing station may exist. (c) Optional, relying on Owner-side uniqueness. |
+| **Technical recommendation** | **Engineering recommends (b)**, because (a) silently degrades to nothing when a second station appears and (c) abandons pre-signature detection for the one attack no digest can catch — a replayed file has a *correct* digest. Risk of (b): it constrains operations to one offline station, which may be a real limitation for a growing Owner team and is why the choice is recorded rather than assumed. **Arguably a product/operational decision** if more than one station is ever wanted. |
+| **Depends on** | §4.2 check 11, §3.6 T-10, §5.1 uniqueness, §9.1 state machine, OD-LIC-08's offline environment. |
+| **Can work proceed?** | **AFTER PREREQ** — implementable as (a) immediately; (b) needs the operational constraint accepted. |
+| **Document location** | design §4.2 check 11, §3.6 T-10, §5.1. |
+| **Decision owner** | **Engineering** for the mechanism; **Product Owner** if the one-station constraint is unacceptable operationally. |
+
+### 15.1.14 Summary — what can be built today
+
+| Delivery step (§14) | Blocked by | Can start now? |
+|---|---|---|
+| **1** Permission grants, effective resolution, audit | **OQ-75** (exact code names) | **No** — needs the vocabulary |
+| **2** Owner canonicalizer / signer / verifier + conformance suite | nothing | **Yes — INDEPENDENT**, and it is the highest-risk piece, so it should go first |
+| **3** Request-integrity control (OD-LIC-11 check 10) and the proof the key is never read on refusal | nothing — **OD-LIC-11 decided it** | **Yes — INDEPENDENT** |
+| **4** Permission matrix + grant lifecycle | OQ-75 for names; **OD-LIC-12 decided the semantics** | After step 1 |
+| **5** Limit profiles, migration `007`, reactivation, snapshot | **OD-LIC-13 and OD-LIC-14 decided both** | **Yes** once step 1 exists — no product decision outstanding |
+| **6** Durable artifact store + recovery at the PostgreSQL/filesystem boundary | nothing for construction; OQ-91 for retention policy | **Yes** for construction |
+| **7** Endpoints: request creation, artifact import, secure download | OQ-75 (authorization), OQ-81 (replay DTO) | Partially — logic yes, shipped response no |
+| **8** Owner UI and the full operator round trip | steps 1–7; §12.2's supersession/renewal fields blocked by dependency 10 | Partially |
+| **9** Integration and customer tests, full CI, manual evidence review | everything above, plus OQ-85 evidence | Last |
+
+**Two capabilities are blocked by a missing product decision and nothing else:**
+step 1 (OQ-75's vocabulary) and the supersession/renewal fields of steps 7–8
+(dependency 10). Everything else either has its decision or is legitimately
+engineering's.
+
+**No step is called complete here.** Nothing is implemented; the table says what may
+*start*, not what is done.
 
 ---
 
@@ -1582,6 +2028,11 @@ Engineering may not settle these, and none may be inferred from silence:
 | **[REVIEW RV-2] Corpus census — do the vectors exercise the omission rules?** | All 23 files under `docs/licensing/vectors/**` decoded; 6 carry a `VLIC2` payload | Confirmed and it matters: **all 6 carry all 18 fields**, `supersedesOperationId` is `null` in all 6, `deviceLimit` is present in all 6, and `renewsOperationId` appears in **zero** canonical byte strings. So the corpus alone would **not** have caught the §3.2 error — an independent reason the golden literals of §13.2 are required |
 | **[REVIEW RV-2] The two payloads cannot share one digest** | Field-set comparison, §3.4 | Confirmed: request has `v = 1`, `kind = SERVER_LICENSE_ISSUANCE_REQUEST`, `requestId`, `requestedAt`, `requestedByUserId`, `deviceLimitSpecified`; `VLIC2` has `v = 2`, `kind = SERVER_LICENSE_VERSION`, `issuedAt`. A single digest comparison refuses every legitimate import |
 | **[REVIEW RV-3] Current role baseline** | `owner-licensing/backend/src/domain.ts:3-39` | Confirmed: `LICENSE_OPERATOR` holds exactly `customers.view`, `audit.view`, `operations.view`, `operations.record`; `OWNER_ADMIN` holds all eight; unknown roles get `[]` |
+| **[OD-LIC-11] The adopted control needs no protocol change** | §4.4 O-A against PDR-16 D-2(b), the `VLIC2` format and the corpus | Confirmed: a displayed SHA-256 adds no key, no signed field, no canonicalization rule and no vector |
+| **[OD-LIC-13] The partial unique index enforces the constraint on reactivation** | PostgreSQL semantics for a partial unique index under `UPDATE` | Confirmed by construction: when an updated row newly satisfies the predicate its index entry is inserted and uniqueness is checked, so `RETIRED → ACTIVE` fails at the database if another `ACTIVE` row exists for that customer. The service still refuses first |
+| **[OD-LIC-12] R-1's effect on the existing role baseline** | `owner-licensing/backend/src/domain.ts:3-39` | Confirmed: the four operator permissions become eligibility, not access, so the static `permissions()` result must not be used as the effective check, and PDR-17's matrix becomes contradictory until updated (§15.1.11) |
+| **[OD-LIC-14] The snapshot rule overrides no other control** | §5.1 immutable-facts trigger, §7.4, §8.3, §9.1 | Confirmed: OD-LIC-14's own text forbids payload alteration, integrity bypass and ignoring other controls, and each of those is enforced by a separate mechanism this design already specifies |
+| **[2026-10-20] Repository state before amending** | `git fetch origin --prune`; `gh pr view 186`; `gh api …/check-runs` | PR #186 **OPEN**, `MERGEABLE`/`CLEAN`, head `8ac158a`; `origin/main` = `8fc52eee…`; CI run `39327463867` all success. The local branch ref had been reset to the branch base a **third** time; recovered from the pushed head after verifying all seven files byte-identical, with no working-tree loss |
 | `docs` link check | `python3 scripts/check-docs-links.py` | PASS, 0 broken |
 
 No test was executed for this design, no code was written, and no capability is
