@@ -677,10 +677,9 @@ digest mismatch.
 
 **Dependencies and unresolved.** Closes OQ-94B. Depends on OD-LIC-13's reactivation
 being a status transition on the same row, so that "the profile changed" has a precise
-meaning. Does not resolve OQ-78 (revocation) or the pending-request expiry question,
-which design §15 still records as open: an in-flight request may remain completable
-indefinitely, and the only temporal backstop today is the customer-side
-`expired-document` refusal.
+meaning. Does not resolve OQ-78 (revocation). Prepared-request expiry is now decided
+by OD-LIC-20 (§11): a fixed 14 × 24-hour maximum age; implementation and conformance
+tests remain pending in the traceability matrix.
 
 ### 6.5 What §6 changes in the gate
 
