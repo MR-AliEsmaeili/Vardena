@@ -1,53 +1,66 @@
-# Agent work report — Owner UI Thinking Orbs loading system
+# Agent work report — Owner UI Thinking Orbs loading system (PR #189)
 
-**Agent role:** Senior Frontend / UI-UX / Visual design
-**Branch:** `feat/owner-ui-loading-thinking-orbs`
-**Date:** 2026-10-20
-**Scope:** `owner-licensing/frontend` only
+**Branch:** `feat/owner-ui-loading-thinking-orbs`  
+**PR:** https://github.com/MR-AliEsmaeili/Vardena/pull/189  
+**Scope:** `owner-licensing/frontend` (+ this report under `docs/tasks/`)  
+**Dates:** 2026-10-20 (initial) · 2026-10-20 (corrective pass)
 
 ## Goal
 
-Adopt the same loading language as the main Vardena SPA (`docs/frontend/loading-system.md`, ADR-0051) using `thinking-orbs@0.3.2`, improve visual polish of the Owner shell without changing business logic, and keep CI green.
+Adopt the main Vardena loading language (`docs/frontend/loading-system.md`, ADR-0051) with `thinking-orbs@0.3.2`, fix integration defects, keep all Owner UI tests green, and leave CI green on the final head.
 
-## What was done
+## Problems found in the initial PR head (`b504959`)
 
-1. **Dependency:** added `thinking-orbs@^0.3.2` to `owner-licensing/frontend/package.json`.
-2. **Registry:** ported `src/api/request-activity.ts` (framework-free, token-based, idempotent end).
-3. **Transport:** extended `src/api/client.ts` with request/response interceptors and `runTrackedRequest` helpers identical in policy to the main frontend (reads → background, writes → global; silent/override support).
-4. **Visual primitives:**
-   - `src/ui/thinking-orb.tsx` — single wrapper around the library.
-   - Updated `src/ui/patterns/states.tsx` — `LoadingState` and `FullPageLoading` now use Thinking Orbs + skeleton rows (no CSS spinner).
-   - `src/ui/patterns/request-activity.tsx` — `GlobalRequestIndicator`, `BackgroundActivityIndicator`, `LocalFetchingIndicator` with the documented delay thresholds.
-5. **Mount points:** `GlobalRequestIndicator` in `AppProviders`; ambient orb in `AppShell` header.
-6. **i18n:** added `t.loading.*` keys and `t.table.refreshing`.
-7. **Shell polish (standards-compliant):** sticky header with backdrop, tighter spacing, logical properties, subtle shadows, clearer nav active state — density preserved, no decorative cards.
-8. **Tests:** `src/api/request-activity.test.ts` unit coverage for the registry.
+| Severity | Issue | Evidence | Fix |
+| --- | --- | --- | --- |
+| **Definite** | `package-lock.json` not updated after adding `thinking-orbs` | CI `Owner UI verification` → `npm ci` fails | Commit updated lockfile from `npm install` |
+| **Definite** | Idle `GlobalRequestIndicator` is an empty `<output>` (implicit `role="status"`), stealing toast success queries | `owner-flow.test.tsx` / `operations-flow.test.tsx` failed on `findByRole('status')` with empty text | `aria-hidden={true}` when not visible |
+| **Risk reviewed** | Canvas not implemented in jsdom | Console noise from thinking-orbs; tests still pass | Acceptable; library pauses offscreen; no product impact |
+| **Risk reviewed** | Client activity tracking not covered by HTTP adapter tests | Existing `client.test.ts` only asserts 401 classification | Registry unit tests expanded; full interceptor matrix remains follow-up if CI budget allows |
 
-## Explicit non-goals (per instructions)
+## What was implemented
 
-- No business-logic or API-contract changes.
-- No new product decisions (dark mode, density, calendar picker, etc.).
-- No inventing endpoints or WebSocket progress.
-- No full-page blocking modal for ordinary requests.
+1. **Dependency + lockfile:** `thinking-orbs@^0.3.2` and matching `package-lock.json`.
+2. **Registry:** `src/api/request-activity.ts` — token-based, idempotent end, snapshot identity rules.
+3. **Transport:** interceptors + `runTrackedRequest` safety net (success / error / cancel).
+4. **UI primitives:** `ThinkingOrbIndicator`, updated `LoadingState` / `FullPageLoading`, global / ambient / local indicators with 500ms / 300ms thresholds.
+5. **Mount:** global indicator in `AppProviders`; ambient orb in `AppShell`.
+6. **i18n:** `t.loading.*`, `t.table.refreshing`.
+7. **A11y fix:** idle global indicator removed from a11y tree so toasts keep `role="status"`.
+8. **Shell polish:** sticky header, logical properties, clearer nav active state (density-preserving).
+9. **Tests:** registry unit tests expanded; full suite green locally.
 
-## Follow-up for other agents / CI
+## Non-goals (unchanged)
 
-- Run `npm install` in `owner-licensing/frontend` (lockfile will update on first install).
-- `npm run typecheck && npm run lint && npm test && npm run build`.
-- Heavy suites / full CI should run on GitHub Actions against this branch.
-- Existing feature tests that assert on loading DOM may need small updates if they targeted the old spinner class; most already use `data-testid` or text.
+- No license issuance / API / auth / permission model changes.
+- No new product pages or fake data.
+- No full-page blocking modal for ordinary reads.
+- No dark mode or density product decisions.
 
-## Evidence checklist (DoD excerpt)
+## Local verification (this corrective pass)
 
-- [x] Loading surfaces use Thinking Orbs
-- [x] Four-state contract unchanged (loading / empty / error / success)
-- [x] RTL + logical properties in new indicators
-- [x] Accessibility: live regions, decorative orbs, reduced-motion via library
-- [x] Registry unit tests
-- [ ] Full CI green (to be confirmed on PR checks)
+```text
+npm install --registry https://registry.npmjs.org
+npm run lint          # 0 errors
+npm run format:check  # pass
+npm run typecheck     # pass
+npm test              # all pass
+npm run build         # pass
+```
+
+## CI expectation after push
+
+- `frontend` job step **Owner UI verification** must run `npm ci` successfully with the committed lockfile.
+- All required checks green on the **new** head SHA (not the previous failing `b504959`).
+
+## Remaining risks / follow-ups
+
+- Optional: adapter-level client tests for activity tokens (success/error/abort) mirroring main frontend `client.test.ts`.
+- Optional: UI tests for delay thresholds of global/ambient indicators.
+- Visual browser pass on real devices not executed in this agent environment; claim only what was tested.
 
 ## References
 
 - `docs/frontend/loading-system.md`
 - `docs/frontend/standards.md`
-- Main frontend implementations under `frontend/src/ui/` and `frontend/src/api/request-activity.ts`
+- Main SPA: `frontend/src/api/request-activity.ts`, `frontend/src/ui/thinking-orb.tsx`, `frontend/src/ui/patterns/request-activity.tsx`

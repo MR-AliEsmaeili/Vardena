@@ -42,25 +42,41 @@ describe('request-activity registry', () => {
     expect(getRequestActivitySnapshot().total).toBe(0);
   });
 
-  it('endRequest is idempotent', () => {
+  it('endRequest is idempotent for known, unknown and undefined tokens', () => {
     const token = beginRequest({ scope: 'global', message: 'deleting' });
     endRequest(token);
     endRequest(token);
     endRequest(undefined);
+    endRequest(999_999);
     expect(getRequestActivitySnapshot().total).toBe(0);
   });
 
-  it('notifies subscribers on change', () => {
+  it('notifies subscribers on change and cleans up on unsubscribe', () => {
     const listener = vi.fn();
     const unsubscribe = subscribeToRequestActivity(listener);
     beginRequest({ scope: 'background', message: 'receiving' });
-    expect(listener).toHaveBeenCalled();
+    expect(listener).toHaveBeenCalledTimes(1);
     unsubscribe();
+    beginRequest({ scope: 'global', message: 'saving' });
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to null globalMessage when messages disagree', () => {
     beginRequest({ scope: 'global', message: 'saving' });
     beginRequest({ scope: 'global', message: 'deleting' });
     expect(getRequestActivitySnapshot().globalMessage).toBeNull();
+  });
+
+  it('keeps a single agreed globalMessage when concurrent globals match', () => {
+    beginRequest({ scope: 'global', message: 'updating' });
+    beginRequest({ scope: 'global', message: 'updating' });
+    expect(getRequestActivitySnapshot().globalMessage).toBe('updating');
+    expect(getRequestActivitySnapshot().global).toBe(2);
+  });
+
+  it('snapshot identity is stable when nothing changes', () => {
+    const a = getRequestActivitySnapshot();
+    const b = getRequestActivitySnapshot();
+    expect(a).toBe(b);
   });
 });
