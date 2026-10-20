@@ -99,35 +99,40 @@ installation-bound proof (for example a signed installation challenge) is
 required, plus a protocol/vector change and customer-runtime support. Until
 then the residual risk stays documented here and in the design.
 
-### 2.2 Prepared-request expiry — the precise Product Owner decision required
+### 2.2 Prepared-request expiry — decision approved, implementation pending
 
-**Current behaviour:** a prepared request stays completable indefinitely. No
-expiry is implemented, because inventing one would contradict the rule that a
-product policy choice must be decided, not guessed. The only temporal backstop
-today is the customer-side `expired-document` refusal, which rejects a document
-whose term has already ended — it does **not** expire the request.
+**Product Owner decision confirmed 2026-10-20: Option B, fixed maximum age of 14 days.**
+The canonical policy is recorded as **OD-LIC-20** in
+[PDR-19 §11](../decisions/product/PDR-19-owner-side-issuance-decisions.md).
 
-**Do not confuse this with the replacement confirmation window.** PDR-17 /
-OQ-82 define an Owner Admin-configurable **1 hour – 7 days (default 24 h)**
-pending-request/confirmation period for *manual server replacement*. That
-window belongs to a different workflow, has never been decided for issuance
-requests, and is **not** used here.
+A prepared issuance request is eligible for completion only while
+`now < createdAt + 14 × 24 hours`, using persisted creation time and UTC elapsed
+time. At `now >= createdAt + 14 × 24 hours`, it is expired. The limit is fixed,
+not configurable per customer or deployment. The first attempted completion or
+import after expiry must fail closed and atomically move the request from
+`REQUEST_PREPARED` to `ABANDONED`, with a durable audit reason identifying
+expiry. An expired request is terminal; proceeding requires a newly prepared
+request with new operation and license identities. Preserve the old request's
+immutable snapshot and audit history.
 
-**Decision required (choose one):**
+**Scope boundaries:** this is prepared-request age only. It does not change
+OD-LIC-14 snapshot immutability, the separate OQ-82 server-replacement window
+(1 hour–7 days, default 24 hours), customer license expiry or its 14-day Grace,
+revocation, authorization-before-replay, duplicate-import historical-result
+semantics, or VLIC1/VLIC2/VREV1 signed bytes, canonicalization, vectors, trust
+rules, public API contracts, or unrelated customer runtime behavior.
 
-| Option | Rule | Consequences | Recommendation |
-|---|---|---|---|
-| **A** | Requests never expire; only `ABANDONED` (explicit, audited) removes one | Simplest; an old request keeps a stale ceiling alive indefinitely and the only stop is the customer's term check | — |
-| **B** | A fixed maximum age (e.g. 30 days) after which import is refused and the request is marked `ABANDONED` with a system-reason audit | Bounded staleness; an operator who loses a request must create a new one, which changes the operation id and license id; needs a state-transition rule (who "abandons" it and when) and a clock source | **Recommended**, because it bounds the window OD-LIC-14 deliberately leaves open while keeping every existing state machine unchanged |
-| **C** | The maximum age is configurable per deployment (with a documented default) | Flexible for different sales cycles; adds configuration surface and a second "configuration decides a security control" precedent; must be pinned by a test | — |
+**Implementation status:** not yet implemented or verified on this branch.
+Required tests include just-before / exact-boundary / just-after using an
+injected clock; UTC and DST-independent elapsed-time behavior; concurrent
+completion/import; authorization-before-replay; audit durability; replay and
+already-`ABANDONED` behavior; no issuance/archive/success audit after expiry;
+and fresh identities for a replacement request. Preserve all other state and
+authorization constraints.
 
-**Affected phase:** import / state transitions (`REQUEST_PREPARED → ABANDONED`),
-audit vocabulary (`LICENSE_REQUEST_EXPIRED` vs reusing `LICENSE_REQUEST_ABANDONED`),
-list/response fields (an "expired" indicator), and a migration only if a stored
-state is required. **Not affected:** the signed document format, canonicalization,
-vectors, and the customer runtime.
-
-**Status:** blocked and requested. No expiry code was added.
+**Status:** Product Owner decision resolved; implementation and executed
+conformance evidence remain OPEN. This is not a claim that the code or acceptance
+flow is complete.
 
 ## 3. Test map
 
@@ -150,7 +155,7 @@ vectors, and the customer runtime.
 
 ## 4. What remains before the 14-step acceptance flow can be claimed
 
-1. **Prepared-request expiry** — blocked on the decision in §2.2.
+1. **Prepared-request expiry** — product decision resolved as OD-LIC-20 (14 days); server-side implementation and executed conformance tests remain outstanding.
 2. **Owner-side revocation is partial** — the Owner can prepare, import and
    re-download a `VREV1` document, and the customer runtime can verify and apply
    it, but nothing in this repository demonstrates a **customer installation**
