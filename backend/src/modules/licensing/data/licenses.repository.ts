@@ -77,6 +77,73 @@ import { licenseAllocationLockKey } from '../domain/license-allocation-lock.js';
  * all that duplicate detection and audit need.
  */
 
+/**
+ * A stored revocation, as the customer installation retains it (protocol §8).
+ * Typed, append-only, and never derived from a client-supplied field: every
+ * value here came from verified signed bytes or from the import transaction.
+ */
+export interface LicenseRevocationRecord {
+  revocationId: string;
+  licenseId: string;
+  installationId: string;
+  customerId: string;
+  customerCode: string;
+  targetOperationId: string;
+  reason: string;
+  reasonDetail: string | null;
+  issuerKeyId: string;
+  issuedAt: Date;
+  importedAt: Date;
+  importedBy: string | null;
+  /** SHA-256 of the exact armored artifact received. */
+  artifactSha256: string;
+  /** SHA-256 of the canonical signed payload bytes. */
+  canonicalPayloadSha256: string;
+}
+
+/** Everything the revocation transaction writes, all of it verified upstream. */
+export type ApplyRevocationCommand = Omit<
+  LicenseRevocationRecord,
+  'importedAt' | 'importedBy'
+> & {
+  now: Date;
+  actorId: string | null;
+  source: string;
+  /** The retained version row id the audit event names (not signed). */
+  targetVersionId: string | null;
+  /** Bounded, secret-free audit detail (the stable reason + target facts). */
+  detail: string;
+};
+
+export type RevocationConflictReason =
+  'conflicting-replay' | 'already-revoked' | 'unknown-target';
+
+/**
+ * A verified revocation that could not be applied because of retained state.
+ * Mirrors `ImportConflictError`: the application layer maps each reason to its
+ * documented HTTP answer and message, and the transaction is rolled back.
+ */
+export class RevocationConflictError extends Error {
+  constructor(
+    readonly reason: RevocationConflictReason,
+    readonly existing?: { revocationId: string; revokedAt: string },
+  ) {
+    super(revocationConflictMessage(reason));
+    this.name = 'RevocationConflictError';
+  }
+}
+
+function revocationConflictMessage(reason: RevocationConflictReason): string {
+  switch (reason) {
+    case 'conflicting-replay':
+      return 'The same revocation identity was already imported with different signed bytes.';
+    case 'already-revoked':
+      return 'This license is already revoked; the original revocation is retained.';
+    case 'unknown-target':
+      return 'The revocation target is not a license of this installation and customer.';
+  }
+}
+
 export interface ImportLicenseVersionCommand {
   installationId: string;
   /** The acting user, for the audit trail. */
@@ -96,6 +163,13 @@ export interface ImportLicenseVersionCommand {
   keyId: string | null;
   source: LicenseVersionSource;
   validFrom: Date;
+  /**
+   * The signed `issuedAt` of the artifact, retained as a typed fact so a later
+   * revocation can be refused when it predates the version it targets
+   * (`stale-revocation`, OD-LIC-17). Null only for legacy text codes, which
+   * carry no signed issuance instant.
+   */
+  signedIssuedAt: Date | null;
   /**
    * The instant this version starts governing when it differs from the signed
    * `validFrom` (a renewal's renewed-term boundary). Null on every ordinary
@@ -204,6 +278,8 @@ export interface LicenseAuditEventCommand {
   renewedFrom?: Date | null;
   /** The Owner-signed new end date a renewal applies. */
   renewedUntil?: Date | null;
+  /** The signed revocation identity on revocation events (OD-LIC-17). */
+  revocationId?: string | null;
   occurredAt: Date;
 }
 
@@ -268,6 +344,8 @@ function conflictErrorDefaultMessage(reason: ImportConflictReason): string {
       return 'This license version would retire a version from an instant that is already in the past.';
     case 'overlapping-range':
       return 'This license version overlaps a retained version.';
+    case 'license-revoked':
+      return 'This license has been revoked by a signed revocation artifact.';
   }
 }
 
@@ -401,6 +479,7 @@ interface VersionDelegate {
       keyId: string | null;
       source: string;
       validFrom: Date;
+      signedIssuedAt: Date | null;
       governsFrom: Date | null;
       validUntil: Date | null;
       organizationLimit: number | null;
@@ -468,10 +547,30 @@ interface CustomerDelegate {
 }
 
 interface LicenseDelegate {
+  /** Binding + license-level revocation state projection. */
   findUnique(args: {
     where: { id: string };
-    select: { installationId: true; customerId: true };
-  }): Promise<{ installationId: string; customerId: string } | null>;
+    select: { installationId: true; customerId: true; revokedAt: true };
+  }): Promise<{
+    installationId: string;
+    customerId: string;
+    revokedAt: Date | null;
+  } | null>;
+  /**
+   * The revocation target projection: the license row (all scalars, including
+   * `revoked_at`/`revocation_id`) plus the retained versions that can prove the
+   * signed `targetOperationId` and supply the version's signed issuance instant
+   * for the staleness rule. Uses `include` (not `select`) so it is a real
+   * Prisma call, not an invented delegate method.
+   */
+  findUnique(args: {
+    where: { id: string };
+    include: {
+      versions: {
+        select: { id: true; operationId: true; signedIssuedAt: true };
+      };
+    };
+  }): Promise<LicenseTargetRow | null>;
   create(args: {
     data: {
       id: string;
@@ -482,8 +581,18 @@ interface LicenseDelegate {
     };
   }): Promise<unknown>;
   updateMany(args: {
-    where: { id: string; installationId: string; customerId: string };
-    data: { updatedAt: Date };
+    where: {
+      id: string;
+      installationId?: string;
+      customerId?: string;
+      /** Guarded revocation stamp: an already-revoked row is never rewritten. */
+      revokedAt?: null;
+    };
+    data: {
+      updatedAt: Date;
+      revokedAt?: Date;
+      revocationId?: string;
+    };
   }): Promise<{ count: number }>;
   upsert(args: {
     where: { id: string };
@@ -496,6 +605,50 @@ interface LicenseDelegate {
     };
     update: { customerId: string; updatedAt: Date };
   }): Promise<unknown>;
+}
+
+interface LicenseTargetRow {
+  id: string;
+  installationId: string;
+  customerId: string;
+  revokedAt: Date | null;
+  revocationId: string | null;
+  versions: Array<{
+    id: string;
+    operationId: string;
+    signedIssuedAt: Date | null;
+  }>;
+}
+
+interface LicenseRevocationRow {
+  revocationId: string;
+  licenseId: string;
+  installationId: string;
+  customerId: string;
+  customerCode: string;
+  targetOperationId: string;
+  reason: string;
+  reasonDetail: string | null;
+  issuerKeyId: string;
+  issuedAt: Date;
+  importedAt: Date;
+  importedBy: string | null;
+  artifactSha256: string;
+  canonicalPayloadSha256: string;
+}
+
+interface LicenseRevocationDelegate {
+  findUnique(args: {
+    where: { revocationId: string } | { licenseId: string };
+  }): Promise<LicenseRevocationRow | null>;
+  create(args: {
+    data: LicenseRevocationRow & {
+      createdAt: Date;
+      updatedAt: Date;
+      createdBy?: string | null;
+      updatedBy?: string | null;
+    };
+  }): Promise<LicenseRevocationRow>;
 }
 
 interface InstallationDelegate {
@@ -530,6 +683,8 @@ interface AuditDelegate {
       renewedVersionId: string | null;
       renewedFrom: Date | null;
       renewedUntil: Date | null;
+      /** OD-LIC-17: the signed revocation an applied/rejected event belongs to. */
+      revocationId?: string | null;
       occurredAt: Date;
       createdAt: Date;
       updatedAt: Date;
@@ -563,6 +718,7 @@ interface AuditDelegate {
       renewedVersionId: string | null;
       renewedFrom: Date | null;
       renewedUntil: Date | null;
+      revocationId: string | null;
       occurredAt: Date;
     }>
   >;
@@ -583,6 +739,7 @@ export interface LicensesTxClient {
   license: LicenseDelegate;
   installation: InstallationDelegate;
   licenseAuditEvent: AuditDelegate;
+  licenseRevocation: LicenseRevocationDelegate;
   $queryRaw: RawQuery;
 }
 
@@ -826,6 +983,27 @@ export class LicensesRepository {
         command.installationId,
       );
 
+      // 1a. OD-LIC-17: a revoked license accepts no version at all — not a
+      //     renewal, not a supersession, not a replay of the artifact that was
+      //     already applied. The check runs under the installation lock, so a
+      //     concurrent revocation either committed first (and is seen here) or
+      //     waits and then sees this import; the two can never interleave.
+      //     Nothing is written before this point, so the refusal is total.
+      const revokedTarget = await tx.license.findUnique({
+        where: { id: command.licenseId },
+        select: {
+          installationId: true,
+          customerId: true,
+          revokedAt: true,
+        },
+      });
+      if (revokedTarget?.revokedAt != null) {
+        throw new ImportConflictError({
+          reason: 'license-revoked',
+          overlapping: 0,
+        });
+      }
+
       // 1b. Serialize the §8.6 usage read (L-04) against the licensed
       //     allocation paths. Organization creation and active-user
       //     activation count + write under these same transaction-scoped
@@ -934,7 +1112,11 @@ export class LicensesRepository {
       //     the composite foreign key and surfaced as an unmapped database error.
       const boundLicense = await tx.license.findUnique({
         where: { id: command.licenseId },
-        select: { installationId: true, customerId: true },
+        select: {
+          installationId: true,
+          customerId: true,
+          revokedAt: true,
+        },
       });
       if (
         boundLicense !== null &&
@@ -1152,6 +1334,7 @@ export class LicensesRepository {
           keyId: command.keyId,
           source: command.source,
           validFrom: command.validFrom,
+          signedIssuedAt: command.signedIssuedAt,
           governsFrom: command.governsFrom,
           validUntil: command.validUntil,
           organizationLimit: command.organizationLimit,
@@ -1268,6 +1451,252 @@ export class LicensesRepository {
     };
   }
 
+  // -------------------------------------------------------------------------
+  // Signed revocation (OD-LIC-17, docs/licensing/revocation-artifact-protocol.md)
+  // -------------------------------------------------------------------------
+
+  /** The local commercial customer of a signed `customerId`, if any. */
+  async findCustomer(
+    customerId: string,
+  ): Promise<{ customerId: string; customerCode: string } | null> {
+    const client = await this.client();
+    const row = await client.licenseCustomer.findUnique({
+      where: { id: customerId },
+    });
+    return row === null
+      ? null
+      : { customerId: row.id, customerCode: row.customerCode };
+  }
+
+  /**
+   * The license a revocation names, its license-level revocation state and its
+   * retained versions. Read-only and outside the lock on purpose: the
+   * transaction re-checks the target under the installation lock before it
+   * writes, so this projection is an informative pre-check, never the decision.
+   */
+  async findRevocationTarget(licenseId: string): Promise<{
+    licenseId: string;
+    installationId: string;
+    customerId: string;
+    revokedAt: Date | null;
+    revocationId: string | null;
+    versions: Array<{
+      versionId: string;
+      operationId: string;
+      signedIssuedAt: Date | null;
+    }>;
+  } | null> {
+    const client = await this.client();
+    const row = await client.license.findUnique({
+      where: { id: licenseId },
+      include: {
+        versions: {
+          select: { id: true, operationId: true, signedIssuedAt: true },
+        },
+      },
+    });
+    if (row === null) return null;
+    return {
+      licenseId: row.id,
+      installationId: row.installationId,
+      customerId: row.customerId,
+      revokedAt: row.revokedAt,
+      revocationId: row.revocationId,
+      versions: row.versions.map((version) => ({
+        versionId: version.id,
+        operationId: version.operationId,
+        signedIssuedAt: version.signedIssuedAt,
+      })),
+    };
+  }
+
+  /**
+   * The license-level revocation state alone — the read-path query the provider
+   * runs for the effective version's license. One primary-key projection, no
+   * version join, no second source of truth.
+   */
+  /**
+   * Read-side revocation state of one license row. `installationId` is returned
+   * so a caller can keep the cross-installation refusal in the binding rules: a
+   * license id owned by another installation is a `license-binding-conflict`,
+   * never a revocation of this installation.
+   */
+  async findLicenseRevocationState(
+    licenseId: string,
+  ): Promise<{ installationId: string; revokedAt: Date | null } | null> {
+    const client = await this.client();
+    const row = await client.license.findUnique({
+      where: { id: licenseId },
+      select: {
+        installationId: true,
+        customerId: true,
+        revokedAt: true,
+      },
+    });
+    return row === null
+      ? null
+      : { installationId: row.installationId, revokedAt: row.revokedAt };
+  }
+
+  async findRevocation(
+    revocationId: string,
+  ): Promise<LicenseRevocationRecord | null> {
+    const client = await this.client();
+    const row = await client.licenseRevocation.findUnique({
+      where: { revocationId },
+    });
+    return row === null ? null : toRevocationRecord(row);
+  }
+
+  async findRevocationForLicense(
+    licenseId: string,
+  ): Promise<LicenseRevocationRecord | null> {
+    const client = await this.client();
+    const row = await client.licenseRevocation.findUnique({
+      where: { licenseId },
+    });
+    return row === null ? null : toRevocationRecord(row);
+  }
+
+  /**
+   * Apply one verified revocation: insert the revocation, stamp the license
+   * and write the typed audit event in ONE transaction, under the same
+   * per-installation row lock every license import takes.
+   *
+   * Replay/idempotency (protocol §6) is decided HERE as well as in the
+   * service, because only the lock makes it authoritative:
+   *   - same `revocationId` with the same canonical payload → the stored row is
+   *     returned and nothing is written (`alreadyApplied`);
+   *   - same `revocationId` with different bytes → `conflicting-replay`, which
+   *     implies key misuse or operator error;
+   *   - a different `revocationId` for an already-revoked license →
+   *     `already-revoked` with the original row, never an overwrite.
+   */
+  async applyRevocation(
+    command: ApplyRevocationCommand,
+  ): Promise<{ revocation: LicenseRevocationRecord; alreadyApplied: boolean }> {
+    const client = await this.client();
+    return await client.$transaction(async (tx) => {
+      await lockInstallationRow(tx, command.installationId);
+
+      const existing = await tx.licenseRevocation.findUnique({
+        where: { revocationId: command.revocationId },
+      });
+      if (existing !== null) {
+        if (
+          existing.canonicalPayloadSha256 !== command.canonicalPayloadSha256 ||
+          existing.licenseId !== command.licenseId
+        ) {
+          throw new RevocationConflictError('conflicting-replay');
+        }
+        return {
+          revocation: toRevocationRecord(existing),
+          alreadyApplied: true,
+        };
+      }
+
+      const forLicense = await tx.licenseRevocation.findUnique({
+        where: { licenseId: command.licenseId },
+      });
+      if (forLicense !== null) {
+        throw new RevocationConflictError('already-revoked', {
+          revocationId: forLicense.revocationId,
+          revokedAt: forLicense.importedAt.toISOString(),
+        });
+      }
+
+      // The license must belong to THIS installation and THIS customer. The
+      // service checked it outside the lock; this is the authoritative check.
+      const license = await tx.license.findUnique({
+        where: { id: command.licenseId },
+        select: {
+          installationId: true,
+          customerId: true,
+          revokedAt: true,
+        },
+      });
+      if (
+        license === null ||
+        license.installationId !== command.installationId ||
+        license.customerId !== command.customerId
+      ) {
+        throw new RevocationConflictError('unknown-target');
+      }
+      if (license.revokedAt !== null) {
+        throw new RevocationConflictError('already-revoked', {
+          revocationId: command.licenseId,
+          revokedAt: license.revokedAt.toISOString(),
+        });
+      }
+
+      const revocation = await tx.licenseRevocation.create({
+        data: {
+          revocationId: command.revocationId,
+          licenseId: command.licenseId,
+          installationId: command.installationId,
+          customerId: command.customerId,
+          customerCode: command.customerCode,
+          targetOperationId: command.targetOperationId,
+          reason: command.reason,
+          reasonDetail: command.reasonDetail,
+          issuerKeyId: command.issuerKeyId,
+          issuedAt: command.issuedAt,
+          importedAt: command.now,
+          importedBy: command.actorId,
+          artifactSha256: command.artifactSha256,
+          canonicalPayloadSha256: command.canonicalPayloadSha256,
+          createdAt: command.now,
+          updatedAt: command.now,
+        },
+      });
+      const stamped = await tx.license.updateMany({
+        where: { id: command.licenseId, revokedAt: null },
+        data: {
+          revokedAt: command.now,
+          revocationId: command.revocationId,
+          updatedAt: command.now,
+        },
+      });
+      if (stamped.count !== 1) {
+        throw new RevocationConflictError('already-revoked');
+      }
+      await tx.licenseAuditEvent.create({
+        data: {
+          id: generateId(),
+          installationId: command.installationId,
+          eventType: 'license.revocation.imported',
+          outcome: 'APPLIED',
+          operationId: command.targetOperationId,
+          licenseId: command.licenseId,
+          versionId: command.targetVersionId,
+          deviceId: null,
+          replacementRequestId: null,
+          actorId: command.actorId,
+          source: command.source,
+          documentHash: command.artifactSha256,
+          reason: command.reason,
+          detail: command.detail,
+          previousCustomerId: null,
+          previousCustomerCode: null,
+          newCustomerId: null,
+          newCustomerCode: null,
+          previousLicenseId: null,
+          renewedVersionId: null,
+          renewedFrom: null,
+          renewedUntil: null,
+          revocationId: command.revocationId,
+          occurredAt: command.now,
+          createdAt: command.now,
+          updatedAt: command.now,
+        },
+      });
+      return {
+        revocation: toRevocationRecord(revocation),
+        alreadyApplied: false,
+      };
+    }, READ_COMMITTED);
+  }
+
   /**
    * Append one audit event through the separate, best-effort path used for
    * rejections (these inserts do not share the state-change transaction).
@@ -1302,6 +1731,7 @@ export class LicensesRepository {
         renewedVersionId: command.renewedVersionId ?? null,
         renewedFrom: command.renewedFrom ?? null,
         renewedUntil: command.renewedUntil ?? null,
+        revocationId: command.revocationId ?? null,
         occurredAt: command.occurredAt,
         createdAt: command.occurredAt,
         updatedAt: command.occurredAt,
@@ -1353,6 +1783,27 @@ export class LicensesRepository {
  * the pre-check (outside a transaction) and of the authoritative in-transaction
  * evaluation.
  */
+function toRevocationRecord(
+  row: LicenseRevocationRow,
+): LicenseRevocationRecord {
+  return {
+    revocationId: row.revocationId,
+    licenseId: row.licenseId,
+    installationId: row.installationId,
+    customerId: row.customerId,
+    customerCode: row.customerCode,
+    targetOperationId: row.targetOperationId,
+    reason: row.reason,
+    reasonDetail: row.reasonDetail,
+    issuerKeyId: row.issuerKeyId,
+    issuedAt: row.issuedAt,
+    importedAt: row.importedAt,
+    importedBy: row.importedBy,
+    artifactSha256: row.artifactSha256,
+    canonicalPayloadSha256: row.canonicalPayloadSha256,
+  };
+}
+
 async function readVersions(
   client: LicensesTxClient,
   installationId: string,

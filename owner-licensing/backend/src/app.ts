@@ -35,7 +35,6 @@ import {
   optionalBusinessDay,
   page,
   password,
-  permissions,
   persistedBusinessDay,
   role,
   safeUser,
@@ -62,6 +61,37 @@ import {
   updateSigningKeyNotes,
   updateSigningKeyStatus,
 } from "./signing-keys.js";
+import { LicenseArtifactStore } from "./artifact-store.js";
+import {
+  DeniedWithAudit,
+  PreparedRequestExpired,
+  abandonIssuance,
+  createLimitProfile,
+  downloadIssuanceArtifact,
+  downloadRevocationArtifact,
+  getIssuance,
+  getIssuanceRequest,
+  getRevocation,
+  getRevocationRequest,
+  grantPermission,
+  importIssuanceArtifact,
+  importRevocationArtifact,
+  listInstallationIdentities,
+  listIssuances,
+  listLimitProfiles,
+  listRevocations,
+  listUserPermissions,
+  lockIssuanceForImport,
+  prepareIssuance,
+  prepareRevocation,
+  reactivateLimitProfile,
+  reconcileArtifacts,
+  registerInstallationIdentity,
+  retireInstallationIdentity,
+  retireLimitProfile,
+  revokePermission,
+} from "./licensing.js";
+import { parseTrustedLicenseKeys } from "./protocol.js";
 import {
   authenticate,
   cookieToken,
@@ -74,7 +104,7 @@ import {
 export type ServiceActor = Pick<
   User,
   "id" | "role" | "is_active" | "must_change_password"
->;
+> & { permissions?: readonly Permission[] };
 
 export async function listUsersService(
   tx: PoolClient,
@@ -392,7 +422,20 @@ export async function updateCustomerService(
   return customerResponse(updated, actorRole);
 }
 
-export async function createApp(db: Database, cfg: Config) {
+export interface AppDependencies {
+  /**
+   * OD-LIC-20 clock seam: production uses real time. It governs eligibility
+   * only; durable timestamps are written by the database clock.
+   */
+  now?: () => number;
+}
+
+export async function createApp(
+  db: Database,
+  cfg: Config,
+  dependencies: AppDependencies = {},
+) {
+  const now = dependencies.now ?? Date.now;
   const app = express();
   app.disable("x-powered-by");
   // No CORS; deployment is one browser origin via the Owner reverse proxy.
@@ -420,6 +463,54 @@ export async function createApp(db: Database, cfg: Config) {
     next();
   });
   app.use(express.json({ limit: "16kb", strict: true }));
+  // OD-LIC-20: `express.json` refuses a body that cannot be parsed or is larger
+  // than the transport limit before the route runs, so a malformed or oversized
+  // `fileContent` would otherwise answer a validation error without ever
+  // reaching the expiry decision. Payload validation must not bypass the rule,
+  // so an authorized attempt that fails in the parser still runs the identical
+  // authorization, row lock, `ABANDONED` transition and system-origin audit
+  // here. Only an expired prepared request changes the answer (409); every other
+  // outcome — unauthenticated, unknown id, still-eligible request, replay —
+  // falls through unchanged to the parser's existing 400.
+  app.use(
+    async (error: unknown, req: Request, res: Response, next: NextFunction) => {
+      const type = (error as { type?: unknown } | null)?.type;
+      const target = /^\/api\/v1\/license-issuances\/([^/]+)\/import$/.exec(
+        req.path,
+      );
+      if (
+        req.method !== "POST" ||
+        !target ||
+        (type !== "entity.parse.failed" && type !== "entity.too.large")
+      )
+        return next(error);
+      const refusal = await db
+        .transaction(async (tx) => {
+          const actor = await authenticate(
+            tx,
+            cookieToken(req, cfg.production),
+            true,
+            "licenses.import",
+          );
+          try {
+            await lockIssuanceForImport(tx, actor.user, target[1], now);
+          } catch (inner) {
+            // The service staged the transition and its audit before throwing;
+            // returning instead of rethrowing lets the transaction COMMIT.
+            if (inner instanceof PreparedRequestExpired) return inner;
+            throw inner;
+          }
+          return null;
+        })
+        .catch(() => null);
+      if (!refusal) return next(error);
+      res.status(refusal.status).json({
+        code: refusal.code,
+        message: refusal.message,
+        correlationId: randomUUID(),
+      });
+    },
+  );
   const router = express.Router();
   const cookieName = cfg.production ? "__Host-owner_session" : "owner_session";
   const cookieOptions = {
@@ -545,7 +636,7 @@ export async function createApp(db: Database, cfg: Config) {
     undefined,
     true,
     async (_tx, a, _req, res) => {
-      res.locals.body = { permissions: permissions(a.user.role) };
+      res.locals.body = { permissions: a.user.permissions };
     },
   );
   // Logout is idempotent, including expired/absent sessions. No client actor id is accepted.
@@ -728,7 +819,7 @@ export async function createApp(db: Database, cfg: Config) {
     requiredPermission:
       "operations.record" | "replacements.authorize" = "operations.record",
   ) => {
-    if (permissions(actor.user.role).includes(requiredPermission)) return true;
+    if (actor.user.permissions.includes(requiredPermission)) return true;
     await denyOperationMutation(
       tx,
       actor.user.id,
@@ -848,6 +939,435 @@ export async function createApp(db: Database, cfg: Config) {
   const archiveStore = cfg.archiveDir
     ? new FilesystemAuditArchiveStore(cfg.archiveDir)
     : undefined;
+  const artifactStore = cfg.artifactDir
+    ? new LicenseArtifactStore(cfg.artifactDir)
+    : undefined;
+  // Configuration is validated at startup: an unparsable trust list must stop
+  // the process, not silently make every artifact unverifiable.
+  const trustedLicenseKeys = parseTrustedLicenseKeys(
+    cfg.trustedPublicKeys ?? [],
+  );
+  const requireArtifactStore = () => {
+    if (!artifactStore)
+      fail(
+        503,
+        "ArtifactStorageUnavailable",
+        "Signed-artifact storage is not configured.",
+      );
+    return artifactStore;
+  };
+  const requireTrustList = () => {
+    if (trustedLicenseKeys.length === 0)
+      fail(
+        503,
+        "TrustListUnavailable",
+        "No licensing authority public key is configured.",
+      );
+    return trustedLicenseKeys;
+  };
+  const rawDownload = (
+    path: string,
+    permission: Permission,
+    work: (
+      tx: PoolClient,
+      actor: Principal,
+      req: Request,
+    ) => Promise<{ fileName: string; contentType: string; bytes: Buffer }>,
+  ) => {
+    router.get(path, async (req, res, next) => {
+      try {
+        const file = await db.transaction(async (tx) => {
+          const actor = await authenticate(
+            tx,
+            cookieToken(req, cfg.production),
+            true,
+            permission,
+          );
+          return work(tx, actor, req);
+        });
+        res.set({
+          "Content-Type": file.contentType,
+          "Content-Disposition": `attachment; filename="${file.fileName}"`,
+          "Content-Length": String(file.bytes.length),
+        });
+        res.status(200).send(file.bytes);
+      } catch (error) {
+        next(error);
+      }
+    });
+  };
+  // -------------------------------------------------------------------
+  // Owner-side license lifecycle (OD-LIC-07…19)
+  //
+  // Each lifecycle route fails closed with 403 until the session holds the
+  // matching effective permission; every service re-checks inside the
+  // transaction as well (OD-LIC-12).
+  // -------------------------------------------------------------------
+  route(
+    "get",
+    "/license-issuances",
+    "licenses.view",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await listIssuances(
+        tx,
+        a.user,
+        req.query as Record<string, unknown>,
+      );
+    },
+  );
+  route(
+    "post",
+    "/license-issuances",
+    "licenses.issue.time_limited",
+    true,
+    async (tx, a, req, res) => {
+      try {
+        res.locals.body = await prepareIssuance(
+          tx,
+          a.user,
+          requireTrustList(),
+          req.body,
+        );
+        res.locals.status = 201;
+      } catch (error) {
+        // A refused privilege escalation is a security incident (OD-LIC-12):
+        // the denial must survive the rolled-back mutation, so it is written
+        // here and the request ends in COMMIT, exactly like the archive
+        // authorization path. No row was written by the refusal itself.
+        if (!(error instanceof DeniedWithAudit)) throw error;
+        await audit(tx, {
+          actor: a.user.id,
+          type: error.auditType,
+          targetType: error.auditTargetType,
+          targetId: error.auditTargetId,
+          outcome: "DENIED",
+          reason: error.auditReason,
+        });
+        res.locals.status = error.status;
+        res.locals.body = {
+          code: error.code,
+          message: error.message,
+          correlationId: randomUUID(),
+        };
+      }
+    },
+  );
+  route(
+    "get",
+    "/license-issuances/:id",
+    "licenses.view",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await getIssuance(tx, a.user, req.params.id);
+    },
+  );
+  route(
+    "get",
+    "/license-issuances/:id/request",
+    "licenses.view",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await getIssuanceRequest(tx, a.user, req.params.id);
+    },
+  );
+  route(
+    "post",
+    "/license-issuances/:id/import",
+    "licenses.import",
+    true,
+    async (tx, a, req, res) => {
+      try {
+        // OD-LIC-20 ordering: the dependencies are handed over as providers so
+        // the service can read and lock the issuance row, enforce the fixed
+        // 14 × 24-hour maximum age and commit the expiry first. Resolving them
+        // here would answer `503` and leave an expired request prepared.
+        res.locals.body = await importIssuanceArtifact(
+          tx,
+          a.user,
+          {
+            artifactStore: requireArtifactStore,
+            trustedLicenseKeys: requireTrustList,
+          },
+          req.params.id,
+          req.body,
+          now,
+        );
+      } catch (error) {
+        // OD-LIC-20: the refusal is itself a durable fact. The service has
+        // already moved REQUEST_PREPARED -> ABANDONED and written the
+        // system-origin audit inside this transaction, so catching it here (the
+        // route's work callback) lets the transaction COMMIT. Any failure of the
+        // transition or the audit escapes as an error, rolls everything back and
+        // never reports a successful abandonment or import.
+        if (!(error instanceof PreparedRequestExpired)) throw error;
+        res.locals.status = error.status;
+        res.locals.body = {
+          code: error.code,
+          message: error.message,
+          correlationId: randomUUID(),
+        };
+      }
+    },
+  );
+  route(
+    "post",
+    "/license-issuances/:id/abandon",
+    "licenses.view",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await abandonIssuance(
+        tx,
+        a.user,
+        req.params.id,
+        req.body,
+      );
+    },
+  );
+  rawDownload(
+    "/license-issuances/:id/artifact",
+    "licenses.download",
+    (tx, a, req) =>
+      downloadIssuanceArtifact(
+        tx,
+        a.user,
+        requireArtifactStore(),
+        String(req.params.id),
+      ),
+  );
+  // Revocation preparation/import/download is OWNER_ADMIN-only. The route gate
+  // uses the Owner-admin-reserved perpetual issuance permission (operators are
+  // ineligible for it), and the service additionally asserts the role.
+  route(
+    "post",
+    "/license-issuances/:id/revocations",
+    "licenses.issue.perpetual",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.status = 201;
+      res.locals.body = await prepareRevocation(
+        tx,
+        a.user,
+        requireTrustList(),
+        req.params.id,
+        req.body,
+      );
+    },
+  );
+  route(
+    "get",
+    "/license-revocations",
+    "licenses.view",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await listRevocations(
+        tx,
+        a.user,
+        req.query as Record<string, unknown>,
+      );
+    },
+  );
+  route(
+    "get",
+    "/license-revocations/:id",
+    "licenses.view",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await getRevocation(tx, a.user, req.params.id);
+    },
+  );
+  route(
+    "get",
+    "/license-revocations/:id/request",
+    "licenses.issue.perpetual",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await getRevocationRequest(tx, a.user, req.params.id);
+    },
+  );
+  route(
+    "post",
+    "/license-revocations/:id/import",
+    "licenses.issue.perpetual",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await importRevocationArtifact(
+        tx,
+        a.user,
+        requireArtifactStore(),
+        requireTrustList(),
+        req.params.id,
+        req.body,
+      );
+    },
+  );
+  rawDownload(
+    "/license-revocations/:id/artifact",
+    "licenses.issue.perpetual",
+    (tx, a, req) =>
+      downloadRevocationArtifact(
+        tx,
+        a.user,
+        requireArtifactStore(),
+        String(req.params.id),
+      ),
+  );
+  route(
+    "get",
+    "/customers/:id/limit-profiles",
+    "licenses.view",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await listLimitProfiles(
+        tx,
+        a.user,
+        String(req.params.id),
+      );
+    },
+  );
+  route(
+    "post",
+    "/customers/:id/limit-profiles",
+    "limit_profiles.manage",
+    true,
+    async (tx, a, req, res) => {
+      const body = object(req.body, [
+        "organizationLimit",
+        "userLimit",
+        "allowedModules",
+        "perpetualAllowed",
+      ]);
+      res.locals.status = 201;
+      res.locals.body = await createLimitProfile(tx, a.user, {
+        customerId: req.params.id,
+        ...body,
+      });
+    },
+  );
+  route(
+    "post",
+    "/limit-profiles/:id/retire",
+    "limit_profiles.manage",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await retireLimitProfile(
+        tx,
+        a.user,
+        req.params.id,
+        req.body,
+      );
+    },
+  );
+  route(
+    "post",
+    "/limit-profiles/:id/reactivate",
+    "limit_profiles.manage",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await reactivateLimitProfile(
+        tx,
+        a.user,
+        req.params.id,
+        req.body,
+      );
+    },
+  );
+  route(
+    "get",
+    "/customers/:id/installation-identities",
+    "licenses.view",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await listInstallationIdentities(
+        tx,
+        a.user,
+        String(req.params.id),
+      );
+    },
+  );
+  route(
+    "post",
+    "/installation-identities",
+    "licenses.issue.time_limited",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.status = 201;
+      res.locals.body = await registerInstallationIdentity(
+        tx,
+        a.user,
+        req.body,
+      );
+    },
+  );
+  route(
+    "post",
+    "/installation-identities/:id/retire",
+    "licenses.issue.perpetual",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await retireInstallationIdentity(
+        tx,
+        a.user,
+        req.params.id,
+        req.body,
+      );
+    },
+  );
+  route(
+    "get",
+    "/users/:id/permissions",
+    "users.manage",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await listUserPermissions(tx, a.user, req.params.id);
+    },
+    true,
+  );
+  route(
+    "post",
+    "/users/:id/permissions",
+    "users.manage",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.status = 201;
+      res.locals.body = await grantPermission(
+        tx,
+        a.user,
+        req.params.id,
+        req.body,
+      );
+    },
+    true,
+  );
+  route(
+    "post",
+    "/users/:id/permissions/revoke",
+    "users.manage",
+    true,
+    async (tx, a, req, res) => {
+      res.locals.body = await revokePermission(
+        tx,
+        a.user,
+        req.params.id,
+        req.body,
+      );
+    },
+    true,
+  );
+  route(
+    "post",
+    "/license-artifacts/reconcile",
+    "licenses.issue.perpetual",
+    true,
+    async (tx, a, req, res) => {
+      object(req.body, []);
+      res.locals.body = await reconcileArtifacts(
+        tx,
+        a.user,
+        requireArtifactStore(),
+      );
+    },
+  );
   // OQ-74 (2026-10-18): signing-key tracking routes. Both Owner Admin and
   // License Operator can read (they need to see safety status while recording
   // license observations); only Owner Admin can mutate (mark compromised/safe,
@@ -945,7 +1465,7 @@ export async function createApp(db: Database, cfg: Config) {
     res: Response,
     targetId: string | null,
   ) => {
-    if (permissions(actor.user.role).includes("audit.archive")) return true;
+    if (actor.user.permissions.includes("audit.archive")) return true;
     await audit(tx, {
       actor: actor.user.id,
       type: "AUDIT_ARCHIVE_ACCESS_DENIED",

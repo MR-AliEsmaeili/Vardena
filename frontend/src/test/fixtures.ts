@@ -125,6 +125,7 @@ export const testActiveLicenseState: LicenseState = {
   inactiveReason: null,
   accessMode: 'ACTIVE',
   graceEndsAt: null,
+  revokedAt: null,
   installationId: '01K7INSTALLATIONAAAAAAAAAA',
   customerId: '01K7CUSTOMERAAAAAAAAAAAAAA',
   customerCode: 'CUST-ACME-01',

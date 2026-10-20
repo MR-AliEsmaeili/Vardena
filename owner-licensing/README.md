@@ -4,60 +4,65 @@ Independent Owner web application; **not customer Vardena**. Product authority:
 [PDR-17](../docs/decisions/product/PDR-17-owner-web-application-phase-1.md).
 Persian RTL login, mandatory password change, customer list/search/detail/create/
 edit, user administration/role assignment, durable attributable audit viewing with
-a filterable audit explorer (Phase 1.1), and operator-observed records.
-The lifecycle navigation keeps cryptographic issuance, signed receipts, device
-replacement, revocation and recovery unavailable. Under the approved two-role
-MVP model (`Owner Admin` / `OWNER_ADMIN` and `License Operator` /
-`LICENSE_OPERATOR`, superseding the historical four-role model), both roles can
-record operator-observed activation facts and follow-up replacement observations,
-while only `Owner Admin` (`replacements.authorize`) can authorize a server
-replacement or emergency old-server loss. There is **no signer, signing key,
-signed receipt, or claim of cryptographic confirmation**.
+a filterable audit explorer (Phase 1.1), operator-observed records, and — new in
+this branch — the Owner half of the license lifecycle.
 
-Real license issuance (creating, signing and allocating an actual `VLIC2`
-artifact to a customer) is **not available and not implemented**. The four
-Product Owner decisions that blocked it were answered on 2026-10-19 in
-[PDR-19](../docs/decisions/product/PDR-19-owner-side-issuance-decisions.md):
-**OD-LIC-07** perpetual grants are `OWNER_ADMIN`-only, time-limited grants may be
-issued by an authorized `LICENSE_OPERATOR`, and `OWNER_ADMIN` configures each
-operator's permissions per user (this supersedes the static matrix below for
-`LICENSE_OPERATOR`); **OD-LIC-08** custody is an **air-gapped offline signer**, so
-the Owner web app prepares a signing request, the operator carries it to the
-offline environment, the signer validates and signs, and the Owner validates the
-returned artifact before recording it and offering download — issuance is
-therefore **not synchronous**, and the private key never reaches this
-application, its host, its configuration or its database; **OD-LIC-09**
-controlled operator registration of `installationId` read from the customer's
-Vardena page, with source and confirmation recorded; **OD-LIC-10** a dedicated
-durable signed-artifact store outside PostgreSQL. The two product forks were
-answered the same day (**F-1** hybrid optional per-customer limit profile,
-**F-2** every operator-eligible permission configurable per user with a
-fail-closed default), and the technical design that gate asked for was then
-delivered and reviewed. **On 2026-10-20 the Product Owner answered the four
-questions that review raised** ([PDR-19 §6](../docs/decisions/product/PDR-19-owner-side-issuance-decisions.md)):
-**OD-LIC-11** the offline signer must confirm the request's full 64-hex
-`request_payload_sha256` over a path independent of the request file **before
-reading or loading the private key** (option O-A; no new key, no new signed
-format, no canonicalization or vector change); **OD-LIC-12** a newly created
-`LICENSE_OPERATOR` has **zero effective access** until `OWNER_ADMIN` grants each
-permission explicitly (**R-1**); **OD-LIC-13** a retired limit profile may be
-**reactivated** on the same row, never two `ACTIVE` profiles per customer;
-**OD-LIC-14** a request already in flight completes against the limit-profile
-**snapshot taken at its creation**, while new requests use current state.
-The gate is now **design approval plus the pre-existing open items**; see
-[the design's dependency table](../docs/tasks/owner-side-issuance-technical-design.md)
-§15.1. Evidence and options:
-[the issuance assessment](../docs/tasks/licensing-owner-side-issuance-blocked-assessment.md).
+**What this branch implements.** Per-user permission grants with a **default-deny**
+operator (`OD-LIC-12`, R-1: a new `LICENSE_OPERATOR` can do nothing until each
+permission is granted; `OWNER_ADMIN` is outside the grant model and unchanged);
+optional per-customer limit profiles with immutable ceilings and
+retire/reactivate (`OD-LIC-13`, `OD-LIC-14`); controlled installation-identity
+registration (`OD-LIC-09`); issuance-request preparation with the server-derived
+issuance day, the immutable creation-time snapshot and the two distinct digests
+(`request_payload_sha256` for the out-of-band pre-signature check,
+`request_binding_sha256` for import binding); an **offline signer** built as a
+separate `dist-signer` artefact that is excluded from the API image and reads the
+full 64-hex digest from stdin **before** loading the private key (`OD-LIC-11`);
+signed-artifact import that verifies envelope, signature, trust list, active
+signing-key metadata, operation identity and the binding digest before recording
+anything; exact-byte archival outside PostgreSQL with staged `PENDING → DURABLE`
+states and read-back verification (`OD-LIC-10`, `OD-LIC-19`); duplicate import
+that returns the historical first result and writes no second fact
+(`OD-LIC-18`); and the Owner side of a **separately versioned signed revocation
+artifact** (`VREV1`) with its protocol design in
+[docs/licensing/revocation-artifact-protocol.md](../docs/licensing/revocation-artifact-protocol.md)
+(`OD-LIC-17`). The Owner UI exposes `/app/licenses` with real loading, empty,
+validation, failure and recovery states; it never renders a success the backend
+did not return.
 
-**None of OD-LIC-07…OD-LIC-14 is implemented.** In particular OD-LIC-12 will
-change what a `License Operator` can do — today the four permissions listed below
-are granted by role, and under R-1 they become *eligibility* that an
-`OWNER_ADMIN` must grant per user. That change happens with its code, not before;
-this README describes what is deployed.
-`owner.signing_keys` is administrative metadata only — it holds **no public or
-private key material**, and its `id` is an opaque operator label that is not
-cryptographically bound to any key in a customer trust list. Do not read it as
-signing capability, and do not read PDR-19 as a claim that any of it is built.
+**What this branch does not implement.** Renewal and replacement authority
+(`OD-LIC-16`) is enforced in the prepare service, but no dedicated lineage UI
+exists. There is no production key anywhere in the repository and no CI key
+generation. Prepared-request expiry (`OD-LIC-20`, fixed 14 × 24 hours) **is
+implemented** in the import service with a committed system-origin `ABANDONED`
+transition, and the artifact archive has a documented backup/restore procedure,
+a read-only verification gate and an executed disposable drill
+([procedure](../docs/licensing/artifacts-backup-restore.md)); a rehearsal against
+production-sized data and the independence of the backup medium remain
+deployment-owner responsibilities. The PostgreSQL integration suites and
+migration `007` require a disposable database and run only in CI. The Owner UI has
+not been driven end-to-end against a real signer, and no expired request has been
+exercised by a human in the UI. Do not read this README as an acceptance claim.
+
+**Revocation is partial on purpose.** This application can prepare, import,
+archive and re-download a `VREV1` document. The customer runtime on the
+pull-request branch can verify and apply one
+(`POST /api/v1/license/revocations/import`), and no code path at the Owner sends
+anything to a customer installation. Recording a revocation document here does
+**not** mean any installation revoked anything: that requires the customer to
+import the signed file, and no such application is evidenced in this
+repository. The `/app/licenses` page says this in Persian next to every
+revocation record.
+
+**Security boundaries kept.** No private key, public key material, signature
+secret or key-file content is stored in PostgreSQL, the repository, build
+artifacts, logs or the artifact store; `owner.signing_keys` remains
+administrative metadata. The browser never signs and never decides
+authorization: every route re-checks effective permissions server-side, and
+mutation requests keep the `x-owner-request` + Origin requirement. `VLIC1`,
+`VLIC2`, their canonical bytes, every committed vector and every customer
+verification rule are unchanged; `VREV1` is a new file type with its own
+prefix, envelope and vectors-to-be.
 
 ## Boundaries and dependencies
 
@@ -156,9 +161,14 @@ nginx sample proxies `/api/` to an internal service named `owner-api` on port 30
 this is deployment composition, not a customer endpoint. No new microservice.
 Terminate HTTPS at the Owner ingress. Set `NODE_ENV=production`,
 `OWNER_PUBLIC_ORIGIN=https://<owner-host>`, `OWNER_DATABASE_URL` from a secret store,
-and `OWNER_AUDIT_ARCHIVE_DIR=/var/lib/vardena-owner/audit-archive` mounted on a
-dedicated durable volume outside the PostgreSQL data directory and backup
-lifecycle. A different filesystem path alone does **not** guarantee physical
+`OWNER_AUDIT_ARCHIVE_DIR=/var/lib/vardena-owner/audit-archive` and
+`OWNER_LICENSE_ARTIFACT_DIR=/var/lib/vardena-owner/license-artifacts`, each
+mounted on a dedicated durable volume outside the PostgreSQL data directory and
+backup lifecycle. The signed-artifact store is backed up and restored with
+`npm run artifacts:backup` / `npm run artifacts:verify` alongside `pg_dump`; the
+only accepted restore is one that verifies every artifact's byte size and SHA-256
+against the database metadata (see
+[the procedure](../docs/licensing/artifacts-backup-restore.md)). A different filesystem path alone does **not** guarantee physical
 storage independence, hardware WORM immutability, or protection against a
 compromised OS `root`; because this repository does not ship an Owner production
 infrastructure manifest or external volume backup/restore runbook, provisioning
@@ -198,18 +208,20 @@ Display-name/status/reference changes retain before/after fields and actor in th
 same transaction; a failed audit write rolls back the mutation. No arbitrary
 metadata JSON, customer secrets, contact/CRM/billing data or raw signed artifacts.
 
-> **Superseded in part by OD-LIC-10 (2026-10-19), not yet implemented:**
+> **Superseded in part by OD-LIC-10 / OD-LIC-19 (2026-10-19, implemented
+> 2026-10-20):**
 > [PDR-19 §4](../docs/decisions/product/PDR-19-owner-side-issuance-decisions.md)
 > approves a **dedicated durable signed-artifact store outside PostgreSQL** for
-> issued license files, so the "no raw signed artifacts" clause above no longer
-> holds for signed license artifacts once that store exists. The rest of the
+> issued license files, and OD-LIC-19 keeps those exact bytes **indefinitely**
+> with documented backup/restore and integrity verification (no WORM claim, no
+> automatic deletion). The "no raw signed artifacts" clause above therefore no
+> longer holds for signed license and revocation artifacts. The rest of the
 > clause is unchanged: no arbitrary metadata JSON, no customer secrets, no
-> contact/CRM/billing data. Today no such store and no signed artifact exist in
-> this application, so the clause still describes the implemented state. A
-> readable archive of signed licenses is a disclosure surface even though it
-> cannot be forged; access must be permission-gated and every retrieval
-> attributable and audited, and retention/backup/restore of that store is not yet
-> decided.
+> contact/CRM/billing data. A readable archive of signed licenses is a disclosure
+> surface even though it cannot be forged; access is permission-gated and every
+> retrieval attributed and audited. See
+> [artifacts-backup-restore.md](../docs/licensing/artifacts-backup-restore.md) for
+> the backup, restore and verification procedure.
 `002-manual-operations.sql` extends the empty reserved tables. It refuses to run
 if rows already exist. License observations are unique per customer and
 installation. Replacement observations are unique per customer and old
@@ -334,8 +346,8 @@ accepts name/status/reference plus required reason; identity/code/actor/time and
 unknown fields reject. Lists: page size 50, `page`, literal `search` up to 100 chars.
 `users` GET/POST; `users/:id` PATCH role/isActive/reason;
 `users/:id/reset-password` POST password/reason. New/reset accounts must change
-password. `audit-events` GET (`audit.view`; granted to `Owner Admin` and
-`License Operator`): exact-match
+password. `audit-events` GET (`audit.view`; `Owner Admin` always, `License Operator` only
+after an explicit grant): exact-match
 `eventType`, `actorId`, `targetType` (`Customer`, `OperationalRecord`, `User`,
 `AuditArchiveBatch`), `targetId`, `outcome`, and UTC
 `occurredFrom`/`occurredBefore` (half-open); AND semantics; 50-row pages with
@@ -365,8 +377,28 @@ true, and requires `replacements.authorize` (`Owner Admin`). POST
 Missing `operations.record` or `replacements.authorize` on a mutation route
 audits `OPERATION_MUTATION_DENIED` and returns 403. Stable codes include
 `InvalidTransition`, `DuplicateOperation`, `PermissionDenied` and
-`EntityNotFound`. Responses say `OPERATOR_OBSERVED` and
-`cryptographicVerification=NOT_IMPLEMENTED`. Signed protocol routes stay 404.
+`EntityNotFound`. **License lifecycle** (all routes re-check effective permissions inside the
+transaction; `Owner Admin` holds every listed permission, an operator only what
+was granted):
+`license-issuances` GET (`licenses.view`) / POST (`licenses.issue.time_limited`,
+or `licenses.issue.perpetual` for `validUntil: null`); `license-issuances/:id`
+GET; `:id/request` GET (the unsigned `VLSR1` file and both digests);
+`:id/import` POST (`licenses.import`) verifies and archives the signed artifact;
+`:id/abandon` POST; `:id/artifact` GET (`licenses.download`) re-verifies the
+archived bytes before sending them.
+`license-issuances/:id/revocations` POST, `license-revocations` GET,
+`license-revocations/:id`, `:id/request`, `:id/import` and `:id/artifact` are
+`OWNER_ADMIN`-only; the service asserts the role in addition to the route gate.
+`customers/:id/limit-profiles` GET (`licenses.view`) / POST
+(`limit_profiles.manage`), `limit-profiles/:id/retire` and `:id/reactivate`
+(`limit_profiles.manage`); `installation-identities` GET (`licenses.view`) /
+POST (`licenses.issue.time_limited`) and `:id/retire`;
+`users/:id/permissions` GET (`users.manage`) / POST / `revoke`.
+Import refusals are stable codes: `ArtifactRejected:<reason>` (protocol
+reason), `ArtifactBindingMismatch`, `OperationConflict`, `SigningKeyMismatch`,
+`SigningKeyUnavailable`, `NoArtifact`, `ArtifactStorageUnavailable`,
+`ArtifactIntegrityFailed`. A duplicate import answers `replayed: true` with the
+historical result and writes no new fact.
 No DELETE endpoint exists.
 Errors have `code`, bounded safe `message`, `correlationId`; no raw DB errors.
 

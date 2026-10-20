@@ -41,6 +41,14 @@ import type { PermissionDefinition } from '../../rbac/domain/permission-definiti
  * rule may resolve a conflict. The resolution route requires BOTH it and
  * `Licensing.License.Activate`.
  *
+ * `Licensing.License.Revoke` is the authority for importing a signed
+ * revocation artifact (OD-LIC-17). It is a NEW code, not a rename: revoking a
+ * license is a distinct act from activating one, and applying a revocation is
+ * not a license import. The route requires it and the application service
+ * re-checks it (AR-21). Owner-side preparation and import are `OWNER_ADMIN`-only
+ * and use no operator permission at all (protocol §7); this code governs the
+ * customer installation that consumes the artifact.
+ *
  * Reading the evaluated state (`GET /api/v1/license/current`) deliberately
  * has NO permission: it is an authenticated post-login bootstrap self-read
  * that returns non-secret state (ADR-0030).
@@ -50,6 +58,7 @@ export const LICENSING_PERMISSIONS = {
   INSTALLATION_TRANSFER_CUSTOMER: 'Licensing.Installation.TransferCustomer',
   INSTALLATION_RECOVER_AFTER_GAP: 'Licensing.Installation.RecoverAfterGap',
   LICENSE_RESOLVE_REDUCTION: 'Licensing.License.ResolveReduction',
+  LICENSE_REVOKE: 'Licensing.License.Revoke',
   DEVICE_VIEW: 'Licensing.Device.View',
   DEVICE_ACTIVATE: 'Licensing.Device.Activate',
   DEVICE_DEACTIVATE: 'Licensing.Device.Deactivate',
@@ -79,6 +88,11 @@ export const LICENSING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] =
       code: LICENSING_PERMISSIONS.LICENSE_RESOLVE_REDUCTION,
       description:
         'Apply a license version whose capacity or entitlement reduction conflicts with current usage, through an explicit, audited resolution.',
+    },
+    {
+      code: LICENSING_PERMISSIONS.LICENSE_REVOKE,
+      description:
+        'Import a signed license revocation artifact and apply its targeted revocation.',
     },
     {
       code: LICENSING_PERMISSIONS.DEVICE_VIEW,

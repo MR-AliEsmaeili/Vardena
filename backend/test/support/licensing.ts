@@ -19,6 +19,7 @@ export function licensingTestDouble(
       deviceLimit: null,
       deviceLimitSpecified: false,
       provider: 'test',
+      revokedAt: null,
       entitlements: [
         'accounting',
         'documents',

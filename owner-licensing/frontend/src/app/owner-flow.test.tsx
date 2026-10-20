@@ -174,7 +174,7 @@ describe('Owner browser vertical slice (mocked API boundary, CI)', () => {
     expect(
       await screen.findByRole('link', { name: o.openManual }),
     ).toHaveAttribute('href', '/app/operations/activation/new');
-    expect(screen.getAllByText(o.unavailable)).toHaveLength(4);
+    expect(screen.getAllByText(o.unavailable)).toHaveLength(3);
     expect(screen.getByRole('link', { name: o.manualInspect })).toHaveAttribute(
       'href',
       '/app/operations',

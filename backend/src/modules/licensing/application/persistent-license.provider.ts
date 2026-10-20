@@ -68,7 +68,19 @@ export class PersistentLicenseProvider implements LicenseProvider {
         PersistentLicenseProvider.name,
       );
     }
-    return toInstallationLicense(resolution.version, this.name);
+    // OD-LIC-17: the effective version's LICENSE may be revoked. That fact
+    // lives on the license row, so it is read here and handed to the
+    // evaluation, which ranks revocation above every status/date reason and
+    // never grants Grace. A revoked license is not "expired": the signed
+    // version is retained untouched.
+    const revocation = await this.licenses.findLicenseRevocationState(
+      resolution.version.licenseId,
+    );
+    return toInstallationLicense(
+      resolution.version,
+      this.name,
+      revocation?.revokedAt ?? null,
+    );
   }
 
   /**

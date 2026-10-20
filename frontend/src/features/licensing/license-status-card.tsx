@@ -88,13 +88,15 @@ export function LicenseStatusCard(): ReactElement | null {
             >
               {!state.licensed
                 ? t.license.statusUnlicensed
-                : state.accessMode === 'GRACE'
-                  ? t.license.statusGrace
-                  : state.accessMode === 'READ_ONLY'
-                    ? t.license.statusReadOnly
-                    : state.active
-                      ? t.license.statusActive
-                      : t.license.statusInactive}
+                : state.inactiveReason === 'revoked'
+                  ? t.license.statusRevoked
+                  : state.accessMode === 'GRACE'
+                    ? t.license.statusGrace
+                    : state.accessMode === 'READ_ONLY'
+                      ? t.license.statusReadOnly
+                      : state.active
+                        ? t.license.statusActive
+                        : t.license.statusInactive}
             </Badge>
           )}
         </CardTitle>
@@ -117,6 +119,15 @@ export function LicenseStatusCard(): ReactElement | null {
           <p className="text-xs text-slate-500">{t.license.checking}</p>
         ) : (
           <>
+            {state.revokedAt !== null && (
+              <p className="text-xs text-slate-600">
+                {t.license.revokedAtLabel}:{' '}
+                <span className="num" dir="ltr">
+                  {formatDateTime(state.revokedAt)}
+                </span>
+              </p>
+            )}
+
             {state.graceEndsAt !== null && (
               <p className="text-xs text-slate-600">
                 {t.license.graceEndsAtLabel}:{' '}

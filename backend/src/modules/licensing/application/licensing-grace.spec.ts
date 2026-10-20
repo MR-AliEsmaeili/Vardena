@@ -36,6 +36,7 @@ function service(
         { kind: 'MODULE', code: 'sales' },
       ],
       provider: 'test',
+      revokedAt: null,
       ...overrides,
     }),
   };
@@ -105,6 +106,7 @@ describe('OQ-45 LicensingService Grace/Read-Only filtering', () => {
                 deviceLimitSpecified: false,
                 entitlements: [{ kind: 'MODULE', code: 'accounting' }],
                 provider: 'test',
+                revokedAt: null,
               }
             : null,
       },
@@ -177,6 +179,7 @@ describe('OQ-45 LicensingService Grace/Read-Only filtering', () => {
               deviceLimitSpecified: false,
               entitlements: [{ kind: 'MODULE', code: 'accounting' }],
               provider: 'test',
+              revokedAt: null,
             }
           : {
               customerId: 'c1',
@@ -192,6 +195,7 @@ describe('OQ-45 LicensingService Grace/Read-Only filtering', () => {
               deviceLimitSpecified: false,
               entitlements: [{ kind: 'MODULE', code: 'accounting' }],
               provider: 'test',
+              revokedAt: null,
             },
     };
     const s = new LicensingService(provider);

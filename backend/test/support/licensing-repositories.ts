@@ -26,10 +26,12 @@
  */
 import type { InstallationsRepository } from '../../src/modules/licensing/data/installations.repository.js';
 import type {
+  ApplyRevocationCommand,
   ImportLicenseVersionCommand,
   ImportVersionResult,
   LicenseAuditEventCommand,
   LicenseAuditEventRow,
+  LicenseRevocationRecord,
   LicensesRepository,
 } from '../../src/modules/licensing/data/licenses.repository.js';
 import {
@@ -37,6 +39,7 @@ import {
   recoveryAuditEvent,
   renewalAuditEvent,
   resolutionAuditEvent,
+  RevocationConflictError,
   transferAuditEvent,
 } from '../../src/modules/licensing/data/licenses.repository.js';
 import {
@@ -62,6 +65,10 @@ export interface LicensingStores {
   versions: RetainedLicenseVersion[];
   /** Every audit event ever written, in write order. */
   auditEvents: LicenseAuditEventRow[];
+  /** Every applied revocation (one per license, enforced below). */
+  revocations: LicenseRevocationRecord[];
+  /** License-level revocation state, keyed by license id. */
+  revoked: Map<string, { revokedAt: Date; revocationId: string }>;
   self: () => InstallationIdentity | null;
   customers: Map<string, string>;
   customerCodes: Map<string, string>;
@@ -85,6 +92,10 @@ export function createLicensingStores(
   const customers = new Map<string, string>();
   const customerCodes = new Map<string, string>();
   const customerRecords = new Map<string, LicenseCustomer>();
+  const revocations: LicenseRevocationRecord[] = [];
+  const revoked = new Map<string, { revokedAt: Date; revocationId: string }>();
+  /** `license_versions.signed_issued_at`, which the domain row does not carry. */
+  const signedIssuedAt = new Map<string, Date | null>();
   let eventCounter = 0;
 
   const installations = {
@@ -244,6 +255,15 @@ export function createLicensingStores(
     async importVersion(
       command: ImportLicenseVersionCommand,
     ): Promise<ImportVersionResult> {
+      // OD-LIC-17: a revoked license accepts no version — not a renewal, not a
+      // supersession, not an exact replay. Checked first, under the same
+      // "lock" every other invariant runs under.
+      if (revoked.has(command.licenseId)) {
+        throw new ImportConflictError({
+          reason: 'license-revoked',
+          overlapping: 0,
+        });
+      }
       // The authoritative invariant pass, exactly like the real transaction
       // (which runs it under the installation row lock).
       const retained = versions.filter(
@@ -523,6 +543,7 @@ export function createLicensingStores(
         throw uniqueViolation('installation_id, document_hash');
       }
       versions.push(created);
+      signedIssuedAt.set(created.versionId, command.signedIssuedAt);
 
       // The stamp follows the version row, exactly like the real transaction
       // (`superseded_by_version_id` has a foreign key to the new row).
@@ -556,6 +577,156 @@ export function createLicensingStores(
       };
     },
 
+    async findCustomer(
+      customerId: string,
+    ): Promise<{ customerId: string; customerCode: string } | null> {
+      const record = customerRecords.get(customerId);
+      return record === undefined
+        ? null
+        : { customerId: record.customerId, customerCode: record.customerCode };
+    },
+
+    async findRevocationTarget(licenseId: string): Promise<{
+      licenseId: string;
+      installationId: string;
+      customerId: string;
+      revokedAt: Date | null;
+      revocationId: string | null;
+      versions: Array<{
+        versionId: string;
+        operationId: string;
+        signedIssuedAt: Date | null;
+      }>;
+    } | null> {
+      const retained = versions.filter(
+        (version) => version.licenseId === licenseId,
+      );
+      if (retained.length === 0) return null;
+      const first = retained[0] as RetainedLicenseVersion;
+      const state = revoked.get(licenseId);
+      return {
+        licenseId,
+        installationId: first.installationId,
+        customerId: first.customerId,
+        revokedAt: state?.revokedAt ?? null,
+        revocationId: state?.revocationId ?? null,
+        versions: retained.map((version) => ({
+          versionId: version.versionId,
+          operationId: version.operationId,
+          signedIssuedAt: signedIssuedAt.get(version.versionId) ?? null,
+        })),
+      };
+    },
+
+    async findLicenseRevocationState(
+      licenseId: string,
+    ): Promise<{ revokedAt: Date | null } | null> {
+      if (!versions.some((version) => version.licenseId === licenseId)) {
+        return null;
+      }
+      return { revokedAt: revoked.get(licenseId)?.revokedAt ?? null };
+    },
+
+    async findRevocation(
+      revocationId: string,
+    ): Promise<LicenseRevocationRecord | null> {
+      const row = revocations.find(
+        (candidate) => candidate.revocationId === revocationId,
+      );
+      return row === undefined ? null : { ...row };
+    },
+
+    async findRevocationForLicense(
+      licenseId: string,
+    ): Promise<LicenseRevocationRecord | null> {
+      const row = revocations.find(
+        (candidate) => candidate.licenseId === licenseId,
+      );
+      return row === undefined ? null : { ...row };
+    },
+
+    async applyRevocation(command: ApplyRevocationCommand): Promise<{
+      revocation: LicenseRevocationRecord;
+      alreadyApplied: boolean;
+    }> {
+      const existing = revocations.find(
+        (candidate) => candidate.revocationId === command.revocationId,
+      );
+      if (existing !== undefined) {
+        if (
+          existing.canonicalPayloadSha256 !== command.canonicalPayloadSha256 ||
+          existing.licenseId !== command.licenseId
+        ) {
+          throw new RevocationConflictError('conflicting-replay');
+        }
+        return { revocation: { ...existing }, alreadyApplied: true };
+      }
+      const forLicense = revocations.find(
+        (candidate) => candidate.licenseId === command.licenseId,
+      );
+      if (forLicense !== undefined) {
+        throw new RevocationConflictError('already-revoked', {
+          revocationId: forLicense.revocationId,
+          revokedAt: forLicense.importedAt.toISOString(),
+        });
+      }
+      const retained = versions.filter(
+        (version) => version.licenseId === command.licenseId,
+      );
+      if (
+        retained.length === 0 ||
+        retained[0]?.installationId !== command.installationId ||
+        retained[0]?.customerId !== command.customerId
+      ) {
+        throw new RevocationConflictError('unknown-target');
+      }
+      if (revoked.has(command.licenseId)) {
+        const state = revoked.get(command.licenseId);
+        throw new RevocationConflictError('already-revoked', {
+          revocationId: state?.revocationId ?? command.licenseId,
+          revokedAt:
+            state?.revokedAt.toISOString() ?? command.now.toISOString(),
+        });
+      }
+      const row: LicenseRevocationRecord = {
+        revocationId: command.revocationId,
+        licenseId: command.licenseId,
+        installationId: command.installationId,
+        customerId: command.customerId,
+        customerCode: command.customerCode,
+        targetOperationId: command.targetOperationId,
+        reason: command.reason,
+        reasonDetail: command.reasonDetail,
+        issuerKeyId: command.issuerKeyId,
+        issuedAt: command.issuedAt,
+        importedAt: command.now,
+        importedBy: command.actorId,
+        artifactSha256: command.artifactSha256,
+        canonicalPayloadSha256: command.canonicalPayloadSha256,
+      };
+      revocations.push(row);
+      revoked.set(command.licenseId, {
+        revokedAt: command.now,
+        revocationId: command.revocationId,
+      });
+      recordEvent({
+        installationId: command.installationId,
+        eventType: 'license.revocation.imported',
+        outcome: 'APPLIED',
+        operationId: command.targetOperationId,
+        licenseId: command.licenseId,
+        versionId: command.targetVersionId,
+        actorId: command.actorId,
+        source: command.source,
+        documentHash: command.artifactSha256,
+        reason: command.reason,
+        detail: command.detail,
+        revocationId: command.revocationId,
+        occurredAt: command.now,
+      });
+      return { revocation: { ...row }, alreadyApplied: false };
+    },
+
     async recordAuditEvent(event: LicenseAuditEventCommand): Promise<void> {
       recordEvent(event);
     },
@@ -584,6 +755,8 @@ export function createLicensingStores(
     licenses,
     versions,
     auditEvents,
+    revocations,
+    revoked,
     self: () => (self === null ? null : { ...self }),
     customers,
     customerCodes,

@@ -28,6 +28,7 @@ function license(
     deviceLimitSpecified: false,
     entitlements: [{ kind: 'MODULE', code: 'accounting' }],
     provider: 'test',
+    revokedAt: null,
     ...overrides,
   };
 }

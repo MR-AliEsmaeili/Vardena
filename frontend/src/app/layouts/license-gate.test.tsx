@@ -229,6 +229,45 @@ describe('licensing bootstrap stage', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('names a revoked license as revoked and never offers the import form', async () => {
+    // OD-LIC-17: a signed revocation outranks every status/date reason and the
+    // customer runtime refuses every later license artifact for that license.
+    // Offering the import form here would imply re-importing the old file
+    // recovers access; it does not.
+    const revokedState = {
+      ...testInactiveLicenseState,
+      status: 'ACTIVE' as const,
+      active: false,
+      inactiveReason: 'revoked' as const,
+      accessMode: 'BLOCKED' as const,
+      revokedAt: '2026-10-21T09:00:00.000Z',
+    };
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: ['Licensing.License.Activate'],
+    });
+    vi.mocked(licensingApi.getLicenseState).mockResolvedValue(revokedState);
+
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+
+    const main = await screen.findByRole('main');
+    expect(
+      await within(main).findByText(t.license.revokedTitle),
+    ).toBeInTheDocument();
+    expect(
+      within(main).queryByText(t.license.importTitle),
+    ).not.toBeInTheDocument();
+    expect(
+      within(main).queryByText(t.license.inactiveTitle),
+    ).not.toBeInTheDocument();
+    expect(
+      within(main).queryByText(t.license.unlicensedTitle),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: t.dashboard.title }),
+    ).not.toBeInTheDocument();
+  });
+
   it('keeps the terminal explainer for a never-licensed installation the session may not activate', async () => {
     // The same backend state, without `Licensing.License.Activate`: the
     // original explainer — including the installation id — is unchanged.

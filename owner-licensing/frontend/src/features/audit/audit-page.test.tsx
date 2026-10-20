@@ -189,11 +189,15 @@ describe('audit explorer filters', () => {
     await waitFor(() =>
       expect(search()).toBe('?eventType=AUTH_LOGIN&outcome=SUCCESS'),
     );
-    expect(lastQuery()).toEqual({
-      page: 1,
-      eventType: 'AUTH_LOGIN',
-      outcome: 'SUCCESS',
-    });
+    // The request is issued from an effect after the URL render, so the newest
+    // call is not guaranteed to be observable in the same tick (CI proved it).
+    await waitFor(() =>
+      expect(lastQuery()).toEqual({
+        page: 1,
+        eventType: 'AUTH_LOGIN',
+        outcome: 'SUCCESS',
+      }),
+    );
   });
 
   it('trims a typed draft when applied, so the URL and the request are canonical', async () => {
@@ -204,7 +208,9 @@ describe('audit explorer filters', () => {
     await user.click(screen.getByRole('button', { name: o.auditApply }));
 
     await waitFor(() => expect(search()).toBe('?eventType=AUTH_LOGIN'));
-    expect(lastQuery()).toEqual({ page: 1, eventType: 'AUTH_LOGIN' });
+    await waitFor(() =>
+      expect(lastQuery()).toEqual({ page: 1, eventType: 'AUTH_LOGIN' }),
+    );
   });
 
   it('keeps an unapplied draft when paging, and the URL keeps the applied filters', async () => {

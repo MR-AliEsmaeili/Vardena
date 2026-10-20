@@ -10,13 +10,32 @@ export type Permission =
   | "audit.archive"
   | "operations.view"
   | "operations.record"
-  | "replacements.authorize";
-// PDR-17 / PDR-11 §21 (2026-10-16 OQ-75 two-role MVP model): exact grants,
-// no wildcards or prefix expansion. Superseded four-role names receive [].
-// License Operator may view customers/operations/audit and record routine
-// observations, but cannot manage users, mutate customers, perform privileged
-// audit-archive operations, or authorize server replacements / emergency
-// old-server loss decisions.
+  | "replacements.authorize"
+  | "licenses.issue.time_limited"
+  | "licenses.issue.perpetual"
+  | "licenses.import"
+  | "licenses.view"
+  | "licenses.download"
+  | "limit_profiles.manage";
+
+/**
+ * PDR-17 / PDR-11 §21 (2026-10-16 OQ-75 two-role MVP model), extended by
+ * PDR-19 as amended on 2026-10-20.
+ *
+ * This function returns **eligibility**, not effective access:
+ *
+ *   OWNER_ADMIN      — the static role set. OD-LIC-12 (R-1) states explicitly
+ *                      that OWNER_ADMIN is not placed under the grant model and
+ *                      its access is unchanged.
+ *   LICENSE_OPERATOR — the closed list of permissions that role may ever hold.
+ *                      Since OD-LIC-12 (R-1) **none** of them is effective
+ *                      without an explicit active grant row, so an operator's
+ *                      effective set is `eligible(role) ∩ activeGrants`.
+ *
+ * No wildcard, no prefix expansion and no inference: a code not listed here is
+ * ineligible until a reviewed migration amends the vocabulary. Superseded
+ * four-role names receive [].
+ */
 export function permissions(role: string): Permission[] {
   if (role === "OWNER_ADMIN")
     return [
@@ -28,6 +47,12 @@ export function permissions(role: string): Permission[] {
       "operations.view",
       "operations.record",
       "replacements.authorize",
+      "licenses.issue.time_limited",
+      "licenses.issue.perpetual",
+      "licenses.import",
+      "licenses.view",
+      "licenses.download",
+      "limit_profiles.manage",
     ];
   if (role === "LICENSE_OPERATOR")
     return [
@@ -35,8 +60,65 @@ export function permissions(role: string): Permission[] {
       "audit.view",
       "operations.view",
       "operations.record",
+      "licenses.issue.time_limited",
+      "licenses.import",
+      "licenses.view",
+      "licenses.download",
     ];
   return [];
+}
+
+/**
+ * The closed set a per-user grant may name for a LICENSE_OPERATOR. Grants of
+ * anything else are refused by the schema trigger AND by the service, so
+ * neither layer alone carries the restriction.
+ */
+export const operatorGrantablePermissions: readonly Permission[] = [
+  "customers.view",
+  "audit.view",
+  "operations.view",
+  "operations.record",
+  "licenses.issue.time_limited",
+  "licenses.import",
+  "licenses.view",
+  "licenses.download",
+];
+
+export function isGrantablePermission(value: unknown): value is Permission {
+  return (
+    typeof value === "string" &&
+    (operatorGrantablePermissions as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Effective access. OWNER_ADMIN is not configurable (unchanged by OD-LIC-12);
+ * every other role is the intersection of its eligibility and its active
+ * grants — a grant can narrow, never widen.
+ */
+export function effectivePermissions(
+  role: string,
+  activeGrants: readonly string[],
+): Permission[] {
+  if (role === "OWNER_ADMIN") return permissions(role);
+  if (role !== "LICENSE_OPERATOR") return [];
+  return permissions(role).filter((permission) =>
+    activeGrants.includes(permission),
+  );
+}
+
+export type AuthenticatedActor = User & { permissions: Permission[] };
+
+export function hasEffectivePermission(
+  actor: { role: string; permissions?: readonly Permission[] },
+  permission: Permission,
+): boolean {
+  if (actor.permissions) return actor.permissions.includes(permission);
+  // Fail closed for an operator: role eligibility alone is not access
+  // (OD-LIC-12, R-1). OWNER_ADMIN is not under the grant model.
+  return (
+    actor.role === "OWNER_ADMIN" && permissions(actor.role).includes(permission)
+  );
 }
 export class ApiError extends Error {
   constructor(
@@ -87,6 +169,7 @@ export function role(value: unknown): Role {
 export function isRole(value: unknown): value is Role {
   return roles.includes(value as Role);
 }
+/** Eligibility check (role vocabulary). Not an authorization decision. */
 export function assertPermission(
   actorRole: unknown,
   requiredPermission: Permission,
@@ -98,9 +181,18 @@ export function assertPermission(
     fail(403, "PermissionDenied", "You do not have permission.");
   return actorRole;
 }
+
+/**
+ * Effective authorization: active, valid role, password already changed, and
+ * the permission present in the actor's **effective** set. An actor object
+ * without an effective set is denied unless it is OWNER_ADMIN, which the
+ * grant model does not govern (OD-LIC-12).
+ */
 export function assertActiveAuthorizedActor(
   actor:
-    | Pick<User, "id" | "role" | "is_active" | "must_change_password">
+    | (Pick<User, "id" | "role" | "is_active" | "must_change_password"> & {
+        permissions?: readonly Permission[];
+      })
     | null
     | undefined,
   requiredPermission: Permission,
@@ -113,7 +205,9 @@ export function assertActiveAuthorizedActor(
       "PasswordChangeRequired",
       "Initial password must be changed first.",
     );
-  return assertPermission(actor.role, requiredPermission);
+  if (!hasEffectivePermission(actor, requiredPermission))
+    fail(403, "PermissionDenied", "You do not have permission.");
+  return actor.role;
 }
 // PDR-14 grammar, case-sensitive, no implicit uppercasing or identity inference.
 export function customerCode(value: unknown, id?: string): string {

@@ -85,10 +85,29 @@ export function LicenseGate({ children }: { children: ReactNode }) {
       // operator needs the installation identity to obtain a license at all,
       // so it is shown here instead of being hidden in the API response.
       const unlicensed = license.license?.status === 'UNLICENSED';
+      const revoked = license.license?.inactiveReason === 'revoked';
       const installationId = license.license?.installationId ?? null;
       const body = unlicensed
         ? t.license.unlicensedBody
         : t.license.inactiveBody;
+
+      // A revoked license refuses every later import (OD-LIC-17), so offering
+      // the import form here would be a dead end that implies recovery is
+      // possible by re-importing. It is not: a new issuance is required.
+      if (revoked) {
+        return (
+          <BootstrapScreen>
+            <BlockedState
+              title={t.license.revokedTitle}
+              description={
+                installationId === null
+                  ? t.license.revokedBody
+                  : `${t.license.revokedBody} (${t.license.installationIdLabel}: ${installationId})`
+              }
+            />
+          </BootstrapScreen>
+        );
+      }
 
       // The import step (L-03): one route accepts the signed file, a bare
       // artifact or a legacy VLIC1 code. It is offered when the session

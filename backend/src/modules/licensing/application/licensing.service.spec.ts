@@ -30,6 +30,7 @@ function license(
       { kind: 'FEATURE', code: 'report_builder' },
     ],
     provider: 'test-provider',
+    revokedAt: null,
     ...overrides,
   };
 }

@@ -11,6 +11,8 @@ import { ClientDevicesController } from './client-devices.controller.js';
 import { LicenseActivationController } from './license-activation.controller.js';
 import { LicenseImportController } from './license-import.controller.js';
 import { LicenseGapRecoveryController } from './license-gap-recovery.controller.js';
+import { LicenseRevocationController } from './license-revocation.controller.js';
+import { LicenseRevocationService } from '../application/license-revocation.service.js';
 import { LicenseStateController } from './license-state.controller.js';
 
 /**
@@ -25,12 +27,14 @@ describe('Licensing OpenAPI success-response contracts', () => {
         LicenseActivationController,
         LicenseImportController,
         LicenseGapRecoveryController,
+        LicenseRevocationController,
         ClientDevicesController,
       ],
       providers: [
         { provide: LicensingService, useValue: {} },
         { provide: LicenseActivationService, useValue: {} },
         { provide: LicenseImportService, useValue: {} },
+        { provide: LicenseRevocationService, useValue: {} },
         { provide: ClientDeviceLifecycleService, useValue: {} },
       ],
     })
@@ -66,6 +70,19 @@ describe('Licensing OpenAPI success-response contracts', () => {
       });
       expect(jsonSchema(imported)).toEqual({
         $ref: '#/components/schemas/LicenseImportResultDto',
+      });
+
+      // OD-LIC-17: the revocation import is a documented path with its own
+      // request and success schemas.
+      const revocationImport =
+        document.paths['/license/revocations/import']?.post;
+      expect(jsonSchema(revocationImport?.responses?.['200'])).toEqual({
+        $ref: '#/components/schemas/LicenseRevocationImportResultDto',
+      });
+      const revocationRequest = revocationImport?.requestBody as
+        { content?: { 'application/json'?: { schema?: unknown } } } | undefined;
+      expect(revocationRequest?.content?.['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/ImportLicenseRevocationDto',
       });
 
       const gapRecovery = document.paths['/license/gap-recovery']?.post;
@@ -127,6 +144,8 @@ describe('Licensing OpenAPI success-response contracts', () => {
       const stateFields = [
         'licensed',
         'status',
+        // OD-LIC-17: the revocation instant is part of the additive state.
+        'revokedAt',
         'active',
         'inactiveReason',
         'accessMode',

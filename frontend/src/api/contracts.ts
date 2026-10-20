@@ -167,9 +167,23 @@ export interface LicenseState {
   licensed: boolean;
   status: 'ACTIVE' | 'EXPIRED' | 'SUSPENDED' | 'UNLICENSED';
   active: boolean;
-  inactiveReason: 'unlicensed' | 'status' | 'not-yet-valid' | 'expired' | null;
+  inactiveReason:
+    | 'unlicensed'
+    | 'status'
+    | 'not-yet-valid'
+    | 'expired'
+    // A signed revocation artifact was imported for this license (OD-LIC-17).
+    // It outranks every status/date reason and is never reported as grace.
+    | 'revoked'
+    | null;
   accessMode: 'ACTIVE' | 'GRACE' | 'READ_ONLY' | 'BLOCKED';
   graceEndsAt: string | null;
+  /**
+   * When the governing license was revoked by a signed revocation artifact
+   * (OD-LIC-17), or null. A revoked license reports `active: false`,
+   * `inactiveReason: 'revoked'` and `accessMode: 'BLOCKED'`.
+   */
+  revokedAt: string | null;
   installationId: string | null;
   customerId: string | null;
   customerCode: string | null;

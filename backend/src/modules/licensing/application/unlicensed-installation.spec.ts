@@ -37,6 +37,7 @@ describe('unlicensed installation', () => {
       deviceLimitSpecified: false,
       entitlements: [],
       provider: 'persistent',
+      revokedAt: null,
       active: false,
       inactiveReason: 'unlicensed',
       graceEndsAt: null,
@@ -88,6 +89,7 @@ describe('unlicensed installation', () => {
         deviceLimit: null,
         deviceLimitSpecified: false,
         provider: 'persistent',
+        revokedAt: null,
         entitlements: [{ kind: 'MODULE', code: 'users' }],
       }),
     });
@@ -143,6 +145,7 @@ describe('unlicensed installation', () => {
         deviceLimit: null,
         deviceLimitSpecified: false,
         provider: 'persistent',
+        revokedAt: null,
         entitlements: [{ kind: 'MODULE', code: 'users' }],
       }),
     });

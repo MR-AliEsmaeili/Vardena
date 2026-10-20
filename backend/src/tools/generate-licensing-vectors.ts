@@ -10,6 +10,8 @@ import {
 import { canonicalizeLicenseVersion } from '../modules/licensing/domain/license-document.js';
 import type { LicenseVersionPayload } from '../modules/licensing/domain/license-document.js';
 import { canonicalizeLicenseCodePayload } from '../modules/licensing/domain/license-code.js';
+import { canonicalizeRevocation } from '../modules/licensing/domain/license-revocation.js';
+import type { RevocationPayload } from '../modules/licensing/domain/license-revocation.js';
 import type { LicensePayload } from '../modules/licensing/domain/license-code.js';
 import {
   canonicalizeEnrollmentChallenge,
@@ -93,7 +95,7 @@ const INST = '01TESTINSTALLATION000000000';
 const DEV = '01TESTDEVICE00000000000000';
 
 // --- Canonical vectors ---
-for (const sub of ['canonical', 'valid', 'invalid', 'rotation']) {
+for (const sub of ['canonical', 'valid', 'invalid', 'rotation', 'revocation']) {
   mkdirSync(join(ROOT, sub), { recursive: true });
 }
 
@@ -655,6 +657,252 @@ writeJson(join(ROOT, 'rotation', 'ROT-02.json'), {
   protocolVersion: 'VLIC2',
   trustKeys: ['authority-b'],
   artifact: vlic2Artifact,
+  expectedResult: 'signature',
+});
+
+// --- Signed revocation artifact (`VREV1`, OD-LIC-17) -----------------------
+//
+// A SEPARATE vector set: it never adds, removes or regenerates a license
+// vector. Every instant is fixed, so regeneration is byte-identical (CI diffs
+// this directory).
+const REV = '01TESTREVOCATION0000000000';
+const revocationPayload: RevocationPayload = {
+  v: 1,
+  kind: 'SERVER_LICENSE_REVOCATION',
+  revocationId: REV,
+  licenseId: LIC,
+  targetOperationId: OP,
+  customerId: CUST,
+  customerCode: CUSTCODE,
+  installationId: INST,
+  effect: 'LICENSE_ONLY',
+  reason: 'CONTRACT_TERMINATION',
+  reasonDetail: 'Contract 2026-114 ended on 2026-10-20.',
+  issuerKeyId: a.json.keyId,
+  issuedAt: new Date('2026-10-20T09:30:00.000Z'),
+};
+const revocationCanonical = canonicalizeRevocation(revocationPayload);
+writeJson(join(ROOT, 'revocation', 'CAN-01.json'), {
+  id: 'REV-CAN-01',
+  name: 'VREV1 canonical payload with a reasonDetail',
+  protocolVersion: 'VREV1',
+  input: { ...revocationPayload, issuedAt: '2026-10-20T09:30:00.000Z' },
+  expectedCanonicalUtf8: revocationCanonical,
+  expectedCanonicalUtf8Hex: Buffer.from(revocationCanonical, 'utf8').toString(
+    'hex',
+  ),
+  notes:
+    'Fixed field order from the protocol, every field present, instants as toISOString().',
+});
+
+const revocationNullDetail: RevocationPayload = {
+  ...revocationPayload,
+  revocationId: '01TESTREVOCATION0000000001',
+  reason: 'NON_PAYMENT',
+  reasonDetail: null,
+  issuedAt: new Date('2026-10-20T09:31:00.000Z'),
+};
+const revocationNullDetailCanonical =
+  canonicalizeRevocation(revocationNullDetail);
+writeJson(join(ROOT, 'revocation', 'CAN-02.json'), {
+  id: 'REV-CAN-02',
+  name: 'VREV1 canonical payload with a null reasonDetail',
+  protocolVersion: 'VREV1',
+  input: { ...revocationNullDetail, issuedAt: '2026-10-20T09:31:00.000Z' },
+  expectedCanonicalUtf8: revocationNullDetailCanonical,
+  expectedCanonicalUtf8Hex: Buffer.from(
+    revocationNullDetailCanonical,
+    'utf8',
+  ).toString('hex'),
+  notes: 'null is the literal null; the field is never omitted.',
+});
+
+const revocationBody = Buffer.from(revocationCanonical, 'utf8');
+const revocationSig = cryptoSign(null, revocationBody, authA.privateKey);
+const revocationArtifact = [
+  'VREV1',
+  revocationBody.toString('base64url'),
+  revocationSig.toString('base64url'),
+].join('.');
+writeJson(join(ROOT, 'revocation', 'OK-01.json'), {
+  id: 'REV-OK-01',
+  name: 'valid VREV1 revocation artifact signed by authority A',
+  protocolVersion: 'VREV1',
+  artifact: revocationArtifact,
+  envelope: {
+    format: 'vardena-revocation',
+    fileVersion: 1,
+    revocation: revocationArtifact,
+    keyId: a.json.keyId,
+  },
+  signer: 'authority-a',
+  keyId: a.json.keyId,
+  expectedCanonicalUtf8Hex: revocationBody.toString('hex'),
+});
+
+// BAD-01: the signature is A's, but the signed payload claims B as issuer.
+const issuerMismatchPayload: RevocationPayload = {
+  ...revocationPayload,
+  issuerKeyId: b.json.keyId,
+};
+const issuerMismatchBody = Buffer.from(
+  canonicalizeRevocation(issuerMismatchPayload),
+  'utf8',
+);
+const issuerMismatchSig = cryptoSign(
+  null,
+  issuerMismatchBody,
+  authA.privateKey,
+);
+writeJson(join(ROOT, 'revocation', 'BAD-01.json'), {
+  id: 'REV-BAD-01',
+  name: 'issuerKeyId names a key that did not sign',
+  envelope: {
+    format: 'vardena-revocation',
+    fileVersion: 1,
+    revocation: [
+      'VREV1',
+      issuerMismatchBody.toString('base64url'),
+      issuerMismatchSig.toString('base64url'),
+    ].join('.'),
+  },
+  expectedReason: 'key-mismatch',
+});
+
+// BAD-02: a LICENSE envelope presented as a revocation.
+writeJson(join(ROOT, 'revocation', 'BAD-02.json'), {
+  id: 'REV-BAD-02',
+  name: 'license file envelope cannot carry a revocation',
+  raw: JSON.stringify({
+    format: 'vardena-license',
+    fileVersion: 1,
+    document: vlic2Artifact,
+  }),
+  expectedReason: 'malformed',
+});
+
+// BAD-03: unsupported armor version.
+const revocationParts = revocationArtifact.split('.');
+writeJson(join(ROOT, 'revocation', 'BAD-03.json'), {
+  id: 'REV-BAD-03',
+  name: 'unsupported armor prefix VREV2',
+  raw: ['VREV2', revocationParts[1]!, revocationParts[2]!].join('.'),
+  expectedReason: 'unsupported-version',
+});
+
+// BAD-04: valid signature over NON-canonical bytes (pretty-printed JSON).
+const prettyBody = Buffer.from(
+  JSON.stringify(revocationPayload, null, 2),
+  'utf8',
+);
+const prettySig = cryptoSign(null, prettyBody, authA.privateKey);
+writeJson(join(ROOT, 'revocation', 'BAD-04.json'), {
+  id: 'REV-BAD-04',
+  name: 'signed but non-canonical payload',
+  raw: [
+    'VREV1',
+    prettyBody.toString('base64url'),
+    prettySig.toString('base64url'),
+  ].join('.'),
+  expectedReason: 'canonical',
+});
+
+// BAD-05: a reason outside the closed vocabulary.
+const unknownReasonPayload = {
+  ...revocationPayload,
+  reason: 'TRAFFIC_VIOLATION',
+} as unknown as RevocationPayload;
+const unknownReasonBody = Buffer.from(
+  canonicalizeRevocation(unknownReasonPayload),
+  'utf8',
+);
+const unknownReasonSig = cryptoSign(null, unknownReasonBody, authA.privateKey);
+writeJson(join(ROOT, 'revocation', 'BAD-05.json'), {
+  id: 'REV-BAD-05',
+  name: 'reason outside the closed vocabulary',
+  raw: [
+    'VREV1',
+    unknownReasonBody.toString('base64url'),
+    unknownReasonSig.toString('base64url'),
+  ].join('.'),
+  expectedReason: 'payload',
+});
+
+// BAD-06: customerCode equal to customerId (protocol §3 rule 7).
+const codeEqualsIdPayload: RevocationPayload = {
+  ...revocationPayload,
+  customerCode: CUST,
+};
+const codeEqualsIdBody = Buffer.from(
+  canonicalizeRevocation(codeEqualsIdPayload),
+  'utf8',
+);
+const codeEqualsIdSig = cryptoSign(null, codeEqualsIdBody, authA.privateKey);
+writeJson(join(ROOT, 'revocation', 'BAD-06.json'), {
+  id: 'REV-BAD-06',
+  name: 'customerCode equal to customerId',
+  raw: [
+    'VREV1',
+    codeEqualsIdBody.toString('base64url'),
+    codeEqualsIdSig.toString('base64url'),
+  ].join('.'),
+  expectedReason: 'payload',
+});
+
+// BAD-07: the envelope names a key this installation does not trust.
+writeJson(join(ROOT, 'revocation', 'BAD-07.json'), {
+  id: 'REV-BAD-07',
+  name: 'unknown key hint in the envelope',
+  envelope: {
+    format: 'vardena-revocation',
+    fileVersion: 1,
+    revocation: revocationArtifact,
+    keyId: 'sha256-0000000000000000',
+  },
+  expectedReason: 'unknown-key',
+});
+
+// BAD-08: a payload field this format does not define.
+const extraFieldBody = Buffer.from(
+  JSON.stringify({
+    ...JSON.parse(revocationCanonical),
+    reactivatesLicenseId: LIC,
+  }),
+  'utf8',
+);
+const extraFieldSig = cryptoSign(null, extraFieldBody, authA.privateKey);
+writeJson(join(ROOT, 'revocation', 'BAD-08.json'), {
+  id: 'REV-BAD-08',
+  name: 'unknown payload field reactivatesLicenseId',
+  raw: [
+    'VREV1',
+    extraFieldBody.toString('base64url'),
+    extraFieldSig.toString('base64url'),
+  ].join('.'),
+  expectedReason: 'payload',
+});
+
+writeJson(join(ROOT, 'revocation', 'ROT-01.json'), {
+  id: 'REV-ROT-01',
+  name: 'revocation signed by A accepted while A and B are trusted',
+  trustKeys: ['authority-a', 'authority-b'],
+  envelope: {
+    format: 'vardena-revocation',
+    fileVersion: 1,
+    revocation: revocationArtifact,
+  },
+  expectedKeyId: a.json.keyId,
+  expectedResult: 'accepted',
+});
+writeJson(join(ROOT, 'revocation', 'ROT-02.json'), {
+  id: 'REV-ROT-02',
+  name: 'revocation signed by A rejected after A is retired',
+  trustKeys: ['authority-b'],
+  envelope: {
+    format: 'vardena-revocation',
+    fileVersion: 1,
+    revocation: revocationArtifact,
+  },
   expectedResult: 'signature',
 });
 
