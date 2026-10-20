@@ -7,7 +7,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import { ulid } from "ulid";
 import type { Express } from "express";
+import type { PoolClient } from "pg";
 import { Database } from "../src/db.js";
+import { ApiError } from "../src/domain.js";
 import { bootstrap } from "../src/bootstrap.js";
 import { createApp } from "../src/app.js";
 import { migrate } from "../src/migrate.js";
@@ -1455,6 +1457,50 @@ describe("import dependencies never mask expiry (OD-LIC-20)", () => {
 });
 
 /**
+ * Deterministic fault injection for the parser-rejection hook: raises an
+ * application-level 500 — the codebase's `fail(500, "InternalError", …)`
+ * invariant shape — at the moment the expiry transition is staged, inside the
+ * real transaction. Only the expiry UPDATE for the armed issuance is
+ * intercepted; every other statement runs against the real database, and the
+ * pooled client's `query` is restored before the client is released.
+ */
+class SyntheticExpiryFailureDatabase extends Database {
+  failIssuanceId: string | null = null;
+
+  override async transaction<T>(
+    work: (tx: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    return super.transaction(async (tx) => {
+      const originalQuery = tx.query;
+      const run = originalQuery as unknown as (
+        text: unknown,
+        params?: unknown,
+      ) => Promise<unknown>;
+      tx.query = (async (text: unknown, params?: unknown) => {
+        if (
+          this.failIssuanceId !== null &&
+          typeof text === "string" &&
+          text.includes("SET status='ABANDONED'") &&
+          Array.isArray(params) &&
+          params[0] === this.failIssuanceId
+        )
+          throw new ApiError(
+            500,
+            "InternalError",
+            "The operation failed. Please retry.",
+          );
+        return run.call(tx, text, params);
+      }) as typeof tx.query;
+      try {
+        return await work(tx);
+      } finally {
+        tx.query = originalQuery;
+      }
+    });
+  }
+}
+
+/**
  * Payload validation must never decide the fate of an expired request.
  *
  * OD-LIC-20 says the first authorized completion attempt at or after
@@ -1465,6 +1511,31 @@ describe("import dependencies never mask expiry (OD-LIC-20)", () => {
  * untouched.
  */
 describe("import payload validation never masks expiry (OD-LIC-20)", () => {
+  let failureDb: SyntheticExpiryFailureDatabase;
+  let appWithFailure: Express;
+
+  beforeAll(async () => {
+    // Same database, sessions, origin and clock as the main app: only the
+    // injected failure differs, so the main app's operator session is valid.
+    failureDb = new SyntheticExpiryFailureDatabase(url!);
+    appWithFailure = await createApp(
+      failureDb,
+      {
+        databaseUrl: url!,
+        origin,
+        production: false,
+        port: 3001,
+        artifactDir,
+        trustedPublicKeys: [`${signingKeyId}:${publicMaterial}`],
+      },
+      { now: () => clockNow ?? Date.now() },
+    );
+  });
+
+  afterAll(async () => {
+    await failureDb.close();
+  });
+
   afterEach(() => {
     clockNow = null;
   });
@@ -1476,8 +1547,13 @@ describe("import payload validation never masks expiry (OD-LIC-20)", () => {
 
   // A body the transport parser itself refuses (unparsable or oversized), so
   // the request reaches the parser-rejection hook instead of the route.
-  const postRaw = (id: string, cookie: string | undefined, raw: string) => {
-    const r = request(app)
+  const postRaw = (
+    id: string,
+    cookie: string | undefined,
+    raw: string,
+    target: Express = app,
+  ) => {
+    const r = request(target)
       .post(`/api/v1/license-issuances/${id}/import`)
       .set("Origin", origin)
       .set("x-owner-request", "1")
@@ -1691,6 +1767,46 @@ describe("import payload validation never masks expiry (OD-LIC-20)", () => {
       await db.pool.query(
         "DROP TRIGGER IF EXISTS test_fail_parser_expiry_audit ON owner.audit_events; DROP FUNCTION IF EXISTS owner.test_fail_parser_expiry_audit()",
       );
+    }
+  });
+
+  it("routes an application-level 500 from the expiry transaction to the error handler, not the parser's 400", async () => {
+    const requestedAt = new Date("2026-06-21T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+    failureDb.failIssuanceId = seeded.id;
+    try {
+      // The hook authenticates and locks the expired row, then an
+      // application-level 500 (the codebase's InternalError invariant shape)
+      // is raised as the transition is staged. A 5xx ApiError is an
+      // infrastructure failure, not a recognized non-expiry outcome: it must
+      // reach the error handler with the established public 500 response
+      // instead of being downgraded to the parser's 400, and the rollback
+      // must leave no committed transition or audit behind.
+      const failed = await postRaw(
+        seeded.id,
+        operatorCookie,
+        '{"fileContent":',
+        appWithFailure,
+      );
+      expect(failed.status).toBe(500);
+      expect(failed.body.code).toBe("InternalError");
+      expect(failed.body.message).toBe("The operation failed. Please retry.");
+      expect(failed.body).not.toHaveProperty("stack");
+      const facts = await issuanceFacts(seeded.id);
+      expect(facts.status).toBe("REQUEST_PREPARED");
+      expect(facts.abandonment_reason).toBeNull();
+      expect(facts.abandoned_at).toBeNull();
+      expect(await auditCount("LICENSE_REQUEST_ABANDONED", seeded.id)).toBe(0);
+      expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", seeded.id)).toBe(0);
+      expect(
+        await count(
+          "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+          [seeded.id],
+        ),
+      ).toBe(0);
+    } finally {
+      failureDb.failIssuanceId = null;
     }
   });
 

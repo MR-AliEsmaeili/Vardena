@@ -507,17 +507,21 @@ export async function createApp(
         });
       } catch (failure) {
         // The transaction rolled back, so no transition or audit committed and
-        // the expiry refusal must never be reported from here. Only the
-        // non-expiry domain outcomes (a malformed or unknown issuance id)
-        // keep the parser's existing answer. Authentication/authorization
-        // refusals keep their own response instead of being replaced by the
-        // parser error, and every other failure — database, transaction or
-        // unexpected — goes to the error handler instead of masquerading as a
-        // client-side 400.
+        // the expiry refusal must never be reported from here. Only the two
+        // non-expiry domain refusals an authorized attempt can raise in this
+        // transaction keep the parser's existing answer: a malformed issuance
+        // id (`400 ValidationFailed` from `ulidValue`) and an unknown one
+        // (`404 EntityNotFound` from `readIssuance`). Every other failure
+        // keeps its own response through the error handler — the 401/403
+        // authentication and authorization refusals, database and transaction
+        // failures, 5xx `ApiError`s and unexpected errors are never replaced
+        // by the parser error. (The defensive 409 in `abandonExpiredRequest`
+        // is unreachable under the row lock the guard holds and is not a
+        // documented fall-through outcome, so it too would surface there.)
         if (
           failure instanceof ApiError &&
-          failure.status !== 401 &&
-          failure.status !== 403
+          ((failure.status === 400 && failure.code === "ValidationFailed") ||
+            (failure.status === 404 && failure.code === "EntityNotFound"))
         )
           return next(error);
         return next(failure);

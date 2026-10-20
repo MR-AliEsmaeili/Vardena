@@ -1440,11 +1440,15 @@ An error-handling middleware registered immediately after the parser recognizes
 authorization and clock, commits the transition and audit, and answers `409`.
 The outcomes stay distinct: an authentication or authorization refusal keeps
 its own `401`/`403` response instead of being replaced by the parser error (and
-never mutates the request); a failed transaction is routed to the error handler
-and never reports the expiry refusal, because the transition and audit did not
-commit; the remaining non-expiry outcomes — unknown id, still-eligible request,
-`SIGNED_RECORDED` replay — fall through unchanged to the parser's existing
-`400`.
+never mutates the request); a failed transaction — a database failure or an
+application-level `5xx` — is routed to the error handler and never reports the
+expiry refusal, because the transition and audit did not commit; only the two
+named non-expiry domain refusals (a malformed issuance id, `400
+ValidationFailed`; an unknown one, `404 EntityNotFound`) and the no-error
+outcomes — still-eligible request, `SIGNED_RECORDED` replay — fall through
+unchanged to the parser's existing `400`. The fall-through set is closed: any
+other error, expected or not, surfaces through the error handler with its own
+response.
 
 **Dependency ordering is part of the same rule.** `importIssuanceArtifact`
 receives the artifact store and the trust list as *providers*
@@ -1820,7 +1824,9 @@ hook, an unauthorized actor's unparsable body still answers `403` and an
 unauthenticated attempt `401` — never the parser's `400` — with the row
 untouched · a forced audit-write failure on a malformed body answers `500` and
 leaves the row `REQUEST_PREPARED` (nothing committed, no expiry refusal
-reported) · an eligible request one millisecond before the boundary keeps the
+reported) · an application-level `500` raised while the transition is staged
+answers `500 InternalError` through the error handler, never the parser's
+`400`, with nothing committed · an eligible request one millisecond before the boundary keeps the
 parser's `400` on an unparsable body · an unknown issuance id keeps the parser's
 `400` and writes no audit.
 Executed locally in `test/licensing.test.ts` and
