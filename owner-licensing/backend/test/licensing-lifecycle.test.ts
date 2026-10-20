@@ -1,9 +1,9 @@
 // CI-only. Requires an explicit disposable Owner PostgreSQL database; never skips.
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { generateKeyPairSync, type KeyObject } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import { ulid } from "ulid";
 import type { Express } from "express";
@@ -20,10 +20,23 @@ import {
   deriveKeyId,
   licenseFileEnvelope,
   parseLicenseVersionPayload,
+  prepareLicenseRequest,
   signLicenseVersion,
+  type LicenseRequestPayload,
   type LicenseVersionPayload,
 } from "../src/protocol.js";
 import { signLicenseRequest } from "../src/signer/signer.js";
+import {
+  EXPIRED_REQUEST_REASON,
+  PREPARED_REQUEST_MAX_AGE_MS,
+  preparedRequestExpiresAt,
+} from "../src/licensing.js";
+import {
+  ARTIFACT_MANIFEST_FILE,
+  backupArtifacts,
+  verifyArtifactBackup,
+  verifyArtifactStore,
+} from "../src/artifact-backup.js";
 
 /**
  * Owner-side issuance lifecycle against a fresh PostgreSQL database
@@ -57,6 +70,8 @@ const adminPassword = "Disposable_admin_72";
 const operatorPassword = "Disposable_operator_73";
 
 let app: Express;
+/** OD-LIC-20: frozen "server now" for the import route; null = real time. */
+let clockNow: number | null = null;
 let adminCookie: string;
 let adminId: string;
 let operatorCookie: string;
@@ -187,6 +202,157 @@ async function signIssuance(issuanceId: string) {
   });
 }
 
+interface IssuanceFacts {
+  status: string;
+  operation_id: string;
+  license_id: string;
+  request_document: string;
+  request_payload_sha256: string;
+  request_binding_sha256: string;
+  requested_at: Date;
+  valid_from: Date;
+  valid_until: Date | null;
+  organization_limit: number | null;
+  user_limit: number | null;
+  module_entitlements: string[];
+  feature_entitlements: string[];
+  abandonment_reason: string | null;
+  abandoned_at: Date | null;
+  abandoned_by: string | null;
+  artifact_sha256: string | null;
+  artifact_store_key: string | null;
+  signed_at: Date | null;
+  imported_at: Date | null;
+}
+
+async function issuanceFacts(id: string): Promise<IssuanceFacts> {
+  return (
+    await db.pool.query<IssuanceFacts>(
+      `SELECT status,operation_id,license_id,request_document,request_payload_sha256,
+              request_binding_sha256,requested_at,valid_from,valid_until,
+              organization_limit,user_limit,module_entitlements,feature_entitlements,
+              abandonment_reason,abandoned_at,abandoned_by,artifact_sha256,
+              artifact_store_key,signed_at,imported_at
+         FROM owner.license_issuances WHERE id=$1`,
+      [id],
+    )
+  ).rows[0]!;
+}
+
+/** The creation-time snapshot columns OD-LIC-14 keeps immutable. */
+function snapshotOf(facts: IssuanceFacts) {
+  return {
+    operationId: facts.operation_id,
+    licenseId: facts.license_id,
+    requestDocument: facts.request_document,
+    requestPayloadSha256: facts.request_payload_sha256,
+    requestBindingSha256: facts.request_binding_sha256,
+    requestedAt: facts.requested_at.toISOString(),
+    validFrom: facts.valid_from.toISOString(),
+    validUntil: facts.valid_until?.toISOString() ?? null,
+    organizationLimit: facts.organization_limit,
+    userLimit: facts.user_limit,
+    modules: facts.module_entitlements,
+    features: facts.feature_entitlements,
+  };
+}
+
+/**
+ * OD-LIC-20 needs a prepared request whose persisted `requested_at` is old, but
+ * that column is immutable and server-set, so an API-prepared request can never
+ * be aged. This seeds the row with the production request builder and signs the
+ * resulting envelope with the in-test authority key; everything the import
+ * checks (snapshot, digests, binding, signature, key) is therefore exactly what
+ * a real preparation produces.
+ */
+async function seedPreparedRequest(requestedAt: Date) {
+  const customer = (
+    await db.pool.query<{ customer_code: string; display_name: string }>(
+      "SELECT customer_code,display_name FROM owner.customers WHERE id=$1",
+      [customerId],
+    )
+  ).rows[0]!;
+  const validFrom = new Date(
+    Date.UTC(
+      requestedAt.getUTCFullYear(),
+      requestedAt.getUTCMonth(),
+      requestedAt.getUTCDate(),
+    ),
+  );
+  const payload: LicenseRequestPayload = {
+    v: 1,
+    kind: "SERVER_LICENSE_ISSUANCE_REQUEST",
+    requestId: ulid(),
+    operationId: ulid(),
+    licenseId: ulid(),
+    customerId,
+    customerCode: customer.customer_code,
+    customerName: customer.display_name,
+    installationId,
+    status: "ACTIVE",
+    validFrom,
+    validUntil: new Date(validFrom.getTime() + 180 * 86_400_000),
+    organizationLimit: 2,
+    userLimit: 20,
+    deviceLimit: null,
+    deviceLimitSpecified: false,
+    modules: ["inventory"],
+    features: [],
+    supersedesOperationId: null,
+    renewsOperationId: null,
+    issuedAt: requestedAt,
+    requestedAt,
+    requestedByUserId: operatorId,
+    signingKeyId,
+  };
+  const prepared = prepareLicenseRequest(payload);
+  const id = ulid();
+  await db.pool.query(
+    `INSERT INTO owner.license_issuances
+      (id,customer_id,customer_code,customer_name,license_id,operation_id,
+       installation_identity_id,installation_id,license_kind,valid_from,valid_until,
+       organization_limit,user_limit,device_limit,device_limit_specified,
+       module_entitlements,feature_entitlements,limit_profile_id,signing_key_id,
+       supersedes_operation_id,renews_operation_id,request_payload_sha256,
+       request_binding_sha256,request_document,request_file_name,requested_at,requested_by)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,'TIME_LIMITED',$9,$10,$11,$12,NULL,false,
+            $13,$14,NULL,$15,NULL,NULL,$16,$17,$18,$19,$20,$21)`,
+    [
+      id,
+      customerId,
+      customer.customer_code,
+      customer.display_name,
+      payload.licenseId,
+      payload.operationId,
+      identityId,
+      installationId,
+      validFrom,
+      payload.validUntil,
+      payload.organizationLimit,
+      payload.userLimit,
+      payload.modules,
+      payload.features,
+      signingKeyId,
+      prepared.requestDigest,
+      prepared.bindingDigest,
+      prepared.envelope,
+      prepared.fileName,
+      requestedAt,
+      operatorId,
+    ],
+  );
+  const signed = await signLicenseRequest({
+    requestContent: prepared.envelope,
+    expectedDigest: prepared.requestDigest,
+    keyId: signingKeyId,
+    loadPrivateKey: () => privateKey,
+    // The signer's own window check runs at "signing time"; the request is
+    // signed an hour after it was requested, exactly like an offline round trip.
+    now: new Date(requestedAt.getTime() + 3_600_000),
+  });
+  return { id, signed, payload, prepared, requestedAt };
+}
+
 /** A structurally valid artifact for the same operation with one field changed. */
 function tamperedArtifact(
   fileContent: string,
@@ -228,14 +394,18 @@ beforeAll(async () => {
     path.join(os.tmpdir(), "vardena-owner-licensing-lifecycle-"),
   );
   store = new LicenseArtifactStore(artifactDir);
-  app = await createApp(db, {
-    databaseUrl: url!,
-    origin,
-    production: false,
-    port: 3001,
-    artifactDir,
-    trustedPublicKeys: [`${signingKeyId}:${publicMaterial}`],
-  });
+  app = await createApp(
+    db,
+    {
+      databaseUrl: url!,
+      origin,
+      production: false,
+      port: 3001,
+      artifactDir,
+      trustedPublicKeys: [`${signingKeyId}:${publicMaterial}`],
+    },
+    { now: () => clockNow ?? Date.now() },
+  );
 
   adminCookie = await signIn("owner", adminInitial, adminPassword);
   adminId = (
@@ -744,6 +914,295 @@ describe("creation-time snapshot (OD-LIC-14)", () => {
   });
 });
 
+describe("prepared-request maximum age (OD-LIC-20)", () => {
+  afterEach(() => {
+    clockNow = null;
+  });
+
+  it("completes a request one minute before the fixed boundary", async () => {
+    const requestedAt = new Date("2026-06-01T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    clockNow = requestedAt.getTime() + PREPARED_REQUEST_MAX_AGE_MS - 60_000;
+
+    const imported = await write(
+      "post",
+      `/license-issuances/${seeded.id}/import`,
+      operatorCookie,
+    ).send({ fileContent: seeded.signed.envelope });
+    expect(imported.status).toBe(200);
+    expect(imported.body.issuance.status).toBe("SIGNED_RECORDED");
+    expect(imported.body.replayed).toBe(false);
+
+    const facts = await issuanceFacts(seeded.id);
+    expect(facts.status).toBe("SIGNED_RECORDED");
+    expect(facts.abandonment_reason).toBeNull();
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", seeded.id)).toBe(0);
+    expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", seeded.id)).toBe(1);
+  });
+
+  it("refuses and abandons a request exactly on the boundary, atomically", async () => {
+    // 2026-03-28 21:30 UTC is the day before the European DST change: fourteen
+    // UTC days later the local calendar has moved 14 days but one hour, which
+    // must not move the boundary.
+    const requestedAt = new Date("2026-03-28T21:30:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    const before = await issuanceFacts(seeded.id);
+    expect(new Date(preparedRequestExpiresAt(requestedAt)).toISOString()).toBe(
+      "2026-04-11T21:30:00.000Z",
+    );
+    clockNow = preparedRequestExpiresAt(requestedAt);
+
+    const refused = await write(
+      "post",
+      `/license-issuances/${seeded.id}/import`,
+      operatorCookie,
+    ).send({ fileContent: seeded.signed.envelope });
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("InvalidTransition");
+    expect(refused.body.message).toContain("expired");
+
+    const after = await issuanceFacts(seeded.id);
+    expect(after.status).toBe("ABANDONED");
+    expect(after.abandonment_reason).toBe(EXPIRED_REQUEST_REASON);
+    expect(after.abandoned_at).not.toBeNull();
+    expect(after.abandoned_by).toBe(operatorId);
+    expect(after.signed_at).toBeNull();
+    expect(after.imported_at).toBeNull();
+    expect(after.artifact_sha256).toBeNull();
+    expect(after.artifact_store_key).toBeNull();
+
+    // OD-LIC-14: the creation-time snapshot is untouched by the expiry.
+    expect(snapshotOf(after)).toEqual(snapshotOf(before));
+
+    // The system origin is durable and legible: no actor, expiry in the reason.
+    const events = (
+      await db.pool.query<{
+        actor_id: string | null;
+        outcome: string;
+        reason: string;
+        after_state: { origin?: string; operationId?: string };
+      }>(
+        `SELECT actor_id,outcome,reason,after_state FROM owner.audit_events
+          WHERE event_type='LICENSE_REQUEST_ABANDONED' AND target_id=$1
+          ORDER BY sequence`,
+        [seeded.id],
+      )
+    ).rows;
+    expect(events).toHaveLength(1);
+    expect(events[0]!.actor_id).toBeNull();
+    expect(events[0]!.outcome).toBe("SUCCESS");
+    expect(events[0]!.reason).toContain("SYSTEM_EXPIRY");
+    expect(events[0]!.reason).toContain(requestedAt.toISOString());
+    expect(events[0]!.after_state.origin).toBe("SYSTEM_EXPIRY");
+
+    // No issuance, archive row or success audit may be produced.
+    expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", seeded.id)).toBe(0);
+    expect(
+      await count(
+        "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+        [seeded.id],
+      ),
+    ).toBe(0);
+  });
+
+  it("refuses a request one millisecond after the boundary", async () => {
+    const requestedAt = new Date("2026-06-03T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    clockNow = preparedRequestExpiresAt(requestedAt) + 1;
+
+    const refused = await write(
+      "post",
+      `/license-issuances/${seeded.id}/import`,
+      operatorCookie,
+    ).send({ fileContent: seeded.signed.envelope });
+    expect(refused.status).toBe(409);
+    expect(refused.body.message).toContain("expired");
+    expect((await issuanceFacts(seeded.id)).status).toBe("ABANDONED");
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", seeded.id)).toBe(1);
+  });
+
+  it("cannot be extended by the artifact's own timestamps", async () => {
+    const requestedAt = new Date("2026-06-04T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+    // A signer that claims the request was issued "now" changes nothing: the
+    // server decides from the persisted creation instant, and refuses before it
+    // even parses the artifact.
+    const fresher = tamperedArtifact(seeded.signed.envelope, (payload) => {
+      payload.issuedAt = new Date(clockNow!);
+    });
+    const refused = await write(
+      "post",
+      `/license-issuances/${seeded.id}/import`,
+      operatorCookie,
+    ).send({ fileContent: fresher });
+    expect(refused.status).toBe(409);
+    expect(refused.body.message).toContain("expired");
+    const facts = await issuanceFacts(seeded.id);
+    expect(facts.status).toBe("ABANDONED");
+    expect(facts.signed_at).toBeNull();
+    expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", seeded.id)).toBe(0);
+  });
+
+  it("writes no transition and reports no success when the audit cannot be written", async () => {
+    const requestedAt = new Date("2026-06-05T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+    await db.pool.query(`
+      CREATE OR REPLACE FUNCTION owner.test_fail_expiry_audit() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.event_type = 'LICENSE_REQUEST_ABANDONED'
+           AND NEW.actor_id IS NULL
+           AND NEW.target_id = '${seeded.id}' THEN
+          RAISE EXCEPTION 'forced OD-LIC-20 audit failure' USING ERRCODE = 'P0001';
+        END IF;
+        RETURN NEW;
+      END;
+      $$;
+      CREATE TRIGGER test_fail_expiry_audit BEFORE INSERT ON owner.audit_events
+        FOR EACH ROW EXECUTE FUNCTION owner.test_fail_expiry_audit();
+    `);
+    try {
+      const failed = await write(
+        "post",
+        `/license-issuances/${seeded.id}/import`,
+        operatorCookie,
+      ).send({ fileContent: seeded.signed.envelope });
+      // No false success: the transaction rolled the transition back with the
+      // audit, so the request is still prepared and nothing was recorded.
+      expect(failed.status).toBe(500);
+      const facts = await issuanceFacts(seeded.id);
+      expect(facts.status).toBe("REQUEST_PREPARED");
+      expect(facts.abandonment_reason).toBeNull();
+      expect(await auditCount("LICENSE_REQUEST_ABANDONED", seeded.id)).toBe(0);
+      expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", seeded.id)).toBe(0);
+      expect(
+        await count(
+          "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+          [seeded.id],
+        ),
+      ).toBe(0);
+    } finally {
+      await db.pool.query(
+        "DROP TRIGGER IF EXISTS test_fail_expiry_audit ON owner.audit_events; DROP FUNCTION IF EXISTS owner.test_fail_expiry_audit()",
+      );
+    }
+  });
+
+  it("produces no duplicate effects under concurrent attempts", async () => {
+    const requestedAt = new Date("2026-06-06T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+
+    const attempts = await Promise.all([
+      write(
+        "post",
+        `/license-issuances/${seeded.id}/import`,
+        operatorCookie,
+      ).send({ fileContent: seeded.signed.envelope }),
+      write(
+        "post",
+        `/license-issuances/${seeded.id}/import`,
+        operatorCookie,
+      ).send({ fileContent: seeded.signed.envelope }),
+    ]);
+    for (const attempt of attempts) expect(attempt.status).toBe(409);
+    expect(
+      attempts.filter((a) => a.body.message.includes("expired")),
+    ).toHaveLength(1);
+    expect((await issuanceFacts(seeded.id)).status).toBe("ABANDONED");
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", seeded.id)).toBe(1);
+    expect(
+      await count(
+        "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+        [seeded.id],
+      ),
+    ).toBe(0);
+  });
+
+  it("authorizes before expiring: a viewer cannot trigger the transition", async () => {
+    const requestedAt = new Date("2026-06-07T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+
+    const denied = await write(
+      "post",
+      `/license-issuances/${seeded.id}/import`,
+      viewerCookie,
+    ).send({ fileContent: seeded.signed.envelope });
+    expect(denied.status).toBe(403);
+    expect((await issuanceFacts(seeded.id)).status).toBe("REQUEST_PREPARED");
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", seeded.id)).toBe(0);
+  });
+
+  it("keeps an abandoned request terminal and never revives it", async () => {
+    const requestedAt = new Date("2026-06-08T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    const before = await issuanceFacts(seeded.id);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+    const first = await write(
+      "post",
+      `/license-issuances/${seeded.id}/import`,
+      operatorCookie,
+    ).send({ fileContent: seeded.signed.envelope });
+    expect(first.status).toBe(409);
+
+    const again = await write(
+      "post",
+      `/license-issuances/${seeded.id}/import`,
+      operatorCookie,
+    ).send({ fileContent: seeded.signed.envelope });
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe("InvalidTransition");
+    const after = await issuanceFacts(seeded.id);
+    expect(after.status).toBe("ABANDONED");
+    expect(snapshotOf(after)).toEqual(snapshotOf(before));
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", seeded.id)).toBe(1);
+  });
+
+  it("requires new operation and license identities for a replacement request", async () => {
+    const requestedAt = new Date("2026-06-09T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+    const refused = await write(
+      "post",
+      `/license-issuances/${seeded.id}/import`,
+      operatorCookie,
+    ).send({ fileContent: seeded.signed.envelope });
+    expect(refused.status).toBe(409);
+
+    clockNow = null;
+    const replacement = await prepare();
+    expect(replacement.status).toBe(201);
+    expect(replacement.body.issuance.id).not.toBe(seeded.id);
+    expect(replacement.body.issuance.operationId).not.toBe(
+      seeded.payload.operationId,
+    );
+    expect(replacement.body.issuance.licenseId).not.toBe(
+      seeded.payload.licenseId,
+    );
+    const old = await issuanceFacts(seeded.id);
+    expect(old.status).toBe("ABANDONED");
+    expect(old.operation_id).toBe(seeded.payload.operationId);
+    expect(old.license_id).toBe(seeded.payload.licenseId);
+  });
+
+  it("refuses a human abandonment reason that claims system origin", async () => {
+    const pending = await prepare();
+    expect(pending.status).toBe(201);
+    const id = pending.body.issuance.id as string;
+    const refused = await write(
+      "post",
+      `/license-issuances/${id}/abandon`,
+      operatorCookie,
+    ).send({ reason: "SYSTEM_EXPIRY: typed by a human" });
+    expect(refused.status).toBe(400);
+    expect((await issuanceFacts(id)).status).toBe("REQUEST_PREPARED");
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", id)).toBe(0);
+  });
+});
+
 describe("limit profile lifecycle (OD-LIC-13)", () => {
   it("keeps at most one ACTIVE profile and reactivates the same retired row", async () => {
     // `profileId` was retired by the OD-LIC-14 case above; no profile is active.
@@ -844,6 +1303,200 @@ describe("Owner-side revocation artifacts (OD-LIC-17)", () => {
         [issuanceId],
       ),
     ).toBe(0);
+  });
+});
+
+describe("archive backup and restore verification (OD-LIC-19)", () => {
+  it("verifies the live archive and copies every DURABLE artifact byte-for-byte", async () => {
+    const client = await db.pool.connect();
+    try {
+      const live = await verifyArtifactStore(client, store);
+      expect(live.ok).toBe(true);
+      expect(live.rows.length).toBeGreaterThan(0);
+      expect(live.rows.every((row) => row.status === "DURABLE")).toBe(true);
+      expect(live.orphanFiles).toEqual([]);
+
+      const destination = await mkdtemp(
+        path.join(os.tmpdir(), "vardena-owner-backup-"),
+      );
+      try {
+        const { manifest, verification } = await backupArtifacts(
+          client,
+          store,
+          destination,
+        );
+        expect(verification.ok).toBe(true);
+        expect(manifest.artifacts).toHaveLength(live.rows.length);
+        // The bundle's manifest names only metadata: no connection string, no
+        // customer data, no key material.
+        const manifestText = await readFile(
+          path.join(destination, ARTIFACT_MANIFEST_FILE),
+          "utf8",
+        );
+        expect(manifestText).not.toMatch(/postgres/i);
+        expect(manifestText).not.toMatch(/private/i);
+        // Each copied file is the exact original, byte for byte.
+        const artifact = (
+          await db.pool.query<{ store_key: string; sha256: string }>(
+            "SELECT store_key,sha256 FROM owner.license_artifacts ORDER BY store_key LIMIT 1",
+          )
+        ).rows[0]!;
+        const copied = await readFile(
+          path.join(destination, artifact.store_key),
+        );
+        expect(sha256Bytes(copied)).toBe(artifact.sha256);
+        expect(copied).toEqual(await store.read(artifact.store_key));
+
+        const bundle = await verifyArtifactBackup(destination);
+        expect(bundle.ok).toBe(true);
+      } finally {
+        await rm(destination, { recursive: true, force: true });
+      }
+    } finally {
+      client.release();
+    }
+  });
+
+  it("fails the restore gate for a database row without its file, and recovers by restoring the original bytes", async () => {
+    const artifact = (
+      await db.pool.query<{ store_key: string }>(
+        "SELECT store_key FROM owner.license_artifacts WHERE status='DURABLE' ORDER BY store_key LIMIT 1",
+      )
+    ).rows[0]!;
+    const original = await store.read(artifact.store_key);
+    const target = path.join(artifactDir, artifact.store_key);
+    await chmod(target, 0o644);
+    await rm(target);
+    try {
+      const client = await db.pool.connect();
+      try {
+        const report = await verifyArtifactStore(client, store);
+        expect(report.ok).toBe(false);
+        expect(
+          report.rows.find((row) => row.storeKey === artifact.store_key)!
+            .verified,
+        ).toBe("MISSING");
+      } finally {
+        client.release();
+      }
+      // Recovery is restoring the original bytes, never regenerating them.
+      await writeFile(target, original);
+      const recovered = await db.pool.connect();
+      try {
+        const report = await verifyArtifactStore(recovered, store);
+        expect(
+          report.rows.find((row) => row.storeKey === artifact.store_key)!
+            .verified,
+        ).toBe("INTACT");
+      } finally {
+        recovered.release();
+      }
+    } finally {
+      await writeFile(target, original);
+    }
+  });
+
+  it("refuses a backup whose source bytes no longer match the metadata", async () => {
+    const artifact = (
+      await db.pool.query<{ store_key: string }>(
+        "SELECT store_key FROM owner.license_artifacts WHERE status='DURABLE' ORDER BY store_key LIMIT 1",
+      )
+    ).rows[0]!;
+    const target = path.join(artifactDir, artifact.store_key);
+    const original = await store.read(artifact.store_key);
+    await chmod(target, 0o644);
+    await writeFile(target, "corrupted");
+    const destination = await mkdtemp(
+      path.join(os.tmpdir(), "vardena-owner-backup-refused-"),
+    );
+    try {
+      const client = await db.pool.connect();
+      try {
+        await expect(
+          backupArtifacts(client, store, destination),
+        ).rejects.toThrow(/not verifiable/);
+      } finally {
+        client.release();
+      }
+      await expect(
+        readFile(path.join(destination, ARTIFACT_MANIFEST_FILE), "utf8"),
+      ).rejects.toThrow();
+    } finally {
+      await writeFile(target, original);
+      await rm(destination, { recursive: true, force: true });
+    }
+  });
+
+  it("reports an unaccounted file and a staged registration, then accepts after reconciliation", async () => {
+    // A file with no database row is surfaced, never adopted.
+    const orphanKey = licenseArtifactStoreKey("revocations", ulid());
+    await store.writeOnce(orphanKey, Buffer.from("orphan", "utf8"));
+    const client = await db.pool.connect();
+    try {
+      const withOrphan = await verifyArtifactStore(client, store);
+      expect(withOrphan.ok).toBe(false);
+      expect(withOrphan.orphanFiles).toEqual([orphanKey]);
+    } finally {
+      client.release();
+    }
+    await store.remove(orphanKey);
+
+    // A crash between the PENDING insert and the DURABLE update is staged, not
+    // restored: verification reports it, reconciliation settles it.
+    const pendingIssuance = (
+      await db.pool.query<{ id: string }>(
+        "SELECT id FROM owner.license_issuances WHERE status='REQUEST_PREPARED' ORDER BY requested_at DESC LIMIT 1",
+      )
+    ).rows[0]!.id;
+    const pendingId = ulid();
+    const pendingKey = licenseArtifactStoreKey("licenses", pendingId);
+    const pendingBytes = Buffer.from("staged-after-restore-artifact", "utf8");
+    await store.writeOnce(pendingKey, pendingBytes);
+    await db.pool.query(
+      `INSERT INTO owner.license_artifacts
+         (id,kind,issuance_id,sha256,byte_size,store_key,original_file_name,status,created_by)
+       VALUES($1,'LICENSE',$2,$3,$4,$5,'staged.json','PENDING',$6)`,
+      [
+        pendingId,
+        pendingIssuance,
+        sha256Bytes(pendingBytes),
+        pendingBytes.length,
+        pendingKey,
+        adminId,
+      ],
+    );
+    try {
+      const client = await db.pool.connect();
+      try {
+        const staged = await verifyArtifactStore(client, store);
+        expect(staged.ok).toBe(false);
+        expect(staged.unsettled).toEqual([pendingKey]);
+        expect(
+          staged.rows.find((row) => row.storeKey === pendingKey)!.verified,
+        ).toBe("INTACT");
+      } finally {
+        client.release();
+      }
+      const reconciled = await write(
+        "post",
+        "/license-artifacts/reconcile",
+        adminCookie,
+      ).send({});
+      expect(reconciled.status).toBe(200);
+      const settled = await db.pool.connect();
+      try {
+        const after = await verifyArtifactStore(settled, store);
+        expect(after.ok).toBe(true);
+        expect(after.unsettled).toEqual([]);
+      } finally {
+        settled.release();
+      }
+    } finally {
+      await db.pool.query("DELETE FROM owner.license_artifacts WHERE id=$1", [
+        pendingId,
+      ]);
+      await store.remove(pendingKey);
+    }
   });
 });
 

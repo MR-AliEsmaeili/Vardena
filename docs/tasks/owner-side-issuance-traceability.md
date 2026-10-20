@@ -31,6 +31,14 @@ applied in order to a fresh database, then:
 - `backend/test/client-device-persistence-live.e2e-spec.ts` — **2/2 passed**
 - every other `backend` e2e suite — **52 files / 625 tests passed**
 
+A real **backup → restore → verification drill** for the OD-LIC-19 artifact
+archive was also executed on a disposable **PostgreSQL 16.2** pair (`owner_drill`
+→ `owner_restored`, `pg_dump -Fc` + `pg_restore`, byte copy, `artifacts:verify`),
+including the missing/truncated/digest-mismatch/orphan/staged-registration cases;
+the exact commands and results are recorded in
+[`docs/licensing/artifacts-backup-restore.md`](../licensing/artifacts-backup-restore.md)
+§7.
+
 These runs are **local evidence**, not CI evidence: they do not replace the pull
 request's `backend` job, which remains the authoritative record for the current
 head.
@@ -54,7 +62,8 @@ that has applied a revocation, or the 14-step acceptance flow.
 | **OD-LIC-16** renewal/replacement `OWNER_ADMIN`-only | Prepare refuses lineage for a non-admin **before** writing anything; lineage targets must be recorded issuances of the same customer; no DTO change | `test/licensing-lifecycle.test.ts` — **CI-only**: an operator with `licenses.issue.time_limited` gets `403` for both `renewsOperationId` and `supersedesOperationId`, the issuance count and `LICENSE_REQUEST_PREPARED` count are unchanged, and exactly the two intended `LICENSE_REQUEST_DENIED` audits exist; an Owner Admin naming an unknown target gets `400` with no row | **implemented and tested (CI-only)** |
 | **OD-LIC-17** signed revocation artifact | [`VREV1` protocol](../licensing/revocation-artifact-protocol.md). **Owner side:** `prepareRevocation`/`importRevocationArtifact`/`downloadRevocationArtifact`, `owner.license_revocations`, preparation UI. **Customer side (this branch):** `domain/license-revocation.ts`, `application/license-revocation.service.ts`, `POST /api/v1/license/revocations/import` under `Licensing.License.Revoke`, `licensing.license_revocations` + `licenses.revoked_at`/`revocation_id` + `license_versions.signed_issued_at`, `revoked` ranked above every other inactive reason and above Grace, `license-revoked` refusal on every later license artifact — checked **before** the duplicate/replay precheck, so an exact replay of a revoked license reports `license-revoked`, never `duplicate-operation` or an idempotent no-op | Owner: `test/protocol.test.ts`, `test/signer.test.ts` — **local**; `test/licensing-lifecycle.test.ts` prepares an Owner revocation request (operator `403`, admin `201`, unsigned, issuance untouched) — **CI-only**. Customer: `domain/license-revocation.spec.ts` (literal canonical bytes, committed vectors, tamper/untrusted/key-mismatch/non-canonical/unknown-key/bad-version, rotation), `application/license-revocation.service.spec.ts` (apply, idempotent replay, conflicting replay, already-revoked, wrong installation/customer/target, future-dated, stale, unauthorized-before-decode, revoked license refuses every artifact, never Grace) — **local, executed**; live-PostgreSQL case in `test/licensing-persistence-live.e2e-spec.ts` — **CI-only** | **Owner half: implemented; the recorded artifact is NOT applied to any customer installation by the Owner. Customer half: implemented and unit-tested; no customer installation has been observed applying a revocation, and the live case is CI-only. Partial by design — see §4** |
 | **OD-LIC-18** duplicate import returns the first result | Both import services return the stored outcome for a replay, create no row and write no issuance audit event; a different artifact for the same target is `409 OperationConflict`; authorization runs first | `test/licensing-lifecycle.test.ts` — **CI-only**: byte-identical replay returns `replayed: true` / `historicalResult: true`, `imported_at`/`signed_at` unchanged, artifact count still 1, one `LICENSE_ARTIFACT_IMPORTED`; a session without `licenses.import` gets `403` **with no side effect**; a different artifact gets `409 OperationConflict`; an altered installation binding gets `409 ArtifactBindingMismatch` with the request still `REQUEST_PREPARED` and no archive row | **implemented and tested (CI-only)** |
-| **OD-LIC-19** indefinite exact-byte retention | Staged `PENDING → DURABLE` after read-back; `DURABLE → QUARANTINED` on a later integrity failure; download re-verifies the digest; `reconcileArtifacts` reports orphans and quarantines | `test/artifact-store.test.ts` — **local**; `test/licensing-lifecycle.test.ts` — **CI-only**: intact run, interrupted-write `PENDING` row repaired to `DURABLE`, tampered bytes quarantined as `digest-mismatch`, download then `503 ArtifactIntegrityFailed`, a verified-but-flagged row is **not** silently un-quarantined, orphan file reported. **Not covered:** an actual backup/restore drill and a documented restore-verification procedure | **implemented; reconciliation and integrity tested (CI-only). Backup/restore remains unproven — row stays partly OPEN** |
+| **OD-LIC-19** indefinite exact-byte retention, backup and restore | Staged `PENDING → DURABLE` after read-back; `DURABLE → QUARANTINED` on a later integrity failure; download re-verifies the digest; `reconcileArtifacts` reports orphans and quarantines; `npm run artifacts:backup` copies verified bytes and writes a metadata manifest, `npm run artifacts:verify` is a read-only size+SHA-256 restore gate ([`artifact-backup.ts`](../../owner-licensing/backend/src/artifact-backup.ts), [`artifacts.ts`](../../owner-licensing/backend/src/artifacts.ts)) | `test/artifact-store.test.ts` — **local**; `test/artifact-backup.test.ts` — **local, 9 tests**: intact store, missing file, truncation, same-size corruption, orphan, unsettled `PENDING`, backup refusal on an unverifiable source, quarantined exclusion, bundle verification, malformed manifest; `test/licensing-lifecycle.test.ts` — **PostgreSQL**: full-archive verify and byte-identical backup, missing-file detection with recovery by restoring the original bytes, backup refusal on corrupted source, unaccounted file reported (never adopted), and a staged `PENDING` row refused by the gate until reconciliation settles it `DURABLE` and a re-run passes. A **real `pg_dump`/`pg_restore` + file-copy drill on PostgreSQL 16.2** is recorded in [`artifacts-backup-restore.md`](../licensing/artifacts-backup-restore.md) §7 | **implemented; automated integrity/recovery tests executed locally; backup→restore→verification drill executed 2026-10-20. The pull request's `backend` job is still the authoritative CI record** |
+| **OD-LIC-20** fixed 14 × 24-hour prepared-request age | `PREPARED_REQUEST_MAX_AGE_MS` / `isPreparedRequestExpired` in `licensing.ts`; the import service holds the row lock, evaluates the boundary before replay/parse/writes, and on the first expired attempt moves `REQUEST_PREPARED → ABANDONED` + writes a system-origin `LICENSE_REQUEST_ABANDONED` audit (`actor_id` null, reserved `SYSTEM_EXPIRY` reason) in the same transaction; the route commits that refusal; `abandonIssuance` refuses the reserved prefix; injected clock through `createApp({ now })` | `test/licensing.test.ts` — **local, 5 tests**: exact 14×24h constant, just-before/exact/just-after, European DST anchor, process-timezone independence, later client instant cannot extend; `test/licensing-lifecycle.test.ts` — **PostgreSQL, 10 tests**: completes 1 minute before the boundary; exact boundary and +1 ms refuse and abandon atomically; snapshot unchanged; system-origin audit fields; no artifact/archive/success audit; artifact `issuedAt` cannot extend life; forced audit failure → 500 with the row still `REQUEST_PREPARED`; concurrent attempts produce one transition; authorization runs first; repeated attempts stay terminal; replacement gets new operation/license identities | **implemented and executed locally (unit + PostgreSQL). CI re-runs on the final head; no manual acceptance flow and no expiry UI claim** |
 
 ## 2. Open questions touched by this slice
 
@@ -66,8 +75,8 @@ that has applied a revocation, or the 14-step acceptance flow.
 | OQ-81 semantic fingerprint/replay | **resolved by canonical source** (operation id + canonical bytes + binding digest), referenced by OD-LIC-18 | No DTO change. |
 | OQ-85 customer-code grammar | **resolved by canonical source** (`license-code.ts` grammar mirrored in `protocol.ts`) | Enforced by the same validator; pinned by `test/protocol.test.ts`. |
 | OQ-90 installation identity | **non-blocking-isolatable** for registration; **blocking** for any claim of a verified binding | See §2.1. |
-| OQ-91 retention/recovery | **resolved by decision OD-LIC-19** at policy level; evidence partly present | Staged states, reconciliation and quarantine are tested; a backup/restore drill is not. |
-| Prepared-request expiry | **blocking a specific phase** — **Product Owner decision required** | See §2.2. This is **not** answered by OD-LIC-14 and **not** the replacement confirmation window. |
+| OQ-91 retention/recovery | **resolved by OD-LIC-19; implemented with executed evidence** | Staged states, reconciliation, quarantine, backup refusal, and the restore verification gate are tested; a real `pg_dump`/`pg_restore` drill is recorded in §2.2's linked procedure. |
+| Prepared-request expiry | **resolved by OD-LIC-20 and implemented** | See §2.2. Fixed 14 × 24-hour age, server-side, with executed unit and PostgreSQL conformance tests. Not the replacement confirmation window. |
 | Completion after profile change | **resolved by decision OD-LIC-14**, now with executed coverage (CI-only) | The snapshot is immutable and a replayed import never re-evaluates it. |
 | `renewsOperationId` / `supersedesOperationId` semantics | **resolved by OD-LIC-16** for authority, PDR-12/ADR-0046 for meaning | Emitted in the signed bytes exactly as the customer contract requires; only `OWNER_ADMIN` may set them. |
 
@@ -99,40 +108,67 @@ installation-bound proof (for example a signed installation challenge) is
 required, plus a protocol/vector change and customer-runtime support. Until
 then the residual risk stays documented here and in the design.
 
-### 2.2 Prepared-request expiry — decision approved, implementation pending
+### 2.2 Prepared-request expiry — decided and implemented (OD-LIC-20)
 
 **Product Owner decision confirmed 2026-10-20: Option B, fixed maximum age of 14 days.**
 The canonical policy is recorded as **OD-LIC-20** in
-[PDR-19 §11](../decisions/product/PDR-19-owner-side-issuance-decisions.md).
+[PDR-19 §11](../decisions/product/PDR-19-owner-side-issuance-decisions.md). It is
+implemented on this branch exactly as decided, with no configuration knob.
 
-A prepared issuance request is eligible for completion only while
-`now < createdAt + 14 × 24 hours`, using persisted creation time and UTC elapsed
-time. At `now >= createdAt + 14 × 24 hours`, it is expired. The limit is fixed,
-not configurable per customer or deployment. The first attempted completion or
-import after expiry must fail closed and atomically move the request from
-`REQUEST_PREPARED` to `ABANDONED`, with a durable audit reason identifying
-expiry. An expired request is terminal; proceeding requires a newly prepared
-request with new operation and license identities. Preserve the old request's
-immutable snapshot and audit history.
+**Rule.** A prepared issuance request is eligible for completion only while
+`now < requested_at + 14 × 24 hours`, where `requested_at` is the persisted
+server-set creation instant and the arithmetic is on UTC instants, not local
+calendar days. At `now >= requested_at + 14 × 24 hours` it is expired. The limit
+is fixed; it is not per-customer, per-deployment or UI-configurable.
 
-**Scope boundaries:** this is prepared-request age only. It does not change
-OD-LIC-14 snapshot immutability, the separate OQ-82 server-replacement window
-(1 hour–7 days, default 24 hours), customer license expiry or its 14-day Grace,
-revocation, authorization-before-replay, duplicate-import historical-result
-semantics, or VLIC1/VLIC2/VREV1 signed bytes, canonicalization, vectors, trust
-rules, public API contracts, or unrelated customer runtime behavior.
+**Enforcement.** `importIssuanceArtifact` (the single completion entry point)
+takes the row lock, authorizes first, then evaluates the boundary before any
+replay shortcut, artifact parsing or write. On the first expired attempt it:
+moves the row `REQUEST_PREPARED → ABANDONED` in the same transaction, writes a
+`LICENSE_REQUEST_ABANDONED` audit with `actor_id = NULL` (system origin) and a
+reason beginning with the reserved `SYSTEM_EXPIRY` marker that names
+`requested_at` and the exact expiry instant, and then returns
+`409 InvalidTransition` — with the transaction **committed**. If the transition or
+the audit cannot be written, the error escapes, the transaction rolls back, and
+neither a successful abandonment nor an import is ever reported. A human
+abandonment may not use the reserved reason prefix. The clock is injected
+(`createApp`'s `dependencies.now`, defaulting to real time); durable timestamps
+remain database-clock values.
 
-**Implementation status:** not yet implemented or verified on this branch.
-Required tests include just-before / exact-boundary / just-after using an
-injected clock; UTC and DST-independent elapsed-time behavior; concurrent
-completion/import; authorization-before-replay; audit durability; replay and
-already-`ABANDONED` behavior; no issuance/archive/success audit after expiry;
-and fresh identities for a replacement request. Preserve all other state and
-authorization constraints.
+**Terminal.** Nothing revives the row. A replacement is a new request with a new
+operation identity and a new license identity; the old row keeps its immutable
+creation snapshot (OD-LIC-14) and its audit history, and its status is
+`ABANDONED`. No artifact, archive row, `SIGNED_RECORDED` state or
+`LICENSE_ARTIFACT_IMPORTED` audit is created by an expired attempt. The signed
+payload's `issuedAt` must equal `requested_at` at import, so a signer or client
+cannot choose a later creation instant.
 
-**Status:** Product Owner decision resolved; implementation and executed
-conformance evidence remain OPEN. This is not a claim that the code or acceptance
-flow is complete.
+**Executed evidence (local).**
+
+| Case | Where | Result |
+|---|---|---|
+| exact 14 × 24 h constant, just-before / exact-boundary / just-after, DST anchor, process-timezone independence, later client instant cannot extend | `test/licensing.test.ts` | **5/5 passed** |
+| completes one minute before the boundary | `test/licensing-lifecycle.test.ts` | passed (200, `SIGNED_RECORDED`) |
+| exact boundary (European DST anchor) and one millisecond after: `409`, row `ABANDONED`, reason, system-origin audit, no artifact/success audit | same | passed |
+| artifact's own `issuedAt` cannot extend life | same | passed |
+| forced audit failure: `500`, row still `REQUEST_PREPARED`, no audit, no artifact | same | passed |
+| two concurrent attempts: both `409`, exactly one transition and one audit | same | passed |
+| viewer without `licenses.import`: `403`, no transition | same | passed |
+| repeated attempts on an `ABANDONED` row: deterministic `409`, no revival, snapshot unchanged | same | passed |
+| replacement request: new operation and license identities, old row untouched | same | passed |
+| human reason with the `SYSTEM_EXPIRY` prefix refused | same | passed |
+
+Scope boundaries are unchanged: this is prepared-request age only. It does not
+change OD-LIC-14 snapshot immutability, the separate OQ-82 server-replacement
+window (1 hour–7 days, default 24 hours), customer license expiry or its 14-day
+Grace, revocation, authorization-before-replay, duplicate-import
+historical-result semantics, VLIC1/VLIC2/VREV1 bytes, canonicalization, vectors,
+trust rules, public API contracts or unrelated customer runtime behavior.
+
+**Still not claimed:** no UI affordance shows the expiry before an attempt (the
+server refusal and the resulting `ABANDONED` row are authoritative), no manual
+acceptance flow was run, and CI re-execution of these tests on the final head is
+the remaining verification step.
 
 ## 3. Test map
 
@@ -143,9 +179,10 @@ flow is complete.
 | Independent literal canonical bytes (license, renewal, device limit) | `owner-licensing/backend/test/protocol.test.ts` | local | yes |
 | VREV1 canonical bytes and refusals (Owner) | `owner-licensing/backend/test/protocol.test.ts` | local | yes |
 | Signer ordering, digest gate, replay state, key permissions, build exclusion | `owner-licensing/backend/test/signer.test.ts` | local | yes |
-| Import binding, response shape, request age | `owner-licensing/backend/test/licensing.test.ts` | local | yes |
+| Import binding, response shape, request age, and the OD-LIC-20 boundary (constant, just-before/exact/just-after, DST, timezone independence) | `owner-licensing/backend/test/licensing.test.ts` | local | yes — 27 tests |
 | Artifact store write-once, byte mismatch, path validation, recovery surface | `owner-licensing/backend/test/artifact-store.test.ts` | local | yes (10 tests) |
-| Installation identity, lineage refusal, import/replay/archive, snapshot immutability, profile lifecycle, artifact reconciliation | `owner-licensing/backend/test/licensing-lifecycle.test.ts` | PostgreSQL, migration 007 | yes — 22 tests on PostgreSQL 18.4; the pull-request `backend` job re-runs the file on PostgreSQL 16 |
+| Backup/restore verification: intact, missing, truncated, digest mismatch, orphan, unsettled `PENDING`, backup refusal, quarantined exclusion, malformed manifest | `owner-licensing/backend/test/artifact-backup.test.ts` | local | yes — 9 tests |
+| Installation identity, lineage refusal, import/replay/archive, snapshot immutability, profile lifecycle, artifact reconciliation, OD-LIC-20 expiry, archive backup/restore | `owner-licensing/backend/test/licensing-lifecycle.test.ts` | PostgreSQL, migration 007 | yes — 36 tests on PostgreSQL 18.4; the pull-request `backend` job re-runs the file on PostgreSQL 16 |
 | Grants/default-deny and existing Owner API regressions | `owner-licensing/backend/test/api.test.ts` | PostgreSQL | yes — 26 tests on PostgreSQL 18.4; the pull-request `backend` job re-runs the file on PostgreSQL 16 |
 | VREV1 canonical bytes, committed vectors, refusals (customer) | `backend/src/modules/licensing/domain/license-revocation.spec.ts` + `docs/licensing/vectors/revocation/` | local | yes |
 | Revocation import, replay, binding, staleness, revoked-license refusal | `backend/src/modules/licensing/application/license-revocation.service.spec.ts` | local | yes |
@@ -155,14 +192,17 @@ flow is complete.
 
 ## 4. What remains before the 14-step acceptance flow can be claimed
 
-1. **Prepared-request expiry** — product decision resolved as OD-LIC-20 (14 days); server-side implementation and executed conformance tests remain outstanding.
+1. **Prepared-request expiry** — resolved and implemented as OD-LIC-20 (fixed 14 days) with local unit and PostgreSQL conformance tests; CI re-runs them on the final head. No manual acceptance flow has exercised an expired request against the UI.
 2. **Owner-side revocation is partial** — the Owner can prepare, import and
    re-download a `VREV1` document, and the customer runtime can verify and apply
    it, but nothing in this repository demonstrates a **customer installation**
    actually applying one. No UI or document may say otherwise; the Owner UI now
    states that recording a revocation document is not applying it.
-3. **Backup/restore drill** — reconciliation and quarantine are tested; an
-   actual backup, restore and verification against the exact bytes is not.
+3. **Backup/restore** — procedure, verification tooling, automated
+   integrity/recovery tests and a real `pg_dump`/`pg_restore` drill on a
+   disposable PostgreSQL 16.2 pair are done ([procedure](../licensing/artifacts-backup-restore.md)).
+   Not done: a rehearsal against a production-sized Owner database, and proof of
+   independence of the backup medium (a deployment responsibility).
 4. **Manual Persian RTL smoke** — the page renders, validates and reports
    failures in automated tests; the flow has not been driven end-to-end by a
    human with a real signer.

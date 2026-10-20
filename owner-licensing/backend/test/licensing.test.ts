@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  PREPARED_REQUEST_MAX_AGE_MS,
   assertPayloadMatchesIssuance,
+  isPreparedRequestExpired,
   issuanceResponse,
+  preparedRequestExpiresAt,
 } from "../src/licensing.js";
 import type { LicenseVersionPayload } from "../src/protocol.js";
 
@@ -166,5 +169,69 @@ describe("import binding: the signed payload must equal the prepared request", (
       expect((error as { code?: string }).code).toBe("ArtifactBindingMismatch");
       expect((error as Error).message).toContain(field);
     }
+  });
+});
+
+/**
+ * OD-LIC-20: the boundary is arithmetic on UTC instants. These cases pin the
+ * exact rule (eligible while `now < createdAt + 14 × 24h`, expired at `>=`) and
+ * prove it cannot be moved by the process timezone or a daylight-saving change;
+ * the PostgreSQL-backed cases in `licensing-lifecycle.test.ts` prove the same
+ * rule is enforced on the import route.
+ */
+describe("prepared-request maximum age (OD-LIC-20)", () => {
+  const createdAt = new Date("2026-03-28T21:30:00.000Z");
+
+  it("is exactly 14 × 24 hours, not 14 local calendar days", () => {
+    expect(PREPARED_REQUEST_MAX_AGE_MS).toBe(14 * 24 * 60 * 60 * 1000);
+    expect(preparedRequestExpiresAt(createdAt)).toBe(
+      createdAt.getTime() + 1_209_600_000,
+    );
+  });
+
+  it("stays eligible just before the boundary and expires exactly on it", () => {
+    const expiresAt = preparedRequestExpiresAt(createdAt);
+    expect(isPreparedRequestExpired(createdAt, createdAt.getTime())).toBe(
+      false,
+    );
+    expect(isPreparedRequestExpired(createdAt, expiresAt - 1)).toBe(false);
+    expect(isPreparedRequestExpired(createdAt, expiresAt)).toBe(true);
+    expect(isPreparedRequestExpired(createdAt, expiresAt + 1)).toBe(true);
+  });
+
+  it("measures elapsed time across a European DST change, not calendar days", () => {
+    // Europe/Berlin springs forward on 2026-03-29 at 01:00 UTC: the local
+    // calendar interval is 14 days minus one hour. Elapsed UTC time is exactly
+    // 14 × 24h, so the request is still eligible one millisecond before that
+    // instant and expired on it.
+    const expiresAt = preparedRequestExpiresAt(createdAt);
+    expect(new Date(expiresAt).toISOString()).toBe("2026-04-11T21:30:00.000Z");
+    expect(isPreparedRequestExpired(createdAt, expiresAt - 1)).toBe(false);
+    expect(isPreparedRequestExpired(createdAt, expiresAt)).toBe(true);
+  });
+
+  it("does not depend on the process timezone", () => {
+    const expiresAt = preparedRequestExpiresAt(createdAt);
+    const original = process.env.TZ;
+    try {
+      for (const zone of ["Asia/Tehran", "America/Los_Angeles", "UTC"]) {
+        process.env.TZ = zone;
+        expect(preparedRequestExpiresAt(createdAt)).toBe(expiresAt);
+        expect(isPreparedRequestExpired(createdAt, expiresAt - 1)).toBe(false);
+        expect(isPreparedRequestExpired(createdAt, expiresAt)).toBe(true);
+      }
+    } finally {
+      if (original === undefined) delete process.env.TZ;
+      else process.env.TZ = original;
+    }
+  });
+
+  it("cannot be extended by a later client-supplied instant", () => {
+    // The rule reads only the persisted creation instant. A signature or
+    // artifact claiming a fresh `issuedAt` cannot make an expired request
+    // eligible, and a request created "in the future" is not expired yet only
+    // because its persisted instant says so.
+    const futureClaim = createdAt.getTime() + 30 * 86_400_000;
+    expect(isPreparedRequestExpired(createdAt, futureClaim)).toBe(true);
   });
 });

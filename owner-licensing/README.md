@@ -32,13 +32,17 @@ did not return.
 
 **What this branch does not implement.** Renewal and replacement authority
 (`OD-LIC-16`) is enforced in the prepare service, but no dedicated lineage UI
-exists. There is no production key anywhere in the repository, no CI key
-generation and no backup/restore drill for the artifact store (reconciliation,
-staging and quarantine are implemented and tested). Prepared-request expiry is
-**blocked on a Product Owner decision** and is not implemented. The PostgreSQL
-integration suites and migration `007` require a disposable database and run
-only in CI. The Owner UI has not been driven end-to-end against a real signer.
-Do not read this README as an acceptance claim.
+exists. There is no production key anywhere in the repository and no CI key
+generation. Prepared-request expiry (`OD-LIC-20`, fixed 14 × 24 hours) **is
+implemented** in the import service with a committed system-origin `ABANDONED`
+transition, and the artifact archive has a documented backup/restore procedure,
+a read-only verification gate and an executed disposable drill
+([procedure](../docs/licensing/artifacts-backup-restore.md)); a rehearsal against
+production-sized data and the independence of the backup medium remain
+deployment-owner responsibilities. The PostgreSQL integration suites and
+migration `007` require a disposable database and run only in CI. The Owner UI has
+not been driven end-to-end against a real signer, and no expired request has been
+exercised by a human in the UI. Do not read this README as an acceptance claim.
 
 **Revocation is partial on purpose.** This application can prepare, import,
 archive and re-download a `VREV1` document. The customer runtime on the
@@ -157,9 +161,14 @@ nginx sample proxies `/api/` to an internal service named `owner-api` on port 30
 this is deployment composition, not a customer endpoint. No new microservice.
 Terminate HTTPS at the Owner ingress. Set `NODE_ENV=production`,
 `OWNER_PUBLIC_ORIGIN=https://<owner-host>`, `OWNER_DATABASE_URL` from a secret store,
-and `OWNER_AUDIT_ARCHIVE_DIR=/var/lib/vardena-owner/audit-archive` mounted on a
-dedicated durable volume outside the PostgreSQL data directory and backup
-lifecycle. A different filesystem path alone does **not** guarantee physical
+`OWNER_AUDIT_ARCHIVE_DIR=/var/lib/vardena-owner/audit-archive` and
+`OWNER_LICENSE_ARTIFACT_DIR=/var/lib/vardena-owner/license-artifacts`, each
+mounted on a dedicated durable volume outside the PostgreSQL data directory and
+backup lifecycle. The signed-artifact store is backed up and restored with
+`npm run artifacts:backup` / `npm run artifacts:verify` alongside `pg_dump`; the
+only accepted restore is one that verifies every artifact's byte size and SHA-256
+against the database metadata (see
+[the procedure](../docs/licensing/artifacts-backup-restore.md)). A different filesystem path alone does **not** guarantee physical
 storage independence, hardware WORM immutability, or protection against a
 compromised OS `root`; because this repository does not ship an Owner production
 infrastructure manifest or external volume backup/restore runbook, provisioning
@@ -199,18 +208,20 @@ Display-name/status/reference changes retain before/after fields and actor in th
 same transaction; a failed audit write rolls back the mutation. No arbitrary
 metadata JSON, customer secrets, contact/CRM/billing data or raw signed artifacts.
 
-> **Superseded in part by OD-LIC-10 (2026-10-19), not yet implemented:**
+> **Superseded in part by OD-LIC-10 / OD-LIC-19 (2026-10-19, implemented
+> 2026-10-20):**
 > [PDR-19 §4](../docs/decisions/product/PDR-19-owner-side-issuance-decisions.md)
 > approves a **dedicated durable signed-artifact store outside PostgreSQL** for
-> issued license files, so the "no raw signed artifacts" clause above no longer
-> holds for signed license artifacts once that store exists. The rest of the
+> issued license files, and OD-LIC-19 keeps those exact bytes **indefinitely**
+> with documented backup/restore and integrity verification (no WORM claim, no
+> automatic deletion). The "no raw signed artifacts" clause above therefore no
+> longer holds for signed license and revocation artifacts. The rest of the
 > clause is unchanged: no arbitrary metadata JSON, no customer secrets, no
-> contact/CRM/billing data. Today no such store and no signed artifact exist in
-> this application, so the clause still describes the implemented state. A
-> readable archive of signed licenses is a disclosure surface even though it
-> cannot be forged; access must be permission-gated and every retrieval
-> attributable and audited, and retention/backup/restore of that store is not yet
-> decided.
+> contact/CRM/billing data. A readable archive of signed licenses is a disclosure
+> surface even though it cannot be forged; access is permission-gated and every
+> retrieval attributed and audited. See
+> [artifacts-backup-restore.md](../docs/licensing/artifacts-backup-restore.md) for
+> the backup, restore and verification procedure.
 `002-manual-operations.sql` extends the empty reserved tables. It refuses to run
 if rows already exist. License observations are unique per customer and
 installation. Replacement observations are unique per customer and old

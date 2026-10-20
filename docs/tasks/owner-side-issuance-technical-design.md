@@ -67,14 +67,14 @@ the design is not mistaken for evidence.
   and a committed `VREV1` vector set. This is code in the same branch,
   not a change to the approved design; the customer contract (`VLIC1`/`VLIC2`,
   canonicalization, signatures, vectors) is untouched.
-- **Not delivered:** a dedicated renewal/replacement UI, artifact backup/restore
-  drill (reconciliation and quarantine are tested, a real backup/restore is
-  not), human Persian RTL smoke, prepared-request expiry (policy now decided as OD-LIC-20:
-  fixed 14-day maximum age; implementation and conformance tests remain pending
-  in [`owner-side-issuance-traceability.md`](owner-side-issuance-traceability.md)
-  §2.2), and the 14-step acceptance run. The customer live-PostgreSQL revocation
-  case passed locally (PostgreSQL 18.4) and is re-run by CI; no customer
-  installation has been observed applying a revocation.
+- **Delivered after the first draft:** prepared-request expiry per **OD-LIC-20**
+  (fixed 14 × 24-hour maximum age, enforced on import, terminal `ABANDONED`,
+  system-origin audit — §9.1) and the **OD-LIC-19** artifact backup/restore
+  tooling and drill (§8.4, [`artifacts-backup-restore.md`](../licensing/artifacts-backup-restore.md)).
+- **Not delivered:** a dedicated renewal/replacement UI, human Persian RTL smoke,
+  and the 14-step acceptance run. The customer live-PostgreSQL revocation case
+  passed locally (PostgreSQL 18.4) and is re-run by CI; no customer installation
+  has been observed applying a revocation.
   `docs/tasks/owner-side-issuance-traceability.md` is the authoritative
   per-decision status.
 
@@ -259,8 +259,12 @@ and signature, and another between signature and customer import, a **time-limit
 license whose end passes before the customer imports it becomes permanently
 unimportable**. The design must therefore surface the request's age and the
 artifact's remaining import window, and must treat a stale request as an
-operational condition rather than silently re-issuing. No automatic expiry of a
-pending request is invented here — see §15.
+operational condition rather than silently re-issuing. **OD-LIC-20 (PDR-19 §11)
+later decided the fixed limit:** a prepared request is completable only while
+`now < requested_at + 14 × 24 hours`; at or after that instant it is expired and
+the first completion attempt refuses and abandons it (§9.1). This design does not
+invent any other expiry, and the customer-side `expired-document` refusal remains
+the backstop for an artifact whose own term has passed.
 
 ### 1.5 Reusable Owner patterns
 
@@ -1185,6 +1189,7 @@ records it.**
 |---|---|---|
 | Validation, permission, profile-ceiling or unknown-field refusal at step 1 | Nothing written; refusal audited | Correct and retry; a new `operationId` is minted only if the previous row is explicitly abandoned |
 | Request file download fails | Row committed at `REQUEST_PREPARED` | Re-download; byte-identical |
+| **First import at/after `requested_at + 14×24 h` (OD-LIC-20)** | Row moves `ABANDONED` in the import transaction, system-origin audit written, then the import is refused `409 InvalidTransition`; **nothing** else is written (no artifact, archive row, success audit) | **Do not retry and do not revive the row.** Prepare a new request with a new operation and license identity; the old row, its snapshot and audit history stay readable |
 | Signer refuses on a **structural** check (§4.2 1–9) | No artifact; nothing changes in Owner | The request itself is wrong: fix it via a new issuance row; the old one is abandoned explicitly, never silently reused |
 | **[REVIEW RV-1]** Signer refuses on **check 10** (digest mismatch) or **check 11** (duplicate `operationId`) | No artifact; nothing changes in Owner; the row is still correct | **Do not create a new issuance row.** The Owner's request and its pinned digests are untouched, and the request file is byte-identical on re-download (§7.2 above), so a check-10 failure means the **file was altered in transport**, not that the terms are wrong. The remedy is to re-transfer the file and re-confirm the digest against the Owner UI. Minting a new row here would burn a `licenseId`/`operationId`, erase the evidence that a tampering was attempted, and leave an orphan `REQUEST_PREPARED` row. Check 11 means the authorization was already consumed: the operator must confirm with the Owner rather than re-sign |
 | Artifact fails verification, digest match or `operationId` match at step 4 | Staged file deleted; row stays `REQUEST_PREPARED`; refusal audited | Re-import the correct artifact |
@@ -1321,6 +1326,38 @@ The trust list is configuration, so changing it is a deployment act. That is
 deliberate: rotation cadence and trust rollout are still U-1/OQ-74 open items, and
 building a runtime key-administration surface would pre-empt them.
 
+### 8.4 Backup, restore and integrity verification (OD-LIC-19)
+
+Retention is **indefinite** and there is **no WORM claim and no automatic
+deletion**. The archive is two stores with different lifecycles — PostgreSQL
+metadata and filesystem bytes — and they are **not one atomic transaction**:
+`archiveArtifact` inserts `PENDING`, writes and fsyncs the exact bytes, reads them
+back, and only then settles the row `DURABLE`. A crash can leave a `PENDING` row
+with (or without) its file; reconciliation, not the backup, resolves that state.
+
+- **Backup:** PostgreSQL is dumped with PostgreSQL's own tooling; the artifact
+  root is copied with `npm run artifacts:backup`, which first verifies every
+  `DURABLE` row's byte size and SHA-256, refuses to copy an archive it cannot
+  verify, skips (and reports) `QUARANTINED` rows since their bytes are already the
+  recorded failure, and writes `artifact-manifest.json` (metadata only — no
+  connection string, no customer data, no key material). The procedure and the
+  honest consistency boundary are in
+  [`artifacts-backup-restore.md`](../licensing/artifacts-backup-restore.md).
+- **Restore gate:** `npm run artifacts:verify` is read-only and checks every row's
+  exact bytes by **size and SHA-256** against `owner.license_artifacts` (or a
+  backup manifest with `--backup`), lists unaccounted files, and reports
+  `PENDING`/`QUARANTINED` rows as unsettled. It exits non-zero on any difference.
+- **Recovery:** restore the original bytes from the backup; never regenerate a
+  historical artifact and present it as the original. A missing or damaged file
+  makes the affected artifact unavailable (download already fails closed) — the
+  remedy is the backup copy, or a new issuance with new identities. An
+  unregistered file is reported, never adopted; a `PENDING` row is settled by
+  reconciliation when its bytes verify and quarantined otherwise.
+
+The real drill (PostgreSQL 16.2 `pg_dump -Fc` → fresh database → `pg_restore` →
+byte copy → verification, plus the missing/truncated/digest/orphan/staged cases)
+is recorded in that document with its exact commands and results.
+
 ---
 
 ## 9. State machine
@@ -1328,16 +1365,30 @@ building a runtime key-administration surface would pre-empt them.
 ### 9.1 States
 
 ```
-REQUEST_PREPARED ──import+verify ok──▶ SIGNED_RECORDED   (terminal)
+REQUEST_PREPARED ──import+verify ok, before the 14×24h boundary──▶ SIGNED_RECORDED  (terminal)
         │
-        └──explicit operator action──▶ ABANDONED          (terminal)
+        ├──explicit operator action──▶ ABANDONED                                  (terminal)
+        │
+        └──first import at/after requested_at+14×24h (OD-LIC-20)──▶ ABANDONED      (terminal,
+                                                                    system origin)
 ```
 
 - `REQUEST_PREPARED` — the Owner decided and produced a request. **No artifact
   exists. This is never presented as an issued license.**
 - `SIGNED_RECORDED` — a verified artifact is stored and downloadable. Terminal.
-- `ABANDONED` — an explicit, reasoned, audited operator act. Terminal, and it never
-  deletes the row, because the row is the record that a request was made.
+- `ABANDONED` — terminal, and it never deletes the row, because the row is the
+  record that a request was made. It has two origins:
+  - an explicit, reasoned, audited operator act (`LICENSE_REQUEST_ABANDONED`,
+    actor = the operator), or
+  - **OD-LIC-20 expiry**, written by the system on the first completion/import at
+    or after `requested_at + 14 × 24 h`. The audit row has `actor_id = NULL`
+    (system origin) and a reason beginning with the reserved `SYSTEM_EXPIRY`
+    marker; `abandoned_by` still names the operator whose attempt triggered the
+    enforcement, because the schema requires a user there. `abandonIssuance`
+    refuses a reason with that prefix, so a human act can never impersonate the
+    system transition.
+  The immutable snapshot is never touched by either origin; only the lifecycle
+  columns change (§5.1's trigger enforces that).
 
 No `PENDING_APPROVAL` state exists: PDR-17 forbids a pending-approval workflow, and
 OD-LIC-08's round trip is a custody mechanism, not an approval step. No
@@ -1358,6 +1409,16 @@ Transitions are enforced by a `BEFORE UPDATE` trigger in the same style as
 reach a terminal state illegally. Status may only advance along the arrows above;
 `signed_at`/`imported_at` must be set together with `SIGNED_RECORDED` and must be
 null otherwise; `artifact_sha256` and `artifact_store_key` likewise.
+
+**OD-LIC-20 is enforced in the application, not in the trigger.** The age rule is
+product policy, not a row invariant, so the import service holds the row lock and
+evaluates `isPreparedRequestExpired(requested_at, now)` before any artifact
+parsing, replay shortcut or state write. The clock is injected (`createApp`'s
+`dependencies.now`, defaulting to real time) so conformance tests freeze it; the
+durable timestamps (`abandoned_at`, audit `occurred_at`) still come from the
+database clock. No client-supplied value participates: the anchor is the same
+`requested_at` the signed payload's `issuedAt` must equal at import, so a signer
+cannot choose a later creation instant.
 
 ### 9.3 Limit-profile state machine — **[OD-LIC-13] new**
 
@@ -1402,7 +1463,7 @@ no artifact content.
 |---|---|---|
 | `LICENSE_REQUEST_PREPARED` | step 1 committed | `SUCCESS` |
 | `LICENSE_REQUEST_DENIED` | permission, validation, profile-ceiling or unknown-field refusal | `DENIED` → `security_incident` per the existing `004` rules where it is a permission denial |
-| `LICENSE_REQUEST_ABANDONED` | explicit abandonment, with reason | `SUCCESS` |
+| `LICENSE_REQUEST_ABANDONED` | explicit abandonment with reason, **or** the OD-LIC-20 expiry transition (`actor_id` null, reason starts with the reserved `SYSTEM_EXPIRY` marker) | `SUCCESS` |
 | `LICENSE_ARTIFACT_IMPORTED` | step 4 committed; includes the resolved `signing_key_id` and whether a relevant grant was revoked in between | `SUCCESS` |
 | `LICENSE_ARTIFACT_REJECTED` | bad signature, unknown or non-`ACTIVE` key, digest mismatch, `operationId` mismatch, malformed envelope | `FAILED` → security incident |
 | `LICENSE_ARTIFACT_DOWNLOADED` | each retrieval | `SUCCESS` |
@@ -1556,7 +1617,10 @@ Because issuance is not one click, the UI must not imply otherwise:
    offer to embed it in the file, which would defeat it (§4.4 O-D).
 2. **Awaiting signature** — the row's standing state; shows the request's age
    (§1.4) so a stale time-limited request is visible, and keeps the digest readable
-   so it can be re-confirmed if the first attempt failed.
+   so it can be re-confirmed if the first attempt failed. The age display is
+   informational: it is **not** the expiry control, and the UI must not claim to
+   enforce it. The server refuses an expired import (OD-LIC-20) and the resulting
+   `ABANDONED` row is what the operator sees afterwards.
 3. **Import** — upload the signed file; shows the verification result; on success
    offers the real download.
 4. **Recorded** — downloadable, with `artifact_sha256` shown for out-of-band
@@ -1679,11 +1743,32 @@ refused by a revoked `licenses.import` grant (§7.4), an unknown or non-`ACTIVE`
 signing key, and a binding-digest mismatch — proving OD-LIC-14 overrides no other
 control.
 
-**A stale request is not a tampering case and must not be "fixed" by inventing an
-expiry.** §15 records that no automatic expiry exists, so NEG-T10's staleness arm
-asserts only what is decided: duplicate detection, and that a time-limited artifact
-whose end has passed is refused **by the customer's real importer** as
-`expired-document` (§1.4) — the only temporal backstop that exists today.
+**A stale request is not a tampering case.** The expiry is a decided product rule
+(OD-LIC-20), so NEG-T10's staleness arm now asserts it directly: just before the
+boundary completes; exactly on it and one millisecond after it the import refuses
+and abandons with a system-origin audit; the artifact's own `issuedAt` cannot
+extend life; concurrency produces one transition; and a time-limited artifact whose
+end has passed is still refused **by the customer's real importer** as
+`expired-document` (§1.4).
+
+**[OD-LIC-20] Prepared-request maximum age.** Eligibility is `now < requested_at +
+14 × 24 h`, expired at `>=`, on a frozen clock: one minute before the boundary the
+import succeeds and records the artifact · exactly on the boundary and one
+millisecond after it, the import answers `409 InvalidTransition`, the row becomes
+`ABANDONED`, the immutable snapshot is unchanged, exactly one
+`LICENSE_REQUEST_ABANDONED` event with `actor_id = NULL` and a `SYSTEM_EXPIRY`
+reason exists, and there is **no** artifact row, `SIGNED_RECORDED` state,
+`LICENSE_ARTIFACT_IMPORTED` event or `signed_at` · a DST-crossing anchor and a
+changed process timezone do not move the boundary · an artifact whose own
+`issuedAt` claims a fresh instant is still refused · a forced audit-write failure
+returns `500` and leaves the row `REQUEST_PREPARED` (no false success) · two
+concurrent imports yield two refusals, one transition and one audit · a session
+without `licenses.import` is refused **before** any transition · repeated attempts
+on the `ABANDONED` row are deterministic and never revive it · a replacement
+request gets new operation and license identities · a human abandonment reason
+using the reserved system prefix is refused. Executed locally in
+`test/licensing.test.ts` and `test/licensing-lifecycle.test.ts` (§2.2 of the
+traceability matrix).
 
 Unauthenticated · inactive user · missing permission · `must_change_password` ·
 invalid or duplicate `customerCode` · nonexistent customer · invalid dates, end
@@ -1834,7 +1919,7 @@ remaining dependency with its options, owner and whether work can proceed.
 | **U-1 / OQ-74** compromise policy, containment, provenance for issued-but-not-imported artifacts, rotation cadence, trust rollout | Still OPEN. OD-LIC-08 answers only *where the key lives*. §8.3's trust list is configuration precisely so no runtime key administration pre-empts U-1 |
 | **OQ-78** revocation | OPEN. PO-78-01 is policy only. A wrongly issued perpetual license remains irrevocable in practice — risk **B-5**, unchanged and sharpened by OD-LIC-08 |
 | **OQ-81** replay/receipt DTO | OPEN. §7.2 follows the shape PDR-18 §5 approves but does not fix the response schema or status code |
-| Whether a pending request **expires** | §1.4 shows a stale time-limited request can become permanently unimportable, but no automatic expiry or timeout is invented. PDR-17 records that a comparable pending-confirmation period for replacements is configurable 1h–7d defaulting to 24h, and explicitly warns that its start/end semantics remain unspecified — so no analogy is applied here |
+| Whether a pending request **expires** | **DECIDED as OD-LIC-20** (PDR-19 §11): fixed 14 × 24 hours from `requested_at`, server-side, terminal `ABANDONED` with a system-origin audit. Implemented; PDR-17's replacement window (1h–7d) remains a separate, unapplied rule |
 | Transport handling of the request file | §3.4 proves integrity, not confidentiality. The request carries commercial terms on removable media; the handling rule is an operational/security decision |
 | Whether an operator may set `supersedesOperationId` or `renewsOperationId` at all | PDR-12 makes explicit supersession the **only** term-changing path and forbids reducing limits or entitlements on any path. Giving an operator that field is a product decision, not a schema detail |
 | Whether `OWNER_ADMIN` is ever configurable | PDR-19 §5.2 records **not** — the Product Owner did not choose the option that would have made it so |
@@ -1955,13 +2040,13 @@ prerequisite exists, which need not be a product decision.
 |---|---|
 | **Identifier** | **OQ-91** |
 | **Precise question** | OD-LIC-10 decided *where* signed artifacts live; it explicitly did **not** decide how long they are kept, how they are backed up, or how they are restored. |
-| **Decision still required** | A retention period, a backup scope, and a restore procedure — including whether the store is inside or outside the PostgreSQL backup boundary, and what a restore proves. |
+| **Decision still required** | **DECIDED by OD-LIC-19 (PDR-19 §4):** indefinite retention of the exact original bytes, no WORM and no automatic deletion, a documented backup/restore procedure and integrity verification, with the store kept **outside** the PostgreSQL data directory and backed up as a separate store. Restore proves byte identity against the authoritative metadata; it does not prove database/file atomicity, which is why both stores are backed up and verified together. |
 | **Impact on development** | **Blocks the artifact store's operational acceptance (with OQ-85) but not its construction.** §8.1 can be built to the audit-archive pattern now. It also interacts with the disclosure surface OD-LIC-10 recorded: a readable archive of signed customer grants is a disclosure risk even though it cannot be forged, and retention length is directly proportional to that exposure. |
 | **Options** | (a) Retain indefinitely, back up with the database, rehearse restore per release. (b) Retain for the license term plus a bounded tail, then purge on a schedule. (c) Retain the digest and metadata indefinitely but the artifact only for a bounded window, re-deriving nothing. |
 | **Technical recommendation** | **Engineering recommends (a) for the first slice with (b) recorded as the eventual policy**, because a signed artifact is **not re-derivable** — unlike a row it cannot be recomputed from other data, so purging it before the customer no longer needs it makes a lost file unrecoverable, and PDR-18 §9 / OD-LIC-06 make re-download the recovery path. Risk of (a): the disclosure surface grows without bound, which is why access stays permission-gated and every retrieval audited (§8.2). |
 | **Depends on** | OD-LIC-10, OQ-85, §8.1 store, §8.2 download, PDR-18 §9 re-download, migration `004` retention rules. |
-| **Can work proceed?** | **INDEPENDENT** for construction; **BLOCKED** for the retention/backup policy itself. |
-| **Document location** | `docs/open-questions.md` OQ-91 row; PDR-19 §4; design §8.1, §8.2. |
+| **Can work proceed?** | **RESOLVED** — policy decided, and §8.4's tooling, tests and executed drill are delivered. |
+| **Document location** | `docs/open-questions.md` OQ-91 row; PDR-19 §4; design §8.1, §8.2, §8.4; [`artifacts-backup-restore.md`](../licensing/artifacts-backup-restore.md). |
 | **Decision owner** | **Product Owner** — retention and backup are commercial, legal and disclosure-exposure decisions; engineering implements whatever is chosen. |
 
 ### 15.1.8 **(no OQ id)** — Whether a prepared signing request expires
@@ -1970,14 +2055,14 @@ prerequisite exists, which need not be a product decision.
 |---|---|
 | **Identifier** | **(no OQ id)** |
 | **Precise question** | Does a `REQUEST_PREPARED` issuance stop being completable after some period, and if so measured from what — request creation, the signer's clock, or the license's own `validUntil`? |
-| **Decision still required** | Whether to introduce an expiry at all, and its anchor and duration. **No automatic expiry is invented by this design.** |
-| **Impact on development** | **Blocks nothing, but leaves two real exposures.** First, §1.4: the customer's importer refuses a time-limited document whose end has passed (`expired-document`, `license-import.service.ts:567-582`), so an unbounded offline delay can make an artifact **permanently unimportable** — work is silently destroyed with no error until import. Second, OD-LIC-14 keeps an in-flight request completable on its snapshot, so without an expiry a request can complete against a ceiling that changed arbitrarily long ago. |
+| **Decision** | **DECIDED 2026-10-20 as OD-LIC-20 (PDR-19 §11), Option B:** a fixed **14 × 24-hour** maximum age from the persisted creation instant (`requested_at`), measured as UTC elapsed time, with the boundary `now < requested_at + 14 × 24 h` eligible and `>=` expired. Server-side, not configurable per customer or deployment. The first completion/import attempt at or after the boundary fails closed and atomically moves the row to `ABANDONED` with a system-origin audit; the request is terminal and a replacement needs new operation and license identities. This design's earlier preference for option (c) was **not** adopted. |
+| **Impact on development** | **Now addressed by OD-LIC-20.** Before the decision it left two exposures: §1.4's unbounded offline delay could make a time-limited artifact permanently unimportable (`expired-document`), and OD-LIC-14 kept an in-flight request completable against a ceiling that had since changed. The fixed 14 × 24-hour age bounds the first at the Owner (with the customer's own refusal still the backstop) and bounds the second to a known window; the remaining accepted consequence is a request completing inside that window against an outdated ceiling. |
 | **Options** | (a) No expiry: the row stays completable forever; the UI shows request age (§12.3) and the customer-side refusal is the only backstop. (b) Configurable expiry anchored at request creation, mirroring PDR-17's replacement-confirmation window (1h–7d, default 24h). (c) Expiry anchored to `validUntil` for time-limited requests only, so a request dies exactly when its artifact would become unimportable. |
 | **Technical recommendation** | **Engineering recommends (c) for time-limited requests plus (a) for perpetual**, because (c) is derived from an existing verified refusal rather than invented, and it makes the failure visible at the Owner instead of at the customer. Risk: PDR-17 explicitly warns that the comparable replacement window's **start/end semantics remain unspecified**, so (b)'s analogy is unsafe and must not be applied by engineering. **This is a product decision** — it determines whether authorized work can be silently discarded. |
-| **Depends on** | §1.4, OD-LIC-14, §9.1 state machine (no expiry state exists), §12.3 request age, PDR-17's unspecified window semantics. |
-| **Can work proceed?** | **INDEPENDENT** — issuance is fully buildable under (a), which is the current design. An expiry would be additive. |
-| **Document location** | design §15 (this row), §1.4, §9.1, §12.3; PDR-17:301-302. |
-| **Decision owner** | **Product Owner** — it decides whether the Owner may discard authorized work, and on what clock. |
+| **Depends on** | §1.4, OD-LIC-14, §9.1 state machine (the system-origin `ABANDONED` arrow was added by OD-LIC-20), §12.3 request age, PDR-17's unspecified window semantics. |
+| **Can work proceed?** | **RESOLVED and implemented** — see §9.1, §9.2 and the OD-LIC-20 evidence in [`owner-side-issuance-traceability.md`](owner-side-issuance-traceability.md) §2.2. |
+| **Document location** | design §15 (this row), §1.4, §9.1, §9.2, §12.3; PDR-19 §11. |
+| **Decision owner** | **Product Owner** — the decision is recorded; engineering implemented it without adding configuration. |
 
 ### 15.1.9 **(no OQ id)** — Confidentiality and handling of the request file in transport
 

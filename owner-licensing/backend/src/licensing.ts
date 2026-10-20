@@ -130,6 +130,24 @@ export class DeniedWithAudit extends ApiError {
 }
 
 /**
+ * OD-LIC-20 refusal that is itself a committed fact: the prepared request has
+ * already been moved to `ABANDONED` and audited inside the caller's transaction,
+ * which must therefore COMMIT rather than roll the transition back. The route
+ * catches this error inside the transaction callback and returns the refusal, so
+ * a successful abandonment and its audit always become durable together; if the
+ * transition or the audit write raises, this error is never returned at all.
+ */
+export class PreparedRequestExpired extends ApiError {
+  constructor(readonly expiresAt: string) {
+    super(
+      409,
+      "InvalidTransition",
+      `This request expired at ${expiresAt} (fixed 14 × 24-hour maximum age) and was abandoned. Prepare a new request with a new operation and license identity.`,
+    );
+  }
+}
+
+/**
  * Feature entitlements are optional: `[]` is the documented way to say "no
  * feature code" (the Owner UI sends it whenever the field is left empty and the
  * signed `VLIC2` payload accepts an empty list), so only `modules` keeps the
@@ -726,6 +744,44 @@ function requestAgeDays(requestedAt: Date, now: number): number {
   return Math.max(0, Math.floor((now - requestedAt.getTime()) / 86_400_000));
 }
 
+/**
+ * OD-LIC-20: a prepared request may be completed for at most 14 × 24 hours of
+ * UTC elapsed time from the instant it was created. The rule is fixed product
+ * policy — not per-customer, per-deployment or UI configuration — and it is
+ * measured as elapsed milliseconds between instants, never as local calendar
+ * days, so a daylight-saving change cannot move the boundary.
+ *
+ * `requested_at` is the persisted creation instant: the column is server-set
+ * (`clock_timestamp()`), recorded in the immutable creation snapshot, exposed to
+ * operators as `requestedAt`/`requestAgeDays`, and equal to the signed
+ * document's `issuedAt` (the import binding compares them). No client-supplied
+ * value can move it.
+ */
+export const PREPARED_REQUEST_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * Prefix reserved for reasons the system writes itself. An operator-supplied
+ * abandonment reason may not use it, so an explicit abandonment can never be
+ * confused with the expiry transition in the durable record.
+ */
+export const SYSTEM_EXPIRY_REASON_PREFIX = "SYSTEM_EXPIRY";
+
+/** The exact instant at which a prepared request stops being eligible. */
+export function preparedRequestExpiresAt(requestedAt: Date): number {
+  return requestedAt.getTime() + PREPARED_REQUEST_MAX_AGE_MS;
+}
+
+/**
+ * Eligible only while `now < requestedAt + 14 × 24h`; expired at `>=`, exactly
+ * on the boundary.
+ */
+export function isPreparedRequestExpired(
+  requestedAt: Date,
+  now: number,
+): boolean {
+  return now >= preparedRequestExpiresAt(requestedAt);
+}
+
 export function issuanceResponse(
   row: IssuanceRow,
   extra: {
@@ -1215,6 +1271,12 @@ export async function abandonIssuance(
   const issuanceId = ulidValue(rawId, "issuanceId");
   const input = object(body, ["reason"]);
   const reason = text(input.reason, "reason", 1, 500);
+  // The expiry transition writes its reason itself (OD-LIC-20). Reserving the
+  // marker keeps a human abandonment from ever masquerading as a system one.
+  if (reason.startsWith(SYSTEM_EXPIRY_REASON_PREFIX))
+    invalid(
+      "The SYSTEM_EXPIRY reason prefix is reserved for system enforcement.",
+    );
   const row = await readIssuance(tx, issuanceId, true);
   if (actor.role !== "OWNER_ADMIN" && row.requested_by !== actor.id)
     fail(
@@ -1372,6 +1434,68 @@ async function archiveArtifact(
   return storeKey;
 }
 
+export const EXPIRED_REQUEST_REASON = `${SYSTEM_EXPIRY_REASON_PREFIX}: prepared request exceeded the fixed 14 × 24-hour maximum age`;
+
+/**
+ * OD-LIC-20: the first completion/import attempt after the boundary fails
+ * closed. Inside the caller's transaction, and while the row lock taken by
+ * `readIssuance(..., true)` is held, this:
+ *
+ *  1. moves `REQUEST_PREPARED → ABANDONED` only if the row is still prepared
+ *     (a concurrent attempt that already moved it cannot transition it again),
+ *  2. writes the system-origin audit event — `actor: null`, because no human
+ *     made this decision, and a reason that identifies expiry,
+ *  3. throws `PreparedRequestExpired`, which the route answers after the
+ *     transaction COMMITs, so the caller never sees success.
+ *
+ * `abandoned_by` records the operator whose attempt triggered the enforcement;
+ * the schema requires a real user there and only the audit can express a system
+ * actor. The system origin is unambiguous: the row's `abandonment_reason` starts
+ * with the reserved `SYSTEM_EXPIRY` marker, and `abandonIssuance` refuses that
+ * prefix for human reasons.
+ *
+ * The immutable snapshot (requested_at, digests, request document, terms) is
+ * never touched — only the lifecycle columns change, as the migration's
+ * immutability trigger enforces. No artifact, no archive row and no success
+ * audit is written anywhere on this path.
+ */
+async function abandonExpiredRequest(
+  tx: PoolClient,
+  row: IssuanceRow,
+  actor: ServiceActor,
+) {
+  const expiresAt = new Date(preparedRequestExpiresAt(row.requested_at));
+  const updated = await tx.query<{ abandoned_at: Date }>(
+    `UPDATE owner.license_issuances
+        SET status='ABANDONED', abandoned_at=clock_timestamp(),
+            abandoned_by=$2, abandonment_reason=$3
+      WHERE id=$1 AND status='REQUEST_PREPARED'
+      RETURNING abandoned_at`,
+    [row.id, actor.id, EXPIRED_REQUEST_REASON],
+  );
+  if (updated.rowCount !== 1)
+    fail(409, "InvalidTransition", "The request cannot accept an artifact.");
+  await audit(tx, {
+    actor: null,
+    type: "LICENSE_REQUEST_ABANDONED",
+    targetType: "LicenseIssuance",
+    targetId: row.id,
+    reason: `${EXPIRED_REQUEST_REASON} (requested_at=${row.requested_at.toISOString()}, expires_at=${expiresAt.toISOString()})`,
+    before: {
+      status: "REQUEST_PREPARED",
+      requestedAt: row.requested_at.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    },
+    after: {
+      status: "ABANDONED",
+      origin: "SYSTEM_EXPIRY",
+      abandonedAt: updated.rows[0]!.abandoned_at.toISOString(),
+      operationId: row.operation_id,
+    },
+  });
+  throw new PreparedRequestExpired(expiresAt.toISOString());
+}
+
 export async function importIssuanceArtifact(
   tx: PoolClient,
   actor: ServiceActor,
@@ -1379,6 +1503,12 @@ export async function importIssuanceArtifact(
   trustedKeys: readonly TrustedLicenseKey[],
   rawId: unknown,
   body: unknown,
+  /**
+   * OD-LIC-20 clock seam. Production callers use the default (real time); tests
+   * inject a frozen clock. It decides eligibility only — durable timestamps in
+   * the row and the audit are still written by the database clock.
+   */
+  now: () => number = Date.now,
 ) {
   assertActiveAuthorizedActor(actor, "licenses.import");
   const issuanceId = ulidValue(rawId, "issuanceId");
@@ -1388,6 +1518,18 @@ export async function importIssuanceArtifact(
   if (Buffer.byteLength(input.fileContent, "utf8") > REQUEST_MAX_BYTES)
     invalid("The artifact is too large.");
   const row = await readIssuance(tx, issuanceId, true);
+
+  // OD-LIC-20: authorization above and the row lock here come first; only a
+  // genuinely prepared request can be expired, so an already recorded artifact
+  // (`SIGNED_RECORDED`) keeps its historical replay untouched. An expired
+  // request is refused after this transition commits, and the request is
+  // terminal: nothing below runs, so no artifact, archive row or success audit
+  // can be created by this attempt.
+  if (
+    row.status === "REQUEST_PREPARED" &&
+    isPreparedRequestExpired(row.requested_at, now())
+  )
+    await abandonExpiredRequest(tx, row, actor);
 
   // OD-LIC-18: a duplicate import returns the historical result and creates
   // nothing new. Authorization has already been checked above.

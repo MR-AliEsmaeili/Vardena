@@ -64,6 +64,7 @@ import {
 import { LicenseArtifactStore } from "./artifact-store.js";
 import {
   DeniedWithAudit,
+  PreparedRequestExpired,
   abandonIssuance,
   createLimitProfile,
   downloadIssuanceArtifact,
@@ -420,7 +421,20 @@ export async function updateCustomerService(
   return customerResponse(updated, actorRole);
 }
 
-export async function createApp(db: Database, cfg: Config) {
+export interface AppDependencies {
+  /**
+   * OD-LIC-20 clock seam: production uses real time. It governs eligibility
+   * only; durable timestamps are written by the database clock.
+   */
+  now?: () => number;
+}
+
+export async function createApp(
+  db: Database,
+  cfg: Config,
+  dependencies: AppDependencies = {},
+) {
+  const now = dependencies.now ?? Date.now;
   const app = express();
   app.disable("x-powered-by");
   // No CORS; deployment is one browser origin via the Owner reverse proxy.
@@ -1014,14 +1028,31 @@ export async function createApp(db: Database, cfg: Config) {
     "licenses.import",
     true,
     async (tx, a, req, res) => {
-      res.locals.body = await importIssuanceArtifact(
-        tx,
-        a.user,
-        requireArtifactStore(),
-        requireTrustList(),
-        req.params.id,
-        req.body,
-      );
+      try {
+        res.locals.body = await importIssuanceArtifact(
+          tx,
+          a.user,
+          requireArtifactStore(),
+          requireTrustList(),
+          req.params.id,
+          req.body,
+          now,
+        );
+      } catch (error) {
+        // OD-LIC-20: the refusal is itself a durable fact. The service has
+        // already moved REQUEST_PREPARED -> ABANDONED and written the
+        // system-origin audit inside this transaction, so catching it here (the
+        // route's work callback) lets the transaction COMMIT. Any failure of the
+        // transition or the audit escapes as an error, rolls everything back and
+        // never reports a successful abandonment or import.
+        if (!(error instanceof PreparedRequestExpired)) throw error;
+        res.locals.status = error.status;
+        res.locals.body = {
+          code: error.code,
+          message: error.message,
+          correlationId: randomUUID(),
+        };
+      }
     },
   );
   route(
