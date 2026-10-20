@@ -49,15 +49,32 @@ the design is not mistaken for evidence.
   revocation preparation/import/download. Owner UI `/app/licenses` covers
   prepare, digest display, request download, artifact import and revocation
   preparation.
-- **Tests:** `owner-licensing/backend/test/{protocol,signer,licensing,unit}.test.ts`
-  and the Owner UI suites pass locally. CI run **39398290375** (head `6db52a2`)
-  passed `backend`, `frontend`, `docs` and `ci-gate`, including `test/api.test.ts`
-  on a fresh PostgreSQL database and the application of migration `007`.
-- **Not delivered:** customer-runtime `VREV1` parsing/verification/persistence
-  (the customer can therefore not consume a revocation yet), a dedicated
-  renewal/replacement UI, artifact backup/restore drill, and the 14-step
-  acceptance run. `docs/tasks/owner-side-issuance-traceability.md` is the
-  authoritative per-decision status.
+- **Tests:** `owner-licensing/backend/test/{protocol,signer,licensing,unit,artifact-store}.test.ts`
+  and the Owner UI suites pass locally. The PostgreSQL suites
+  (`test/api.test.ts`, `test/licensing-lifecycle.test.ts`) apply migrations
+  001–007 to a fresh disposable database in the pull-request `backend` job; a
+  stored run id or SHA is deliberately not repeated here, because it is only
+  evidence for the head it ran on.
+- **Customer runtime (added after this design, OD-LIC-17):** the installation
+  now consumes `VREV1` — domain parsing/verification, import service, the
+  `POST /api/v1/license/revocations/import` route under a new
+  `Licensing.License.Revoke` permission, `licensing.license_revocations` plus
+  `licenses.revoked_at`/`revocation_id` and `license_versions.signed_issued_at`
+  (migration `20261024000000_licensing_revocations`), `revoked` ranked above
+  every status/date reason and above Grace, `license-revoked` refusal on later
+  imports, and a committed `VREV1` vector set. This is code in the same branch,
+  not a change to the approved design; the customer contract (`VLIC1`/`VLIC2`,
+  canonicalization, signatures, vectors) is untouched.
+- **Not delivered:** a dedicated renewal/replacement UI, artifact backup/restore
+  drill (reconciliation and quarantine are tested, a real backup/restore is
+  not), human Persian RTL smoke, prepared-request expiry (blocked on the
+  Product Owner decision recorded in
+  [`owner-side-issuance-traceability.md`](owner-side-issuance-traceability.md)
+  §2.2), and the 14-step acceptance run. The customer live-PostgreSQL revocation
+  case runs in CI only, and no customer installation has been observed applying
+  a revocation.
+  `docs/tasks/owner-side-issuance-traceability.md` is the authoritative
+  per-decision status.
 
 ---
 

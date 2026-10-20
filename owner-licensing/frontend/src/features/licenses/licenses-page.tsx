@@ -212,15 +212,22 @@ function PrepareForm() {
             onChange={(event) => setCustomerId(event.target.value)}
           />
         </label>
-        <label className="space-y-1 text-sm">
-          <span>{o.licenses.installationIdentity}</span>
-          <Input
-            dir="ltr"
-            value={installationIdentityId}
-            maxLength={26}
-            onChange={(event) => setInstallationIdentityId(event.target.value)}
-          />
-        </label>
+        <div className="space-y-1 text-sm">
+          <label className="block space-y-1">
+            <span>{o.licenses.installationIdentity}</span>
+            <Input
+              dir="ltr"
+              value={installationIdentityId}
+              maxLength={26}
+              onChange={(event) =>
+                setInstallationIdentityId(event.target.value)
+              }
+            />
+          </label>
+          <p className="text-xs text-slate-500">
+            {o.licenses.installationIdentityHelp}
+          </p>
+        </div>
         <label className="space-y-1 text-sm">
           <span>{o.licenses.signingKey}</span>
           <Input
@@ -582,10 +589,17 @@ function IssuanceCard({ issuance }: { issuance: Issuance }) {
         </p>
       )}
       {issuance.revocation && (
-        <p className="rounded bg-red-50 p-2 text-sm text-red-800">
-          {o.licenses.revokedWith}: {issuance.revocation.reason} —{' '}
-          {issuance.revocation.status}
-        </p>
+        <div className="space-y-1 rounded bg-red-50 p-2 text-sm text-red-800">
+          <p>
+            {o.licenses.revokedWith}: {issuance.revocation.reason} —{' '}
+            {issuance.revocation.status === 'SIGNED_RECORDED'
+              ? o.licenses.revocationStatusSigned
+              : o.licenses.revocationStatusPrepared}
+          </p>
+          <p className="text-xs text-red-900">
+            {o.licenses.revocationNotApplied}
+          </p>
+        </div>
       )}
       {issuance.status === 'SIGNED_RECORDED' ? (
         <div className="space-y-2">

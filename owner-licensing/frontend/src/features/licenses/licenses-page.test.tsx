@@ -203,4 +203,41 @@ describe('Owner license issuance page', () => {
     expect(screen.getByText(o.licenses.digestWarning)).toBeInTheDocument();
     expect(lic.prepareIssuance).toHaveBeenCalledTimes(1);
   });
+
+  it('states that a recorded revocation document is not an applied revocation', async () => {
+    // OD-LIC-17 / OD-LIC-19: the Owner records and archives the signed
+    // document; it cannot and must not claim any installation applied it.
+    vi.mocked(identity.getEffectivePermissions).mockResolvedValue({
+      permissions: ['licenses.view'],
+    });
+    vi.mocked(lic.issuances).mockResolvedValue({
+      items: [
+        {
+          ...prepared,
+          status: 'SIGNED_RECORDED',
+          signedAt: '2026-10-20T10:05:00.000Z',
+          importedAt: '2026-10-20T10:06:00.000Z',
+          artifactSha256: 'c'.repeat(64),
+          artifactAvailable: true,
+          signedArtifactProduced: true,
+          revocation: {
+            revocationId: '01K7REVOCATIONAAAAAAAAAAAA',
+            reason: 'NON_PAYMENT',
+            status: 'SIGNED_RECORDED',
+            importedAt: '2026-10-21T10:00:00.000Z',
+          },
+        },
+      ],
+      page: 1,
+      pageSize: 50,
+    });
+    mount();
+    expect(
+      await screen.findByText(o.licenses.revocationNotApplied),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/NON_PAYMENT/)).toBeInTheDocument();
+    expect(
+      screen.getByText(new RegExp(o.licenses.revocationStatusSigned)),
+    ).toBeInTheDocument();
+  });
 });

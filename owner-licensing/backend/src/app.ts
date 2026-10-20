@@ -935,8 +935,9 @@ export async function createApp(db: Database, cfg: Config) {
   // -------------------------------------------------------------------
   // Owner-side license lifecycle (OD-LIC-07…19)
   //
-  // The lifecycle routes stay 404 until an operator holds the matching
-  // effective permission; every service re-checks inside the transaction.
+  // Each lifecycle route fails closed with 403 until the session holds the
+  // matching effective permission; every service re-checks inside the
+  // transaction as well (OD-LIC-12).
   // -------------------------------------------------------------------
   route(
     "get",

@@ -30,17 +30,25 @@ artifact** (`VREV1`) with its protocol design in
 validation, failure and recovery states; it never renders a success the backend
 did not return.
 
-**What this branch does not implement.** The customer runtime still knows only
-`VLIC1`/`VLIC2`: it **cannot parse or apply `VREV1`**, so a revocation produced
-here cannot yet be consumed by a customer installation. Renewal and replacement
-authority (`OD-LIC-16`) is enforced in the prepare service, but no dedicated
-lineage UI exists. There is no production key anywhere in the repository, no CI
-key generation and no backup/restore drill for the artifact store. The
-PostgreSQL integration suite and migration `007` ran successfully in CI run
-`39398290375`, but they require a disposable database and cannot be run in an
-environment without PostgreSQL. The Owner UI has
-not been driven end-to-end against a real signer. Do not read this README as an
-acceptance claim.
+**What this branch does not implement.** Renewal and replacement authority
+(`OD-LIC-16`) is enforced in the prepare service, but no dedicated lineage UI
+exists. There is no production key anywhere in the repository, no CI key
+generation and no backup/restore drill for the artifact store (reconciliation,
+staging and quarantine are implemented and tested). Prepared-request expiry is
+**blocked on a Product Owner decision** and is not implemented. The PostgreSQL
+integration suites and migration `007` require a disposable database and run
+only in CI. The Owner UI has not been driven end-to-end against a real signer.
+Do not read this README as an acceptance claim.
+
+**Revocation is partial on purpose.** This application can prepare, import,
+archive and re-download a `VREV1` document. The customer runtime on the
+pull-request branch can verify and apply one
+(`POST /api/v1/license/revocations/import`), and no code path at the Owner sends
+anything to a customer installation. Recording a revocation document here does
+**not** mean any installation revoked anything: that requires the customer to
+import the signed file, and no such application is evidenced in this
+repository. The `/app/licenses` page says this in Persian next to every
+revocation record.
 
 **Security boundaries kept.** No private key, public key material, signature
 secret or key-file content is stored in PostgreSQL, the repository, build
