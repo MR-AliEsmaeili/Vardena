@@ -1,9 +1,9 @@
 # PDR-19: Owner-side license issuance — permission split, offline signing custody, installation identity and artifact storage
 
-- **Date:** 2026-10-19 (§1…§5) · **amended 2026-10-20** (§6, OD-LIC-11…OD-LIC-14)
+- **Date:** 2026-10-19 (§1…§5) · **amended 2026-10-20** (§6, OD-LIC-11…OD-LIC-14; §10, OD-LIC-15…OD-LIC-19)
 - **Authority:** Product Owner Ali Esmaeili, answering the four blocking questions B-1…B-4 of [the issuance assessment](../../tasks/licensing-owner-side-issuance-blocked-assessment.md) §4.
-- **Status:** **Decided — product policy approved for D-1…D-4 below; the two forks of §5 (F-1 limit model, F-2 configurable permission scope/default/revocation) were answered by the Product Owner on 2026-10-19; and the four security-review decisions of §6 (**OD-LIC-11…OD-LIC-14**) were answered by the Product Owner on 2026-10-20. §5 and §6 record the answers and their consequences. No implementation, schema, migration, endpoint, artifact or UI is claimed or authorized as delivered by this record.**
-- **Decision ids:** **OD-LIC-07** (permission split and per-operator grants), **OD-LIC-08** (air-gapped signing custody and issuance flow), **OD-LIC-09** (installation identity registration), **OD-LIC-10** (signed-artifact storage); **added 2026-10-20:** **OD-LIC-11** (request authenticity before signing — OQ-92), **OD-LIC-12** (default access of a new operator — OQ-93), **OD-LIC-13** (limit-profile reactivation — OQ-94A), **OD-LIC-14** (in-flight requests when a profile changes — OQ-94B).
+- **Status:** **Decided — product policy approved for D-1…D-4 below; the two forks of §5 (F-1 limit model, F-2 configurable permission scope/default/revocation) were answered by the Product Owner on 2026-10-19; the four security-review decisions of §6 (**OD-LIC-11…OD-LIC-14**) were answered on 2026-10-20; and the five lifecycle decisions of §10 (**OD-LIC-15…OD-LIC-19**) were answered on 2026-10-20.** §5, §6 and §10 record the answers and their consequences. No implementation, schema, migration, endpoint, artifact or UI is claimed by this record; implementation evidence is tracked separately in the Owner-side issuance traceability matrix.**
+- **Decision ids:** **OD-LIC-07** (permission split and per-operator grants), **OD-LIC-08** (air-gapped signing custody and issuance flow), **OD-LIC-09** (installation identity registration), **OD-LIC-10** (signed-artifact storage); **added 2026-10-20 (first round):** **OD-LIC-11** (request authenticity before signing — OQ-92), **OD-LIC-12** (default access of a new operator — OQ-93), **OD-LIC-13** (limit-profile reactivation — OQ-94A), **OD-LIC-14** (in-flight requests when a profile changes — OQ-94B); **added 2026-10-20 (second round):** **OD-LIC-15** (signing-key rotation), **OD-LIC-16** (renewal and replacement authorization), **OD-LIC-17** (signed revocation artifact), **OD-LIC-18** (duplicate signed-artifact import), **OD-LIC-19** (signed-artifact retention and recovery).
 - **Scope:** Owner-side issuance only. Changes no signed byte format, no canonicalization rule, no vector, no customer runtime behaviour and no `VLIC1`/`VLIC2` verification semantics.
 - **Companions:** [PDR-14](./PDR-14-licensing-customer-code.md) · [PDR-16](./PDR-16-licensing-protocol-canonical-byte-contract-and-vectors.md) · [PDR-17](./PDR-17-owner-web-application-phase-1.md) · [PDR-18](./PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) · [ADR-0046](../../adr/0046-signed-license-documents-and-version-lifecycle.md) · [ADR-0048](../../adr/0048-owner-side-licensing-separation-boundary.md) · [open questions](../../open-questions.md)
 
@@ -709,6 +709,11 @@ lists. **No implementation is authorized or claimed by this section.**
 | **OQ-93** default access of a new operator | **ANSWERED 2026-10-20 — OD-LIC-12 (§6.2).** **R-1**: no grant row, effective access empty. R-3 rejected |
 | **OQ-94A** limit-profile reactivation | **ANSWERED 2026-10-20 — OD-LIC-13 (§6.3).** Reactivating the same retired row is allowed, never two `ACTIVE` at once |
 | **OQ-94B** in-flight requests on profile change | **ANSWERED 2026-10-20 — OD-LIC-14 (§6.4).** Existing request completes on its creation-time snapshot; new requests use current state |
+| **OD-LIC-15** signing-key rotation | **DECIDED 2026-10-20 (§10.1).** Controlled, auditable **manual** rotation; routine vs emergency distinguished; no new trust bootstrap and no claim that an existing installation trusts a new key before that key is installed and verified there |
+| **OD-LIC-16** renewal and replacement authorization | **DECIDED 2026-10-20 (§10.2).** Both are **`OWNER_ADMIN`-only** in the backend; an operator cannot set or manipulate `renewsOperationId` / `supersedesOperationId`, including through direct API calls |
+| **OD-LIC-17** signed revocation artifact | **DECIDED 2026-10-20 (§10.3) — direction B, a separately versioned artifact (`VREV1`).** Protocol design required before code and delivered in [`revocation-artifact-protocol.md`](../../licensing/revocation-artifact-protocol.md). `VLIC2` is unchanged |
+| **OD-LIC-18** duplicate signed-artifact import | **DECIDED 2026-10-20 (§10.4).** Return the **historical result of the first successful registration**; no second issuance, operation, assignment, archive entry or issuance audit event; authorization is still checked first; the semantic fingerprint excludes mutable display metadata |
+| **OD-LIC-19** signed-artifact retention and recovery | **DECIDED 2026-10-20 (§10.5).** **Indefinite** retention of the exact original bytes in the durable filesystem archive, explicit staged states, documented backup/restore with integrity verification, no WORM requirement, no automatic deletion |
 | Signing-request artifact format, offline signer packaging and isolation, issuance ledger schema, migration numbering, download authorization, UI states | **Engineering design delivered 2026-10-19** (documentation only, nothing implemented): [`owner-side-issuance-technical-design.md`](../../tasks/owner-side-issuance-technical-design.md) — `VLSR1` request envelope and payload, digest pinning for tamper-evidence across the human transport, which instant is "the issuance day", signer packaging/validation, the four new tables, the permission vocabulary, staged-then-transactional import, the separate `OWNER_LICENSE_ARTIFACT_DIR` store, the state machine, audit events, API and Persian RTL UI states, and the conformance test plan. Awaiting review |
 
 ---
@@ -734,3 +739,225 @@ format, canonicalization rule, vector or customer runtime behaviour.
 - [ADR-0048](../../adr/0048-owner-side-licensing-separation-boundary.md) — Decisions 4, 5; separation boundary
 - [Owner-side Phase 0 readiness](../../tasks/licensing-owner-side-phase-0-readiness.md) — D-5, D-6, R-2, R-3, R-8
 - [Open questions registry](../../open-questions.md) — OQ-74, OQ-75, OQ-78, OQ-81, OQ-85, OQ-90, OQ-91
+
+
+---
+
+## 10. OD-LIC-15…OD-LIC-19 — the lifecycle decisions, **answered by the Product Owner on 2026-10-20**
+
+This round answers the five remaining lifecycle questions that stood between the
+approved design and a complete Owner-side lifecycle: key rotation, renewal and
+replacement authority, a signed revocation instrument, duplicate-import behaviour
+and artifact retention/recovery. It is recorded here **before** the implementation
+that depends on it, per the repository's decision-first discipline.
+
+Nothing in this section reopens §1…§6, F-1/F-2, readiness D-5, or any ADR/PDR. In
+particular, **no `VLIC2` payload, canonicalization rule, signature rule or golden
+vector changes**. The only new signed artifact authorized is the *separately
+versioned* revocation artifact of §10.3, and it is explicitly **not** a `VLIC2`
+license and never a substitute for one.
+
+### 10.1 OD-LIC-15 — signing-key rotation is controlled and manual
+
+**Product Owner's decision.** The rotation of the license signing key is a
+**controlled manual operation**, not an automated one and not a feature of the
+Owner web application.
+
+**What is decided.**
+
+- Rotation is a documented, auditable, manual procedure performed by the
+  responsible Owner operators in the offline environment. It keeps the private
+  signing key outside the Owner web application, the source repository, the
+  customer application and every customer artifact.
+- **No production private key is ever generated by CI or committed as part of a
+  repository change.** This restates ADR-0046 Decision 9 and PDR-11 §4.4; it is not
+  relaxed by anything here.
+- A rotation record contains at minimum: the **key identifiers** involved, their
+  **activation and deactivation instants**, the **responsible actors**, the
+  rollout evidence, and whether the rotation is **routine** or an **emergency
+  response** to suspected compromise. The existing `owner.signing_keys` metadata
+  table is the Owner-side home for the identifiers and their `ACTIVE` /
+  `COMPROMISED` / `REVOKED` status; it still holds **no key material**, and its
+  `id` remains an operator-assigned label until it is bound to a real trusted
+  public key through the configured trust list.
+- Routine rotation and emergency response are **distinct procedures** with
+  different urgency, evidence and blast-radius. A suspected compromise additionally
+  requires the containment decisions that remain **U-1/OQ-74 OPEN**: this section
+  decides the *shape of rotation*, not the compromise-response policy.
+- **A rotation procedure must not claim that existing customer installations trust
+  the new public key** until that public key is actually installed and verified on
+  them. Rotation changes what the signer uses; it changes customer trust only when
+  the customer's trust list is updated and the installation restarted/verified.
+- **No new trust-bootstrap mechanism is invented.** The customer runtime trusts a
+  configured list of Ed25519 public keys (`LICENSE_SIGNING_PUBLIC_KEYS`, grammar in
+  `license-document.ts`: `keyId:<material>` or a bare key with a derived
+  `sha256-<16 hex>` id; duplicate ids rejected). There is no online key service, no
+  key transparency log and no signed key-rotation certificate. The approved manual
+  procedure is therefore: (1) generate the new key pair offline,
+  (2) distribute the **public** key to every customer installation that must trust
+  it, (3) update each customer's configured trust list and verify the new key is
+  present/usable **before** it signs a real license, (4) register the key in the
+  Owner trust list, (5) begin signing under the new key id, (6) keep the old public
+  key trusted for as long as artifacts signed with it may still be imported,
+  (7) record the rotation evidence. If a given customer runtime cannot accept the
+  new public key without an application deployment, that is a **deployment
+  constraint to be scheduled**, not a reason to weaken verification.
+
+**Compatibility boundary (reported, not invented).** The current customer runtime
+supports *multiple simultaneously trusted public keys* (`toTrustedKeys` /
+`parseTrustedLicenseKeys`) but has **no runtime key-administration endpoint and no
+automatic distribution**. Rotation is therefore operationally coupled to a
+configuration redeploy of each customer installation. This is compatible with the
+approved manual procedure, and it is recorded so nobody mistakes the Owner-side
+`signing_keys` row for a customer-side trust change.
+
+**Forbidden by this decision.** Automatic key rotation; key generation in CI; a
+private key inside any web application, image, log, database or archive bundle; a
+claim that a key is trusted by a customer before that customer's trust list has
+been updated and verified; a second signing key introduced to avoid this
+procedure.
+
+### 10.2 OD-LIC-16 — renewal and replacement are `OWNER_ADMIN`-only
+
+**Product Owner's decision.** Both operations are **`OWNER_ADMIN`-only**, enforced
+in the backend for UI and direct API requests alike.
+
+**What is decided.**
+
+- An ordinary `LICENSE_OPERATOR` must **not** be able to create a renewal or a
+  supersession, and must not be able to set, manipulate or smuggle
+  `renewsOperationId` or `supersedesOperationId` — in a request body, in a stored
+  request snapshot, in a replayed import or in any other path.
+- Both fields are **structurally absent** from the operator-visible issuance
+  request contract: the backend rejects them on a request prepared by any actor
+  other than an `OWNER_ADMIN`, and the UI never offers them. Hiding the control is
+  not the control; the refusal is server-side and tested through direct API calls.
+- The policy is enforced at the **backend service layer and in the database
+  constraints that already exist**; it is not derived from a UI flag, a role claim
+  in the browser, or a client-supplied actor field.
+- Existing replay, lineage (`supersedes`/`renews` target resolution),
+  `customer`/`customerCode` binding and signed-artifact validation rules are
+  **unchanged**. A renewal or replacement can only be expressed by a new issuance
+  request prepared by an `OWNER_ADMIN`.
+- The **public DTO and the signed payload contract do not change**: the fields
+  already exist in `VLIC2` (OD-LIC-06, PDR-18 §9). What changes is who may populate
+  them.
+
+**Consequence, stated plainly.** Under OD-LIC-07 an operator may still issue an
+ordinary time-limited license; only *term-changing* operations are reserved. This
+matches the existing customer-side rule that a renewal extends the named version
+rather than replacing it, and it does not alter PDR-12's supersession semantics by
+one byte.
+
+### 10.3 OD-LIC-17 — a separately versioned signed revocation artifact
+
+**Product Owner's decision.** **Option B**: introduce a **separately versioned,
+signed revocation artifact** that the customer imports. This is the first
+authorized *new signed format* in the licensing protocol. It is deliberately not a
+change to `VLIC2`.
+
+**What is decided.**
+
+- The revocation instrument is a distinct artifact type and version with explicit
+  **domain separation** from license issuance artifacts. It can never be parsed as
+  a license and a license can never be parsed as a revocation.
+- It carries a unique revocation operation identity with defined replay and
+  idempotency behaviour; the exact payload and canonicalization are fixed by the
+  protocol design required below.
+- It targets an **existing license** by identifiers the customer runtime already
+  stores, with customer/`customerCode` binding verified before any state changes.
+- It carries a **reason**, the **issuer/key identifier**, an **issue instant** and
+  enough evidence to audit the decision on both sides.
+- **Default effect is targeted revocation only**: it revokes exactly one license
+  (one installation-bound commercial right). It does **not** disable other licenses,
+  other versions, the installation itself, device enrollments, or any unrelated
+  customer fact.
+- **The revoked license cannot be reactivated by replaying or re-importing the old
+  license artifact.** Continued service requires a replacement grant following the
+  normal new-issuance flow — i.e. an explicitly new signed artifact from a new
+  Owner-side operation, not a resurrection of the revoked one.
+- Failure behaviour is fail-closed and explicit: malformed, unsigned, wrongly
+  signed, untrusted-key, wrong-customer, unknown-target, stale/replayed-conflicting
+  and already-applied artifacts never silently succeed and never partially apply.
+- The vendor is **required to publish and review the protocol design before
+  implementation**, covering every bullet above plus UI/import flow, persistence,
+  audit events and error reporting.
+
+**What is not authorized.** Changing `VLIC2`; adding a revocation field to a
+license payload; making revocation a `VLIC3`; re-signing an old license to "undo" a
+revocation; deleting license history; a network revocation service or customer
+callback (ADR-0048 Decision 3 stands).
+
+**Protocol design requirement, satisfied before coding.** The design is
+[`docs/licensing/revocation-artifact-protocol.md`](../../licensing/revocation-artifact-protocol.md).
+It is normative for the implementation and preserves PDR-16's canonical-byte
+contract by defining the revocation payload as a **new** typed document with its
+own canonicalization profile fixed by its own golden vectors — never by editing
+the license corpus.
+
+### 10.4 OD-LIC-18 — duplicate signed-artifact import returns the historical result
+
+**Product Owner's decision.** A duplicate import returns the **historical result of
+the first successful registration**.
+
+**What is decided.**
+
+- A duplicate import must **not** create a second issuance, a second operation, a
+  second customer/installation assignment, a second archive entry, or an audit
+  event that represents a new issuance. The first registration stays the only
+  issuance fact.
+- The response is the original persisted outcome, rendered in a form compatible
+  with the existing API contract, plus an explicit indication that this was a
+  replay rather than a new registration.
+- The **operation identity** and the existing semantic-fingerprint rules of OQ-81
+  are preserved: the same operation id from the same artifact is a replay; a
+  different artifact claiming the same operation id is a **conflict**, not a
+  replay, and is refused.
+- **Authorization is checked before the replay response is returned.** A caller
+  who lacks `licenses.import`, is disabled, or must change password receives the
+  denial, never a historical record. A replay is not an authorization bypass.
+- Mutable display metadata (for example a customer's display name or a
+  human-entered note) is **not** part of the semantic fingerprint, because a
+  legitimate later edit to a name must not turn a replay into a conflict.
+- If the existing public response contract could not express the historical result
+  without a DTO change, the implementation must stop and report that conflict.
+  In this repository the import endpoint is introduced by this same work, so the
+  contract is defined once, here, and no published DTO is altered.
+
+### 10.5 OD-LIC-19 — indefinite retention, backup and recovery of signed artifacts
+
+**Product Owner's decision.** **Indefinite retention**, with backup and recovery
+testing.
+
+**What is decided.**
+
+- The **exact original bytes** of every registered signed license artifact and
+  every registered signed revocation artifact are stored in the approved durable
+  filesystem archive, **separate from PostgreSQL**. A historical artifact is never
+  regenerated and presented as the original.
+- Downloads are authorization-gated (`licenses.download` / `OWNER_ADMIN` for
+  revocation evidence as defined by the protocol) and every access is auditable
+  under the established policy. The database holds integrity metadata
+  (SHA-256, size, store key) and a stable reference to the Owner operation.
+- **Backup and restore procedures are documented**, including integrity
+  verification after restore. Recovery from a missing or corrupt artifact file, and
+  from an inconsistent database/archive state, is implemented and tested.
+- PostgreSQL and the filesystem are **not** claimed to be one atomic transaction.
+  Registration uses **explicit staged states** and a recoverable reconciliation
+  step; no response ever claims durability that was not verified.
+- **Indefinite retention means no automatic deletion policy** for these artifacts.
+  It does **not** add a WORM requirement (PDR-18 §3 already removed WORM from the
+  MVP).
+- Secrets, private signing keys, credentials and unrelated customer data are
+  **never** included in archive bundles or artifact downloads.
+
+### 10.6 Registry effect
+
+OD-LIC-15…OD-LIC-19 are product decisions. They do **not**, by themselves, close
+the OQ rows they touch: OQ-74 (compromise/rotation rollout), OQ-75 (vocabulary
+evidence), OQ-78 (revocation policy and local effect), OQ-81 (replay contract),
+OQ-91 (artifact storage evidence) remain **OPEN for implementation and conformance
+evidence**. OQ-85 and OQ-90 are untouched. What changes is that **no product
+decision is missing** for the Owner-side lifecycle phases A–E and the revocation
+protocol of phase F; the remaining blockers are implementation, evidence and the
+explicitly listed open questions in §7 and in the design's §15.

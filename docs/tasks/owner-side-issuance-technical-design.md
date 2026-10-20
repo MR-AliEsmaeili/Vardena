@@ -35,6 +35,31 @@
 
 ---
 
+## Implementation status (2026-10-20, branch `arena/34983fce-vardena`)
+
+**Read this before the design body.** The paragraphs below remain the approved
+design; this block records what the implementation branch actually contains, so
+the design is not mistaken for evidence.
+
+- **Delivered in code:** permission grants and default deny (OD-LIC-12),
+  limit-profile storage/lifecycle (OD-LIC-13/14), installation-identity
+  registration, `VLSR1` request preparation with both digests, the offline
+  signer with the pre-key digest gate (OD-LIC-11), import/verification/archival
+  and download, duplicate-import replay (OD-LIC-18), and Owner-side `VREV1`
+  revocation preparation/import/download. Owner UI `/app/licenses` covers
+  prepare, digest display, request download, artifact import and revocation
+  preparation.
+- **Tests:** `owner-licensing/backend/test/{protocol,signer,licensing,unit}.test.ts`
+  and the Owner UI suites pass locally. `test/api.test.ts` is CI-only and was
+  **not** executed here; migration `007` has **not** been executed anywhere.
+- **Not delivered:** customer-runtime `VREV1` parsing/verification/persistence
+  (the customer can therefore not consume a revocation yet), a dedicated
+  renewal/replacement UI, artifact backup/restore drill, and the 14-step
+  acceptance run. `docs/tasks/owner-side-issuance-traceability.md` is the
+  authoritative per-decision status.
+
+---
+
 ## 0. Scope
 
 This design covers the Owner-side issuance path end to end: the per-user
@@ -95,6 +120,27 @@ decided canonically in
 No signed byte format, canonicalization rule, vector or separation boundary is
 changed by any of these, and **nothing is implemented** — this remains a design
 awaiting approval.
+
+**Amended a third time, 2026-10-20 — the lifecycle round.** The Product Owner
+answered the five remaining lifecycle questions as **OD-LIC-15…OD-LIC-19**
+([PDR-19 §10](../decisions/product/PDR-19-owner-side-issuance-decisions.md)).
+None of them changes a signed license byte, a vector or the separation boundary:
+
+| Decision | Answer | Effect on this design |
+|---|---|---|
+| **OD-LIC-15** | Controlled **manual** key rotation, routine vs emergency, no key in Git/CI, no invented trust bootstrap | §8.3's trust list stays configuration; rotation is a runbook, not a feature. No runtime key-administration surface is built here |
+| **OD-LIC-16** | Renewal **and** replacement are `OWNER_ADMIN`-only | §9.1's note that operator authority over `renewsOperationId`/`supersedesOperationId` was undecided is **closed**: an operator may never populate either field, and direct API attempts are refused server-side |
+| **OD-LIC-17** | A **separately versioned** signed revocation artifact (`VREV1`) imported by the customer | New phase F, specified in [revocation-artifact-protocol.md](../licensing/revocation-artifact-protocol.md). §9.1's "no revocation state is defined" is superseded for the **separate** artifact only; the issuance state machine is unchanged |
+| **OD-LIC-18** | Duplicate import returns the **historical first result** | §7.1/§13 are extended: replay returns the persisted outcome, creates no new row/audit/archive entry, and checks authorization first |
+| **OD-LIC-19** | **Indefinite** retention, backup and recovery testing | §8's store becomes a retained archive with explicit staged states, reconciliation and restore verification; no automatic deletion and no WORM claim |
+
+**Consequence for the gate.** No product decision is missing for phases A–E or for
+the revocation protocol. Implementation is now blocked only by engineering work and
+by the evidence-bound open rows listed in §15.1 (OQ-74's compromise/rollout policy,
+OQ-75's vocabulary evidence, OQ-78's justification policy, OQ-81's receipt shape
+outside the new route, OQ-85's operational evidence, and OQ-90's
+correction-after-issuance question).
+
 
 ---
 
