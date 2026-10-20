@@ -469,9 +469,11 @@ export async function createApp(
   // reaching the expiry decision. Payload validation must not bypass the rule,
   // so an authorized attempt that fails in the parser still runs the identical
   // authorization, row lock, `ABANDONED` transition and system-origin audit
-  // here. Only an expired prepared request changes the answer (409); every other
-  // outcome — unauthenticated, unknown id, still-eligible request, replay —
-  // falls through unchanged to the parser's existing 400.
+  // here. An expired prepared request changes the answer (409) only after that
+  // transition and audit have committed. Authentication/authorization refusals
+  // keep their own response and a failed transaction reaches the error handler;
+  // the remaining non-expiry outcomes — unknown id, still-eligible request,
+  // replay — fall through unchanged to the parser's existing 400.
   app.use(
     async (error: unknown, req: Request, res: Response, next: NextFunction) => {
       const type = (error as { type?: unknown } | null)?.type;
@@ -484,8 +486,9 @@ export async function createApp(
         (type !== "entity.parse.failed" && type !== "entity.too.large")
       )
         return next(error);
-      const refusal = await db
-        .transaction(async (tx) => {
+      let refusal: PreparedRequestExpired | null = null;
+      try {
+        refusal = await db.transaction(async (tx) => {
           const actor = await authenticate(
             tx,
             cookieToken(req, cfg.production),
@@ -501,8 +504,28 @@ export async function createApp(
             throw inner;
           }
           return null;
-        })
-        .catch(() => null);
+        });
+      } catch (failure) {
+        // The transaction rolled back, so no transition or audit committed and
+        // the expiry refusal must never be reported from here. Only the two
+        // non-expiry domain refusals an authorized attempt can raise in this
+        // transaction keep the parser's existing answer: a malformed issuance
+        // id (`400 ValidationFailed` from `ulidValue`) and an unknown one
+        // (`404 EntityNotFound` from `readIssuance`). Every other failure
+        // keeps its own response through the error handler — the 401/403
+        // authentication and authorization refusals, database and transaction
+        // failures, 5xx `ApiError`s and unexpected errors are never replaced
+        // by the parser error. (The defensive 409 in `abandonExpiredRequest`
+        // is unreachable under the row lock the guard holds and is not a
+        // documented fall-through outcome, so it too would surface there.)
+        if (
+          failure instanceof ApiError &&
+          ((failure.status === 400 && failure.code === "ValidationFailed") ||
+            (failure.status === 404 && failure.code === "EntityNotFound"))
+        )
+          return next(error);
+        return next(failure);
+      }
       if (!refusal) return next(error);
       res.status(refusal.status).json({
         code: refusal.code,

@@ -1437,10 +1437,18 @@ application-level reorder alone would still let those attempts escape the rule.
 An error-handling middleware registered immediately after the parser recognizes
 `POST /api/v1/license-issuances/:id/import` with `entity.parse.failed` or
 `entity.too.large`, runs the *same* `lockIssuanceForImport` under the same
-authorization and clock, commits the transition and audit, and answers `409`;
-every other outcome — unauthenticated, unknown id, still-eligible request,
-`SIGNED_RECORDED` replay — falls through unchanged to the parser's existing
-`400`.
+authorization and clock, commits the transition and audit, and answers `409`.
+The outcomes stay distinct: an authentication or authorization refusal keeps
+its own `401`/`403` response instead of being replaced by the parser error (and
+never mutates the request); a failed transaction — a database failure or an
+application-level `5xx` — is routed to the error handler and never reports the
+expiry refusal, because the transition and audit did not commit; only the two
+named non-expiry domain refusals (a malformed issuance id, `400
+ValidationFailed`; an unknown one, `404 EntityNotFound`) and the no-error
+outcomes — still-eligible request, `SIGNED_RECORDED` replay — fall through
+unchanged to the parser's existing `400`. The fall-through set is closed: any
+other error, expected or not, surfaces through the error handler with its own
+response.
 
 **Dependency ordering is part of the same rule.** `importIssuanceArtifact`
 receives the artifact store and the trust list as *providers*
@@ -1811,7 +1819,16 @@ request still produces `409`, the durable `ABANDONED` row and exactly one
 system-origin audit, with no artifact, archive row or success audit · an
 *eligible* request with a missing or oversized payload keeps the ordinary `400`
 and stays `REQUEST_PREPARED` · an unauthorized actor is refused `403` before body
-validation and cannot trigger the transition.
+validation and cannot trigger the transition · through the parser rejection
+hook, an unauthorized actor's unparsable body still answers `403` and an
+unauthenticated attempt `401` — never the parser's `400` — with the row
+untouched · a forced audit-write failure on a malformed body answers `500` and
+leaves the row `REQUEST_PREPARED` (nothing committed, no expiry refusal
+reported) · an application-level `500` raised while the transition is staged
+answers `500 InternalError` through the error handler, never the parser's
+`400`, with nothing committed · an eligible request one millisecond before the boundary keeps the
+parser's `400` on an unparsable body · an unknown issuance id keeps the parser's
+`400` and writes no audit.
 Executed locally in `test/licensing.test.ts` and
 `test/licensing-lifecycle.test.ts` (§2.2 of the traceability matrix).
 

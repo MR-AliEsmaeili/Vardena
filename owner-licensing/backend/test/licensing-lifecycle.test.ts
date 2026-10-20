@@ -7,7 +7,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import { ulid } from "ulid";
 import type { Express } from "express";
+import type { PoolClient } from "pg";
 import { Database } from "../src/db.js";
+import { ApiError } from "../src/domain.js";
 import { bootstrap } from "../src/bootstrap.js";
 import { createApp } from "../src/app.js";
 import { migrate } from "../src/migrate.js";
@@ -1455,6 +1457,50 @@ describe("import dependencies never mask expiry (OD-LIC-20)", () => {
 });
 
 /**
+ * Deterministic fault injection for the parser-rejection hook: raises an
+ * application-level 500 — the codebase's `fail(500, "InternalError", …)`
+ * invariant shape — at the moment the expiry transition is staged, inside the
+ * real transaction. Only the expiry UPDATE for the armed issuance is
+ * intercepted; every other statement runs against the real database, and the
+ * pooled client's `query` is restored before the client is released.
+ */
+class SyntheticExpiryFailureDatabase extends Database {
+  failIssuanceId: string | null = null;
+
+  override async transaction<T>(
+    work: (tx: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    return super.transaction(async (tx) => {
+      const originalQuery = tx.query;
+      const run = originalQuery as unknown as (
+        text: unknown,
+        params?: unknown,
+      ) => Promise<unknown>;
+      tx.query = (async (text: unknown, params?: unknown) => {
+        if (
+          this.failIssuanceId !== null &&
+          typeof text === "string" &&
+          text.includes("SET status='ABANDONED'") &&
+          Array.isArray(params) &&
+          params[0] === this.failIssuanceId
+        )
+          throw new ApiError(
+            500,
+            "InternalError",
+            "The operation failed. Please retry.",
+          );
+        return run.call(tx, text, params);
+      }) as typeof tx.query;
+      try {
+        return await work(tx);
+      } finally {
+        tx.query = originalQuery;
+      }
+    });
+  }
+}
+
+/**
  * Payload validation must never decide the fate of an expired request.
  *
  * OD-LIC-20 says the first authorized completion attempt at or after
@@ -1465,6 +1511,31 @@ describe("import dependencies never mask expiry (OD-LIC-20)", () => {
  * untouched.
  */
 describe("import payload validation never masks expiry (OD-LIC-20)", () => {
+  let failureDb: SyntheticExpiryFailureDatabase;
+  let appWithFailure: Express;
+
+  beforeAll(async () => {
+    // Same database, sessions, origin and clock as the main app: only the
+    // injected failure differs, so the main app's operator session is valid.
+    failureDb = new SyntheticExpiryFailureDatabase(url!);
+    appWithFailure = await createApp(
+      failureDb,
+      {
+        databaseUrl: url!,
+        origin,
+        production: false,
+        port: 3001,
+        artifactDir,
+        trustedPublicKeys: [`${signingKeyId}:${publicMaterial}`],
+      },
+      { now: () => clockNow ?? Date.now() },
+    );
+  });
+
+  afterAll(async () => {
+    await failureDb.close();
+  });
+
   afterEach(() => {
     clockNow = null;
   });
@@ -1473,6 +1544,22 @@ describe("import payload validation never masks expiry (OD-LIC-20)", () => {
     write("post", `/license-issuances/${id}/import`, cookie).send(
       body as object,
     );
+
+  // A body the transport parser itself refuses (unparsable or oversized), so
+  // the request reaches the parser-rejection hook instead of the route.
+  const postRaw = (
+    id: string,
+    cookie: string | undefined,
+    raw: string,
+    target: Express = app,
+  ) => {
+    const r = request(target)
+      .post(`/api/v1/license-issuances/${id}/import`)
+      .set("Origin", origin)
+      .set("x-owner-request", "1")
+      .set("Content-Type", "application/json");
+    return (cookie ? r.set("Cookie", cookie) : r).send(raw);
+  };
 
   it("abandons an expired request when fileContent is missing", async () => {
     const requestedAt = new Date("2026-06-12T08:00:00.000Z");
@@ -1584,6 +1671,178 @@ describe("import payload validation never masks expiry (OD-LIC-20)", () => {
     expect(denied.status).toBe(403);
     expect((await issuanceFacts(seeded.id)).status).toBe("REQUEST_PREPARED");
     expect(await auditCount("LICENSE_REQUEST_ABANDONED", seeded.id)).toBe(0);
+  });
+
+  it("answers an unauthorized actor with the authorization error, not the parser error, when the body is not valid JSON", async () => {
+    const requestedAt = new Date("2026-06-17T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    const before = await issuanceFacts(seeded.id);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+
+    // The parser refuses the body before the route runs; the hook still
+    // authenticates first, and the authorization refusal is the answer — it
+    // must not be replaced by the parser's 400, and it must not mutate the
+    // expired request or its audit history.
+    const denied = await postRaw(seeded.id, viewerCookie, '{"fileContent":');
+    expect(denied.status).toBe(403);
+    expect(denied.body.code).toBe("PermissionDenied");
+    const after = await issuanceFacts(seeded.id);
+    expect(after.status).toBe("REQUEST_PREPARED");
+    expect(after.abandonment_reason).toBeNull();
+    expect(snapshotOf(after)).toEqual(snapshotOf(before));
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", seeded.id)).toBe(0);
+    expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", seeded.id)).toBe(0);
+    expect(
+      await count(
+        "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+        [seeded.id],
+      ),
+    ).toBe(0);
+  });
+
+  it("answers an unauthenticated actor with the authentication error, not the parser error, when the body exceeds the parser limit", async () => {
+    const requestedAt = new Date("2026-06-18T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+
+    const denied = await postRaw(
+      seeded.id,
+      undefined,
+      `{"fileContent":"${"x".repeat(70_000)}"}`,
+    );
+    expect(denied.status).toBe(401);
+    expect(denied.body.code).toBe("Unauthorized");
+    const after = await issuanceFacts(seeded.id);
+    expect(after.status).toBe("REQUEST_PREPARED");
+    expect(after.abandonment_reason).toBeNull();
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", seeded.id)).toBe(0);
+    expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", seeded.id)).toBe(0);
+  });
+
+  it("commits nothing and reports a server error when the expiry audit fails on a malformed body", async () => {
+    const requestedAt = new Date("2026-06-19T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+    await db.pool.query(`
+      CREATE OR REPLACE FUNCTION owner.test_fail_parser_expiry_audit() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.event_type = 'LICENSE_REQUEST_ABANDONED'
+           AND NEW.actor_id IS NULL
+           AND NEW.target_id = '${seeded.id}' THEN
+          RAISE EXCEPTION 'forced parser-hook expiry audit failure' USING ERRCODE = 'P0001';
+        END IF;
+        RETURN NEW;
+      END;
+      $$;
+      DROP TRIGGER IF EXISTS test_fail_parser_expiry_audit ON owner.audit_events;
+      CREATE TRIGGER test_fail_parser_expiry_audit BEFORE INSERT ON owner.audit_events
+        FOR EACH ROW EXECUTE FUNCTION owner.test_fail_parser_expiry_audit();
+    `);
+    try {
+      // The transition is staged and the audit write fails, so the hook's
+      // transaction rolls back. The failure must surface as a server error —
+      // never as the committed expiry refusal, and never as the parser's 400.
+      const failed = await postRaw(
+        seeded.id,
+        operatorCookie,
+        '{"fileContent":',
+      );
+      expect(failed.status).toBe(500);
+      expect(failed.body.code).toBe("InternalError");
+      expect(failed.body.message).not.toContain("forced parser-hook");
+      const facts = await issuanceFacts(seeded.id);
+      expect(facts.status).toBe("REQUEST_PREPARED");
+      expect(facts.abandonment_reason).toBeNull();
+      expect(facts.abandoned_at).toBeNull();
+      expect(await auditCount("LICENSE_REQUEST_ABANDONED", seeded.id)).toBe(0);
+      expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", seeded.id)).toBe(0);
+      expect(
+        await count(
+          "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+          [seeded.id],
+        ),
+      ).toBe(0);
+    } finally {
+      await db.pool.query(
+        "DROP TRIGGER IF EXISTS test_fail_parser_expiry_audit ON owner.audit_events; DROP FUNCTION IF EXISTS owner.test_fail_parser_expiry_audit()",
+      );
+    }
+  });
+
+  it("routes an application-level 500 from the expiry transaction to the error handler, not the parser's 400", async () => {
+    const requestedAt = new Date("2026-06-21T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+    failureDb.failIssuanceId = seeded.id;
+    try {
+      // The hook authenticates and locks the expired row, then an
+      // application-level 500 (the codebase's InternalError invariant shape)
+      // is raised as the transition is staged. A 5xx ApiError is an
+      // infrastructure failure, not a recognized non-expiry outcome: it must
+      // reach the error handler with the established public 500 response
+      // instead of being downgraded to the parser's 400, and the rollback
+      // must leave no committed transition or audit behind.
+      const failed = await postRaw(
+        seeded.id,
+        operatorCookie,
+        '{"fileContent":',
+        appWithFailure,
+      );
+      expect(failed.status).toBe(500);
+      expect(failed.body.code).toBe("InternalError");
+      expect(failed.body.message).toBe("The operation failed. Please retry.");
+      expect(failed.body).not.toHaveProperty("stack");
+      const facts = await issuanceFacts(seeded.id);
+      expect(facts.status).toBe("REQUEST_PREPARED");
+      expect(facts.abandonment_reason).toBeNull();
+      expect(facts.abandoned_at).toBeNull();
+      expect(await auditCount("LICENSE_REQUEST_ABANDONED", seeded.id)).toBe(0);
+      expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", seeded.id)).toBe(0);
+      expect(
+        await count(
+          "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+          [seeded.id],
+        ),
+      ).toBe(0);
+    } finally {
+      failureDb.failIssuanceId = null;
+    }
+  });
+
+  it("keeps an eligible request prepared with the parser's answer when the body is not valid JSON", async () => {
+    const requestedAt = new Date("2026-06-20T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    const before = await issuanceFacts(seeded.id);
+    // One millisecond before the fixed boundary: still eligible, so the hook
+    // leaves the row untouched and the ordinary parser answer stands.
+    clockNow = preparedRequestExpiresAt(requestedAt) - 1;
+
+    const refused = await postRaw(seeded.id, operatorCookie, '{"fileContent":');
+    expect(refused.status).toBe(400);
+    expect(refused.body.code).toBe("ValidationFailed");
+    const after = await issuanceFacts(seeded.id);
+    expect(after.status).toBe("REQUEST_PREPARED");
+    expect(after.abandonment_reason).toBeNull();
+    expect(snapshotOf(after)).toEqual(snapshotOf(before));
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", seeded.id)).toBe(0);
+    expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", seeded.id)).toBe(0);
+    expect(
+      await count(
+        "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+        [seeded.id],
+      ),
+    ).toBe(0);
+  });
+
+  it("keeps the parser's answer for an unknown issuance id", async () => {
+    // Authorized, but there is no such request to expire: the parser's own
+    // answer is unchanged, and no audit event is written for the attempt.
+    const unknownId = ulid();
+    const refused = await postRaw(unknownId, operatorCookie, '{"fileContent":');
+    expect(refused.status).toBe(400);
+    expect(refused.body.code).toBe("ValidationFailed");
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", unknownId)).toBe(0);
   });
 });
 
