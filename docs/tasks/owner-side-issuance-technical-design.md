@@ -1420,6 +1420,22 @@ database clock. No client-supplied value participates: the anchor is the same
 `requested_at` the signed payload's `issuedAt` must equal at import, so a signer
 cannot choose a later creation instant.
 
+**Dependency ordering is part of the rule.** `importIssuanceArtifact` receives
+the artifact store and the trust list as *providers*
+(`IssuanceImportDependencies`), not as values, and resolves them only after the
+row has been read, locked and evaluated. The route therefore cannot answer
+`503 ArtifactStorageUnavailable` or `503 TrustListUnavailable` while an expired
+`REQUEST_PREPARED` row is still unenforced — the failure mode the first
+implementation had, because it resolved both dependencies at the call site. A
+`SIGNED_RECORDED` replay resolves the trust list (it compares the submitted bytes
+with the recorded binding) but not the artifact store, which a replay never reads
+or writes. An eligible import still fails closed with `503` when either
+dependency is unavailable, before anything is written. The only checks that
+precede the row read are authorization and the shape of the submitted payload
+(`fileContent` present, a string, within the size limit): a malformed call is a
+`400`, not a completion attempt, so it neither transitions the request nor
+reports an abandonment.
+
 ### 9.3 Limit-profile state machine — **[OD-LIC-13] new**
 
 Profiles have their own, much smaller lifecycle. Unlike the issuance states it is
@@ -1766,9 +1782,14 @@ concurrent imports yield two refusals, one transition and one audit · a session
 without `licenses.import` is refused **before** any transition · repeated attempts
 on the `ABANDONED` row are deterministic and never revive it · a replacement
 request gets new operation and license identities · a human abandonment reason
-using the reserved system prefix is refused. Executed locally in
-`test/licensing.test.ts` and `test/licensing-lifecycle.test.ts` (§2.2 of the
-traceability matrix).
+using the reserved system prefix is refused · a missing artifact directory or an
+unavailable trust list cannot mask the rule: with either dependency unconfigured
+the expired import still answers `409`, abandons the row and writes the
+system-origin audit, while an eligible import still answers `503` and leaves the
+row `REQUEST_PREPARED` · a historical duplicate import needs no artifact storage
+but still refuses with `503` when the trust list cannot verify the replay.
+Executed locally in `test/licensing.test.ts` and
+`test/licensing-lifecycle.test.ts` (§2.2 of the traceability matrix).
 
 Unauthenticated · inactive user · missing permission · `must_change_password` ·
 invalid or duplicate `customerCode` · nonexistent customer · invalid dates, end

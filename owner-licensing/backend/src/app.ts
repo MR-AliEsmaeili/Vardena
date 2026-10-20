@@ -1029,11 +1029,17 @@ export async function createApp(
     true,
     async (tx, a, req, res) => {
       try {
+        // OD-LIC-20 ordering: the dependencies are handed over as providers so
+        // the service can read and lock the issuance row, enforce the fixed
+        // 14 × 24-hour maximum age and commit the expiry first. Resolving them
+        // here would answer `503` and leave an expired request prepared.
         res.locals.body = await importIssuanceArtifact(
           tx,
           a.user,
-          requireArtifactStore(),
-          requireTrustList(),
+          {
+            artifactStore: requireArtifactStore,
+            trustedLicenseKeys: requireTrustList,
+          },
           req.params.id,
           req.body,
           now,

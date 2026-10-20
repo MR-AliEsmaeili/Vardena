@@ -87,6 +87,8 @@ let retiredIdentityId: string;
 let profileId: string;
 let signingKeyId: string;
 let privateKey: KeyObject;
+/** Trust-list material for the degraded app instances (trust key present/absent). */
+let publicMaterial: string;
 
 const write = (
   method: "post" | "patch" | "delete",
@@ -380,7 +382,7 @@ beforeAll(async () => {
   const { publicKey, privateKey: generated } = generateKeyPairSync("ed25519");
   privateKey = generated;
   signingKeyId = deriveKeyId(publicKey);
-  const publicMaterial = Buffer.from(
+  publicMaterial = Buffer.from(
     publicKey.export({ format: "der", type: "spki" }),
   ).toString("base64");
 
@@ -1200,6 +1202,255 @@ describe("prepared-request maximum age (OD-LIC-20)", () => {
     expect(refused.status).toBe(400);
     expect((await issuanceFacts(id)).status).toBe("REQUEST_PREPARED");
     expect(await auditCount("LICENSE_REQUEST_ABANDONED", id)).toBe(0);
+  });
+});
+
+/**
+ * OD-LIC-20 dependency ordering.
+ *
+ * A missing artifact store or trust list used to answer `503` before the import
+ * service ever looked at the issuance row, so an expired `REQUEST_PREPARED`
+ * request could stay prepared forever. These tests pin the corrected order: the
+ * row is read, locked and enforced first, and the import dependencies are
+ * required only by the paths that actually verify or store an artifact.
+ */
+describe("import dependencies never mask expiry (OD-LIC-20)", () => {
+  let appWithoutStore: Express;
+  let appWithoutTrust: Express;
+
+  const importOn = (
+    target: Express,
+    issuanceId: string,
+    cookie: string,
+    fileContent: string,
+  ) =>
+    request(target)
+      .post(`/api/v1/license-issuances/${issuanceId}/import`)
+      .set("Origin", origin)
+      .set("x-owner-request", "1")
+      .set("Content-Type", "application/json")
+      .set("Cookie", cookie)
+      .send({ fileContent });
+
+  beforeAll(async () => {
+    // Same database, same sessions, same origin: only the configuration differs.
+    appWithoutStore = await createApp(
+      db,
+      {
+        databaseUrl: url!,
+        origin,
+        production: false,
+        port: 3001,
+        trustedPublicKeys: [`${signingKeyId}:${publicMaterial}`],
+      },
+      { now: () => clockNow ?? Date.now() },
+    );
+    appWithoutTrust = await createApp(
+      db,
+      {
+        databaseUrl: url!,
+        origin,
+        production: false,
+        port: 3001,
+        artifactDir,
+      },
+      { now: () => clockNow ?? Date.now() },
+    );
+  });
+
+  afterEach(() => {
+    clockNow = null;
+  });
+
+  /** The durable facts an expiry must leave behind — and nothing else. */
+  async function expectExpiredAndAbandoned(
+    issuanceId: string,
+    requestedAt: Date,
+    before: IssuanceFacts,
+  ) {
+    const after = await issuanceFacts(issuanceId);
+    expect(after.status).toBe("ABANDONED");
+    expect(after.abandonment_reason).toBe(EXPIRED_REQUEST_REASON);
+    expect(after.abandoned_by).toBe(operatorId);
+    expect(after.signed_at).toBeNull();
+    expect(after.imported_at).toBeNull();
+    expect(after.artifact_sha256).toBeNull();
+    expect(after.artifact_store_key).toBeNull();
+    expect(snapshotOf(after)).toEqual(snapshotOf(before));
+
+    const events = (
+      await db.pool.query<{
+        actor_id: string | null;
+        outcome: string;
+        reason: string;
+        after_state: { origin?: string };
+      }>(
+        `SELECT actor_id,outcome,reason,after_state FROM owner.audit_events
+          WHERE event_type='LICENSE_REQUEST_ABANDONED' AND target_id=$1
+          ORDER BY sequence`,
+        [issuanceId],
+      )
+    ).rows;
+    expect(events).toHaveLength(1);
+    expect(events[0]!.actor_id).toBeNull();
+    expect(events[0]!.outcome).toBe("SUCCESS");
+    expect(events[0]!.reason).toContain("SYSTEM_EXPIRY");
+    expect(events[0]!.reason).toContain(requestedAt.toISOString());
+    expect(events[0]!.after_state.origin).toBe("SYSTEM_EXPIRY");
+
+    // Never an issuance, an archive row or a success audit.
+    expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", issuanceId)).toBe(0);
+    expect(
+      await count(
+        "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+        [issuanceId],
+      ),
+    ).toBe(0);
+  }
+
+  it("expires a request even when artifact storage is unconfigured", async () => {
+    const requestedAt = new Date("2026-06-10T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    const before = await issuanceFacts(seeded.id);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+
+    const refused = await importOn(
+      appWithoutStore,
+      seeded.id,
+      operatorCookie,
+      seeded.signed.envelope,
+    );
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("InvalidTransition");
+    expect(refused.body.message).toContain("expired");
+    await expectExpiredAndAbandoned(seeded.id, requestedAt, before);
+  });
+
+  it("expires a request even when the trust list is unavailable", async () => {
+    const requestedAt = new Date("2026-06-11T08:00:00.000Z");
+    const seeded = await seedPreparedRequest(requestedAt);
+    const before = await issuanceFacts(seeded.id);
+    clockNow = preparedRequestExpiresAt(requestedAt);
+
+    const refused = await importOn(
+      appWithoutTrust,
+      seeded.id,
+      operatorCookie,
+      seeded.signed.envelope,
+    );
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("InvalidTransition");
+    expect(refused.body.message).toContain("expired");
+    await expectExpiredAndAbandoned(seeded.id, requestedAt, before);
+  });
+
+  it("still fails closed when an eligible import has no artifact storage", async () => {
+    const pending = await prepare();
+    expect(pending.status).toBe(201);
+    const id = pending.body.issuance.id as string;
+    const before = await issuanceFacts(id);
+    const signed = await signIssuance(id);
+
+    const refused = await importOn(
+      appWithoutStore,
+      id,
+      operatorCookie,
+      signed.envelope,
+    );
+    expect(refused.status).toBe(503);
+    expect(refused.body.code).toBe("ArtifactStorageUnavailable");
+    const after = await issuanceFacts(id);
+    expect(after.status).toBe("REQUEST_PREPARED");
+    expect(after.abandonment_reason).toBeNull();
+    expect(snapshotOf(after)).toEqual(snapshotOf(before));
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", id)).toBe(0);
+    expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", id)).toBe(0);
+    expect(
+      await count(
+        "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+        [id],
+      ),
+    ).toBe(0);
+  });
+
+  it("still fails closed when an eligible import has no trust list", async () => {
+    const pending = await prepare();
+    expect(pending.status).toBe(201);
+    const id = pending.body.issuance.id as string;
+    const before = await issuanceFacts(id);
+    const signed = await signIssuance(id);
+
+    const refused = await importOn(
+      appWithoutTrust,
+      id,
+      operatorCookie,
+      signed.envelope,
+    );
+    expect(refused.status).toBe(503);
+    expect(refused.body.code).toBe("TrustListUnavailable");
+    const after = await issuanceFacts(id);
+    expect(after.status).toBe("REQUEST_PREPARED");
+    expect(snapshotOf(after)).toEqual(snapshotOf(before));
+    expect(await auditCount("LICENSE_REQUEST_ABANDONED", id)).toBe(0);
+    expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", id)).toBe(0);
+    expect(
+      await count(
+        "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+        [id],
+      ),
+    ).toBe(0);
+  });
+
+  it("keeps historical duplicate import working without storage but fails closed without keys", async () => {
+    const pending = await prepare();
+    expect(pending.status).toBe(201);
+    const id = pending.body.issuance.id as string;
+    const signed = await signIssuance(id);
+    const first = await write(
+      "post",
+      `/license-issuances/${id}/import`,
+      operatorCookie,
+    ).send({ fileContent: signed.envelope });
+    expect(first.status).toBe(200);
+    expect(first.body.replayed).toBe(false);
+
+    // OD-LIC-18: the replay verifies the bytes but stores nothing, so a missing
+    // artifact store is not a reason to refuse the historical result.
+    const replay = await importOn(
+      appWithoutStore,
+      id,
+      operatorCookie,
+      signed.envelope,
+    );
+    expect(replay.status).toBe(200);
+    expect(replay.body.replayed).toBe(true);
+    expect(replay.body.historicalResult).toBe(true);
+    expect(replay.body.issuance.status).toBe("SIGNED_RECORDED");
+    expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", id)).toBe(1);
+    expect(
+      await count(
+        "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+        [id],
+      ),
+    ).toBe(1);
+
+    // Comparing the submitted bytes with the recorded binding needs the
+    // authority keys, so the replay still fails closed without a trust list.
+    const unverifiable = await importOn(
+      appWithoutTrust,
+      id,
+      operatorCookie,
+      signed.envelope,
+    );
+    expect(unverifiable.status).toBe(503);
+    expect(unverifiable.body.code).toBe("TrustListUnavailable");
+    expect(await auditCount("LICENSE_ARTIFACT_IMPORTED", id)).toBe(1);
+    expect(
+      await count(
+        "SELECT count(*) AS n FROM owner.license_artifacts WHERE issuance_id=$1",
+        [id],
+      ),
+    ).toBe(1);
   });
 });
 

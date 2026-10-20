@@ -1496,11 +1496,24 @@ async function abandonExpiredRequest(
   throw new PreparedRequestExpired(expiresAt.toISOString());
 }
 
+/**
+ * Import dependencies, resolved lazily at their point of use.
+ *
+ * OD-LIC-20: a missing dependency must never be discovered before the row has
+ * been read, locked and evaluated for expiry. If the route resolved these
+ * eagerly, an unconfigured artifact directory or trust list would answer `503`
+ * and leave an expired `REQUEST_PREPARED` request unenforced. The providers run
+ * inside the request transaction, only on the paths that genuinely need them.
+ */
+export interface IssuanceImportDependencies {
+  artifactStore: () => LicenseArtifactStore;
+  trustedLicenseKeys: () => readonly TrustedLicenseKey[];
+}
+
 export async function importIssuanceArtifact(
   tx: PoolClient,
   actor: ServiceActor,
-  store: LicenseArtifactStore,
-  trustedKeys: readonly TrustedLicenseKey[],
+  dependencies: IssuanceImportDependencies,
   rawId: unknown,
   body: unknown,
   /**
@@ -1534,6 +1547,11 @@ export async function importIssuanceArtifact(
   // OD-LIC-18: a duplicate import returns the historical result and creates
   // nothing new. Authorization has already been checked above.
   if (row.status === "SIGNED_RECORDED") {
+    // Comparing the submitted bytes with the recorded binding needs the
+    // authority keys, so an unavailable trust list still fails closed here.
+    // Nothing reads or writes artifact storage on a replay, so a missing store
+    // is not a reason to refuse a historical answer.
+    const trustedKeys = dependencies.trustedLicenseKeys();
     let replayDigest: string | null = null;
     try {
       const envelope = decodeLicenseEnvelope(input.fileContent);
@@ -1562,6 +1580,12 @@ export async function importIssuanceArtifact(
   }
   if (row.status !== "REQUEST_PREPARED")
     fail(409, "InvalidTransition", "The request cannot accept an artifact.");
+
+  // OD-LIC-20: only a request that is still eligible to be completed reaches
+  // this point, so this is where the import dependencies are required. Their
+  // absence still fails closed with `503` before anything is written.
+  const store = dependencies.artifactStore();
+  const trustedKeys = dependencies.trustedLicenseKeys();
 
   try {
     const envelope = decodeLicenseEnvelope(input.fileContent);
