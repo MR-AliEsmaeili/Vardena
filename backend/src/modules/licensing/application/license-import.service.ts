@@ -215,7 +215,12 @@ export type LicenseImportRejectionReason =
   | 'post-gap-recovery-requires-dedicated-operation'
   | 'recovery-not-applicable'
   | 'resolution-not-applicable'
-  | 'recovery-requires-signed-document';
+  | 'recovery-requires-signed-document'
+  /**
+   * OD-LIC-17: the target license is revoked. Authentic documents are refused
+   * too — a revoked license is final and no version may be added to it.
+   */
+  | 'license-revoked';
 
 /**
  * 409 reasons: the document is authentic but conflicts with retained state.
@@ -252,6 +257,7 @@ const CONFLICT_REASONS: ReadonlySet<LicenseImportRejectionReason> = new Set([
   'post-gap-recovery-requires-dedicated-operation',
   'recovery-not-applicable',
   'resolution-not-applicable',
+  'license-revoked',
 ]);
 
 /**
@@ -1090,6 +1096,12 @@ export class LicenseImportService {
         keyId: context.keyId,
         source: context.source,
         validFrom: context.payload.validFrom,
+        // The signed issuance instant, retained so a later revocation can be
+        // measured against the version it targets (protocol §4 step 10). A
+        // legacy `VLIC1` code has no signed instant; it is stored as NULL,
+        // which means "not assessable", never "issued at import time".
+        signedIssuedAt:
+          'issuedAt' in context.payload ? context.payload.issuedAt : null,
         governsFrom: context.governsFrom,
         validUntil: context.payload.validUntil,
         organizationLimit: context.payload.organizationLimit,
@@ -1628,6 +1640,8 @@ function documentConflictMessage(
         return 'This recovery has no capacity or entitlement conflict to resolve. Retry the dedicated gap-recovery operation without a reductionResolutionReason. Nothing was changed.';
       }
       return RESOLUTION_NOT_APPLICABLE_MESSAGE;
+    case 'license-revoked':
+      return 'This license has been revoked by a signed revocation artifact, so no version may be applied to it — not a renewal, not a supersession, and not a replay of the license it replaced. Nothing was changed. Service is restored only by a new license issued through the normal flow.';
   }
 }
 
@@ -1715,6 +1729,8 @@ function legacyConflictMessage(conflict: ImportConflict): string {
       return RECOVERY_NOT_APPLICABLE_MESSAGE;
     case 'resolution-not-applicable':
       return RESOLUTION_NOT_APPLICABLE_MESSAGE;
+    case 'license-revoked':
+      return 'This license has been revoked by a signed revocation artifact, so this code cannot be applied to it. Service is restored only by a new license issued through the normal flow.';
   }
 }
 

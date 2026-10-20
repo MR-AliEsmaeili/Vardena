@@ -285,6 +285,15 @@ export class LicenseStateDto implements LicenseStateView {
   })
   status!: string;
 
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'When the governing license was revoked by a signed revocation artifact, or null (OD-LIC-17).',
+  })
+  revokedAt!: string | null;
+
   @ApiProperty({ description: 'True only while the license is active now.' })
   active!: boolean;
 
@@ -597,4 +606,118 @@ export class ReductionResolutionResultDto extends LicenseImportResultDto {
     description: 'The conflicts the resolution authorized.',
   })
   resolvedConflicts!: ReductionConflictDto[];
+}
+
+/**
+ * Import a signed revocation artifact (OD-LIC-17).
+ *
+ * The body carries the artifact and nothing else: no revocation id, no
+ * license id, no reason — every one of those is read from the VERIFIED signed
+ * bytes. The operator's only input is the file the Owner produced.
+ */
+export class ImportLicenseRevocationDto {
+  @ApiProperty({
+    description:
+      'The signed revocation document: either the vardena-revocation file envelope or the bare VREV1 artifact.',
+    example:
+      '{"format":"vardena-revocation","fileVersion":1,"revocation":"VREV1.eyJ2Ijox...c2lnbmF0dXJl"}',
+    maxLength: 65536,
+  })
+  @IsString()
+  @MinLength(1, { message: 'A revocation document is required.' })
+  @MaxLength(65536)
+  document!: string;
+}
+
+/** The stored revocation, as the installation retains it (protocol §8). */
+export class LicenseRevocationDto {
+  @ApiProperty({ description: 'The signed ULID identity of the revocation.' })
+  revocationId!: string;
+
+  @ApiProperty({ description: 'The revoked license identity.' })
+  licenseId!: string;
+
+  @ApiProperty({ description: 'This installation identity.' })
+  installationId!: string;
+
+  @ApiProperty({
+    description: 'The commercial customer the license belongs to.',
+  })
+  customerId!: string;
+
+  @ApiProperty({ description: 'The stable business customer code (L-06).' })
+  customerCode!: string;
+
+  @ApiProperty({
+    description:
+      'The retained version that existed when the revocation was authorized.',
+  })
+  targetOperationId!: string;
+
+  @ApiProperty({ description: 'The closed signed reason vocabulary value.' })
+  reason!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The bounded signed detail, or null.',
+  })
+  reasonDetail!: string | null;
+
+  @ApiProperty({
+    description: 'The trust-list id of the key that verified the signature.',
+  })
+  issuerKeyId!: string;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    description: 'The Owner-pinned signed issuance instant (ISO-8601 UTC).',
+  })
+  issuedAt!: string;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    description: 'When THIS installation applied the revocation.',
+  })
+  importedAt!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The authenticated operator who imported it, if any.',
+  })
+  importedBy!: string | null;
+
+  @ApiProperty({
+    description: 'SHA-256 of the exact armored artifact received.',
+  })
+  artifactSha256!: string;
+
+  @ApiProperty({ description: 'SHA-256 of the canonical signed payload.' })
+  canonicalPayloadSha256!: string;
+}
+
+/**
+ * The receipt of `POST /api/v1/license/revocations/import`.
+ *
+ * A repeated import of the SAME artifact answers `outcome: "UNCHANGED"`,
+ * `alreadyApplied: true` and the historical first result — no second row, no
+ * second audit event, no state change (protocol §6, OD-LIC-18 by analogy).
+ */
+export class LicenseRevocationImportResultDto {
+  @ApiProperty({ description: 'False when the artifact was already applied.' })
+  changed!: boolean;
+
+  @ApiProperty({ enum: ['APPLIED', 'UNCHANGED'] })
+  outcome!: 'APPLIED' | 'UNCHANGED';
+
+  @ApiProperty({ type: LicenseRevocationDto })
+  revocation!: LicenseRevocationDto;
+
+  @ApiProperty({
+    description: 'True only when this call performed the state change.',
+  })
+  alreadyApplied!: boolean;
 }

@@ -898,6 +898,7 @@ Backend (REST/OpenAPI, ADR-0014, AR-10/AR-21):
 | GET | `/api/v1/license/current` | authenticated (bootstrap self-read) | evaluated state + effective version + scheduled version + bounded retained-version history |
 | POST | `/api/v1/license/import` | `Licensing.License.Activate` | import a signed document (file envelope or text artifact) |
 | POST | `/api/v1/license/activate` | `Licensing.License.Activate` | L-02 compatibility alias for the same pipeline (text code) |
+| POST | `/api/v1/license/revocations/import` | `Licensing.License.Revoke` | import a signed `VREV1` revocation artifact ([protocol](revocation-artifact-protocol.md), OD-LIC-17) |
 
 Response DTO classes are declared for OpenAPI. `GET /license/current` documents
 `LicenseStateDto`; `POST /license/import` and the L-02 `POST /license/activate`
@@ -906,6 +907,11 @@ alias document `LicenseImportResultDto` (evaluated state plus `changed`/`outcome
 schemas with the generated document; the frontend generated client is regenerated
 from a dumped OpenAPI document and gated in CI (F-7). The request body carries
 exactly one field (`document`), so a client can never describe the license it wants.
+`POST /license/revocations/import` documents `ImportLicenseRevocationDto` and
+`LicenseRevocationImportResultDto` and adds no field a client could use to name a
+target: the revocation's license, customer, installation and reason are read from
+the verified signed bytes. `Licensing.License.Revoke` is a **new** code — it
+renames nothing — and the application service re-checks it (AR-21).
 
 `LicenseVersionSummaryDto` carries `operationId` and `effectiveFrom`, and every
 license-state response carries `coverageEnd` (OD-LIC-06 §6), so an operator can

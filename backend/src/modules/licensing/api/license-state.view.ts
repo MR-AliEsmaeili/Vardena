@@ -43,6 +43,12 @@ export interface LicenseStateView {
   deviceLimitSpecified: boolean;
   entitlements: Array<{ kind: string; code: string }>;
   provider: string;
+  /**
+   * When the governing license was revoked by a signed artifact, or null
+   * (OD-LIC-17). Additive: it explains `inactiveReason: "revoked"` without a
+   * second request, and it never exposes the artifact or its signature.
+   */
+  revokedAt: string | null;
   /** The version that governs now, resolved deterministically (L-03). */
   effectiveVersionId: string | null;
   /** Earliest retained version that is not effective yet, if any. */
@@ -84,6 +90,7 @@ export function toLicenseStateView(
       code,
     })),
     provider: license.provider,
+    revokedAt: license.revokedAt?.toISOString() ?? null,
     effectiveVersionId: versions?.effectiveVersionId ?? null,
     scheduledVersion: versions?.scheduled ?? null,
     versions: versions?.versions.slice(0, MAX_LICENSE_VERSION_HISTORY) ?? [],

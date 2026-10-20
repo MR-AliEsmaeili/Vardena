@@ -12,6 +12,23 @@
   **OD-LIC-11** (a full SHA-256 request digest confirmed over an independent
   channel before the private key is read), **OD-LIC-08** (air-gapped custody),
   **OD-LIC-10** (durable artifact store outside PostgreSQL).
+- **Implementation status (2026-10-20, branch `arena/34983fce-vardena`):**
+  **Owner half** — request preparation, offline signing, import, archive and
+  download exist in `owner-licensing/` on the pull-request branch (not merged).
+  **Customer half** — `VREV1` parsing/verification
+  (`backend/src/modules/licensing/domain/license-revocation.ts`), import
+  (`application/license-revocation.service.ts`), persistence (migration
+  `20261024000000_licensing_revocations`), the
+  `POST /api/v1/license/revocations/import` route under the new
+  `Licensing.License.Revoke` permission, and the committed vector set
+  `docs/licensing/vectors/revocation/` are implemented **on that branch and not
+  yet merged**. Nothing in this section claims more than those artefacts.
+- **Preparation/import is not application.** Importing a revocation document at
+  the Owner verifies and archives it and records the Owner-side fact; it sends
+  nothing to a customer installation. The only place a revocation takes effect
+  is the customer's own import, and this repository contains no evidence that
+  any installation has performed one. No Owner UI or document may present a
+  prepared or recorded revocation as applied.
 - **Untouched contract:** `VLIC1`, `VLIC2`, `LICENSE_DOCUMENT_VERSION`, the
   canonical byte contract of [PDR-16](../decisions/product/PDR-16-licensing-protocol-canonical-byte-contract-and-vectors.md),
   every committed license vector, every signature and every existing customer
@@ -149,8 +166,16 @@ The customer performs these checks in order and changes **no** state until all p
    retained versions (`unknown-target`).
 10. **Staleness**: `issuedAt` must not be in the future beyond a documented
     10-minute transport tolerance (`future-dated`), and must not precede the
-    targeted version's `issuedAt` (`stale-revocation`). A revocation does not
-    expire; it may be applied arbitrarily late.
+    targeted version's **signed** `issuedAt` (`stale-revocation`). A revocation
+    does not expire; it may be applied arbitrarily late.
+    *Implementation note (2026-10-20).* The customer retains that signed
+    instant as `licensing.license_versions.signed_issued_at`, written by every
+    `VLIC2` import from this release on. The column is `NULL` for legacy
+    `VLIC1` rows and for rows imported before it existed, and the comparison is
+    then **not assessable**: it is **skipped**, and never approximated from
+    `imported_at` or `valid_from`. Every other binding in steps 7–9 still
+    applies to those rows, so an artifact for an old installation is still
+    bound to its installation, customer, license and retained version.
 11. **Replay/idempotency** (§6).
 12. **State change**: insert the revocation row, mark the license revoked and write
     the audit event in **one database transaction**.
@@ -239,8 +264,12 @@ as well.
   `artifact_sha256`, `canonical_payload_sha256`; unique on `license_id` (one
   revocation per license) and on `revocation_id`.
 - `licensing.licenses` gains `revoked_at` and `revocation_id` (nullable, set
-  together, never cleared). Revocation is never a delete and never rewrites a
-  version.
+  together, never cleared, guarded by `licenses_revocation_state_check`).
+  Revocation is never a delete and never rewrites a version.
+- `licensing.license_versions` gains the nullable `signed_issued_at` described
+  in §4 step 10.
+- `licensing.license_audit_events` gains a nullable `revocation_id` context
+  column (never a foreign key), set only on the two revocation events.
 
 **Owner** (`owner` schema): a `license_revocations` ledger mirroring the issuance
 ledger (identity, target, reason, digests, status, archive key, actors, timestamps)
@@ -255,8 +284,14 @@ with the same immutability trigger and staged states.
 | Owner | `LICENSE_REVOCATION_ARTIFACT_IMPORTED` | verified artifact archived and recorded |
 | Owner | `LICENSE_REVOCATION_ARTIFACT_REJECTED` | signature/key/binding/state refusal |
 | Owner | `LICENSE_REVOCATION_ARTIFACT_DOWNLOADED` | authorized retrieval |
-| Customer | `REVOCATION_IMPORTED` | revocation applied |
-| Customer | `REVOCATION_REJECTED` | refusal with its stable reason |
+| Customer | `license.revocation.imported` | revocation applied |
+| Customer | `license.revocation.rejected` | refusal with its stable reason |
+
+The customer strings are the concrete `event_type` values the installation
+writes (they follow the existing customer convention `license.import.*`); the
+Owner strings are the concrete `LICENSE_REVOCATION_*` audit types the Owner
+ledger writes. Both sides store identifiers, digests and the bounded
+`reason`/`reasonDetail` — never the artifact, the signature or key material.
 
 Audit records never contain key material, the artifact body or free-form customer
 data beyond the bounded `reason`/`reasonDetail` already displayed to the operator.

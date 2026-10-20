@@ -95,14 +95,21 @@ model License {
   id             String   @id
   installationId String   @map("installation_id")
   customerId     String   @map("customer_id")
+  /// OD-LIC-17 revocation state. Set together with `revocation_id`, never
+  /// cleared: a revoked license is final and is never approximated by a status
+  /// or a date. Guarded by `licenses_revocation_state_check`;
+  /// `license_revocations.license_id` is the authoritative record.
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(6)
+  revocationId   String?   @map("revocation_id")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   createdBy      String?  @map("created_by")
   updatedBy      String?  @map("updated_by")
 
-  installation Installation     @relation(fields: [installationId], references: [id], onDelete: Restrict)
-  customer     LicenseCustomer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  installation Installation       @relation(fields: [installationId], references: [id], onDelete: Restrict)
+  customer     LicenseCustomer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
   versions     LicenseVersion[]
+  revocation   LicenseRevocation?
 
   /// Composite target so a version cannot name a license of another
   /// installation (integrity, not convention).
@@ -130,6 +137,13 @@ model LicenseVersion {
   keyId  String? @map("key_id") @db.VarChar(120)
   source String  @db.VarChar(20)
   validFrom DateTime  @map("valid_from") @db.Timestamptz(6)
+  /// The signed `issuedAt` of the artifact this version came from, retained as
+  /// a typed fact so a later revocation can be refused when it predates the
+  /// version it targets (protocol §4 step 10, `stale-revocation`). NULL only on
+  /// legacy `VLIC1` rows and on rows imported before this column existed; the
+  /// staleness comparison is then documented as not assessable, never guessed
+  /// from `imported_at` or `valid_from`.
+  signedIssuedAt DateTime? @map("signed_issued_at") @db.Timestamptz(6)
   /// Instant from which this version starts governing when it differs from the
   /// signed valid_from (a renewal: the renewed term boundary). NULL = signed
   /// valid_from, which is the value of every row written before OD-LIC-06.
@@ -257,6 +271,10 @@ model LicenseAuditEvent {
   renewedFrom DateTime? @map("renewed_from") @db.Timestamptz(6)
   /// The Owner-signed new end date the renewal applies, exactly as signed.
   renewedUntil DateTime? @map("renewed_until") @db.Timestamptz(6)
+  /// The signed revocation identity (OD-LIC-17) on `license.revocation.imported`
+  /// and `license.revocation.rejected`; null on every other event. Context, not
+  /// a foreign key — an audit row outlives any table's constraints.
+  revocationId String? @map("revocation_id")
   occurredAt DateTime @map("occurred_at") @db.Timestamptz(6)
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
@@ -270,6 +288,50 @@ model LicenseAuditEvent {
   @@index([installationId, deviceId, occurredAt], map: "idx_license_audit_events_installation_device_occurred_at")
   @@index([installationId, replacementRequestId, occurredAt], map: "idx_license_audit_events_installation_replacement_occurred_at")
   @@map("license_audit_events")
+  @@schema("licensing")
+}
+
+/// One verified, imported signed revocation (OD-LIC-17;
+/// docs/licensing/revocation-artifact-protocol.md §8).
+///
+/// Append-only: rows are never updated or deleted, and a license is revoked at
+/// most once (`uq_license_revocations_license`). The artifact itself is NOT
+/// stored — only its SHA-256 and the canonical payload's SHA-256, exactly like
+/// `license_versions.document_hash`. Revoking rewrites no version and deletes
+/// nothing: the retained signed history stays intact and the license-level
+/// state decides entitlement.
+model LicenseRevocation {
+  /// The signed ULID identity of the revocation act (replay/idempotency key).
+  revocationId String @id @map("revocation_id")
+  /// One revocation per license, forever.
+  licenseId           String    @unique(map: "uq_license_revocations_license") @map("license_id")
+  installationId      String    @map("installation_id")
+  customerId          String    @map("customer_id")
+  customerCode        String    @map("customer_code") @db.VarChar(64)
+  /// The retained version's operation id that existed when the revocation was
+  /// authorized — signed evidence, never a filter (protocol §5).
+  targetOperationId   String    @map("target_operation_id")
+  reason              String    @db.VarChar(40)
+  reasonDetail        String?   @db.VarChar(500) @map("reason_detail")
+  /// The trust-list id of the key that verified the signature.
+  issuerKeyId         String    @map("issuer_key_id") @db.VarChar(120)
+  issuedAt            DateTime  @map("issued_at") @db.Timestamptz(6)
+  importedAt          DateTime  @map("imported_at") @db.Timestamptz(6)
+  importedBy          String?   @map("imported_by")
+  /// SHA-256 of the exact armored artifact received (never the artifact).
+  artifactSha256      String    @map("artifact_sha256") @db.VarChar(64)
+  /// SHA-256 of the canonical signed payload bytes.
+  canonicalPayloadSha256 String @map("canonical_payload_sha256") @db.VarChar(64)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy           String?   @map("created_by")
+  updatedBy           String?   @map("updated_by")
+
+  license License @relation(fields: [licenseId, installationId], references: [id, installationId], onDelete: Restrict)
+
+  @@index([installationId, importedAt], map: "idx_license_revocations_installation_imported_at")
+  @@index([customerId], map: "idx_license_revocations_customer")
+  @@map("license_revocations")
   @@schema("licensing")
 }
 

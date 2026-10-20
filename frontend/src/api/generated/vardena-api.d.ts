@@ -158,6 +158,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/license/revocations/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a signed license revocation artifact.
+         * @description Verifies the VREV1 signature, canonical form, installation/customer/license binding and staleness, then marks exactly that license revoked and writes the typed audit event in one transaction. A byte-identical duplicate returns the historical first result and changes nothing.
+         */
+        post: operations["LicenseRevocationController_import_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/license/devices": {
         parameters: {
             query?: never;
@@ -3769,6 +3789,11 @@ export interface components {
             licensed: boolean;
             /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
             status: string;
+            /**
+             * Format: date-time
+             * @description When the governing license was revoked by a signed revocation artifact, or null (OD-LIC-17).
+             */
+            revokedAt: string | null;
             /** @description True only while the license is active now. */
             active: boolean;
             /** @description Why the license is not active. */
@@ -3824,6 +3849,11 @@ export interface components {
             licensed: boolean;
             /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
             status: string;
+            /**
+             * Format: date-time
+             * @description When the governing license was revoked by a signed revocation artifact, or null (OD-LIC-17).
+             */
+            revokedAt: string | null;
             /** @description True only while the license is active now. */
             active: boolean;
             /** @description Why the license is not active. */
@@ -3895,6 +3925,11 @@ export interface components {
             licensed: boolean;
             /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
             status: string;
+            /**
+             * Format: date-time
+             * @description When the governing license was revoked by a signed revocation artifact, or null (OD-LIC-17).
+             */
+            revokedAt: string | null;
             /** @description True only while the license is active now. */
             active: boolean;
             /** @description Why the license is not active. */
@@ -3998,6 +4033,11 @@ export interface components {
             licensed: boolean;
             /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
             status: string;
+            /**
+             * Format: date-time
+             * @description When the governing license was revoked by a signed revocation artifact, or null (OD-LIC-17).
+             */
+            revokedAt: string | null;
             /** @description True only while the license is active now. */
             active: boolean;
             /** @description Why the license is not active. */
@@ -4068,6 +4108,11 @@ export interface components {
             licensed: boolean;
             /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
             status: string;
+            /**
+             * Format: date-time
+             * @description When the governing license was revoked by a signed revocation artifact, or null (OD-LIC-17).
+             */
+            revokedAt: string | null;
             /** @description True only while the license is active now. */
             active: boolean;
             /** @description Why the license is not active. */
@@ -4118,6 +4163,58 @@ export interface components {
             resolvedPredecessorVersionId: string;
             /** @description The conflicts the resolution authorized. */
             resolvedConflicts: components["schemas"]["ReductionConflictDto"][];
+        };
+        ImportLicenseRevocationDto: {
+            /**
+             * @description The signed revocation document: either the vardena-revocation file envelope or the bare VREV1 artifact.
+             * @example {"format":"vardena-revocation","fileVersion":1,"revocation":"VREV1.eyJ2Ijox...c2lnbmF0dXJl"}
+             */
+            document: string;
+        };
+        LicenseRevocationDto: {
+            /** @description The signed ULID identity of the revocation. */
+            revocationId: string;
+            /** @description The revoked license identity. */
+            licenseId: string;
+            /** @description This installation identity. */
+            installationId: string;
+            /** @description The commercial customer the license belongs to. */
+            customerId: string;
+            /** @description The stable business customer code (L-06). */
+            customerCode: string;
+            /** @description The retained version that existed when the revocation was authorized. */
+            targetOperationId: string;
+            /** @description The closed signed reason vocabulary value. */
+            reason: string;
+            /** @description The bounded signed detail, or null. */
+            reasonDetail: string | null;
+            /** @description The trust-list id of the key that verified the signature. */
+            issuerKeyId: string;
+            /**
+             * Format: date-time
+             * @description The Owner-pinned signed issuance instant (ISO-8601 UTC).
+             */
+            issuedAt: string;
+            /**
+             * Format: date-time
+             * @description When THIS installation applied the revocation.
+             */
+            importedAt: string;
+            /** @description The authenticated operator who imported it, if any. */
+            importedBy: string | null;
+            /** @description SHA-256 of the exact armored artifact received. */
+            artifactSha256: string;
+            /** @description SHA-256 of the canonical signed payload. */
+            canonicalPayloadSha256: string;
+        };
+        LicenseRevocationImportResultDto: {
+            /** @description False when the artifact was already applied. */
+            changed: boolean;
+            /** @enum {string} */
+            outcome: "APPLIED" | "UNCHANGED";
+            revocation: components["schemas"]["LicenseRevocationDto"];
+            /** @description True only when this call performed the state change. */
+            alreadyApplied: boolean;
         };
         ClientDeviceDto: {
             /** @description Server-generated retained device id. */
@@ -9294,6 +9391,65 @@ export interface operations {
                 content?: never;
             };
             /** @description The document is malformed, tampered with, issued for another installation, not active, already ended, backdated, or names capabilities this build does not know. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    LicenseRevocationController_import_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportLicenseRevocationDto"];
+            };
+        };
+        responses: {
+            /** @description The stored revocation (the historical one on a replay). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicenseRevocationImportResultDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The artifact is authentic but refused by retained state: the same revocation identity with different bytes, or the license already revoked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The artifact is malformed, has an unsupported version, an unknown or mismatching key, a bad signature, a non-canonical payload, another installation or customer, an unknown target, a future date or a stale date. */
             422: {
                 headers: {
                     [name: string]: unknown;

@@ -9,7 +9,18 @@ export type EntitlementKind = 'MODULE' | 'FEATURE';
 export type EvaluatedStatus = LicenseStatus | 'UNLICENSED';
 
 export type InactiveReason =
-  'unlicensed' | 'status' | 'not-yet-valid' | 'expired';
+  | 'unlicensed'
+  | 'status'
+  | 'not-yet-valid'
+  | 'expired'
+  /**
+   * An Owner-signed revocation was applied to this license (OD-LIC-17,
+   * `docs/licensing/revocation-artifact-protocol.md`). Revocation is its own
+   * state: it is never approximated by an expiry date, a status rewrite or
+   * version order, and it is **not** eligible for the OQ-45 grace period — a
+   * revoked license confers nothing at any instant.
+   */
+  | 'revoked';
 
 /** OQ-45: exactly 14×24h in UTC milliseconds from the signed expiry instant. */
 export const LICENSE_GRACE_DURATION_MS = 14 * 24 * 60 * 60 * 1000;
@@ -61,6 +72,12 @@ export interface InstallationLicense {
   deviceLimitSpecified: boolean;
   entitlements: readonly LicenseEntitlement[];
   provider: string;
+  /**
+   * When an Owner-signed revocation was applied to this license, or null.
+   * Set only by the persistent provider from `licensing.licenses.revoked_at`;
+   * a provider that cannot observe revocation reports null.
+   */
+  revokedAt: Date | null;
 }
 
 /**
@@ -89,6 +106,12 @@ export interface EvaluatedLicense {
   deviceLimitSpecified: boolean;
   entitlements: readonly LicenseEntitlement[];
   provider: string;
+  /**
+   * When the Owner-signed revocation was applied to the governing license, or
+   * null (OD-LIC-17). Reported so an operator can see WHY the installation is
+   * blocked without reading the audit trail; it is never secret.
+   */
+  revokedAt: Date | null;
   active: boolean;
   inactiveReason: InactiveReason | null;
   /** Signed expiry + 14x24h (UTC ms arithmetic); null when perpetual/absent. */
@@ -101,7 +124,10 @@ export function evaluateLicense(
   at: Date,
 ): EvaluatedLicense {
   let inactiveReason: InactiveReason | null = null;
-  if (license.status !== 'ACTIVE') inactiveReason = 'status';
+  // Revocation outranks every other reason: a revoked license is not merely
+  // expired or suspended, and no date window can make it confer entitlement.
+  if (license.revokedAt !== null) inactiveReason = 'revoked';
+  else if (license.status !== 'ACTIVE') inactiveReason = 'status';
   else if (at.getTime() < license.validFrom.getTime())
     inactiveReason = 'not-yet-valid';
   else if (
@@ -109,7 +135,10 @@ export function evaluateLicense(
     at.getTime() >= license.validUntil.getTime()
   )
     inactiveReason = 'expired';
-  const graceEndsAt = graceEndsAtFor(license.validUntil);
+  // A revoked license never enters Grace and has no deadline: the date window
+  // is irrelevant to it (it is not "expired"), so no grace instant is exposed.
+  const graceEndsAt =
+    inactiveReason === 'revoked' ? null : graceEndsAtFor(license.validUntil);
   let accessMode: LicenseAccessMode = 'BLOCKED';
   if (inactiveReason === null) accessMode = 'ACTIVE';
   else if (
@@ -149,6 +178,7 @@ export function unlicensedEvaluation(context: {
     deviceLimitSpecified: false,
     entitlements: [],
     provider: context.provider,
+    revokedAt: null,
     active: false,
     inactiveReason: 'unlicensed',
     graceEndsAt: null,

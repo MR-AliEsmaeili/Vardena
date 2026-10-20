@@ -20,6 +20,12 @@ import {
   type ImportLicenseVersionCommand,
 } from '../src/modules/licensing/data/licenses.repository.js';
 import { licenseDocumentHash } from '../src/modules/licensing/domain/license-document.js';
+import {
+  canonicalizeRevocation,
+  type RevocationPayload,
+} from '../src/modules/licensing/domain/license-revocation.js';
+import { LicenseRevocationService } from '../src/modules/licensing/application/license-revocation.service.js';
+import { sign as cryptoSign, createPrivateKey } from 'node:crypto';
 import { generateId } from '../src/kernel/ids/ulid.js';
 import { LicenseActivationService } from '../src/modules/licensing/application/license-activation.service.js';
 import { LicenseImportService } from '../src/modules/licensing/application/license-import.service.js';
@@ -138,6 +144,9 @@ describe.skipIf(DATABASE_URL === undefined)(
       );
       await client.$executeRawUnsafe(
         'DELETE FROM "licensing"."license_versions"',
+      );
+      await client.$executeRawUnsafe(
+        'DELETE FROM "licensing"."license_revocations"',
       );
       await client.$executeRawUnsafe('DELETE FROM "licensing"."licenses"');
       await client.$executeRawUnsafe('DELETE FROM "licensing"."installations"');
@@ -371,6 +380,220 @@ describe.skipIf(DATABASE_URL === undefined)(
         vi.useRealTimers();
       }
     });
+
+    /**
+     * OD-LIC-17 persistence: the revocation row, the license stamp and the
+     * typed audit event commit together, the unique index keeps one revocation
+     * per license, and the license-level state is what the read path uses.
+     *
+     * These assertions are SQL-level on purpose — the migration's CHECK on
+     * `licenses (revoked_at, revocation_id)` and the unique index on
+     * `license_revocations.license_id` are exactly what an in-memory store
+     * cannot prove.
+     */
+    async function revocationArtifact(
+      installationId: string,
+      licenseId: string,
+      operationId: string,
+      overrides: Partial<RevocationPayload> = {},
+    ): Promise<{
+      document: string;
+      payload: RevocationPayload;
+    }> {
+      const keyId = `sha256-${createHash('sha256')
+        .update(Buffer.from(authority.publicKey, 'base64'))
+        .digest('hex')
+        .slice(0, 16)}`;
+      const payload: RevocationPayload = {
+        v: 1,
+        kind: 'SERVER_LICENSE_REVOCATION',
+        revocationId: generateId(),
+        licenseId,
+        targetOperationId: operationId,
+        customerId: SELF_CUSTOMER,
+        customerCode: 'CUST-LIVE-SELF',
+        installationId,
+        effect: 'LICENSE_ONLY',
+        reason: 'CONTRACT_TERMINATION',
+        reasonDetail: 'Live persistence test.',
+        issuerKeyId: keyId,
+        issuedAt: new Date(),
+        ...overrides,
+      };
+      const body = Buffer.from(canonicalizeRevocation(payload), 'utf8');
+      const signature = cryptoSign(
+        null,
+        body,
+        createPrivateKey({
+          key: Buffer.from(authority.privateKey, 'base64'),
+          format: 'der',
+          type: 'pkcs8',
+        }),
+      );
+      return {
+        payload,
+        document: [
+          'VREV1',
+          body.toString('base64url'),
+          signature.toString('base64url'),
+        ].join('.'),
+      };
+    }
+
+    it('persists a revocation, keeps one row per license and refuses every later version', async () => {
+      await resetApplicationForFreshInstallation();
+      const identity = await app.get(InstallationIdentityService).current();
+      const issued = licenseFor({
+        installationId: identity.installationId,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2027-01-01T00:00:00.000Z'),
+      });
+      await app.get(LicenseImportService).importDocument(issued.file);
+
+      const artifact = await revocationArtifact(
+        identity.installationId,
+        issued.payload.licenseId,
+        issued.payload.operationId,
+      );
+      const result = await app
+        .get(LicenseRevocationService)
+        .importRevocation(artifact.document);
+      expect(result).toMatchObject({
+        changed: true,
+        outcome: 'APPLIED',
+        alreadyApplied: false,
+        revocation: {
+          revocationId: artifact.payload.revocationId,
+          licenseId: issued.payload.licenseId,
+          targetOperationId: issued.payload.operationId,
+          reason: 'CONTRACT_TERMINATION',
+          issuerKeyId: artifact.payload.issuerKeyId,
+        },
+      });
+
+      // 1. The license row is stamped, and both columns are set together.
+      const stamped = await query<{
+        revoked_at: Date | null;
+        revocation_id: string | null;
+      }>(
+        `SELECT "revoked_at", "revocation_id" FROM "licensing"."licenses"
+          WHERE "id" = $1`,
+        issued.payload.licenseId,
+      );
+      expect(stamped[0]?.revocation_id).toBe(artifact.payload.revocationId);
+      expect(stamped[0]?.revoked_at).toBeInstanceOf(Date);
+
+      // 2. Exactly one revocation row for that license, with both digests.
+      const row = await query<{
+        artifact_sha256: string;
+        canonical_payload_sha256: string;
+        revocation_id: string;
+      }>(
+        `SELECT "revocation_id", "artifact_sha256", "canonical_payload_sha256"
+           FROM "licensing"."license_revocations" WHERE "license_id" = $1`,
+        issued.payload.licenseId,
+      );
+      expect(row).toHaveLength(1);
+      expect(row[0]?.artifact_sha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(row[0]?.canonical_payload_sha256).toMatch(/^[0-9a-f]{64}$/);
+
+      // 3. The typed audit event carries the revocation identity.
+      const audit = await query<{
+        event_type: string;
+        outcome: string;
+        revocation_id: string | null;
+      }>(
+        `SELECT "event_type", "outcome", "revocation_id"
+           FROM "licensing"."license_audit_events"
+          WHERE "installation_id" = $1 AND "event_type" = 'license.revocation.imported'`,
+        identity.installationId,
+      );
+      expect(audit).toHaveLength(1);
+      expect(audit[0]).toMatchObject({
+        outcome: 'APPLIED',
+        revocation_id: artifact.payload.revocationId,
+      });
+
+      // 4. A byte-identical duplicate is idempotent: no second row, no second
+      //    audit event, and the historical first result comes back.
+      const replay = await app
+        .get(LicenseRevocationService)
+        .importRevocation(artifact.document);
+      expect(replay).toMatchObject({
+        changed: false,
+        outcome: 'UNCHANGED',
+        alreadyApplied: true,
+      });
+      expect(replay.revocation.importedAt).toBe(result.revocation.importedAt);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_revocations" WHERE "license_id" = $1`,
+          issued.payload.licenseId,
+        ),
+      ).toBe(1);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
+            WHERE "installation_id" = $1 AND "event_type" = 'license.revocation.imported'`,
+          identity.installationId,
+        ),
+      ).toBe(1);
+
+      // 5. A second, different revocation for the same license is refused by
+      //    the service AND by the unique index if it ever reached the table.
+      const later = await revocationArtifact(
+        identity.installationId,
+        issued.payload.licenseId,
+        issued.payload.operationId,
+      );
+      await expect(
+        app.get(LicenseRevocationService).importRevocation(later.document),
+      ).rejects.toMatchObject({
+        details: { reason: 'already-revoked' },
+      });
+
+      let uniqueViolation = false;
+      try {
+        await query(
+          `INSERT INTO "licensing"."license_revocations"
+             ("revocation_id","license_id","installation_id","customer_id","customer_code",
+              "target_operation_id","reason","reason_detail","issuer_key_id","issued_at",
+              "imported_at","artifact_sha256","canonical_payload_sha256")
+           VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,$8,$9,$10,$11,$12)`,
+          later.payload.revocationId,
+          issued.payload.licenseId,
+          identity.installationId,
+          SELF_CUSTOMER,
+          'CUST-LIVE-SELF',
+          issued.payload.operationId,
+          'FRAUD',
+          later.payload.issuerKeyId,
+          new Date(),
+          new Date(),
+          'a'.repeat(64),
+          'b'.repeat(64),
+        );
+      } catch {
+        uniqueViolation = true;
+      }
+      expect(uniqueViolation).toBe(true);
+
+      // 6. No version may be applied to the revoked license — including the
+      //    exact artifact that created it.
+      await expect(
+        app.get(LicenseImportService).importDocument(issued.file),
+      ).rejects.toMatchObject({ details: { reason: 'license-revoked' } });
+
+      // 7. The evaluated state reports revocation, never expiry/Grace.
+      await expect(app.get(LicensingService).current()).resolves.toMatchObject({
+        status: 'ACTIVE',
+        active: false,
+        inactiveReason: 'revoked',
+        accessMode: 'BLOCKED',
+        graceEndsAt: null,
+        revokedAt: expect.any(Date) as unknown as Date,
+      });
+    }, 60_000);
 
     it('persists the identity and the retained version across a restart', async () => {
       // 1. Fresh installation: identity is created once, nothing is licensed.
@@ -613,6 +836,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           keyId: null,
           source: 'file',
           validFrom: new Date('2029-01-01T00:00:00.000Z'),
+          signedIssuedAt: null,
           governsFrom: null,
           validUntil: new Date('2030-01-01T00:00:00.000Z'),
           organizationLimit: null,
@@ -696,6 +920,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           keyId: null,
           source: 'file',
           validFrom: new Date('2029-01-01T00:00:00.000Z'),
+          signedIssuedAt: null,
           governsFrom: null,
           validUntil: new Date('2030-01-01T00:00:00.000Z'),
           organizationLimit: null,
@@ -1354,6 +1579,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         keyId: null,
         source: 'file',
         validFrom: payload.validFrom,
+        signedIssuedAt: 'issuedAt' in payload ? payload.issuedAt : null,
         governsFrom: null,
         validUntil: payload.validUntil,
         organizationLimit: payload.organizationLimit,

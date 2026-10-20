@@ -495,5 +495,8 @@ export function toInstallationLicense(
     deviceLimitSpecified: payload.deviceLimitSpecified,
     entitlements: payloadEntitlements(payload),
     provider,
+    // A legacy text code cannot express revocation; revocation state is
+    // observed only by the persistent provider.
+    revokedAt: null,
   };
 }

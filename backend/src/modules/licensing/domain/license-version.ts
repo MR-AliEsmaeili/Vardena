@@ -964,7 +964,13 @@ export type ImportConflictReason =
   | 'reduction-requires-resolution'
   | 'post-gap-recovery-requires-dedicated-operation'
   | 'recovery-not-applicable'
-  | 'resolution-not-applicable';
+  | 'resolution-not-applicable'
+  /**
+   * OD-LIC-17: the target license already carries a signed revocation. No
+   * version — renewal, supersession or an exact replay — may be applied to a
+   * revoked license; service is restored only by a NEW license.
+   */
+  | 'license-revoked';
 
 export interface ImportConflict {
   reason: ImportConflictReason;
@@ -2171,6 +2177,12 @@ function backdatedSupersession(): ImportConflictEvaluation {
 export function toInstallationLicense(
   version: RetainedLicenseVersion,
   provider: string,
+  /**
+   * License-level revocation state (OD-LIC-17). It is NOT a version fact: the
+   * signed revocation targets the license, and a renewal imported afterwards
+   * must not resurrect it. Callers that cannot observe revocation pass null.
+   */
+  revokedAt: Date | null = null,
 ): InstallationLicense {
   return {
     customerId: version.customerId,
@@ -2186,6 +2198,7 @@ export function toInstallationLicense(
     deviceLimitSpecified: version.deviceLimitSpecified,
     entitlements: version.entitlements,
     provider,
+    revokedAt,
   };
 }
 

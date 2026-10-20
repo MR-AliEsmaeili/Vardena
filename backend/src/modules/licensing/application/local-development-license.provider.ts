@@ -59,6 +59,7 @@ export class LocalDevelopmentLicenseProvider implements LicenseProvider {
         })),
       ],
       provider: LOCAL_DEVELOPMENT_LICENSE_PROVIDER_NAME,
+      revokedAt: null,
     };
   }
 
