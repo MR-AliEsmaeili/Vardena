@@ -1,3 +1,5 @@
+import { Select } from '@/ui/select';
+import { PageHeading } from '@/ui/patterns/page-heading';
 import { formatOwnerBusinessDay, formatOwnerInstant } from '@/lib/date-time';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -30,7 +32,9 @@ export function CustomerPage({ mode }: { mode: 'new' | 'detail' | 'edit' }) {
   if (
     !permissions.has(mode === 'detail' ? 'customers.view' : 'customers.write')
   )
-    return <p>{o.forbidden}</p>;
+    return (
+      <p className="owner-panel p-4 text-sm text-secondary">{o.forbidden}</p>
+    );
   if (mode === 'new') return <CustomerForm />;
   if (query.isPending) return <LoadingState />;
   if (query.isError)
@@ -42,15 +46,15 @@ export function CustomerPage({ mode }: { mode: 'new' | 'detail' | 'edit' }) {
     return 'contractReference' in c ? (
       <CustomerForm customer={c} />
     ) : (
-      <p>{o.forbidden}</p>
+      <p className="owner-panel p-4 text-sm text-secondary">{o.forbidden}</p>
     );
   return (
     <section className="space-y-4">
-      <h1 className="text-xl font-bold">{c.displayName}</h1>
+      <PageHeading>{c.displayName}</PageHeading>
       {!!(location.state as { saved?: boolean } | null)?.saved && (
-        <output>{o.success}</output>
+        <output className="owner-success">{o.success}</output>
       )}
-      <dl className="grid gap-3 rounded border bg-white p-4 sm:grid-cols-2">
+      <dl className="grid gap-3 owner-panel p-4 sm:grid-cols-2">
         {[
           [o.id, c.id],
           [o.code, c.customerCode],
@@ -74,16 +78,16 @@ export function CustomerPage({ mode }: { mode: 'new' | 'detail' | 'edit' }) {
             : []),
         ].map(([label, value, canonical]) => (
           <div key={label}>
-            <dt className="text-sm text-slate-500">{label}</dt>
+            <dt className="text-sm text-muted-ink">{label}</dt>
             <dd title={canonical ?? undefined} className="break-all" dir="auto">
               {value || '—'}
             </dd>
           </div>
         ))}
       </dl>
-      <p className="text-sm text-slate-500">{o.immutable}</p>
-      <p className="text-sm text-slate-500">{o.contractDatesHelp}</p>
-      <div className="flex gap-3">
+      <p className="text-sm text-muted-ink">{o.immutable}</p>
+      <p className="text-sm text-muted-ink">{o.contractDatesHelp}</p>
+      <div className="flex flex-wrap gap-3">
         {permissions.has('customers.write') && (
           <Button asChild>
             <Link to={`/app/customers/${id}/edit`}>{o.edit}</Link>
@@ -150,10 +154,10 @@ function CustomerForm({ customer }: { customer?: Customer }) {
   });
   return (
     <section className="max-w-2xl space-y-4">
-      <h1 className="text-xl font-bold">{customer ? o.edit : o.newCustomer}</h1>
+      <PageHeading>{customer ? o.edit : o.newCustomer}</PageHeading>
       <form
         onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
-        className="space-y-4 rounded-lg border bg-white p-5"
+        className="space-y-4 owner-panel p-5"
       >
         {(
           [
@@ -191,7 +195,7 @@ function CustomerForm({ customer }: { customer?: Customer }) {
           <legend className="px-1 text-sm font-semibold">
             {o.contractDatesTitle}
           </legend>
-          <p className="text-sm text-slate-500">{o.contractDatesHelp}</p>
+          <p className="text-sm text-muted-ink">{o.contractDatesHelp}</p>
           {(['contractStartDate', 'contractEndDate'] as const).map((key) => (
             <FormField
               key={key}
@@ -217,17 +221,18 @@ function CustomerForm({ customer }: { customer?: Customer }) {
         </fieldset>
         <label className="block space-y-2">
           <span>{o.status}</span>
-          <select
-            className="w-full rounded border p-2"
-            {...form.register('status')}
-          >
+          <Select {...form.register('status')}>
             <option value="ACTIVE">{o.active}</option>
             <option value="INACTIVE">{o.inactive}</option>
-          </select>
+          </Select>
         </label>
         {mutation.isError && <ApiErrorAlert error={mutation.error} />}
-        <div className="flex gap-3">
-          <Button type="submit" disabled={mutation.isPending}>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            type="submit"
+            loading={mutation.isPending}
+            disabled={mutation.isPending}
+          >
             {mutation.isPending ? o.saving : o.save}
           </Button>
           <Button

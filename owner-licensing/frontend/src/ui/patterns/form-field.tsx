@@ -42,11 +42,11 @@ export function FormField({
         'aria-describedby': describedBy,
       })}
       {error !== undefined ? (
-        <p id={errorId} role="alert" className="text-xs text-rose-700">
+        <p id={errorId} role="alert" className="text-xs text-danger">
           {error}
         </p>
       ) : hint !== undefined ? (
-        <p id={hintId} className="text-xs text-slate-500">
+        <p id={hintId} className="text-xs text-muted-ink">
           {hint}
         </p>
       ) : null}

@@ -1,3 +1,5 @@
+import { LocalFetchingIndicator } from '@/ui/patterns/request-activity';
+import { PageHeading } from '@/ui/patterns/page-heading';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import * as api from '@/api/owner.api';
@@ -22,18 +24,21 @@ export function CustomersPage() {
     enabled: permissions.has('customers.view'),
   });
   if (!permissions.loaded) return <LoadingState />;
-  if (!permissions.has('customers.view')) return <p>{o.forbidden}</p>;
+  if (!permissions.has('customers.view'))
+    return (
+      <p className="owner-panel p-4 text-sm text-secondary">{o.forbidden}</p>
+    );
   return (
     <section className="space-y-4">
-      <header className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">{o.customers}</h1>
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <PageHeading>{o.customers}</PageHeading>
         {permissions.has('customers.write') && (
           <Button asChild>
             <Link to="/app/customers/new">{o.newCustomer}</Link>
           </Button>
         )}
       </header>
-      <label className="block space-y-2">
+      <label className="owner-toolbar">
         <span>{o.search}</span>
         <Input
           value={search}
@@ -41,6 +46,7 @@ export function CustomersPage() {
           onChange={(e) => setParams({ search: e.target.value, page: '1' })}
         />
       </label>
+      <LocalFetchingIndicator active={query.isFetching && !query.isPending} />
       {query.isPending ? (
         <LoadingState />
       ) : query.isError ? (
@@ -54,22 +60,26 @@ export function CustomersPage() {
           description={o.emptyHelp}
         />
       ) : (
-        <ul className="divide-y rounded-lg border border-slate-200 bg-white">
+        <ul className="divide-y owner-panel">
           {query.data.items.map((c) => (
             <li
               key={c.id}
-              className="flex items-center justify-between gap-3 p-4"
+              className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
             >
-              <div>
+              <div className="min-w-0 flex-1">
                 <Link
-                  className="font-semibold text-indigo-700 underline"
+                  className="font-semibold text-accent-strong underline"
                   to={`/app/customers/${c.id}`}
                 >
                   {c.displayName}
                 </Link>
-                <p className="code text-sm text-slate-500">{c.customerCode}</p>
+                <p className="code text-sm text-muted-ink">{c.customerCode}</p>
               </div>
-              <span>{c.status === 'ACTIVE' ? o.active : o.inactive}</span>
+              <span
+                className={`owner-status ${c.status === 'ACTIVE' ? 'border-success-line bg-success-soft text-success' : 'border-line bg-muted text-secondary'}`}
+              >
+                {c.status === 'ACTIVE' ? o.active : o.inactive}
+              </span>
             </li>
           ))}
         </ul>

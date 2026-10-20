@@ -1,3 +1,6 @@
+import { LocalFetchingIndicator } from '@/ui/patterns/request-activity';
+import { Select } from '@/ui/select';
+import { PageHeading } from '@/ui/patterns/page-heading';
 import { formatOwnerInstant } from '@/lib/date-time';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -33,9 +36,6 @@ import {
 } from './audit-filters';
 import { auditFilterSchema } from './audit-filter-schema';
 
-const selectClass =
-  'h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900';
-
 function eventLabel(code: string): string {
   return (o.auditEventLabels as Record<string, string>)[code] ?? code;
 }
@@ -70,12 +70,12 @@ function AuditEventCard({ event }: { event: AuditEvent }) {
     [o.reason, event.reason],
   ];
   return (
-    <li className="space-y-2 rounded border bg-white p-4">
+    <li className="space-y-2 owner-panel p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold">{eventLabel(event.eventType)}</h2>
         <div className="flex flex-wrap gap-2">
           {isSecurityIncident ? (
-            <span className="rounded bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-800">
+            <span className="rounded bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger">
               {o.auditSecurityIncidentHoldBadge}
             </span>
           ) : null}
@@ -83,8 +83,8 @@ function AuditEventCard({ event }: { event: AuditEvent }) {
             <span
               className={`rounded px-2 py-0.5 text-xs font-medium ${
                 event.archived
-                  ? 'bg-emerald-50 text-emerald-800'
-                  : 'bg-slate-100 text-slate-700'
+                  ? 'bg-success-soft text-success'
+                  : 'bg-muted text-secondary'
               }`}
             >
               {event.archived
@@ -94,16 +94,16 @@ function AuditEventCard({ event }: { event: AuditEvent }) {
           ) : null}
         </div>
       </div>
-      <p className="code text-xs text-slate-500" dir="ltr">
+      <p className="code text-xs text-muted-ink" dir="ltr">
         {event.eventType}
       </p>
       {observedAuditEventTypes.includes(event.eventType) ? (
-        <p className="text-sm text-amber-800">{o.auditObservedNote}</p>
+        <p className="text-sm text-warning">{o.auditObservedNote}</p>
       ) : null}
       <dl className="grid gap-2 text-sm sm:grid-cols-2">
         {rows.map(([label, value, canonical]) => (
           <div key={label}>
-            <dt className="text-slate-500">{label}</dt>
+            <dt className="text-muted-ink">{label}</dt>
             <dd title={canonical} dir="auto" className="break-all">
               {value ?? '—'}
             </dd>
@@ -114,7 +114,7 @@ function AuditEventCard({ event }: { event: AuditEvent }) {
         <summary>
           {o.before} / {o.after}
         </summary>
-        <p className="text-xs text-slate-500">{o.auditBeforeAfterHint}</p>
+        <p className="text-xs text-muted-ink">{o.auditBeforeAfterHint}</p>
         <pre dir="ltr" className="overflow-auto text-xs">
           {JSON.stringify(
             { before: event.beforeState, after: event.afterState },
@@ -220,13 +220,13 @@ function AuditArchiveControlSection() {
   return (
     <section
       aria-label={o.auditArchiveSectionTitle}
-      className="space-y-4 rounded border bg-white p-4"
+      className="space-y-4 owner-panel p-4"
     >
       <div className="space-y-1">
         <h2 className="text-base font-semibold">
           {o.auditArchiveSectionTitle}
         </h2>
-        <p className="text-xs text-slate-600">{o.auditArchiveSectionNote}</p>
+        <p className="text-xs text-secondary">{o.auditArchiveSectionNote}</p>
       </div>
 
       {statusQuery.isPending ? (
@@ -238,56 +238,56 @@ function AuditArchiveControlSection() {
         />
       ) : (
         <dl className="grid gap-3 text-sm sm:grid-cols-3">
-          <div className="rounded border bg-slate-50 p-3">
-            <dt className="text-xs text-slate-500">
+          <div className="rounded border bg-canvas p-3">
+            <dt className="text-xs text-muted-ink">
               {o.auditArchiveTotalEvents}
             </dt>
             <dd className="font-semibold">
               {statusQuery.data.counts.totalSourceEvents}
             </dd>
           </div>
-          <div className="rounded border bg-slate-50 p-3">
-            <dt className="text-xs text-slate-500">
+          <div className="rounded border bg-canvas p-3">
+            <dt className="text-xs text-muted-ink">
               {o.auditArchiveWithinFloor}
             </dt>
             <dd className="font-semibold">
               {statusQuery.data.counts.withinMinimumRetentionWindowCount}
             </dd>
           </div>
-          <div className="rounded border bg-slate-50 p-3">
-            <dt className="text-xs text-slate-500">
+          <div className="rounded border bg-canvas p-3">
+            <dt className="text-xs text-muted-ink">
               {o.auditArchivePastFloor}
             </dt>
             <dd className="font-semibold">
               {statusQuery.data.counts.pastMinimumRetentionFloorCount}
             </dd>
           </div>
-          <div className="rounded border bg-rose-50 p-3">
-            <dt className="text-xs text-rose-700">
+          <div className="rounded border bg-danger-soft p-3">
+            <dt className="text-xs text-danger">
               {o.auditArchiveIncidentHolds}
             </dt>
-            <dd className="font-semibold text-rose-900">
+            <dd className="font-semibold text-danger">
               {statusQuery.data.counts.unresolvedSecurityIncidentCount}
             </dd>
           </div>
-          <div className="rounded border bg-emerald-50 p-3">
-            <dt className="text-xs text-emerald-700">
+          <div className="rounded border bg-success-soft p-3">
+            <dt className="text-xs text-success">
               {o.auditArchiveArchivedCount}
             </dt>
-            <dd className="font-semibold text-emerald-900">
+            <dd className="font-semibold text-success">
               {statusQuery.data.counts.archivedEventCount}
             </dd>
           </div>
-          <div className="rounded border bg-slate-50 p-3">
-            <dt className="text-xs text-slate-500">
+          <div className="rounded border bg-canvas p-3">
+            <dt className="text-xs text-muted-ink">
               {o.auditArchivePendingCount}
             </dt>
             <dd className="font-semibold">
               {statusQuery.data.counts.unarchivedEligibleEventCount}
             </dd>
           </div>
-          <div className="rounded border bg-slate-50 p-3">
-            <dt className="text-xs text-slate-500">
+          <div className="rounded border bg-canvas p-3">
+            <dt className="text-xs text-muted-ink">
               {o.auditArchiveDurableStoreBatches}
             </dt>
             <dd className="font-semibold">
@@ -295,15 +295,15 @@ function AuditArchiveControlSection() {
               {statusQuery.data.counts.durableStoreEventCount})
             </dd>
           </div>
-          <div className="rounded border bg-slate-50 p-3 sm:col-span-2">
-            <dt className="text-xs text-slate-500">
+          <div className="rounded border bg-canvas p-3 sm:col-span-2">
+            <dt className="text-xs text-muted-ink">
               {o.auditArchiveIntegrityLabel}
             </dt>
             <dd
               className={
                 statusQuery.data.integrity.verified
-                  ? 'font-medium text-emerald-800'
-                  : 'font-medium text-rose-800'
+                  ? 'font-medium text-success'
+                  : 'font-medium text-danger'
               }
             >
               {statusQuery.data.integrity.verified
@@ -312,7 +312,7 @@ function AuditArchiveControlSection() {
                   o.auditArchiveIntegrityFailed)}
               {statusQuery.data.integrity.latestBatchDigestSha256 ? (
                 <span
-                  className="ms-2 font-mono text-xs text-slate-600"
+                  className="ms-2 font-mono text-xs text-secondary"
                   dir="ltr"
                 >
                   ({statusQuery.data.integrity.latestBatchDigestSha256})
@@ -382,7 +382,7 @@ function AuditArchiveControlSection() {
         </div>
 
         {feedback ? (
-          <output className="block rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+          <output className="block rounded border border-success-line bg-success-soft p-3 text-sm text-success">
             {feedback}
           </output>
         ) : null}
@@ -410,7 +410,7 @@ function AuditArchiveControlSection() {
             onRetry={() => void batchesQuery.refetch()}
           />
         ) : batchesQuery.data.items.length === 0 ? (
-          <p className="text-xs text-slate-500">{o.auditArchiveBatchesEmpty}</p>
+          <p className="text-xs text-muted-ink">{o.auditArchiveBatchesEmpty}</p>
         ) : (
           <ul className="space-y-2 text-xs">
             {batchesQuery.data.items.map((batch) => {
@@ -421,7 +421,7 @@ function AuditArchiveControlSection() {
               return (
                 <li
                   key={batch.id}
-                  className="rounded border bg-slate-50 p-3 space-y-1"
+                  className="rounded border bg-canvas p-3 space-y-1"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-mono font-semibold" dir="ltr">
@@ -430,13 +430,13 @@ function AuditArchiveControlSection() {
                     </span>
                     <span>{createdFormatted}</span>
                   </div>
-                  <p className="text-slate-700">{batch.reason}</p>
-                  <p className="text-slate-500">
+                  <p className="text-secondary">{batch.reason}</p>
+                  <p className="text-muted-ink">
                     {o.auditArchiveArchivedCount}: {batch.eventCount} (
                     {batch.firstSequence}..{batch.lastSequence}) —{' '}
                     {cutoffFormatted}
                   </p>
-                  <p className="font-mono text-slate-500 break-all" dir="ltr">
+                  <p className="font-mono text-muted-ink break-all" dir="ltr">
                     SHA-256: {batch.batchDigestSha256}
                   </p>
                 </li>
@@ -488,7 +488,10 @@ export function AuditPage() {
   });
 
   if (!permissions.loaded) return <LoadingState />;
-  if (!permissions.has('audit.view')) return <p>{o.forbidden}</p>;
+  if (!permissions.has('audit.view'))
+    return (
+      <p className="owner-panel p-4 text-sm text-secondary">{o.forbidden}</p>
+    );
 
   // Applying a filter writes a new URL without `page`, so the result is page one.
   const apply = form.handleSubmit((values) => {
@@ -505,13 +508,13 @@ export function AuditPage() {
 
   return (
     <section className="space-y-4">
-      <h1 className="text-xl font-bold">{o.audit}</h1>
-      <p className="text-sm text-slate-500">{o.auditNotice}</p>
+      <PageHeading>{o.audit}</PageHeading>
+      <p className="text-sm text-muted-ink">{o.auditNotice}</p>
       {permissions.has('audit.archive') ? <AuditArchiveControlSection /> : null}
       <form
         aria-label={o.auditFilters}
         noValidate
-        className="space-y-4 rounded-lg border bg-white p-4"
+        className="space-y-4 owner-panel p-4"
         onSubmit={(event) => void apply(event)}
       >
         <h2 className="font-semibold">{o.auditFilters}</h2>
@@ -561,18 +564,14 @@ export function AuditPage() {
             error={errors.targetType?.message}
           >
             {(props) => (
-              <select
-                {...props}
-                {...form.register('targetType')}
-                className={selectClass}
-              >
+              <Select {...props} {...form.register('targetType')}>
                 <option value="">{o.all}</option>
                 {auditTargetTypes.map((type) => (
                   <option key={type} value={type}>
                     {o.auditTargetLabels[type]}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </FormField>
           <FormField
@@ -596,18 +595,14 @@ export function AuditPage() {
             error={errors.outcome?.message}
           >
             {(props) => (
-              <select
-                {...props}
-                {...form.register('outcome')}
-                className={selectClass}
-              >
+              <Select {...props} {...form.register('outcome')}>
                 <option value="">{o.all}</option>
                 {auditOutcomes.map((outcome) => (
                   <option key={outcome} value={outcome}>
                     {o.auditOutcomeLabels[outcome]}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </FormField>
         </div>
@@ -647,7 +642,7 @@ export function AuditPage() {
             )}
           </FormField>
         </div>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-muted-ink">
           {dayZone === 'UTC' ? o.auditLegacyRangeHint : o.auditRangeHint}
         </p>
         <div className="flex flex-wrap gap-2">
@@ -659,10 +654,11 @@ export function AuditPage() {
       </form>
 
       {filtersValid ? null : (
-        <p role="alert" className="text-sm text-rose-700">
+        <p role="alert" className="text-sm text-danger">
           {o.auditInvalidFilters}
         </p>
       )}
+      <LocalFetchingIndicator active={query.isFetching && !query.isPending} />
       {!filtersValid ? null : query.isPending ? (
         <LoadingState />
       ) : query.isError ? (

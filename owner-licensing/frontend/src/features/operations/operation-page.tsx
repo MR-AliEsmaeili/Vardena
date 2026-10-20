@@ -1,3 +1,4 @@
+import { PageHeading } from '@/ui/patterns/page-heading';
 import { SigningKeySafetyLine } from './operations-page';
 import { formatOwnerBusinessDay, formatOwnerInstant } from '@/lib/date-time';
 import { Link, useLocation, useParams } from 'react-router-dom';
@@ -72,7 +73,7 @@ function ObservationFields({
         <span>{o.confirmObservation}</span>
       </label>
       {errors.acknowledged ? (
-        <p role="alert" className="text-xs text-rose-700">
+        <p role="alert" className="text-xs text-danger">
           {errors.acknowledged.message}
         </p>
       ) : null}
@@ -128,7 +129,7 @@ function FollowUp({
     <>
       {record.kind === 'LICENSE' && record.observedStatus === 'ISSUED' ? (
         <form
-          className="space-y-4 rounded-lg border bg-white p-5"
+          className="space-y-4 owner-panel p-5"
           onSubmit={activation.handleSubmit((values) =>
             mutation.mutate(() =>
               api.recordActivationObservation(record.id, noted(values)),
@@ -143,7 +144,11 @@ function FollowUp({
             errors={activation.formState.errors}
           />
           {mutation.isError ? <OperationError error={mutation.error} /> : null}
-          <Button type="submit" disabled={mutation.isPending}>
+          <Button
+            type="submit"
+            loading={mutation.isPending}
+            disabled={mutation.isPending}
+          >
             {mutation.isPending ? o.saving : o.recordActivation}
           </Button>
         </form>
@@ -152,7 +157,7 @@ function FollowUp({
       record.observedStatus === 'REPLACEMENT_AUTHORIZED' &&
       !record.emergencyOldServerLost ? (
         <form
-          className="space-y-4 rounded-lg border bg-white p-5"
+          className="space-y-4 owner-panel p-5"
           onSubmit={oldServer.handleSubmit((values) =>
             mutation.mutate(() =>
               api.recordOldServerObservation(record.id, {
@@ -170,7 +175,11 @@ function FollowUp({
             errors={oldServer.formState.errors}
           />
           {mutation.isError ? <OperationError error={mutation.error} /> : null}
-          <Button type="submit" disabled={mutation.isPending}>
+          <Button
+            type="submit"
+            loading={mutation.isPending}
+            disabled={mutation.isPending}
+          >
             {mutation.isPending ? o.saving : o.recordOldServer}
           </Button>
         </form>
@@ -178,7 +187,7 @@ function FollowUp({
       {record.kind === 'SERVER_REPLACEMENT' &&
       record.observedStatus === 'OLD_SERVER_STATE_RECORDED' ? (
         <form
-          className="space-y-4 rounded-lg border bg-white p-5"
+          className="space-y-4 owner-panel p-5"
           onSubmit={installed.handleSubmit((values) =>
             mutation.mutate(() =>
               api.recordReplacementObservation(record.id, {
@@ -195,7 +204,11 @@ function FollowUp({
             errors={installed.formState.errors}
           />
           {mutation.isError ? <OperationError error={mutation.error} /> : null}
-          <Button type="submit" disabled={mutation.isPending}>
+          <Button
+            type="submit"
+            loading={mutation.isPending}
+            disabled={mutation.isPending}
+          >
             {mutation.isPending ? o.saving : o.recordInstalled}
           </Button>
         </form>
@@ -215,7 +228,10 @@ export function OperationPage() {
     enabled: permissions.has('operations.view') && id.length > 0,
   });
   if (!permissions.loaded) return <LoadingState />;
-  if (!permissions.has('operations.view')) return <p>{o.forbidden}</p>;
+  if (!permissions.has('operations.view'))
+    return (
+      <p className="owner-panel p-4 text-sm text-secondary">{o.forbidden}</p>
+    );
   if (query.isPending) return <LoadingState />;
   if (query.isError) return <OperationError error={query.error} />;
   const record = query.data;
@@ -226,12 +242,12 @@ export function OperationPage() {
   ].filter(Boolean);
   return (
     <section className="space-y-4">
-      <h1 className="text-xl font-bold">{record.displayName}</h1>
+      <PageHeading>{record.displayName}</PageHeading>
       {!!(location.state as { saved?: boolean } | null)?.saved && (
-        <output>{o.savedObservation}</output>
+        <output className="owner-success">{o.savedObservation}</output>
       )}
       <ManualNotice />
-      <dl className="grid gap-3 rounded border bg-white p-4 sm:grid-cols-2">
+      <dl className="grid gap-3 owner-panel p-4 sm:grid-cols-2">
         {[
           [o.currentState, labelOf(record.observedStatus)],
           [o.kindFilter, o.kinds[record.kind]],
@@ -265,7 +281,7 @@ export function OperationPage() {
           [o.installation, refs.join(' → ') || '—'],
         ].map(([label, value, canonical]) => (
           <div key={label}>
-            <dt className="text-sm text-slate-500">{label}</dt>
+            <dt className="text-sm text-muted-ink">{label}</dt>
             <dd title={canonical ?? undefined} className="break-all" dir="auto">
               {value}
             </dd>
@@ -273,13 +289,13 @@ export function OperationPage() {
         ))}
         {record.emergencyOldServerLost ? (
           <div>
-            <dt className="text-sm text-slate-500">{o.emergency}</dt>
+            <dt className="text-sm text-muted-ink">{o.emergency}</dt>
             <dd>{o.emergencyHelp}</dd>
           </div>
         ) : null}
         {record.oldServerObservedState ? (
           <div>
-            <dt className="text-sm text-slate-500">{o.recordOldServer}</dt>
+            <dt className="text-sm text-muted-ink">{o.recordOldServer}</dt>
             <dd>{labelOf(record.oldServerObservedState)}</dd>
           </div>
         ) : null}
@@ -294,15 +310,15 @@ export function OperationPage() {
       {record.transitions && record.transitions.length > 0 ? (
         <ol className="space-y-3">
           {record.transitions.map((item) => (
-            <li key={item.id} className="rounded border bg-white p-4 text-sm">
+            <li key={item.id} className="owner-panel p-4 text-sm">
               <p>
                 {labelOf(item.priorStatus)} → {labelOf(item.newStatus)}
               </p>
               <p>{item.reason}</p>
-              <p className="text-slate-500">
+              <p className="text-muted-ink">
                 {o.actor}: <span dir="ltr">{item.actorId}</span>
               </p>
-              <p className="text-slate-500" dir="ltr">
+              <p className="text-muted-ink" dir="ltr">
                 <time dateTime={item.occurredAt} title={item.occurredAt}>
                   {formatOwnerInstant(item.occurredAt)}
                 </time>

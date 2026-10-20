@@ -1,3 +1,4 @@
+import { PageHeading } from '@/ui/patterns/page-heading';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Navigate, useLocation } from 'react-router-dom';
@@ -5,7 +6,7 @@ import { normalizeApiError } from '@/api/errors';
 import { t } from '@/lib/i18n';
 import { Alert, AlertBody } from '@/ui/alert';
 import { Button } from '@/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
+import { Card, CardContent, CardHeader } from '@/ui/card';
 import { Input } from '@/ui/input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { FormField } from '@/ui/patterns/form-field';
@@ -93,11 +94,11 @@ export function LoginPage() {
   const passwordError = form.formState.errors.password?.message;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-muted px-4 py-10">
       <div className="w-full max-w-md space-y-4">
         <div className="text-center">
-          <p className="text-2xl font-bold text-indigo-700">{t.app.name}</p>
-          <p className="mt-1 text-sm text-slate-600">{t.app.tagline}</p>
+          <p className="text-2xl font-bold text-accent-strong">{t.app.name}</p>
+          <p className="mt-1 text-sm text-secondary">{t.app.tagline}</p>
         </div>
 
         {session.sessionExpired && (
@@ -108,8 +109,10 @@ export function LoginPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>{t.auth.loginTitle}</CardTitle>
-            <p className="text-sm text-slate-600">{t.auth.loginSubtitle}</p>
+            <PageHeading className="text-lg sm:text-xl">
+              {t.auth.loginTitle}
+            </PageHeading>
+            <p className="text-sm text-secondary">{t.auth.loginSubtitle}</p>
           </CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={onSubmit} noValidate>
@@ -166,6 +169,7 @@ export function LoginPage() {
               <Button
                 type="submit"
                 className="w-full"
+                loading={session.isLoggingIn}
                 disabled={session.isLoggingIn}
               >
                 {session.isLoggingIn ? t.auth.submitting : t.auth.submit}

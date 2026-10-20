@@ -10,6 +10,29 @@
  */
 
 @theme {
+  --color-canvas: var(--color-slate-50);
+  --color-surface: var(--color-white);
+  --color-muted: var(--color-slate-100);
+  --color-line: var(--color-slate-200);
+  --color-control-line: var(--color-slate-300);
+  --color-subtle: var(--color-slate-400);
+  --color-muted-ink: var(--color-slate-500);
+  --color-secondary: var(--color-slate-600);
+  --color-ink: var(--color-slate-900);
+  --color-accent: var(--color-indigo-700);
+  --color-accent-strong: var(--color-indigo-800);
+  --color-accent-soft: var(--color-indigo-50);
+  --color-accent-line: var(--color-indigo-200);
+  --color-success: var(--color-emerald-800);
+  --color-success-soft: var(--color-emerald-50);
+  --color-success-line: var(--color-emerald-200);
+  --color-warning: var(--color-amber-900);
+  --color-warning-soft: var(--color-amber-50);
+  --color-warning-line: var(--color-amber-200);
+  --color-danger: var(--color-rose-800);
+  --color-danger-action: var(--color-rose-700);
+  --color-danger-soft: var(--color-rose-50);
+  --color-danger-line: var(--color-rose-200);
   --font-sans:
     'Vazirmatn', 'IRANSans', 'IRANYekan', 'Segoe UI', 'Tahoma', system-ui,
     sans-serif;
@@ -23,7 +46,7 @@
   }
 
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-canvas text-ink antialiased;
     font-family: var(--font-sans);
   }
 
@@ -43,6 +66,75 @@
   }
 
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-indigo-600;
+    @apply outline-2 outline-offset-2 outline-accent;
   }
+}
+
+@layer base {
+  body {
+    line-height: 1.75;
+  }
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-line);
+  }
+  h1,
+  h2,
+  h3,
+  p,
+  dd,
+  a {
+    overflow-wrap: anywhere;
+  }
+  input,
+  select,
+  textarea {
+    min-width: 0;
+    accent-color: var(--color-accent);
+  }
+  input[type='checkbox'] {
+    flex-shrink: 0;
+    width: 1rem;
+    height: 1rem;
+  }
+  fieldset {
+    min-inline-size: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+}
+
+@layer components {
+  .owner-control {
+    @apply h-10 w-full rounded-md border border-control-line bg-surface px-3 text-sm text-ink;
+    @apply placeholder:text-muted-ink focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-accent;
+    @apply disabled:cursor-not-allowed disabled:bg-muted disabled:text-secondary aria-[invalid=true]:border-danger;
+  }
+  .owner-panel {
+    @apply rounded-lg border border-line bg-surface;
+  }
+  .owner-toolbar {
+    @apply grid gap-3 rounded-lg border border-line bg-surface p-4;
+  }
+  .owner-success {
+    @apply block rounded-md border border-success-line bg-success-soft p-3 text-sm text-success;
+  }
+  .owner-status {
+    @apply inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-xs font-semibold;
+  }
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/Vazirmatn.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
 }

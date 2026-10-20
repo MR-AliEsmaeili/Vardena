@@ -18,6 +18,16 @@ export const t = {
     backToHome: 'بازگشت به صفحه اصلی',
     skipToContent: 'رفتن به محتوای اصلی',
   },
+  // Request-loading feedback (Thinking Orbs). Owned by the activity registry.
+  loading: {
+    orbLabel: 'نشانگر انجام عملیات',
+    receiving: 'در حال دریافت اطلاعات…',
+    saving: 'در حال ذخیره اطلاعات…',
+    updating: 'در حال به‌روزرسانی اطلاعات…',
+    deleting: 'در حال حذف اطلاعات…',
+    processing: 'در حال انجام عملیات…',
+    background: 'در حال دریافت اطلاعات در پس‌زمینه…',
+  },
   auth: {
     loginTitle: 'ورود به وردنا',
     loginSubtitle: 'برای ادامه، با نام کاربری و گذرواژه سازمانی وارد شوید.',
@@ -85,6 +95,7 @@ export const t = {
     pageSize: 'تعداد در صفحه',
     sortAsc: 'صعودی',
     sortDesc: 'نزولی',
+    refreshing: 'در حال تازه‌سازی…',
   },
   toasts: {
     regionLabel: 'اعلان‌ها',

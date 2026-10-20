@@ -5,11 +5,11 @@ import { cn } from '@/lib/utils';
 const alertVariants = cva('rounded-md border p-4 text-sm', {
   variants: {
     variant: {
-      info: 'border-indigo-200 bg-indigo-50 text-indigo-900',
-      success: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-      warning: 'border-amber-200 bg-amber-50 text-amber-900',
-      danger: 'border-rose-200 bg-rose-50 text-rose-900',
-      neutral: 'border-slate-200 bg-slate-50 text-slate-800',
+      info: 'border-accent-line bg-accent-soft text-accent-strong',
+      success: 'border-success-line bg-success-soft text-success',
+      warning: 'border-warning-line bg-warning-soft text-warning',
+      danger: 'border-danger-line bg-danger-soft text-danger',
+      neutral: 'border-line bg-canvas text-ink',
     },
   },
   defaultVariants: { variant: 'info' },

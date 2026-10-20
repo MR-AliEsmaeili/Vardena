@@ -15,7 +15,10 @@ export function Pagination({
 }) {
   const canGoNext = hasNext ?? count >= 50;
   return (
-    <nav aria-label={o.page} className="flex items-center gap-3">
+    <nav
+      aria-label={o.page}
+      className="flex flex-wrap items-center gap-3 border-t border-line pt-4 text-sm text-secondary"
+    >
       <Button
         variant="outline"
         disabled={page <= 1}

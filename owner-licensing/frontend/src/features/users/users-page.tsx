@@ -1,3 +1,6 @@
+import { LocalFetchingIndicator } from '@/ui/patterns/request-activity';
+import { Select } from '@/ui/select';
+import { PageHeading } from '@/ui/patterns/page-heading';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -46,11 +49,15 @@ export function UsersPage() {
     enabled: permissions.has('users.manage'),
   });
   if (!permissions.loaded) return <LoadingState />;
-  if (!permissions.has('users.manage')) return <p>{o.forbidden}</p>;
+  if (!permissions.has('users.manage'))
+    return (
+      <p className="owner-panel p-4 text-sm text-secondary">{o.forbidden}</p>
+    );
   return (
     <section className="space-y-5">
-      <h1 className="text-xl font-bold">{o.users}</h1>
+      <PageHeading>{o.users}</PageHeading>
       <CreateUser />
+      <LocalFetchingIndicator active={query.isFetching && !query.isPending} />
       {query.isPending ? (
         <LoadingState />
       ) : query.isError ? (
@@ -61,7 +68,7 @@ export function UsersPage() {
       ) : query.data.items.length === 0 ? (
         <EmptyState />
       ) : (
-        <ul className="divide-y rounded border bg-white">
+        <ul className="divide-y owner-panel">
           {query.data.items.map((u) => (
             <li
               key={u.id}
@@ -84,10 +91,7 @@ export function UsersPage() {
         setPage={(p) => setParams({ page: String(p) })}
       />
       {selected && (
-        <section
-          key={selected.id}
-          className="space-y-4 rounded border bg-white p-4"
-        >
+        <section key={selected.id} className="space-y-4 owner-panel p-4">
           <h2 className="font-bold">{selected.username}</h2>
           <AccessForm user={selected} onDone={() => setSelected(null)} />
           <ResetForm user={selected} />
@@ -100,13 +104,13 @@ function RoleSelect({ register }: { register: UseFormRegisterReturn<'role'> }) {
   return (
     <label className="block space-y-2">
       <span>{o.role}</span>
-      <select className="w-full rounded border p-2" {...register}>
+      <Select {...register}>
         {Object.entries(o.roles).map(([value, label]) => (
           <option key={value} value={value}>
             {label}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }
@@ -127,7 +131,7 @@ function CreateUser() {
   });
   return (
     <form
-      className="max-w-xl space-y-3 rounded border bg-white p-4"
+      className="max-w-xl space-y-3 owner-panel p-4"
       onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
     >
       <h2 className="font-semibold">{o.createUser}</h2>
@@ -151,10 +155,12 @@ function CreateUser() {
         </FormField>
       ))}
       <RoleSelect register={form.register('role')} />
-      <p className="text-sm text-slate-500">{o.mustChange}</p>
+      <p className="text-sm text-muted-ink">{o.mustChange}</p>
       {mutation.isError && <ApiErrorAlert error={mutation.error} />}
-      {mutation.isSuccess && <output>{o.success}</output>}
-      <Button disabled={mutation.isPending}>
+      {mutation.isSuccess && (
+        <output className="owner-success">{o.success}</output>
+      )}
+      <Button loading={mutation.isPending} disabled={mutation.isPending}>
         {mutation.isPending ? o.saving : o.createUser}
       </Button>
     </form>
@@ -190,16 +196,13 @@ function AccessForm({
     >
       <label className="block space-y-2">
         <span>{o.role}</span>
-        <select
-          className="w-full rounded border p-2"
-          {...form.register('role')}
-        >
+        <Select {...form.register('role')}>
           {Object.entries(o.roles).map(([value, label]) => (
             <option key={value} value={value}>
               {label}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       <label className="flex gap-2">
         <input type="checkbox" {...form.register('isActive')} />
@@ -215,7 +218,7 @@ function AccessForm({
         )}
       </FormField>
       {mutation.isError && <ApiErrorAlert error={mutation.error} />}
-      <Button disabled={mutation.isPending}>
+      <Button loading={mutation.isPending} disabled={mutation.isPending}>
         {mutation.isPending ? o.saving : o.save}
       </Button>
     </form>
@@ -265,8 +268,10 @@ function ResetForm({ user }: { user: AuthenticatedUser }) {
         )}
       </FormField>
       {mutation.isError && <ApiErrorAlert error={mutation.error} />}
-      {mutation.isSuccess && <output>{o.success}</output>}
-      <Button disabled={mutation.isPending}>
+      {mutation.isSuccess && (
+        <output className="owner-success">{o.success}</output>
+      )}
+      <Button loading={mutation.isPending} disabled={mutation.isPending}>
         {mutation.isPending ? o.saving : o.resetPassword}
       </Button>
     </form>

@@ -9,7 +9,7 @@ export function labelOf(code: string | null | undefined) {
 }
 export function ManualNotice() {
   return (
-    <div className="space-y-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm">
+    <div className="space-y-2 rounded border border-warning-line bg-warning-soft p-3 text-sm">
       <p role="note">{o.manualBanner}</p>
       <p>{o.notReceipt}</p>
       <p>{o.deviceOutOfScope}</p>
