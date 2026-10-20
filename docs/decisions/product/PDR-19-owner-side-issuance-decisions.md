@@ -1,9 +1,9 @@
 # PDR-19: Owner-side license issuance — permission split, offline signing custody, installation identity and artifact storage
 
-- **Date:** 2026-10-19 (§1…§5) · **amended 2026-10-20** (§6, OD-LIC-11…OD-LIC-14; §10, OD-LIC-15…OD-LIC-19)
+- **Date:** 2026-10-19 (§1…§5) · **amended 2026-10-20** (§6, OD-LIC-11…OD-LIC-14; §10, OD-LIC-15…OD-LIC-19; §11, OD-LIC-20)
 - **Authority:** Product Owner Ali Esmaeili, answering the four blocking questions B-1…B-4 of [the issuance assessment](../../tasks/licensing-owner-side-issuance-blocked-assessment.md) §4.
 - **Status:** **Decided — product policy approved for D-1…D-4 below; the two forks of §5 (F-1 limit model, F-2 configurable permission scope/default/revocation) were answered by the Product Owner on 2026-10-19; the four security-review decisions of §6 (**OD-LIC-11…OD-LIC-14**) were answered on 2026-10-20; and the five lifecycle decisions of §10 (**OD-LIC-15…OD-LIC-19**) were answered on 2026-10-20.** §5, §6 and §10 record the answers and their consequences. No implementation, schema, migration, endpoint, artifact or UI is claimed by this record; implementation evidence is tracked separately in the Owner-side issuance traceability matrix.**
-- **Decision ids:** **OD-LIC-07** (permission split and per-operator grants), **OD-LIC-08** (air-gapped signing custody and issuance flow), **OD-LIC-09** (installation identity registration), **OD-LIC-10** (signed-artifact storage); **added 2026-10-20 (first round):** **OD-LIC-11** (request authenticity before signing — OQ-92), **OD-LIC-12** (default access of a new operator — OQ-93), **OD-LIC-13** (limit-profile reactivation — OQ-94A), **OD-LIC-14** (in-flight requests when a profile changes — OQ-94B); **added 2026-10-20 (second round):** **OD-LIC-15** (signing-key rotation), **OD-LIC-16** (renewal and replacement authorization), **OD-LIC-17** (signed revocation artifact), **OD-LIC-18** (duplicate signed-artifact import), **OD-LIC-19** (signed-artifact retention and recovery).
+- **Decision ids:** **OD-LIC-07** (permission split and per-operator grants), **OD-LIC-08** (air-gapped signing custody and issuance flow), **OD-LIC-09** (installation identity registration), **OD-LIC-10** (signed-artifact storage); **added 2026-10-20 (first round):** **OD-LIC-11** (request authenticity before signing — OQ-92), **OD-LIC-12** (default access of a new operator — OQ-93), **OD-LIC-13** (limit-profile reactivation — OQ-94A), **OD-LIC-14** (in-flight requests when a profile changes — OQ-94B); **added 2026-10-20 (second round):** **OD-LIC-15** (signing-key rotation), **OD-LIC-16** (renewal and replacement authorization), **OD-LIC-17** (signed revocation artifact), **OD-LIC-18** (duplicate signed-artifact import), **OD-LIC-19** (signed-artifact retention and recovery); **added 2026-10-20 (third round):** **OD-LIC-20** (fixed maximum age for prepared issuance requests).
 - **Scope:** Owner-side issuance only. Changes no signed byte format, no canonicalization rule, no vector, no customer runtime behaviour and no `VLIC1`/`VLIC2` verification semantics.
 - **Companions:** [PDR-14](./PDR-14-licensing-customer-code.md) · [PDR-16](./PDR-16-licensing-protocol-canonical-byte-contract-and-vectors.md) · [PDR-17](./PDR-17-owner-web-application-phase-1.md) · [PDR-18](./PDR-18-licensing-commercial-dates-and-lifecycle-decisions.md) · [ADR-0046](../../adr/0046-signed-license-documents-and-version-lifecycle.md) · [ADR-0048](../../adr/0048-owner-side-licensing-separation-boundary.md) · [open questions](../../open-questions.md)
 
@@ -961,3 +961,36 @@ evidence**. OQ-85 and OQ-90 are untouched. What changes is that **no product
 decision is missing** for the Owner-side lifecycle phases A–E and the revocation
 protocol of phase F; the remaining blockers are implementation, evidence and the
 explicitly listed open questions in §7 and in the design's §15.
+
+
+## 11. OD-LIC-20 — fixed maximum age for prepared issuance requests
+
+**Product Owner's decision, confirmed 2026-10-20.** **Option B — a fixed maximum age of 14 days.**
+
+### What is decided
+
+1. A prepared issuance request is completable for a maximum of **14 × 24 hours** from its persisted creation timestamp. Measure elapsed time using UTC instants; do not calculate this as a local-calendar-day boundary.
+2. Once the request has reached the 14-day limit, it must not be completed or imported. The rule is enforced server-side and cannot be bypassed through a direct API call or a UI-only check.
+3. On the first attempt to complete/import an expired request, the operation must fail closed and atomically transition the request from `REQUEST_PREPARED` to `ABANDONED`, recording an auditable system-origin reason that identifies expiry. If the state transition or audit cannot be committed consistently, the operation must not report a successful abandonment or successful import.
+4. An expired request is terminal. To proceed, an authorized actor must prepare a new request with a new operation identity and new license identity. The old request, its immutable creation-time snapshot, and its audit history are retained; it is not revived, rewritten, or re-signed as if it were the new request.
+5. This is a fixed product rule. It is not configurable per customer or deployment.
+
+### Scope boundaries — unchanged decisions
+
+OD-LIC-20 governs **prepared issuance-request age only**. It does not change:
+- OD-LIC-14's immutable creation-time snapshot for requests that remain eligible for completion;
+- the separate OQ-82 / server-replacement confirmation window (1 hour–7 days, default 24 hours);
+- customer-side signed-license validity, the 14 × 24-hour Grace period after natural expiry, or Read-Only enforcement;
+- cancellation or revocation semantics;
+- authorization-before-replay, operation identity, duplicate-import historical-result semantics, or any approved audit contract;
+- VLIC1, VLIC2, VREV1 signed bytes, canonicalization, trust rules, committed vectors, public API contracts, or customer-runtime behavior unrelated to refusing an expired prepared request.
+
+### Required implementation and conformance evidence
+
+- Define the expiry boundary precisely: eligible only while `now < createdAt + 14 × 24 hours`; at `now >= createdAt + 14 × 24 hours`, the request is expired.
+- Use an injected/frozen clock in tests. Cover just-before, exact-boundary, and just-after cases, including UTC/daylight-saving-independent behavior.
+- Cover concurrent completion/import attempts, replay, authorization-before-replay, audit durability, and idempotent handling after the request is already `ABANDONED`.
+- Verify that an expired request cannot create a license issuance, archive row, or success audit, and that a fresh request receives new operation/license identities.
+- Preserve OD-LIC-14 snapshot immutability and all other existing state and authorization constraints.
+
+**Status:** product decision approved; implementation and executed conformance tests are tracked in `docs/tasks/owner-side-issuance-traceability.md`. This section records policy and does not claim the code or acceptance flow is complete.
