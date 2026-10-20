@@ -1515,9 +1515,15 @@ export class LicensesRepository {
    * runs for the effective version's license. One primary-key projection, no
    * version join, no second source of truth.
    */
+  /**
+   * Read-side revocation state of one license row. `installationId` is returned
+   * so a caller can keep the cross-installation refusal in the binding rules: a
+   * license id owned by another installation is a `license-binding-conflict`,
+   * never a revocation of this installation.
+   */
   async findLicenseRevocationState(
     licenseId: string,
-  ): Promise<{ revokedAt: Date | null } | null> {
+  ): Promise<{ installationId: string; revokedAt: Date | null } | null> {
     const client = await this.client();
     const row = await client.license.findUnique({
       where: { id: licenseId },
@@ -1527,7 +1533,9 @@ export class LicensesRepository {
         revokedAt: true,
       },
     });
-    return row === null ? null : { revokedAt: row.revokedAt };
+    return row === null
+      ? null
+      : { installationId: row.installationId, revokedAt: row.revokedAt };
   }
 
   async findRevocation(

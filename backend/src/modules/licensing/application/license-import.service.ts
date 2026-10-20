@@ -594,6 +594,25 @@ export class LicenseImportService {
     //    informative rejection: it is the authoritative pass in
     //    `LicensesRepository.importVersion` that decides, so a concurrent
     //    import can never invalidate it silently.
+    if (
+      await this.isRevokedForThisInstallation(payload.licenseId, installationId)
+    ) {
+      return this.rejectVerified(
+        'license-revoked',
+        {
+          now,
+          installationId,
+          payload,
+          keyId,
+          source: transport.transport,
+          documentHash,
+        },
+        documentConflictMessage(
+          { reason: 'license-revoked', overlapping: 0 },
+          conflictOperation(options),
+        ),
+      );
+    }
     const versions = await this.licenses.listVersions(installationId);
     const customerPrecheck =
       typeof this.licenses.findCustomersForImport === 'function'
@@ -858,6 +877,18 @@ export class LicenseImportService {
         reason,
         { now, installationId, payload, source: 'legacy-code', documentHash },
         legacyInactiveMessage(evaluation.inactiveReason),
+      );
+    }
+
+    // OD-LIC-17: a revoked license refuses its own legacy code too, before the
+    // idempotent no-op could report it as an unchanged import.
+    if (
+      await this.isRevokedForThisInstallation(payload.licenseId, installationId)
+    ) {
+      return this.rejectLegacy(
+        'license-revoked',
+        { now, installationId, payload, source: 'legacy-code', documentHash },
+        legacyConflictMessage({ reason: 'license-revoked', overlapping: 0 }),
       );
     }
 
@@ -1201,6 +1232,34 @@ export class LicenseImportService {
       }
       throw error;
     }
+  }
+
+  /**
+   * OD-LIC-17 (protocol §5): a revoked license is final, so this installation
+   * refuses every license artifact that names it — including an exact replay of
+   * the artifact that created it. The revocation state is therefore read BEFORE
+   * the duplicate-operation precheck and BEFORE the legacy idempotent no-op:
+   * both would otherwise answer "already imported" for a license that no longer
+   * grants anything, which is the wrong fact to report. The authoritative
+   * decision is still inside `LicensesRepository.importVersion`, under the
+   * installation lock.
+   *
+   * Only this installation's own license counts; another installation's
+   * license id stays a `license-binding-conflict`, exactly as before.
+   */
+  private async isRevokedForThisInstallation(
+    licenseId: string,
+    installationId: string,
+  ): Promise<boolean> {
+    if (typeof this.licenses.findLicenseRevocationState !== 'function') {
+      return false;
+    }
+    const state = await this.licenses.findLicenseRevocationState(licenseId);
+    return (
+      state !== null &&
+      state.revokedAt !== null &&
+      state.installationId === installationId
+    );
   }
 
   /**

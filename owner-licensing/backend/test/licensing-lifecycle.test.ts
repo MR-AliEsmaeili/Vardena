@@ -19,6 +19,7 @@ import {
 import {
   deriveKeyId,
   licenseFileEnvelope,
+  parseLicenseVersionPayload,
   signLicenseVersion,
   type LicenseVersionPayload,
 } from "../src/protocol.js";
@@ -197,7 +198,11 @@ function tamperedArtifact(
   const body = Buffer.from(document.split(".")[1]!, "base64url").toString(
     "utf8",
   );
-  const payload = JSON.parse(body) as LicenseVersionPayload;
+  // Parse with the production wire reader: the canonical bytes carry dates as
+  // strings, entitlements as `modules`/`features`, and omit `renewsOperationId`
+  // when it is null. Re-signing a hand-mapped object would test a different
+  // payload than the one the customer actually receives.
+  const payload = parseLicenseVersionPayload(JSON.parse(body));
   change(payload);
   return licenseFileEnvelope(
     signLicenseVersion(payload, privateKey),
@@ -409,6 +414,27 @@ describe("request preparation and OWNER_ADMIN-only lineage (OD-LIC-16)", () => {
     expect(prepared.body.issuance.status).toBe("REQUEST_PREPARED");
     expect(prepared.body.issuance.installationId).toBe(installationId);
     expect(prepared.body.issuance.validUntil).not.toBeNull();
+    // Feature entitlements are optional: the Owner form sends [] by default.
+    expect(prepared.body.issuance.features).toEqual([]);
+  });
+
+  it("refuses duplicated feature codes without writing a request", async () => {
+    const before = await count(
+      "SELECT count(*) AS n FROM owner.license_issuances WHERE customer_id=$1",
+      [customerId],
+    );
+    // The Owner form sends `features: []` whenever the optional field is left
+    // empty (covered by the prepared request above); duplicates are still a
+    // validation error caught before any row is written.
+    const duplicated = await prepare({ features: ["ledger", "ledger"] });
+    expect(duplicated.status).toBe(400);
+    expect(duplicated.body.code).toBe("ValidationFailed");
+    expect(
+      await count(
+        "SELECT count(*) AS n FROM owner.license_issuances WHERE customer_id=$1",
+        [customerId],
+      ),
+    ).toBe(before);
   });
 
   it("refuses renewal and supersession for an operator before writing anything", async () => {

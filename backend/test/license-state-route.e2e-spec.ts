@@ -135,6 +135,9 @@ describe('License state route registration (e2e)', () => {
         'licenseId',
         'validFrom',
         'validUntil',
+        // OD-LIC-17: the revocation instant is part of the documented state,
+        // never inferred by the client from a status or a date.
+        'revokedAt',
         // OD-LIC-06 / OQ-88: the end of the unbroken coverage chain
         // (PO decision Q-2), projected from the retained versions.
         'coverageEnd',

@@ -62,7 +62,9 @@ the design is not mistaken for evidence.
   `licenses.revoked_at`/`revocation_id` and `license_versions.signed_issued_at`
   (migration `20261024000000_licensing_revocations`), `revoked` ranked above
   every status/date reason and above Grace, `license-revoked` refusal on later
-  imports, and a committed `VREV1` vector set. This is code in the same branch,
+  imports (the revocation read runs **before** the duplicate/replay precheck, so
+  an exact replay of a revoked license is `license-revoked`, not a duplicate),
+  and a committed `VREV1` vector set. This is code in the same branch,
   not a change to the approved design; the customer contract (`VLIC1`/`VLIC2`,
   canonicalization, signatures, vectors) is untouched.
 - **Not delivered:** a dedicated renewal/replacement UI, artifact backup/restore
@@ -71,8 +73,8 @@ the design is not mistaken for evidence.
   Product Owner decision recorded in
   [`owner-side-issuance-traceability.md`](owner-side-issuance-traceability.md)
   §2.2), and the 14-step acceptance run. The customer live-PostgreSQL revocation
-  case runs in CI only, and no customer installation has been observed applying
-  a revocation.
+  case passed locally (PostgreSQL 18.4) and is re-run by CI; no customer
+  installation has been observed applying a revocation.
   `docs/tasks/owner-side-issuance-traceability.md` is the authoritative
   per-decision status.
 

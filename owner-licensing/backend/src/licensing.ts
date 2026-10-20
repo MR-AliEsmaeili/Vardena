@@ -2,6 +2,7 @@ import { ulid } from "ulid";
 import type { PoolClient } from "pg";
 import { audit } from "./db.js";
 import {
+  ApiError,
   assertActiveAuthorizedActor,
   fail,
   invalid,
@@ -105,6 +106,39 @@ function codeList(value: unknown, field: string): string[] {
   });
   if (new Set(codes).size !== codes.length) invalid(`${field} repeats a code.`);
   return codes;
+}
+
+/**
+ * A refusal that is also a security-relevant audit event. It is thrown where
+ * the transaction can no longer commit, so the route is responsible for writing
+ * the audit and committing it before returning the error response. Plain
+ * validation failures stay `ApiError`, because losing them with the rollback is
+ * correct: nothing happened and there is nothing to retain.
+ */
+export class DeniedWithAudit extends ApiError {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    readonly auditType: string,
+    readonly auditTargetType: string,
+    readonly auditTargetId: string | null,
+    readonly auditReason: string,
+  ) {
+    super(status, code, message);
+  }
+}
+
+/**
+ * Feature entitlements are optional: `[]` is the documented way to say "no
+ * feature code" (the Owner UI sends it whenever the field is left empty and the
+ * signed `VLIC2` payload accepts an empty list), so only `modules` keeps the
+ * non-empty rule.
+ */
+function optionalCodeList(value: unknown, field: string): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) invalid(`${field} must be an array of codes.`);
+  return value.length === 0 ? [] : codeList(value, field);
 }
 
 function instant(value: unknown, field: string): Date {
@@ -369,7 +403,14 @@ export async function createLimitProfile(
       perpetualAllowed: input.perpetualAllowed,
     },
   });
-  return listLimitProfiles(tx, actor, customerId);
+  // 201 Created must name the created resource: the caller needs the profile id
+  // to retire or reactivate this exact row. The customer listing stays
+  // `GET /customers/:id/limit-profiles`, which is the only reader.
+  const created = await tx.query<ProfileRow>(
+    "SELECT * FROM owner.customer_limit_profiles WHERE id=$1",
+    [id],
+  );
+  return profileResponse(created.rows[0]!);
 }
 
 async function lockProfile(tx: PoolClient, profileId: string) {
@@ -915,18 +956,19 @@ export async function prepareIssuance(
       input.supersedesOperationId !== null) ||
     (input.renewsOperationId !== undefined && input.renewsOperationId !== null);
   if (lineageRequested && actor.role !== "OWNER_ADMIN") {
-    await audit(tx, {
-      actor: actor.id,
-      type: "LICENSE_REQUEST_DENIED",
-      targetType: "Customer",
-      targetId: customerId,
-      outcome: "DENIED",
-      reason: "Renewal and supersession are OWNER_ADMIN-only",
-    });
-    fail(
+    // OD-LIC-12/16: a refused privilege escalation must leave a durable trace.
+    // The request transaction is about to fail, so the audit cannot be written
+    // here — it would be rolled back with the refusal. The route catches this
+    // typed denial, writes `LICENSE_REQUEST_DENIED` and commits before
+    // answering 403, exactly like `archiveAuthorized` does for the archive.
+    throw new DeniedWithAudit(
       403,
       "PermissionDenied",
       "Only an Owner Admin may prepare a renewal or a supersession.",
+      "LICENSE_REQUEST_DENIED",
+      "Customer",
+      customerId,
+      "Renewal and supersession are OWNER_ADMIN-only",
     );
   }
   const supersedes =
@@ -970,10 +1012,7 @@ export async function prepareIssuance(
     if (!KNOWN_MODULE_CODES.includes(code))
       invalid("modules contains an unknown module.");
   }
-  const features =
-    input.features === undefined || input.features === null
-      ? []
-      : codeList(input.features, "features");
+  const features = optionalCodeList(input.features, "features");
 
   const signingKeyId = input.signingKeyId;
   if (typeof signingKeyId !== "string" || !KEY_ID.test(signingKeyId))

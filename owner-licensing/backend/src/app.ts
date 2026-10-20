@@ -63,6 +63,7 @@ import {
 } from "./signing-keys.js";
 import { LicenseArtifactStore } from "./artifact-store.js";
 import {
+  DeniedWithAudit,
   abandonIssuance,
   createLimitProfile,
   downloadIssuanceArtifact,
@@ -958,13 +959,35 @@ export async function createApp(db: Database, cfg: Config) {
     "licenses.issue.time_limited",
     true,
     async (tx, a, req, res) => {
-      res.locals.status = 201;
-      res.locals.body = await prepareIssuance(
-        tx,
-        a.user,
-        requireTrustList(),
-        req.body,
-      );
+      try {
+        res.locals.body = await prepareIssuance(
+          tx,
+          a.user,
+          requireTrustList(),
+          req.body,
+        );
+        res.locals.status = 201;
+      } catch (error) {
+        // A refused privilege escalation is a security incident (OD-LIC-12):
+        // the denial must survive the rolled-back mutation, so it is written
+        // here and the request ends in COMMIT, exactly like the archive
+        // authorization path. No row was written by the refusal itself.
+        if (!(error instanceof DeniedWithAudit)) throw error;
+        await audit(tx, {
+          actor: a.user.id,
+          type: error.auditType,
+          targetType: error.auditTargetType,
+          targetId: error.auditTargetId,
+          outcome: "DENIED",
+          reason: error.auditReason,
+        });
+        res.locals.status = error.status;
+        res.locals.body = {
+          code: error.code,
+          message: error.message,
+          correlationId: randomUUID(),
+        };
+      }
     },
   );
   route(
