@@ -50,8 +50,9 @@ the design is not mistaken for evidence.
   prepare, digest display, request download, artifact import and revocation
   preparation.
 - **Tests:** `owner-licensing/backend/test/{protocol,signer,licensing,unit}.test.ts`
-  and the Owner UI suites pass locally. `test/api.test.ts` is CI-only and was
-  **not** executed here; migration `007` has **not** been executed anywhere.
+  and the Owner UI suites pass locally. CI run **39398290375** (head `6db52a2`)
+  passed `backend`, `frontend`, `docs` and `ci-gate`, including `test/api.test.ts`
+  on a fresh PostgreSQL database and the application of migration `007`.
 - **Not delivered:** customer-runtime `VREV1` parsing/verification/persistence
   (the customer can therefore not consume a revocation yet), a dedicated
   renewal/replacement UI, artifact backup/restore drill, and the 14-step

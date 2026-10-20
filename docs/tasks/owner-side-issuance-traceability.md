@@ -1,7 +1,9 @@
 # Owner-side issuance — decision → implementation → evidence traceability
 
 **Status:** implementation slice on branch `arena/34983fce-vardena`, based on
-`11e1d1a`. This file is the honest cross-reference the issuance mission asks
+`11e1d1a`. CI run **39398290375** on head `6db52a2` passed `classify`, `docs`,
+`backend` (including the PostgreSQL integration suite and fresh migration `007`),
+`frontend` and `ci-gate`. This file is the honest cross-reference the issuance mission asks
 for: for every recordable decision and every open question that touches the
 slice, it states what exists, what proves it, and what does not exist yet. A
 row is only **DONE** when implementation and a test are both present; anything
@@ -65,10 +67,10 @@ not contain.
    list, persist the revocation, block any future license import for that
    `licenseId`, and surface it. This is the largest missing piece and the
    reason OD-LIC-17 is not reported complete.
-2. **Integration evidence** — `api.test.ts` on a disposable PostgreSQL database
-   (grants, migrations `007`, archive replay, duplicate import, revocation
-   ledger).
-3. **Migration verification** — `007` has not been executed anywhere yet.
+2. ~~Integration evidence~~ — `api.test.ts` passed in CI run 39398290375 on a
+   fresh PostgreSQL database, which also applied migration `007`.
+3. ~~Migration verification~~ — applied by that run. A populated-database
+   upgrade rehearsal beyond the existing 005/006 suites is still missing.
 4. **Recovery drill** — archive restore and reconciliation under a real
    filesystem failure.
 5. **Manual Persian RTL smoke** — the page renders, validates and reports

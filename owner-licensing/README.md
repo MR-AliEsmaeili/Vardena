@@ -35,9 +35,10 @@ did not return.
 here cannot yet be consumed by a customer installation. Renewal and replacement
 authority (`OD-LIC-16`) is enforced in the prepare service, but no dedicated
 lineage UI exists. There is no production key anywhere in the repository, no CI
-key generation, no backup/restore drill for the artifact store, and no executed
-integration run: `test/api.test.ts` requires a disposable PostgreSQL database
-and migration `007` has not been executed in this environment. The Owner UI has
+key generation and no backup/restore drill for the artifact store. The
+PostgreSQL integration suite and migration `007` ran successfully in CI run
+`39398290375`, but they require a disposable database and cannot be run in an
+environment without PostgreSQL. The Owner UI has
 not been driven end-to-end against a real signer. Do not read this README as an
 acceptance claim.
 
