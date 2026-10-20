@@ -14,6 +14,51 @@ while only `Owner Admin` (`replacements.authorize`) can authorize a server
 replacement or emergency old-server loss. There is **no signer, signing key,
 signed receipt, or claim of cryptographic confirmation**.
 
+Real license issuance (creating, signing and allocating an actual `VLIC2`
+artifact to a customer) is **not available and not implemented**. The four
+Product Owner decisions that blocked it were answered on 2026-10-19 in
+[PDR-19](../docs/decisions/product/PDR-19-owner-side-issuance-decisions.md):
+**OD-LIC-07** perpetual grants are `OWNER_ADMIN`-only, time-limited grants may be
+issued by an authorized `LICENSE_OPERATOR`, and `OWNER_ADMIN` configures each
+operator's permissions per user (this supersedes the static matrix below for
+`LICENSE_OPERATOR`); **OD-LIC-08** custody is an **air-gapped offline signer**, so
+the Owner web app prepares a signing request, the operator carries it to the
+offline environment, the signer validates and signs, and the Owner validates the
+returned artifact before recording it and offering download — issuance is
+therefore **not synchronous**, and the private key never reaches this
+application, its host, its configuration or its database; **OD-LIC-09**
+controlled operator registration of `installationId` read from the customer's
+Vardena page, with source and confirmation recorded; **OD-LIC-10** a dedicated
+durable signed-artifact store outside PostgreSQL. The two product forks were
+answered the same day (**F-1** hybrid optional per-customer limit profile,
+**F-2** every operator-eligible permission configurable per user with a
+fail-closed default), and the technical design that gate asked for was then
+delivered and reviewed. **On 2026-10-20 the Product Owner answered the four
+questions that review raised** ([PDR-19 §6](../docs/decisions/product/PDR-19-owner-side-issuance-decisions.md)):
+**OD-LIC-11** the offline signer must confirm the request's full 64-hex
+`request_payload_sha256` over a path independent of the request file **before
+reading or loading the private key** (option O-A; no new key, no new signed
+format, no canonicalization or vector change); **OD-LIC-12** a newly created
+`LICENSE_OPERATOR` has **zero effective access** until `OWNER_ADMIN` grants each
+permission explicitly (**R-1**); **OD-LIC-13** a retired limit profile may be
+**reactivated** on the same row, never two `ACTIVE` profiles per customer;
+**OD-LIC-14** a request already in flight completes against the limit-profile
+**snapshot taken at its creation**, while new requests use current state.
+The gate is now **design approval plus the pre-existing open items**; see
+[the design's dependency table](../docs/tasks/owner-side-issuance-technical-design.md)
+§15.1. Evidence and options:
+[the issuance assessment](../docs/tasks/licensing-owner-side-issuance-blocked-assessment.md).
+
+**None of OD-LIC-07…OD-LIC-14 is implemented.** In particular OD-LIC-12 will
+change what a `License Operator` can do — today the four permissions listed below
+are granted by role, and under R-1 they become *eligibility* that an
+`OWNER_ADMIN` must grant per user. That change happens with its code, not before;
+this README describes what is deployed.
+`owner.signing_keys` is administrative metadata only — it holds **no public or
+private key material**, and its `id` is an opaque operator label that is not
+cryptographically bound to any key in a customer trust list. Do not read it as
+signing capability, and do not read PDR-19 as a claim that any of it is built.
+
 ## Boundaries and dependencies
 
 - `backend/`: Node 22.12+, TypeScript, Express, PostgreSQL `pg`, Argon2id, ULID.
@@ -76,7 +121,12 @@ No production connection string or usable bootstrap password is supplied.
    and the UI workspace are blocked. `Owner Admin` holds user/role administration,
    customer creation/editing, and server-replacement/emergency authorization;
    `License Operator` holds routine license observations and read access to
-   customers, operational records, and audit history.
+   customers, operational records, and audit history. **This describes the
+   deployed role baseline.** OD-LIC-12 (**R-1**, decided 2026-10-20 and not yet
+   implemented) will make those `License Operator` permissions *eligible but not
+   effective* until granted per user, so a newly created operator will start with
+   no access at all; `Owner Admin` is unaffected. Update this step in the same
+   change that implements it.
 
 ## Production/deployment
 
@@ -147,6 +197,19 @@ Customer ID and code cannot be updated, including direct SQL updates (trigger).
 Display-name/status/reference changes retain before/after fields and actor in the
 same transaction; a failed audit write rolls back the mutation. No arbitrary
 metadata JSON, customer secrets, contact/CRM/billing data or raw signed artifacts.
+
+> **Superseded in part by OD-LIC-10 (2026-10-19), not yet implemented:**
+> [PDR-19 §4](../docs/decisions/product/PDR-19-owner-side-issuance-decisions.md)
+> approves a **dedicated durable signed-artifact store outside PostgreSQL** for
+> issued license files, so the "no raw signed artifacts" clause above no longer
+> holds for signed license artifacts once that store exists. The rest of the
+> clause is unchanged: no arbitrary metadata JSON, no customer secrets, no
+> contact/CRM/billing data. Today no such store and no signed artifact exist in
+> this application, so the clause still describes the implemented state. A
+> readable archive of signed licenses is a disclosure surface even though it
+> cannot be forged; access must be permission-gated and every retrieval
+> attributable and audited, and retention/backup/restore of that store is not yet
+> decided.
 `002-manual-operations.sql` extends the empty reserved tables. It refuses to run
 if rows already exist. License observations are unique per customer and
 installation. Replacement observations are unique per customer and old
