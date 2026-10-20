@@ -115,6 +115,14 @@ LANGUAGE sql IMMUTABLE AS $$
     );
 $$;
 
+CREATE FUNCTION owner.values_are_unique(p_values text[]) RETURNS boolean
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT p_values IS NOT NULL
+    AND cardinality(p_values) = (
+      SELECT count(DISTINCT entry) FROM unnest(p_values) AS entry
+    );
+$$;
+
 CREATE FUNCTION owner.modules_are_known(p_modules text[]) RETURNS boolean
 LANGUAGE sql IMMUTABLE AS $$
   SELECT p_modules IS NOT NULL
@@ -350,10 +358,10 @@ CREATE TABLE owner.license_issuances (
   ),
   CONSTRAINT issuance_modules_known CHECK (owner.modules_are_known(module_entitlements)),
   CONSTRAINT issuance_modules_unique CHECK (owner.modules_are_unique(module_entitlements)),
+  -- CHECK expressions may not contain subqueries, so the duplicate test lives
+  -- in an IMMUTABLE function.
   CONSTRAINT issuance_features_unique CHECK (
-    cardinality(feature_entitlements) = (
-      SELECT count(DISTINCT entry) FROM unnest(feature_entitlements) AS entry
-    )
+    owner.values_are_unique(feature_entitlements)
   ),
   CONSTRAINT issuance_lineage_mutually_exclusive CHECK (
     supersedes_operation_id IS NULL OR renews_operation_id IS NULL
