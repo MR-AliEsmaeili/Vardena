@@ -360,11 +360,12 @@ describe('audit explorer filters', () => {
 
 describe('audit explorer pagination', () => {
   it('disables next when the backend reports no further rows, even on a full page', async () => {
-    vi.mocked(api.auditEvents).mockResolvedValue(
-      page(Array(50).fill(event()), false),
+    const events = Array.from({ length: 50 }, (_, index) =>
+      event({ id: `${ulid.slice(0, -2)}${String(index).padStart(2, '0')}` }),
     );
+    vi.mocked(api.auditEvents).mockResolvedValue(page(events, false));
     mount('/app/audit');
-    await screen.findAllByText('ویرایش مشتری');
+    expect(await screen.findAllByText('ویرایش مشتری')).toHaveLength(50);
     const nav = screen.getByRole('navigation', { name: o.page });
     expect(within(nav).getByRole('button', { name: o.next })).toBeDisabled();
   });

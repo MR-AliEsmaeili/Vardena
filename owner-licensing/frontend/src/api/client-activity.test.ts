@@ -16,6 +16,7 @@ import {
   type RequestActivityOptions,
 } from './client';
 import { ApiError } from './errors';
+import { t } from '@/lib/i18n';
 import {
   getRequestActivitySnapshot,
   resetRequestActivityForTests,
@@ -449,6 +450,31 @@ describe('request activity (single HTTP layer)', () => {
 });
 
 describe('Owner-specific transport regressions', () => {
+  it.each([
+    null,
+    '<html>upstream proxy failure</html>',
+    { code: 'UnknownUpstreamCode', message: 'upstream implementation detail' },
+  ])(
+    'finalizes a malformed error envelope without exposing it: %j',
+    async (body) => {
+      const pending = pendingAdapter();
+      const promise = apiPost('/license-issuances', {});
+      await waitForActivity({ total: 1, global: 1 });
+      failWith(pending, 503, body);
+      await expect(promise).rejects.toMatchObject({
+        code: 'InternalError',
+        status: 503,
+        message: t.errors.server,
+      });
+      expect(getRequestActivitySnapshot()).toMatchObject({
+        total: 0,
+        global: 0,
+        background: 0,
+      });
+      expect(pending).toHaveLength(0);
+    },
+  );
+
   it.each(['/auth/login', '/auth/logout', '/auth/me', '/auth/change-password'])(
     'finalizes an expected 401 from %s without ending the session',
     async (url) => {

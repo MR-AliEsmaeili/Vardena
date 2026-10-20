@@ -1,246 +1,223 @@
-# PR #189 corrective report — Owner UI
+# PR #190 — final corrective audit of Owner UI
 
-**Status: BLOCKED — PR-branch handoff and authoritative CI verification.**
-Date: 2026-10-20. This report supersedes the earlier PR report; no previous local
-or CI success claim is carried forward as current evidence.
+**Status: BLOCKED — Product Owner visual acceptance has not been recorded.**
+Audit date: 2026-10-21 (Asia/Tehran).
 
-## Revision and delivery identity
+This replaces the obsolete PR #189 branch-handoff report. [PR #190](https://github.com/MR-AliEsmaeili/Vardena/pull/190)
+is the only delivery PR, from `arena/52e389a5-vardena` to `main`. PR #189 is closed
+and was not merged. No new PR, merge, auto-merge, branch switch, protection change
+or push to `main` is part of this audit.
 
-- Repository: `MR-AliEsmaeili/Vardena`.
-- Existing [PR #189](https://github.com/MR-AliEsmaeili/Vardena/pull/189): OPEN,
-  head branch `feat/owner-ui-loading-thinking-orbs`.
-- Re-fetched PR HEAD: `2ba7b89b2778028e34119028b7147c284e355a69`.
-- Checkout/base and fetched `main`: `1ad7c602f3b820b7439e09b9ea472baf51d47cd9`.
-- Implementation commit: `09c9104424e2a4b0d29316cf2b81a7104f31abc2`.
-- Actual delivery branch: **`arena/52e389a5-vardena`**. The session permits
-  commits/pushes only to that fixed branch. It cannot update the different PR
-  head branch, and a parallel PR was explicitly forbidden. No branch switch,
-  original-head push, new PR, merge or auto-merge was performed.
-- The final documentation commit is the tip containing this report; its exact
-  SHA is reported in the PR handoff comment/final delivery (not a self-referential
-  SHA embedded in this file).
+## Source of truth and evidence identity
 
-All eight PR commits were inspected: `0539862`, `a21be7b`, `96c75c1`, `93a7dd6`,
-`b504959`, `5d2c081`, `2fb61e1`, `2ba7b89`. The frontend changes were adapted onto
-current main, not by restoring the entire old PR tree: main's backend transaction
-fix and tests remain untouched. GitHub comments/reviews/inline comments were
-queried; the available bot comments report a failed/usage-limited review, not a
-completed design approval. No human product decision was inferred from them.
+- Fetched base: `1ad7c602f3b820b7439e09b9ea472baf51d47cd9`.
+- Starting PR head: `d6619779847f97194f03f842b4793b042a35ff61`.
+- The containing audit commit includes the final tested source, refreshed evidence
+  and this report. Its exact SHA and the authoritative final CI run/job links are
+  recorded in the **PR #190 body and final audit handoff comment after push**.
+  This avoids a self-referential commit SHA or claiming that an earlier run
+  validates a later commit. Any later push invalidates that CI acceptance.
+- Baseline CI [39502299323](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39502299323)
+  passed on `d661977`; it is historical evidence, **not** final-audit CI evidence.
+- Requirements read: `AGENTS.md`, frontend standards, ADR-0048 including its exact
+  seven-source addendum, ADR-0051 (still Proposed), the loading contracts, testing
+  execution policy and CI manual-merge protocol.
 
-## Proven CI cause, not a guessed directory fix
+## Actual GitHub requirements and review state
 
-Run: [39484617508](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39484617508),
-frontend [job 118842472787](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39484617508/job/118842472787).
+Read-only API queries returned `main.protected=false` and an empty applicable
+branch-rules list. Reading legacy protection and enumerating GraphQL protection
+rules returned `403` / `FORBIDDEN`; full administration configuration was **not**
+accessible. No settings were changed. This is consistent with the documented
+advisory-CI/manual-merge protocol, not proof of server-enforced required checks.
 
-The GitHub job API shows **Owner UI verification failed** (step 13), and
-**Independent Owner UI image with canonical date sources was skipped** (step 14).
-The latter did not fail in this run. The full `gh run view --log-failed` download
-failed with EOF at the restricted `results-receiver.actions.githubusercontent.com`
-host. Job/step metadata, check annotations, source and a bounded reproduction
-are the available evidence; this report does not claim the inaccessible log was read.
+Reviews, inline review comments and GraphQL review threads were empty at audit.
+The Codex summary reports failure, followed by a usage-limit explanation: this
+is **not a completed independent review**, nor a concrete defect to invent a fix
+for. There is no Product Owner visual approval. A green CI run must not be
+substituted for either human review or approval.
 
-The committed Owner lock at `2ba7b89` contains only **`PLACEHOLDER`**, not JSON.
-Reproducing with the exact PR manifest/lock in a fresh standalone directory gives
-npm `EUSAGE`: "The npm ci command can only install with an existing
-package-lock.json or npm-shrinkwrap.json with lockfileVersion >= 1". That generic
-message does not prove a wrong working directory.
+## Findings and narrowly scoped corrections
 
-| Step                                              | Actual working directory / input                                                    |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Customer install/lint/typecheck/format/test/build | Explicit `frontend`                                                                 |
-| Date guard / artifact isolation scan              | Repository root                                                                     |
-| Owner UI verification                             | Explicit `owner-licensing/frontend`; its own manifest/lock                          |
-| Independent Docker build                          | Repository root context, `-f owner-licensing/frontend/Dockerfile`                   |
-| Docker npm ci                                     | `WORKDIR /repo/owner-licensing/frontend`; COPY of Owner manifest/lock               |
-| Date projection                                   | Seven allowlisted files resolved relative to the staging script's `import.meta.url` |
+1. **Production dependency audit:** `npm audit --omit=dev` on the starting lock
+   reported one High vulnerable package, `follow-redirects@1.16.0`, via Axios.
+   Advisories: [GHSA-q3jh-wrc6-jgq8](https://github.com/advisories/GHSA-q3jh-wrc6-jgq8)
+   and [GHSA-8r9p-f939-6h3c](https://github.com/advisories/GHSA-8r9p-f939-6h3c).
+   Only that transitive lock entry was patched to **1.16.1**. The manifest and
+   every other existing resolution remain unchanged. Fresh independent and
+   checkout audits report **zero production vulnerabilities**. These advisories
+   concern Node redirect handling; this is not a claim that browser credentials
+   were observed leaking. No cookie/header/auth policy was changed.
+2. **Audit test fixture:** the existing full-page pagination fixture repeated one
+   event/React key 50 times. It now supplies 50 distinct valid identifiers and
+   asserts that all 50 rows render, retaining the disabled-next assertion.
+   Duplicate-key warnings disappeared; no console suppression was added.
+3. **Missing negative transport evidence:** three regression cases now verify
+   settlement of a global write receiving a null body, HTML proxy failure or
+   unknown error envelope. They assert zero remaining activity and the existing
+   safe Persian error, without exposing upstream implementation text. Production
+   response normalization/API contracts remain untouched.
+4. **Stale evidence/report:** refreshed independent and checkout logs, real browser
+   measurements, main-baseline screenshots and this report. The browser helper
+   now checks retry recovery, loading settlement, button re-enablement, duplicate
+   submission prevention, validation without a write, keyboard skip-link focus,
+   normal-motion cases and unexpected console errors as well as dimensions.
 
-**Fix:** retain main's valid Owner v3 lock and update it from the Owner manifest.
-The delta from main is only the root dependency entry and locked
-`thinking-orbs@0.3.2` package (integrity included); no existing resolution was
-upgraded. No customer lockfile is used. Added regression tests assert Owner
-identity, manifest/lock parity, pinned orb and Docker's install boundary.
-The workflow/Docker/context/date graph and all isolation/security gates were
-already correct and remain unchanged.
+No production UI/business code needed a speculative rewrite in this audit.
+The earlier rapid-burst visibility fix and its regression remain intact.
 
-## Presentation work across the existing routes
+## Independent Owner UI image: a step, not a separate job
 
-| Existing route(s)                                                | Improvements                                                                                                                                                                                      |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/login`, `/change-password`                                     | Real h1, self-hosted Persian typography, unified form/focus/validation styles; decorative submit/logout orbs from existing pending state                                                          |
-| `/app`, `/app/lifecycle`                                         | Unified shell, non-decorative content hierarchy, clear existing unavailable/manual-operation language; no new lifecycle action                                                                    |
-| `/app/customers`                                                 | Bounded search toolbar, compact readable rows, wrapping identity/reference and semantic active/inactive badge, section refresh feedback                                                           |
-| `/app/customers/new`, `/:id`, `/:id/edit`                        | Consistent panel/controls, readable metadata and contract-date fieldset, wrapping actions, existing save/error/success states                                                                     |
-| `/app/users`                                                     | Same heading, native role control, create/access/reset form presentation and local pending indicators; existing roles/predicates unchanged                                                        |
-| `/app/signing-keys`                                              | Search/status toolbar, metadata panels, unified status/notes/register controls and submission/success feedback                                                                                    |
-| `/app/licenses`                                                  | Clear page/prepare/record hierarchy, responsive limits (single column on narrow phones), shared selects, semantic request/revocation/error styling, real prepare/download/revoke pending feedback |
-| `/app/audit`                                                     | Consistent filter controls, event/archive metadata surfaces, success/danger tones, local refetch feedback; existing date/URL/filter rules untouched                                               |
-| `/app/operations`, `/activation/new`, `/replacement/new`, `/:id` | Filter toolbar, coherent observation forms/detail/history, wrapping actions and status/safety colors; manual-observation caveats preserved                                                        |
-| Auth/route failures and not-found                                | Shared primitives/feedback remain in use; no guard or redirect policy changed                                                                                                                     |
+The official gate is **step 14 inside the `frontend` job**, not a standalone job:
 
-Shared semantic tokens replace scattered palette utilities in Owner only.
-Native `Select` and `Input` share height/border/focus/disabled/invalid treatment;
-`PageHeading` and panel/toolbar/status/success patterns keep presentation
-consistent. Vazirmatn v33.003 is self-hosted with its OFL license. The solid
-header and active RTL navigation replace translucent/glass styling. Desktop
-uses a sticky rail, phones a two-column nav, and main/action/reference content
-can shrink/wrap. Existing lists were not converted to fictitious tables or KPIs.
+- `.github/workflows/ci.yml:387–392`: frontend runs when the classifier requires it.
+- Lines 437–445: `Owner UI verification` explicitly runs in
+  `owner-licensing/frontend` using its own clean install and all five gates.
+- Lines 447–448: `Independent Owner UI image with canonical date sources` runs
+  `docker build -f owner-licensing/frontend/Dockerfile -t vardena-owner-ui-ci .`.
+  There is no separate skip/continue-on-error condition; default success
+  semantics prevent it running after a failed earlier step.
+- Baseline [frontend job](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39502299323/job/118902626470)
+  reports both steps 13 and 14 **SUCCESS**. The final run must independently show
+  the same on the final delivery SHA, as linked in the PR body. A job-list-only
+  view cannot establish whether an individual step ran.
 
-## Loading and technical review
+Docker retains `WORKDIR /repo/owner-licensing/frontend`, copies the Owner
+manifest/lock, installs independently and builds with only the exact approved
+canonical sources. Its root context is restricted by `Dockerfile.dockerignore`.
+The complete seven-file list is `calendar.ts`, `dayjs.ts`, `numerals.ts`,
+`business-date.ts`, `time-zone.ts`, `instant.ts`, `instant-range.ts`. Staging
+regenerates byte-identical inputs and rejects graph drift/missing sources.
+No customer manifest, lock, dependency tree, runtime/config/secrets or broader
+source graph is admitted. Docker, staging, allowlists, workflow, classifier and
+isolation/security/date gates were **not changed**.
 
-Full contract: [Owner loading system](../frontend/owner-ui-loading-system.md).
-It adapts [the main contract](../frontend/loading-system.md) and
-[ADR-0051](../adr/0051-global-request-loading-system.md) without approving a
-product/architecture decision.
+The whole PR (not just the last commit) requires `docs`, `backend`, `frontend`
+plus always-running `classify` and `ci-gate`. `generated-api-client` is correctly
+inapplicable: no customer API/backend/generated-client path changed. The
+base-revision classifier union and aggregate fail-closed behavior remain intact.
 
-- Single wrapper and locked MIT library; third-party notices included.
-- Only Axios starts activity. Query hooks never double-count. GET is background,
-  writes global, local pending/fetching states remain owned by existing hooks.
-- Unique tokens, idempotent end, stable immutable external-store snapshots.
-  The response path finalizes before existing 401 reaction; helper `finally`
-  covers missing-config errors. Cookie/header/session/expected-401 rules unchanged.
-- Global 500ms; ambient/local-refresh 300ms; local submit/initial skeleton
-  immediate. No minimum display time, retry, new timeout or blocking overlay.
-- **Proven bug fixed:** rapid idle→active bursts cancelled the old zero-delay
-  hide timer and inherited `visible=true`. A test failed before the fix and now
-  protects the guarded state reset plus cleaned show timer.
-- **Proven accessibility collision removed:** active as well as idle global
-  progress no longer has output's implicit status role. A mounted polite div
-  carries progress; completion toasts keep their existing status role. Tests
-  exercise a success toast while another write remains active. Separate visual
-  bands avoid mobile header/toast overlap.
-- Reduced motion/static frame, visible animation scheduling, unmount cleanup,
-  decorative canvas and theme are tested through the real library wrapper.
-- No network/storage/eval surface was found in the installed orb distribution;
-  only the wrapper imports it. Indicators make no API call.
-- Route exit cleans UI subscriptions/timers; existing AbortSignals cancel reads
-  through Axios. A genuine surviving request is not falsely reset merely
-  because its originating route unmounted. No new transport cancellation policy.
+## TEST EXECUTION MATRIX
 
-## TEST EXECUTION MATRIX — actual local results
+Fresh executions use Node **22.22.3**, npm **11.21.1** throughout. Commands below
+were run in both the checkout Owner directory and a new standalone tree with
+only tracked Owner files plus exactly seven canonical date sources. The latter
+contains **no** customer manifest, lockfile or `node_modules`.
 
-Node `v22.22.3`, npm `10.9.8`. CI upgrades to npm 11; that difference remains
-an authoritative-CI verification item, not a reason to change dependency versions.
-Run inside **`owner-licensing/frontend`**, not with root-level `npm exec`:
+| Gate / command | Execution and actual result |
+| --- | --- |
+| `npm ci --ignore-scripts --no-audit --no-fund` | FAST-LOCAL: PASS in both clean environments |
+| `npm run lint` | PASS, 0 warnings / 0 errors in both |
+| `npm run format:check` | PASS in both |
+| `npm run typecheck` | PASS in both, with canonical staging |
+| `npm test` | PASS in both: **246 Vitest tests / 18 files**, plus **3 Node staging tests** |
+| `npm run build` | PASS in both, TypeScript and production Vite output |
+| `npm audit --omit=dev` | PASS in both: **0 production vulnerabilities** after the narrow lock patch |
+| `python3 -m unittest discover -s scripts/tests -t scripts/tests` | FAST-LOCAL: **84 tests**, PASS |
+| `python3 scripts/check-date-contract.py` | PASS; limited structural coverage, not a full date-domain audit |
+| `python3 scripts/check-docs-links.py` | FAST-LOCAL documentation gate; final execution recorded in PR handoff |
+| Real Chromium fixture review | **47 cases**, PASS; widths 360 / 768 / 1440 |
+| Docker/images, customer artifact isolation, Owner PostgreSQL/security/RBAC, full backend/E2E and migrations | CI-only; final exact-SHA job/step results indexed in the PR body |
 
-| Command/check                                                                                                                                    | Actual result                                                                          |
-| ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `npm ci --no-audit --no-fund`                                                                                                                    | PASS, clean dependency installation                                                    |
-| `npm run lint`                                                                                                                                   | PASS, 0 warnings / 0 errors                                                            |
-| `npm run format:check`                                                                                                                           | PASS                                                                                   |
-| `npm run typecheck`                                                                                                                              | PASS, including canonical date staging                                                 |
-| `npm test`                                                                                                                                       | PASS: 18 Vitest files / **243 tests**, plus **3** staging/graph/declaration node tests |
-| `npm run build`                                                                                                                                  | PASS, TypeScript + production Vite output                                              |
-| Isolated Owner + exactly seven canonical sources; `npm ci --ignore-scripts --no-audit --no-fund`, then the same lint/format/typecheck/test/build | PASS, no customer manifest, lock or node_modules present                               |
-| Customer `npm ci` and `npm run build` (no source change)                                                                                         | PASS                                                                                   |
-| `python3 scripts/check-owner-isolation.py --artifact frontend/dist`                                                                              | PASS on actual newly built customer artifact and dependency graph                      |
-| `python3 scripts/check-date-contract.py`                                                                                                         | PASS (structural coverage only)                                                        |
-| `python3 scripts/check-docs-links.py`                                                                                                            | PASS                                                                                   |
-| Actual Docker/image build, issuer image and live-DB/backend/integration gates                                                                    | NOT RUN locally; Docker unavailable; CI required                                       |
+Evidence: [checkout output](owner-ui-review/checkout-verification.txt),
+[independent output](owner-ui-review/local-verification.txt),
+[dependency audit before](owner-ui-review/dependency-audit-before.json) /
+[after](owner-ui-review/dependency-audit-after.json),
+[browser measurements](owner-ui-review/browser-results.json).
 
-Evidence: [checkout command output](owner-ui-review/checkout-verification.txt),
-[isolated command output](owner-ui-review/local-verification.txt).
-Coverage includes registry concurrency/duplicate endings/subscriptions, transport
-success/HTTP/network/abort/pre-abort/timeout/retry/config reuse, expected and
-session-gated 401s, no extra request, timer thresholds/fast and consecutive
-bursts/unmount, global vs ambient/local, toast coexistence, real orb
-reduced-motion/cleanup, and existing behavior suites plus pending customer-save
-assertions. No test or gate was deleted/skipped. The existing audit fixtures
-emit duplicate-key warnings; tests still pass and the unchanged fixture IDs,
-not a new production identity strategy, cause those warnings. Rollup also emits
-upstream Zod pure-comment warnings; build exits 0.
+Coverage includes registry concurrency/idempotency/stable snapshots/subscription
+cleanup; HTTP success/failure/network/cancel/pre-cancel/timeout/retry/config reuse;
+expected versus session-gated 401s; no extra network calls; 300/500ms thresholds,
+fast and rapid consecutive bursts, immediate settlement/unmount cleanup; local,
+ambient and global isolation; toast coexistence; pending form buttons; real orb
+reduced-motion/animation cleanup; and existing feature behavior/permission/date
+suites. The new negative cases do not introduce response-schema or retry policy.
 
-The current user explicitly requested Owner `npm test`; the executed frontend
-suites are jsdom/in-memory API-boundary tests. Browser inspection below uses
-intercepted responses, not the production HTTP pipeline or a database.
-**No heavy E2E/live-DB test was executed locally unless explicitly authorized.**
-No such heavy suite was executed in this pass.
+No heavy E2E/live-DB test was executed locally unless explicitly authorized.
+None was executed locally in this audit. The requested Owner tests use in-memory
+API boundaries; the browser review intercepts fixtures, not production services.
+The only remaining build warnings are upstream Zod PURE-comment annotations;
+they were retained, not suppressed. The Audit duplicate-key warnings are fixed.
 
-## Actual browser and screenshot evidence
+## Functional and visual evidence — carefully bounded
 
-Chromium **131** was run using temporary external Playwright tooling; no browser
-package was added to the application. The first Chromium 153 launch lacked NSS
-libraries; temporary tooling was adjusted to the bundled Chromium 131/Lambda
-libraries, after which the real browser review completed.
+[Portable browser helper](owner-ui-review/browser-review.mjs) uses external
+`playwright-core` / `@sparticuz/chromium@131.0.1`; neither is a product dependency.
+The before preview is now a **fresh independent install/build of main
+`1ad7c602`**, not the old invalid-lock PR. After preview serves the exact rebuilt
+Owner artifact from the isolated audit tree. The refreshed after screenshots are
+byte-identical to the prior captures; the security patch does not change the
+browser bundle. All captures are real browser output, not generated mockups.
 
-[Browser results](owner-ui-review/browser-results.json): **45** route/state/size
-cases, widths **360 / 768 / 1440**, `dir=rtl`, no viewport overflow or page JS
-errors in those cases. It covers the existing shell/list/form routes, login,
-empty data, delayed actual Axios GET activity, HTTP error, and an actual form
-POST held in flight to observe disabled/aria-busy button + global progress.
-The held POST is answered with a fixture failure, not fabricated saved data.
+47 cases cover existing shell/list/form routes, login, empty/loading/error and
+pending submission, reduced motion and two normal-motion cases. Measurements
+show RTL, no horizontal viewport overflow, no page JS exceptions and no unexpected
+console warning/error in those cases. Expected fixture HTTP 401/503 resource
+errors are explicitly retained in the JSON, not called application exceptions.
+Retry returns to the empty state; settled writes remove global activity and
+re-enable the button; invalid forms issue no write; disabled repeat clicks issue
+no second write; keyboard skip links focus main content.
 
-**Important:** these are screenshots of the actual running React application,
-not generated images/mockups. API responses are explicitly intercepted **test
-fixtures**, including the test session and empty lists. This is **not** live
-Owner API/DB/signature proof or a production visual-acceptance claim. Populated
-long histories, administrative archive data, every permission combination,
-screen-reader speech and physical-device behavior still need human review.
-Detail/history behavior also has existing jsdom tests; not every populated
-detail view was browser-inspected in this pass.
+Selected refreshed screenshots:
 
-Selected actual captures:
-
-- [Before, licenses desktop](owner-ui-review/before-app-licenses-1440-empty-fixture.png)
+- Licenses desktop: [main before](owner-ui-review/before-app-licenses-1440-empty-fixture.png)
   / [after](owner-ui-review/after-app-licenses-1440-empty-fixture.png).
-- [Before, licenses phone](owner-ui-review/before-app-licenses-360-empty-fixture.png)
+- Licenses phone: [main before](owner-ui-review/before-app-licenses-360-empty-fixture.png)
   / [after](owner-ui-review/after-app-licenses-360-empty-fixture.png).
 - [Login phone](owner-ui-review/after-login-360-login-fixture.png).
-- [Pending customer form, phone](owner-ui-review/after-app-customers-new-360-submit-fixture.png).
-- [Loading customers, phone](owner-ui-review/after-app-customers-360-loading-fixture.png).
-- [Error customers, phone](owner-ui-review/after-app-customers-360-error-fixture.png).
+- [Pending customer save](owner-ui-review/after-app-customers-new-360-submit-fixture.png).
+- [Initial loading](owner-ui-review/after-app-customers-360-loading-fixture.png).
+- [HTTP error](owner-ui-review/after-app-customers-360-error-fixture.png).
 
-The before build is PR `2ba7b89` sources with the current installed dependencies
-supplied only to permit visual comparison; it is **not** evidence that the
-invalid old lock installed successfully. The after screenshots come from the
-current running source. Temporary baseline preview was stopped. The remaining
-preview is frontend-only and requires a real Owner API to use outside fixtures.
+These are **intercepted fixtures**, including the session and empty lists. They
+are not live Owner API/DB/signer proof, real-data write approval, cryptographic
+proof or Product Owner visual acceptance. No configured Owner service/database
+or Docker executable was available locally, and no real-data modification was
+attempted. CI's disposable backend/Owner PostgreSQL suites are separately scoped
+evidence, not an integrated live UI/signer demonstration.
 
-Reproduction helper: [browser-review.mjs](owner-ui-review/browser-review.mjs).
-Install `playwright-core` and `@sparticuz/chromium@131.0.1` in an external tooling
-directory, set `OWNER_REVIEW_TOOLS_DIR` to that directory, start the after UI on
-5174 and baseline preview on 4174. Run with
-`AWS_EXECUTION_ENV=AWS_Lambda_nodejs22.x node docs/tasks/owner-ui-review/browser-review.mjs`.
-The helper intentionally intercepts `/api/v1/**` in isolated browser contexts;
-it is not imported by the product or CI. It records real dimensions/screenshots,
-not business results.
+Populated long histories, administrative archive data, every permission
+combination, screen-reader speech and physical devices are not exhaustively
+browser-tested. Existing jsdom feature tests cover populated behavior; this does
+not expand the screenshot claim. LCP/device performance was not measured. Built
+JS chunks total approximately 218.05 KB gzip versus the 250 KB guideline, not
+proof of production LCP. Human visual acceptance remains outstanding.
 
-## GitHub CI state and unresolved handoff
+## Full-diff and risk review
 
-Last existing PR run remains **39484617508**, on **2ba7b89**, not the corrective
-implementation. [GitHub step metadata](owner-ui-review/ci-job-baseline.json).
+The complete changed-path inventory is confined to Owner frontend and related
+docs/evidence. No customer/backend/issuer source, API contracts, auth/session or
+permission module, canonical date source, lifecycle/signing rule or workflow
+changed. Existing feature calls were additionally compared using a TypeScript
+AST diagnostic across all 12 modified feature render files: call inventories
+and arguments match main after replacing JSX with a placeholder. This is a
+bounded cross-check, **not** proof that arbitrary render changes are equivalent;
+JSX guards, disabled predicates, handlers, native control forwarding, navigation,
+initial/error/empty states and shared loading behavior were reviewed separately.
 
-| Job                  | Existing PR run, 2ba7b89                           | Corrective branch latest HEAD |
-| -------------------- | -------------------------------------------------- | ----------------------------- |
-| classify             | SUCCESS                                            | No run                        |
-| docs                 | SUCCESS                                            | No run                        |
-| backend              | SUCCESS                                            | No run                        |
-| frontend             | FAILURE (Owner install); independent image SKIPPED | No run                        |
-| generated-api-client | SKIPPED by classifier                              | No run                        |
-| ci-gate              | FAILURE                                            | No run                        |
+One Axios interceptor owns activity; helper finalizers end the same token.
+Registry entries contain only scope/message enums, not URLs/bodies/credentials.
+A hung real request intentionally remains active: no timeout, retry, artificial
+minimum delay or route-reset policy was invented. Existing AbortSignals remain
+responsible for cancellation. Global feedback is non-blocking; completion toasts
+retain their own semantics. No new storage, HTML injection or network surface
+was found in the orb wrapper/distribution; fonts and licenses are self-hosted.
 
-Workflow triggers are `pull_request` targeting main and pushes **only to main**;
-there is no workflow_dispatch. Pushing the allowed session branch cannot trigger
-this workflow while the existing PR targets a different head. The workflow was
-not widened/disabled or its result manually changed to disguise this blocker.
+The PR remains broad in presentation scope and therefore needs visual review.
+ADR-0051 is still Proposed; this task does not approve architecture or close any
+Owner/product question. Existing manual/unavailable capabilities remain explicit.
+No assertions/gates were removed, skipped or weakened to obtain green results.
 
-**Required next step:** an authorized maintainer must transfer the frontend/docs
-snapshot from `arena/52e389a5-vardena` onto the **existing** PR head branch, retain
-current main's backend fixes, and let the unchanged PR workflow run on that new
-HEAD. Inspect all required checks and, specifically, both Owner verification and
-independent Docker build steps. Do not reuse the old green customer build as
-Owner acceptance. No parallel PR is needed or requested.
+## Product Owner decision / outstanding blockers
 
-## Remaining risks and recommendation
-
-- **Do not merge yet:** no corrective-HEAD CI run, no independent Docker success
-  evidence and no live backend/image/security gate result for this correction.
-- Visual work is substantially broader than the original shell/orb change, but
-  fixture browser evidence does not replace Product Owner visual review.
-- No timeout policy was invented. A truly hung request stays active; future
-  non-Axios transports would need deliberate integration.
-- ADR-0051 remains Proposed; existing Owner/product questions (including manual
-  operation/replacement gaps) stay outside this presentation task.
-- No business rules, API contracts, session, permissions, signing operations,
-  backend/customer source, workflow gate or date-projection boundary changed.
-- PR remains open and unmerged; branch handoff and exact-HEAD CI are mandatory
-  before promoting this status to READY FOR REVIEW.
+- **BLOCKED for merge recommendation:** no recorded Product Owner visual approval.
+  Review the actual screenshots and return approval or concrete corrections.
+- Independent Codex review did not complete due to usage limits. Obtain the
+  intended independent/human review; an empty thread list is not approval.
+- Full administrative protection configuration was inaccessible. Follow the
+  existing manual exact-HEAD merge protocol; do not claim server enforcement.
+- Live integrated UI/API/DB/signer evidence is not claimed. If it is an acceptance
+  requirement, an authorized test environment and safe fixture/data permission
+  are required; do not use production writes as a substitute.
+- Keep PR #190 **OPEN and unmerged**. Even final green CI does not resolve the
+  human approval or proposed-ADR decisions.

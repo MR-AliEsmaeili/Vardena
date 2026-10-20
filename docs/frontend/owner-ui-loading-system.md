@@ -1,6 +1,8 @@
 # Owner UI — presentation and request-loading contract
 
-Status: implemented locally, **CI/PR handoff blocked** (2026-10-20).
+Status: implemented in PR #190; **Product Owner visual acceptance outstanding**
+(2026-10-21). Exact final-HEAD CI evidence is indexed in the PR body and audit
+handoff; an earlier run is never carried forward after a push.
 Scope: `owner-licensing/frontend` only. Reference: [loading system](loading-system.md),
 [ADR-0051](../adr/0051-global-request-loading-system.md) (still Proposed),
 [frontend standards](standards.md), [Owner separation](../adr/0048-owner-side-licensing-separation-boundary.md).
