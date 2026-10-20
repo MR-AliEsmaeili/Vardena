@@ -12,6 +12,7 @@ export function AppShell() {
     ['/app/customers', o.customers, 'customers.view'],
     ['/app/users', o.users, 'users.manage'],
     ['/app/signing-keys', o.signingKeys, 'customers.view'],
+    ['/app/licenses', o.licenses.title, 'licenses.view'],
     ['/app/audit', o.audit, 'audit.view'],
     ['/app/operations', o.operations, 'operations.view'],
     ['/app/lifecycle', o.lifecycle, null],
@@ -110,7 +111,8 @@ export function LifecyclePage() {
               >
                 {o.openManual}
               </Link>
-            ) : item.href && permissions.has('operations.view') ? (
+            ) : item.href.startsWith('/app/operations') &&
+              permissions.has('operations.view') ? (
               <Link
                 className="mt-2 inline-block text-sm underline"
                 to="/app/operations"

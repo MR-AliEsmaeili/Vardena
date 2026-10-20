@@ -5,10 +5,11 @@ import type { Request } from "express";
 import { audit } from "./db.js";
 import {
   digest,
+  effectivePermissions,
   fail,
   isRole,
-  permissions,
   safeUser,
+  type AuthenticatedActor,
   type User,
   type Permission,
 } from "./domain.js";
@@ -22,7 +23,8 @@ export const hashPassword = (raw: string) =>
 export const verifyPassword = (hash: string, raw: string) =>
   argon2.verify(hash, raw);
 export interface Principal {
-  user: User;
+  /** The authenticated user plus the effective permission set of this request. */
+  user: AuthenticatedActor;
   sessionId: string;
 }
 export function cookieToken(req: Request, production: boolean): string | null {
@@ -63,13 +65,27 @@ export async function authenticate(
     fail(401, "Unauthorized", "Authentication is required.");
   if (ordinary && user.must_change_password)
     fail(403, "PermissionDenied", "Password change is required.");
-  if (permission && !permissions(user.role).includes(permission))
+  // OD-LIC-12 (R-1): an operator's effective set is role eligibility ∩ active
+  // grants, resolved under the same lock as the request. OWNER_ADMIN is not
+  // under the grant model and keeps its static set.
+  const grants = await tx.query<{ permission: string }>(
+    "SELECT permission FROM owner.user_permission_grants WHERE user_id=$1 AND revoked_at IS NULL",
+    [user.id],
+  );
+  const actor: AuthenticatedActor = {
+    ...user,
+    permissions: effectivePermissions(
+      user.role,
+      grants.rows.map((row) => row.permission),
+    ),
+  };
+  if (permission && !actor.permissions.includes(permission))
     fail(403, "PermissionDenied", "You do not have permission.");
   await tx.query(
     "UPDATE owner.sessions SET expires_at=LEAST(absolute_expires_at,clock_timestamp()+interval '30 minutes') WHERE id=$1",
     [sessionId],
   );
-  return { user, sessionId };
+  return { user: actor, sessionId };
 }
 export async function newSession(tx: PoolClient, user: User, hash: string) {
   const sessionId = ulid();

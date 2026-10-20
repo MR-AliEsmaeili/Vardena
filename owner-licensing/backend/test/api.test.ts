@@ -60,6 +60,26 @@ async function login(username: string, password: string) {
   const r = await write("post", "/auth/login").send({ username, password });
   return { r, cookie: r.headers["set-cookie"]?.[0]?.split(";")[0] as string };
 }
+/**
+ * OD-LIC-12 (R-1): a newly created LICENSE_OPERATOR has no effective
+ * permission until an Owner Admin grants it. Tests that exercise an
+ * operator-eligible capability must grant it explicitly; tests that expect
+ * default-deny grant nothing.
+ */
+const operatorGrants = [
+  "customers.view",
+  "audit.view",
+  "operations.view",
+  "operations.record",
+] as const;
+async function grant(userId: string, permissions: readonly string[]) {
+  for (const permission of permissions)
+    await db.pool.query(
+      `INSERT INTO owner.user_permission_grants(user_id, permission, granted_by)
+       VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,
+      [userId, permission, adminId],
+    );
+}
 /** A unique, installation-reference-safe token for one test. */
 const uniq = (prefix: string) => `${prefix}-${ulid()}`;
 async function customer(cookie = adminCookie, code = `C-${ulid()}`) {
@@ -593,6 +613,7 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
       "004-audit-retention-archive.sql",
       "005-contract-and-activation-dates.sql",
       "006-signing-key-tracking.sql",
+      "007-license-lifecycle.sql",
     ]);
     await expect(
       db.pool.query("UPDATE owner.users SET role='SYSTEM_ADMIN' WHERE id=$1", [
@@ -628,6 +649,7 @@ describe("Owner migration 003 existing-database compatibility, rollback, and ret
     expect(existingOpLogin.r.body.id).toBe(existingOperatorId);
     expect((await login("mix_observer", pw)).r.status).toBe(401);
 
+    await grant(issuanceId, operatorGrants);
     const preservedOp = await request(app)
       .get(`/api/v1/operational-records/${opId}`)
       .set("Cookie", operatorLogin.cookie);
@@ -1016,6 +1038,13 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,'LICENSE_OPERATOR',false)",
       [uid, uid, await hashPassword(pw)],
     );
+    // Default deny first: no grant means no access, even for an
+    // operator-eligible capability (OD-LIC-12, R-1).
+    const denied = await request(app)
+      .get("/api/v1/customers")
+      .set("Cookie", (await login(uid, pw)).cookie);
+    expect(denied.status).toBe(403);
+    await grant(uid, [...operatorGrants, "licenses.view"]);
     const { cookie } = await login(uid, pw);
     expect((await customer(cookie)).status).toBe(403);
     const code = `Operator-${ulid()}`;
@@ -1043,6 +1072,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       "audit.view",
       "operations.view",
       "operations.record",
+      "licenses.view",
     ]);
     const list = await request(app)
       .get("/api/v1/customers")
@@ -1212,6 +1242,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       "004-audit-retention-archive.sql",
       "005-contract-and-activation-dates.sql",
       "006-signing-key-tracking.sql",
+      "007-license-lifecycle.sql",
     ]);
     await db.pool.query("TRUNCATE owner.login_limits");
     for (let n = 0; n < 10; n++)
@@ -2426,6 +2457,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
         "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,$4,false)",
         [uid, uid, await hashPassword(pw), role],
       );
+      if (role === "LICENSE_OPERATOR") await grant(uid, operatorGrants);
       const { cookie } = await login(uid, pw);
       const list = await request(app)
         .get("/api/v1/operational-records")
@@ -2550,6 +2582,12 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       "operations.view",
       "operations.record",
       "replacements.authorize",
+      "licenses.issue.time_limited",
+      "licenses.issue.perpetual",
+      "licenses.import",
+      "licenses.view",
+      "licenses.download",
+      "limit_profiles.manage",
     ]);
   });
   it("filters audit events in PostgreSQL with exact AND semantics, half-open UTC windows and stable bounded pages", async () => {
@@ -2733,6 +2771,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
         "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$2,$3,$4,false)",
         [uid, uid, await hashPassword(pw), role],
       );
+      if (role === "LICENSE_OPERATOR") await grant(uid, ["audit.view"]);
       const { cookie } = await login(uid, pw);
       const res = await explorer(cookie, filters);
       expect(res.status).toBe(200);
@@ -2855,6 +2894,7 @@ describe("Owner PostgreSQL HTTP vertical slice", () => {
       "INSERT INTO owner.users(id,username,password_hash,role,must_change_password) VALUES($1,$1,$2,'LICENSE_OPERATOR',false)",
       [uid, await hashPassword(pw)],
     );
+    await grant(uid, operatorGrants);
     const operator = (await login(uid, pw)).cookie;
     expect((await get(`/signing-keys/${keyId}`, operator)).status).toBe(200);
     for (const [method, path, body] of [

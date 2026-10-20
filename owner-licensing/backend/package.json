@@ -14,12 +14,14 @@
     "lint": "oxlint src test",
     "format": "prettier --write src test *.json",
     "format:check": "prettier --check src test *.json",
-    "test": "vitest run test/unit.test.ts test/domain-operations.test.ts test/audit-query.test.ts test/signing-keys.test.ts",
+    "test": "vitest run test/unit.test.ts test/domain-operations.test.ts test/audit-query.test.ts test/signing-keys.test.ts test/protocol.test.ts test/signer.test.ts test/licensing.test.ts",
     "test:integration": "vitest run test/api.test.ts",
     "migrate": "tsx src/migrate.ts",
     "migrate:preflight": "tsx src/migrate.ts --preflight",
     "migrate:remediate-roles": "tsx src/migrate.ts --remediate-roles",
-    "bootstrap": "tsx src/bootstrap.ts"
+    "bootstrap": "tsx src/bootstrap.ts",
+    "build:signer": "tsc -p tsconfig.signer.json",
+    "signer": "node dist-signer/signer/cli.js"
   },
   "dependencies": {
     "argon2": "^0.45.1",

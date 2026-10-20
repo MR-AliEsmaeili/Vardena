@@ -16,6 +16,9 @@ import {
   assertActiveAuthorizedActor,
   assertContractDateOrder,
   assertPermission,
+  effectivePermissions,
+  isGrantablePermission,
+  operatorGrantablePermissions,
   businessDay,
   customerCode,
   customerResponse,
@@ -65,6 +68,7 @@ import { config } from "../src/config.js";
 describe("Owner deny-by-default policy and input boundary", () => {
   it("enforces the two-role MVP model (Owner Admin and License Operator) and rejects superseded roles", () => {
     expect(roles).toEqual(["OWNER_ADMIN", "LICENSE_OPERATOR"]);
+    // PDR-19 §6.1 eligibility matrix (OD-LIC-07, OD-LIC-12, OD-LIC-16).
     expect(permissions("OWNER_ADMIN")).toEqual([
       "customers.view",
       "customers.write",
@@ -74,12 +78,22 @@ describe("Owner deny-by-default policy and input boundary", () => {
       "operations.view",
       "operations.record",
       "replacements.authorize",
+      "licenses.issue.time_limited",
+      "licenses.issue.perpetual",
+      "licenses.import",
+      "licenses.view",
+      "licenses.download",
+      "limit_profiles.manage",
     ]);
     expect(permissions("LICENSE_OPERATOR")).toEqual([
       "customers.view",
       "audit.view",
       "operations.view",
       "operations.record",
+      "licenses.issue.time_limited",
+      "licenses.import",
+      "licenses.view",
+      "licenses.download",
     ]);
     expect(role("OWNER_ADMIN")).toBe("OWNER_ADMIN");
     expect(role("LICENSE_OPERATOR")).toBe("LICENSE_OPERATOR");
@@ -536,6 +550,86 @@ describe("Customer field allowlist for the two-role model", () => {
         "users.manage",
       ),
     ).toThrow("Initial password must be changed first.");
+  });
+
+  it("implements OD-LIC-12 R-1: role eligibility is not access for an operator", () => {
+    const operator = {
+      id: "01ARZ3NDEKTSV4RRFFQ69G5FA2",
+      role: "LICENSE_OPERATOR" as const,
+      is_active: true,
+      must_change_password: false,
+    };
+    // No grant rows at all: every permission is denied, including the four the
+    // role held before OD-LIC-12.
+    for (const permission of permissions("LICENSE_OPERATOR")) {
+      expect(() => assertActiveAuthorizedActor(operator, permission)).toThrow(
+        "You do not have permission.",
+      );
+      expect(
+        effectivePermissions("LICENSE_OPERATOR", []).includes(permission),
+      ).toBe(false);
+    }
+    // An active grant enables exactly that permission.
+    expect(
+      effectivePermissions("LICENSE_OPERATOR", ["customers.view"]),
+    ).toEqual(["customers.view"]);
+    expect(() =>
+      assertActiveAuthorizedActor(
+        { ...operator, permissions: ["customers.view"] },
+        "customers.view",
+      ),
+    ).not.toThrow();
+    // Intersection, never union: a grant cannot widen the role.
+    expect(
+      effectivePermissions("LICENSE_OPERATOR", [
+        "licenses.issue.perpetual",
+        "limit_profiles.manage",
+        "customers.write",
+        "users.manage",
+        "audit.archive",
+      ]),
+    ).toEqual([]);
+    expect(
+      effectivePermissions("LICENSE_OPERATOR", [
+        "licenses.issue.time_limited",
+        "licenses.import",
+      ]),
+    ).toEqual(["licenses.issue.time_limited", "licenses.import"]);
+    // OWNER_ADMIN is not under the grant model and is unchanged.
+    expect(effectivePermissions("OWNER_ADMIN", [])).toEqual(
+      permissions("OWNER_ADMIN"),
+    );
+    expect(() =>
+      assertActiveAuthorizedActor(
+        { ...operator, is_active: false, permissions: ["customers.view"] },
+        "customers.view",
+      ),
+    ).toThrow("Authentication is required.");
+    expect(() =>
+      assertActiveAuthorizedActor(
+        {
+          ...operator,
+          must_change_password: true,
+          permissions: ["customers.view"],
+        },
+        "customers.view",
+      ),
+    ).toThrow("Initial password must be changed first.");
+    expect(isGrantablePermission("licenses.issue.perpetual")).toBe(false);
+    expect(isGrantablePermission("limit_profiles.manage")).toBe(false);
+    expect(isGrantablePermission("licenses.install")).toBe(false);
+    expect(isGrantablePermission("customers.*")).toBe(false);
+    expect(isGrantablePermission("licenses.issue.time_limited")).toBe(true);
+    expect(operatorGrantablePermissions).toEqual([
+      "customers.view",
+      "audit.view",
+      "operations.view",
+      "operations.record",
+      "licenses.issue.time_limited",
+      "licenses.import",
+      "licenses.view",
+      "licenses.download",
+    ]);
   });
 
   it("enforces OQ-77 3-year retention boundary, unresolved incident hold, archive integrity digests, and safe failure on invalid metadata", async () => {
