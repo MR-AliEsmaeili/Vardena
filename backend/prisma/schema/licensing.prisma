@@ -180,12 +180,9 @@ model LicenseVersion {
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  /// The database enforces the stronger composite foreign key
-  /// `(license_id, installation_id) -> licenses (id, installation_id)`, so a
-  /// revocation can never point at a license of another installation. Prisma
-  /// keeps the 1:1 on the unique `license_id` column because a 1:1 relation may
-  /// only use a unique field set; no code path uses this navigation property.
-  license License @relation(fields: [licenseId], references: [id], onDelete: Restrict)
+  /// Composite target so a version cannot name a license of another
+  /// installation (integrity, not convention).
+  license License @relation(fields: [licenseId, installationId], references: [id, installationId], onDelete: Restrict)
 
   supersedesVersion    LicenseVersion?  @relation("LicenseVersionSupersedes", fields: [supersedesVersionId], references: [id], onDelete: Restrict)
   supersededVersions   LicenseVersion[] @relation("LicenseVersionSupersedes")
@@ -332,7 +329,13 @@ model LicenseRevocation {
   createdBy           String?   @map("created_by")
   updatedBy           String?   @map("updated_by")
 
-  license License @relation(fields: [licenseId, installationId], references: [id, installationId], onDelete: Restrict)
+  /// The database enforces the stronger composite foreign key
+  /// `(license_id, installation_id) -> licenses (id, installation_id)`, so a
+  /// revocation can never target a license of another installation. Prisma
+  /// declares the 1:1 on the unique `license_id` column because a 1:1 relation
+  /// may only reference a unique field set; the navigation property is unused
+  /// by every code path (`revocationId` is the identity actually read).
+  license License @relation(fields: [licenseId], references: [id], onDelete: Restrict)
 
   @@index([installationId, importedAt], map: "idx_license_revocations_installation_imported_at")
   @@index([customerId], map: "idx_license_revocations_customer")
