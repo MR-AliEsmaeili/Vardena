@@ -74,3 +74,12 @@ Code: `src/features/audit/` (`audit-page.tsx`, `audit-filters.ts` for URL and UT
 mapping, `audit-filter-schema.ts` for client validation). Query keys are in
 `src/api/query-keys.ts`; the API client is the existing `src/api/owner.api.ts`.
 Tests: `audit-filters.test.ts` (pure) and `audit-page.test.tsx` (flow).
+
+## Presentation and loading system
+
+The Owner-specific [presentation/loading contract](../../docs/frontend/owner-ui-loading-system.md)
+records semantic tokens, self-hosted Persian typography, the shared Thinking Orb
+wrapper, transport-only activity counting and independent build boundaries.
+The [PR #189 corrective report](../../docs/tasks/owner-ui-thinking-orbs-agent-report.md)
+separates actual local/browser-fixture evidence from still-blocked exact-HEAD CI.
+The preview requires a real Owner API; no demo session or mock data is shipped.

@@ -1,0 +1,321 @@
+{
+  "browser": "Chromium 131 (npm @sparticuz/chromium)",
+  "api": "Intercepted test fixtures only. No live Owner API, DB or signer used.",
+  "results": [
+    {
+      "name": "before-app-licenses-1440-empty-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "before-app-licenses-360-empty-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-licenses-1440-empty-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-licenses-360-empty-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-1440-empty-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-customers-1440-empty-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-customers-new-1440-empty-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-users-1440-empty-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-signing-keys-1440-empty-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-audit-1440-empty-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-operations-1440-empty-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-operations-activation-new-1440-empty-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-operations-replacement-new-1440-empty-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-lifecycle-1440-empty-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-change-password-1440-empty-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-768-empty-fixture",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-customers-768-empty-fixture",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-customers-new-768-empty-fixture",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-users-768-empty-fixture",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-signing-keys-768-empty-fixture",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-audit-768-empty-fixture",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-operations-768-empty-fixture",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-operations-activation-new-768-empty-fixture",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-operations-replacement-new-768-empty-fixture",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-lifecycle-768-empty-fixture",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-change-password-768-empty-fixture",
+      "viewport": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-360-empty-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-customers-360-empty-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-customers-new-360-empty-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-users-360-empty-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-signing-keys-360-empty-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-audit-360-empty-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-operations-360-empty-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-operations-activation-new-360-empty-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-operations-replacement-new-360-empty-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-lifecycle-360-empty-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-change-password-360-empty-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-login-1440-login-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-customers-1440-loading-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-customers-1440-error-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-customers-new-1440-submit-fixture",
+      "viewport": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-login-360-login-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-customers-360-loading-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-customers-360-error-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    },
+    {
+      "name": "after-app-customers-new-360-submit-fixture",
+      "viewport": 360,
+      "scroll": 360,
+      "direction": "rtl",
+      "errors": []
+    }
+  ]
+}

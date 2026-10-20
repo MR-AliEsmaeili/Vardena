@@ -1,0 +1,205 @@
+Isolated verification: Owner source tree + exactly seven approved canonical date files.
+No customer package.json, package-lock.json or node_modules was present.
+Node v22.22.3 / npm 10.9.8.
+
+
+added 221 packages in 10s
+
+> vardena-owner-ui@0.0.1 lint
+> oxlint .
+
+Found 0 warnings and 0 errors.
+Finished in 1.2s on 83 files with 191 rules using 2 threads.
+
+> vardena-owner-ui@0.0.1 format:check
+> prettier --check .
+
+Checking formatting...
+All matched files use Prettier code style!
+
+> vardena-owner-ui@0.0.1 pretypecheck
+> npm run dates:stage
+
+
+> vardena-owner-ui@0.0.1 dates:stage
+> node scripts/stage-date-foundation.mjs
+
+
+> vardena-owner-ui@0.0.1 typecheck
+> tsc --noEmit
+
+
+> vardena-owner-ui@0.0.1 pretest
+> npm run dates:stage
+
+
+> vardena-owner-ui@0.0.1 dates:stage
+> node scripts/stage-date-foundation.mjs
+
+
+> vardena-owner-ui@0.0.1 test
+> npm run dates:verify && vitest run
+
+
+> vardena-owner-ui@0.0.1 dates:verify
+> node --test scripts/stage-date-foundation.test.mjs
+
+TAP version 13
+# Subtest: stages only exact canonical sources, removes stale files, fails unknown imports/missing source
+ok 1 - stages only exact canonical sources, removes stale files, fails unknown imports/missing source
+  ---
+  duration_ms: 749.603125
+  type: 'test'
+  ...
+# Subtest: explicit PO seven-file boundary matches staging, Docker COPY and context allowlists
+ok 2 - explicit PO seven-file boundary matches staging, Docker COPY and context allowlists
+  ---
+  duration_ms: 4.436934
+  type: 'test'
+  ...
+# Subtest: type declarations belong to Owner-installed locked dependencies, not staged files
+ok 3 - type declarations belong to Owner-installed locked dependencies, not staged files
+  ---
+  duration_ms: 5.719432
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2131.57888
+
+ RUN  v4.1.11 /home/user/owner-isolated/owner-licensing/frontend
+
+stderr | src/features/audit/audit-page.test.tsx > audit explorer pagination > disables next when the backend reports no further rows, even on a full page
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `01ARZ3NDEKTSV4RRFFQ69G5FAV`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+
+ ✓ src/features/audit/audit-page.test.tsx (34 tests) 9166ms
+     ✓ shows forbidden and never calls the audit API without audit.view  422ms
+     ✓ shows Tehran/Persian Instant display, accepts a Jalali range and sends UTC API bounds  1131ms
+     ✓ rejects an invalid Jalali draft without querying/widening prior bounds ()  374ms
+     ✓ rejects an invalid Jalali draft without querying/widening prior bounds (?from=2026-10-09&dayZone=Asia%2FTehran)  340ms
+     ✓ applies drafted filters to the URL and resets pagination to page one  381ms
+     ✓ trims a typed draft when applied, so the URL and the request are canonical  301ms
+     ✓ keeps an unapplied draft when paging, and the URL keeps the applied filters  403ms
+     ✓ removes a single applied filter from the URL when it is reset  531ms
+     ✓ disables next when the backend reports no further rows, even on a full page  476ms
+     ✓ renders archive status and batches for Owner Admin (audit.archive) and validates reason before creating a batch, verifying integrity, or recovering from durable store  825ms
+ ✓ src/api/client-activity.test.ts (27 tests) 964ms
+ ✓ src/features/signing-keys/signing-keys-page.test.tsx (9 tests) 1908ms
+     ✓ formats compromise Instants in Tehran with seconds and permits notes updates  319ms
+     ✓ requires a status reason, submits evidence and refreshes previously cached observations  642ms
+ ✓ src/features/audit/audit-filters.test.ts (91 tests) 53ms
+ ✓ src/features/operations/operations-flow.test.tsx (9 tests) 1821ms
+     ✓ allows License Operator routine license observation while hiding server-replacement authorization  419ms
+     ✓ submits a selected customer and signingKeyId through the normal observation form  761ms
+ ✓ src/app/owner-flow.test.tsx (11 tests) 1270ms
+ ✓ src/ui/patterns/request-activity.test.tsx (14 tests) 236ms
+ ✓ src/features/licenses/licenses-page.test.tsx (5 tests) 1108ms
+     ✓ validates the request locally before calling the API  311ms
+     ✓ shows both full digests returned by the server after preparing  534ms
+ ✓ src/ui/thinking-orb.test.tsx (6 tests) 158ms
+ ✓ src/features/auth/change-password-page.test.tsx (3 tests) 829ms
+     ✓ reports a rejected current password as a credential error, not an expired session  443ms
+ ✓ src/test/dev-host-policy.test.ts (6 tests) 14ms
+ ✓ src/features/operations/operation-schema.test.ts (3 tests) 20ms
+ ✓ src/api/request-activity.test.ts (9 tests) 9ms
+ ✓ src/ui/button.test.tsx (5 tests) 250ms
+ ✓ src/features/customers/customer-schema.test.ts (4 tests) 12ms
+ ✓ src/api/client.test.ts (3 tests) 6ms
+ ✓ src/test/build-contract.test.ts (2 tests) 8ms
+ ✓ src/lib/date-time.test.ts (2 tests) 24ms
+
+ Test Files  18 passed (18)
+      Tests  243 passed (243)
+   Start at  20:19:28
+   Duration  41.42s (transform 1.76s, setup 2.34s, import 4.96s, tests 17.86s, environment 13.44s)
+
+
+> vardena-owner-ui@0.0.1 prebuild
+> npm run dates:stage
+
+
+> vardena-owner-ui@0.0.1 dates:stage
+> node scripts/stage-date-foundation.mjs
+
+
+> vardena-owner-ui@0.0.1 build
+> tsc --noEmit && vite build
+
+vite v7.3.6 building client environment for production...
+transforming...
+node_modules/zod/v4/core/util.js (400:0): A comment
+
+"// Wrapped in a `@__PURE__` IIFE: esbuild never tree-shakes a top-level initializer that contains a member access on `Number`, so the bare object literal survived into every bundle."
+
+in "node_modules/zod/v4/core/util.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/zod/v4/core/regexes.js (74:0): A comment
+
+"/** Anchors a pattern source. The interpolation lives here rather than at the call site because
+ * esbuild will not drop a `@__PURE__` call whose own argument interpolates a variable, but it
+ * will drop `anchor(dateSource)`. Keeping it inline pinned `date` into every bundle. */"
+
+in "node_modules/zod/v4/core/regexes.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+✓ 2186 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.73 kB │ gzip:   0.40 kB
+dist/assets/index-CKaJ4vl1.css   25.29 kB │ gzip:   5.80 kB
+dist/assets/react-DXIzfvGK.js    51.65 kB │ gzip:  18.30 kB │ map:   494.01 kB
+dist/assets/data-DFiZxH_H.js     87.36 kB │ gzip:  29.79 kB │ map:   464.48 kB
+dist/assets/forms-CVPgI0VT.js   118.76 kB │ gzip:  36.56 kB │ map:   730.72 kB
+dist/assets/index-C5KX86mU.js   434.43 kB │ gzip: 133.40 kB │ map: 1,808.19 kB
+✓ built in 4.74s
