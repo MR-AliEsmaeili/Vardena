@@ -56,12 +56,16 @@ export function GlobalRequestIndicator() {
       ? t.loading.processing
       : MESSAGE_TEXT[activity.globalMessage];
 
+  // Keep a live region mounted so assistive tech announces changes, but when
+  // idle hide it from the accessibility tree so empty <output> (role=status)
+  // does not steal `getByRole('status')` from success toasts.
   return (
     <output
       dir="rtl"
       aria-live="polite"
       aria-atomic="true"
       aria-busy={visible ? true : undefined}
+      aria-hidden={visible ? undefined : true}
       data-testid="global-request-indicator"
       data-visible={visible ? 'true' : 'false'}
       className={cn(
