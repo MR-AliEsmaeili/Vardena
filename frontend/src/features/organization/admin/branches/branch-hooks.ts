@@ -19,7 +19,7 @@ import {
   updateBranch,
 } from '@/api/organization.api';
 import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
-import type { AdminListState } from '../admin-list-state';
+import type { AdminListState } from '@/lib/use-admin-list-state';
 
 /**
  * Branch queries and mutations (`BranchesController`).

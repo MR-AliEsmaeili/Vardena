@@ -606,7 +606,241 @@ export const fa = {
     // --- Deferred capabilities (no backend contract — see the report) ------
     deferredTitle: 'قابلیت‌های خارج از دامنه این نسخه',
     deferredBody:
-      'مدیریت عضویت کاربران سازمان، درون‌ریزی گروهی، خروجی اکسل، تاریخچه تغییرات و نمودار ساختار سازمانی در این نسخه ارائه نشده‌اند.',
+      'درون‌ریزی گروهی، خروجی اکسل، تاریخچه تغییرات و نمودار ساختار سازمانی در این نسخه ارائه نشده‌اند.',
+
+    // --- Members (OrganizationMembershipsController) ------------------------
+    members: 'اعضای سازمان',
+    membersDescription:
+      'کاربرانی که به سازمان جاری دسترسی دارند. اعطای عضویت، کاربر را به سازمان اضافه می‌کند؛ سلب عضویت دسترسی او را می‌گیرد.',
+    memberList: 'اعضا',
+    memberUser: 'کاربر',
+    memberSince: 'تاریخ عضویت',
+    noMembers: 'عضوی برای این سازمان ثبت نشده است.',
+    noMembersFiltered: 'عضوی مطابق فیلترهای انتخاب‌شده یافت نشد.',
+    membersLoadFailed: 'دریافت فهرست اعضا انجام نشد. دوباره تلاش کنید.',
+    grantMember: 'اعطای عضویت',
+    grantMemberTitle: 'اعطای عضویت به کاربر',
+    grantMemberBody:
+      'کاربر باید پیش‌تر در بخش «کاربران» ایجاد شده باشد. عضو تازه بلافاصله با نقش‌های تعیین‌شده‌اش به سازمان دسترسی می‌گیرد.',
+    grantMemberConfirm: 'اعطای عضویت',
+    grantingMember: 'در حال اعطای عضویت…',
+    memberGranted: 'عضویت اعطا شد.',
+    grantFailed: 'اعطای عضویت انجام نشد.',
+    alreadyMember: 'این کاربر از قبل عضو سازمان است.',
+    userMissing: 'کاربر موردنظر یافت نشد. شناسه کاربر را بازبینی کنید.',
+    revokeMember: 'سلب عضویت',
+    revokeMemberTitle: 'سلب عضویت کاربر',
+    revokeMemberBody:
+      'کاربر با سلب عضویت، دسترسی خود به داده‌های این سازمان از دست می‌دهد. نقش‌های او حفظ می‌شوند و با اعطای دوباره عضویت دوباره فعال می‌شوند. این عملیات حذف کاربر نیست.',
+    revokeMemberConfirm: 'سلب عضویت',
+    revokingMember: 'در حال سلب عضویت…',
+    memberRevoked: 'عضویت سلب شد.',
+    revokeFailed: 'سلب عضویت انجام نشد.',
+    revokeSelfWarning:
+      'شما در حال سلب عضویت خودتان هستید؛ پس از این کار به این سازمان دسترسی نخواهید داشت.',
+    membersUserUnavailable:
+      'برای نمایش نام کاربران به مجوز «مشاهده کاربران» نیاز است؛ شناسه سیستمی کاربر نمایش داده می‌شود.',
+    grantPickerUnavailable:
+      'برای انتخاب کاربر به مجوز «مشاهده کاربران» نیاز است. شناسه سیستمی (ULID) کاربر را وارد کنید.',
+    grantUserRequired: 'انتخاب یا وارد کردن شناسه کاربر الزامی است.',
+    userIdInvalid: 'شناسه کاربر باید یک ULID معتبر باشد.',
+  },
+  /**
+   * User account administration (`UsersController`).
+   *
+   * The backend enforces only "non-empty" on username and password — no
+   * complexity policy exists (OQ-06) and none is invented here. Username
+   * length mirrors MAX_USERNAME_LENGTH = 64.
+   */
+  usersAdmin: {
+    title: 'کاربران',
+    subtitle:
+      'حساب‌های کاربری سامانه: ایجاد، ویرایش نام کاربری، فعال/غیرفعال کردن و بازنشانی گذرواژه.',
+    scopeHint:
+      'حساب‌های کاربری به کل نصب تعلق دارند و به سازمان جاری محدود نیستند.',
+    username: 'نام کاربری',
+    status: 'وضعیت',
+    active: 'فعال',
+    inactive: 'غیرفعال',
+    allStatuses: 'همه وضعیت‌ها',
+    mustChangePassword: 'تغییر گذرواژه در ورود بعدی',
+    mustChangePasswordYes: 'الزامی',
+    mustChangePasswordNo: 'ندارد',
+    createdAt: 'تاریخ ایجاد',
+    updatedAt: 'آخرین تغییر',
+    actions: 'عملیات',
+    view: 'مشاهده',
+    edit: 'ویرایش',
+    searchPlaceholder: '— بدون جست‌وجو —',
+    usersEmpty: 'کاربری مطابق فیلترهای انتخاب‌شده یافت نشد.',
+    usersEmptyFirstUse:
+      'هنوز کاربری جزء شما ثبت نشده است. نخستین کاربر را ایجاد کنید.',
+    listLoadFailed: 'دریافت فهرست کاربران انجام نشد. دوباره تلاش کنید.',
+
+    // Detail
+    userDetail: 'مشخصات کاربر',
+    userLoadFailed: 'دریافت مشخصات کاربر انجام نشد. دوباره تلاش کنید.',
+    userIdentity: 'شناسه کاربر',
+    accountState: 'وضعیت حساب',
+    accountActions: 'عملیات حساب',
+    create: 'ایجاد کاربر',
+    update: 'ذخیره تغییرات',
+
+    // Create / edit
+    newUser: 'کاربر جدید',
+    newUserDescription:
+      'حساب کاربری تازه با گذرواژه اولیه ایجاد کنید. کاربر در نخستین ورود با این گذرواژه وارد می‌شود.',
+    editUser: 'ویرایش کاربر',
+    editUserDescription:
+      'تنها نام کاربری قابل ویرایش است. گذرواژه و وضعیت حساب از عملیات اختصاصی خودشان مدیریت می‌شوند.',
+    usernameRequired: 'نام کاربری الزامی است.',
+    usernameTooLong: 'نام کاربری نباید بیش از ۶۴ نویسه باشد.',
+    usernameHint: 'تا ۶۴ نویسه؛ یکتا در کل سامانه.',
+    password: 'گذرواژه',
+    passwordRequired: 'گذرواژه الزامی است.',
+    passwordHint:
+      'سیاست پیچیدگی مشخصی اعمال نمی‌شود؛ گذرواژه قابل‌حدس انتخاب نکنید.',
+    userCreated: 'کاربر ایجاد شد.',
+    userUpdated: 'نام کاربری به‌روزرسانی شد.',
+    createFailed: 'ایجاد کاربر انجام نشد. دوباره تلاش کنید.',
+    updateFailed: 'ذخیره تغییرات انجام نشد. دوباره تلاش کنید.',
+    duplicateUsername:
+      'این نام کاربری قبلاً در سامانه ثبت شده است. نام دیگری انتخاب کنید.',
+    formSummary: 'برای ذخیره، خطاهای زیر را برطرف کنید.',
+    serverValidationSummary:
+      'سامانه اطلاعات ارسالی را نپذیرفت. فیلدهای مشخص‌شده را اصلاح کنید.',
+
+    // Lifecycle
+    enable: 'فعال‌سازی',
+    disable: 'غیرفعال‌سازی',
+    enableTitle: 'فعال‌سازی کاربر',
+    enableBody:
+      'کاربر با فعال‌سازی دوباره می‌تواند وارد سامانه شود؛ گذرواژه و نقش‌های او تغییری نمی‌کنند.',
+    disableTitle: 'غیرفعال‌سازی کاربر',
+    disableBody:
+      'با غیرفعال‌سازی، ورود کاربر مسدود و نشست‌های فعال او باطل می‌شود. حساب حذف نمی‌شود و بعداً قابل فعال‌سازی است.',
+    confirming: 'تأیید',
+    enabling: 'در حال فعال‌سازی…',
+    disabling: 'در حال غیرفعال‌سازی…',
+    userEnabled: 'کاربر فعال شد.',
+    userDisabled: 'کاربر غیرفعال شد.',
+    enableFailed: 'فعال‌سازی انجام نشد. دوباره تلاش کنید.',
+    disableFailed: 'غیرفعال‌سازی انجام نشد. دوباره تلاش کنید.',
+
+    // Password reset
+    resetPassword: 'بازنشانی گذرواژه',
+    resetPasswordTitle: 'بازنشانی گذرواژه کاربر',
+    resetPasswordBody:
+      'گذرواژه تازه را برای کاربر تعیین کنید. کاربر با گذرواژه فعلی دیگر وارد نمی‌شود و نشست‌های فعال او باطل می‌شوند.',
+    newPassword: 'گذرواژه تازه',
+    newPasswordRequired: 'گذرواژه تازه الزامی است.',
+    resetting: 'در حال بازنشانی…',
+    passwordReset: 'گذرواژه کاربر بازنشانی شد.',
+    resetFailed: 'بازنشانی گذرواژه انجام نشد. دوباره تلاش کنید.',
+  },
+  /**
+   * Role administration and the permission registry
+   * (`RolesController`, `PermissionsController`).
+   */
+  rolesAdmin: {
+    title: 'نقش‌ها',
+    subtitle:
+      'نقش‌های دسترسی و مجموعه مجوز هر نقش؛ نقش‌ها به کاربران منتسب می‌شوند و مجوزها به نقش‌ها.',
+    roleName: 'نام نقش',
+    description: 'توضیح',
+    permissionCount: 'تعداد مجوزها',
+    createdAt: 'تاریخ ایجاد',
+    updatedAt: 'آخرین تغییر',
+    actions: 'عملیات',
+    view: 'مشاهده',
+    edit: 'ویرایش',
+    noDescription: 'بدون توضیح',
+    rolesEmpty: 'نقشی ثبت نشده است. نخستین نقش را ایجاد کنید.',
+    rolesEmptyFiltered: 'نقشی مطابق فیلترهای انتخاب‌شده یافت نشد.',
+    listLoadFailed: 'دریافت فهرست نقش‌ها انجام نشد. دوباره تلاش کنید.',
+
+    // Detail
+    roleDetail: 'مشخصات نقش',
+    roleLoadFailed: 'دریافت مشخصات نقش انجام نشد. دوباره تلاش کنید.',
+    create: 'ایجاد نقش',
+    update: 'ذخیره تغییرات',
+    permissionsSection: 'مجوزهای نقش',
+    permissionsSectionHint:
+      'هر مجوز یک توان مشخص سامانه است (کد به شکل Module.Entity.Action). مجوز اضافه‌شده بلافاصله برای همه کاربرانِ دارای این نقش اثر می‌کند.',
+    permissionsEmpty: 'به این نقش هنوز مجوزی منتسب نشده است.',
+    permissionCode: 'کد مجوز',
+    permissionDescription: 'شرح مجوز',
+    addPermission: 'افزودن مجوز',
+    addPermissionTitle: 'افزودن مجوز به نقش',
+    addPermissionBody:
+      'یک مجوز از فهرست ثبت‌شده سامانه انتخاب کنید. افزودن مجوز تکراری پذیرفته نمی‌شود.',
+    permissionRequired: 'انتخاب مجوز الزامی است.',
+    assigning: 'در حال افزودن…',
+    permissionAssigned: 'مجوز به نقش افزوده شد.',
+    permissionAlreadyAssigned: 'این مجوز از قبل به نقش منتسب است.',
+    permissionMissing:
+      'کد مجوز در ثبت سامانه یافت نشد. مجوز دیگری انتخاب کنید.',
+    assignFailed: 'افزودن مجوز انجام نشد. دوباره تلاش کنید.',
+    removePermission: 'حذف',
+    removePermissionTitle: 'حذف مجوز از نقش',
+    removePermissionBody:
+      'با حذف مجوز، همه کاربران دارای این نقش آن توان را از دست می‌دهند. حذف، خود مجوز را از سامانه پاک نمی‌کند؛ فقط انتساب را می‌شکند.',
+    removing: 'در حال حذف…',
+    permissionRemoved: 'مجوز از نقش حذف شد.',
+    assignmentMissing: 'این انتساب پیش‌تر حذف شده است.',
+    removeFailed: 'حذف مجوز انجام نشد. دوباره تلاش کنید.',
+
+    // User assignment
+    roleUsersSection: 'انتساب نقش به کاربر',
+    roleUsersSectionHint:
+      'سامانه فهرست کاربرانِ دارای نقش را ارائه نمی‌کند؛ انتساب تکراری با خطای ۴۰۹ و حذف انتساب‌نشدنی با ۴۰۴ پاسخ می‌گیرد.',
+    assignUser: 'انتساب به کاربر',
+    assignUserTitle: 'انتساب نقش به کاربر',
+    assignUserBody:
+      'کاربر باید پیش‌تر در بخش «کاربران» ایجاد شده و عضو سازمان باشد. همین نقش برای سازمان‌های دیگر باید جداگانه انتساب یابد.',
+    assignUserConfirm: 'انتساب نقش',
+    assigningUser: 'در حال انتساب…',
+    userAssigned: 'نقش به کاربر منتسب شد.',
+    roleAlreadyAssigned: 'این نقش از قبل به کاربر منتسب است.',
+    userOrRoleMissing: 'کاربر یا نقش موردنظر یافت نشد.',
+    assignUserFailed: 'انتساب نقش انجام نشد. دوباره تلاش کنید.',
+    unassignUser: 'حذف انتساب',
+    unassignUserTitle: 'حذف نقش از کاربر',
+    unassignUserBody:
+      'کاربر این نقش و توان‌های آن را از دست می‌دهد. سایر نقش‌های او دست‌نخورده می‌مانند.',
+    unassigningUser: 'در حال حذف انتساب…',
+    userUnassigned: 'انتساب نقش حذف شد.',
+    unassignFailed: 'حذف انتساب انجام نشد. دوباره تلاش کنید.',
+    usersPickerUnavailable:
+      'برای انتخاب کاربر به مجوز «مشاهده کاربران» نیاز است. شناسه سیستمی (ULID) کاربر را وارد کنید.',
+    userIdRequired: 'انتخاب یا وارد کردن شناسه کاربر الزامی است.',
+    userIdInvalid: 'شناسه کاربر باید یک ULID معتبر باشد.',
+
+    // Create / edit
+    newRole: 'نقش جدید',
+    newRoleDescription:
+      'نقش تازه ایجاد کنید. می‌توانید بلافاصله مجموعه اولیه مجوزها را نیز انتخاب کنید؛ این مجموعه در همان تراکنش ایجاد نقش ثبت می‌شود.',
+    editRole: 'ویرایش نقش',
+    editRoleDescription:
+      'نام و توضیح نقش را ویرایش کنید. مجوزها از صفحه خود نقش مدیریت می‌شوند.',
+    roleNameRequired: 'نام نقش الزامی است.',
+    roleNameTooLong: 'نام نقش نباید بیش از ۱۲۰ نویسه باشد.',
+    descriptionTooLong: 'توضیح نباید بیش از ۵۰۰ نویسه باشد.',
+    roleCreated: 'نقش ایجاد شد.',
+    roleUpdated: 'نقش به‌روزرسانی شد.',
+    createFailed: 'ایجاد نقش انجام نشد. دوباره تلاش کنید.',
+    updateFailed: 'ذخیره تغییرات انجام نشد. دوباره تلاش کنید.',
+    duplicateRoleName: 'نقشی با این نام قبلاً ثبت شده است.',
+    formSummary: 'برای ذخیره، خطاهای زیر را برطرف کنید.',
+    serverValidationSummary:
+      'سامانه اطلاعات ارسالی را نپذیرفت. فیلدهای مشخص‌شده را اصلاح کنید.',
+    initialPermissions: 'مجوزهای اولیه',
+    initialPermissionsHint:
+      'می‌توانید خالی بگذارید و بعداً از صفحه نقش مجوز اضافه کنید.',
+    selectedCount: 'انتخاب‌شده: {count} مجوز',
+    registryLoadFailed:
+      'دریافت فهرست مجوزها انجام نشد؛ انتخاب مجوز غیرفعال است.',
+    registrySearchPlaceholder: 'جست‌وجو در کد یا شرح مجوز',
   },
   breadcrumb: {
     label: 'مسیر صفحه',
@@ -625,6 +859,9 @@ export const fa = {
     inventoryKardex: 'کاردکس',
     inventoryValuation: 'ارزش‌گذاری موجودی',
     clientDevices: 'دستگاه‌های این نصب',
+    admin: 'مدیریت سامانه',
+    users: 'کاربران',
+    roles: 'نقش‌ها',
     openMenu: 'باز کردن منو',
     closeMenu: 'بستن منو',
     mainMenu: 'منوی اصلی',
@@ -1351,6 +1588,271 @@ export const fa = {
       generic:
         'سامانه این عملیات انبار را نپذیرفت. مقدارهای واردشده را بازبینی کنید.',
     },
+  },
+
+  // Inventory master-data administration (FE-INV-MD): کالا، انبار، واحد،
+  // گروه کالا، تبدیل واحد و موجودی. واژگان همان واژگان دامنه است؛ چیزی به
+  // سلیقهٔ UI تغییر نمی‌کند.
+  inventoryMaster: {
+    items: 'کالاها',
+    warehouses: 'انبارها',
+    units: 'واحدها',
+    itemGroups: 'گروه‌های کالا',
+    unitConversions: 'تبدیل واحدها',
+    balances: 'موجودی انبار',
+
+    itemsDescription: 'تعریف کالاها و ویژگی‌های انباری و تجاری آن‌ها.',
+    warehousesDescription: 'تعریف انبارها و سیاست‌های عملیاتی هر انبار.',
+    unitsDescription: 'واحدهای شمارش کالا و نماد نمایش آن‌ها.',
+    itemGroupsDescription: 'دسته‌بندی سلسله‌مراتبی کالاها.',
+    unitConversionsDescription:
+      'نسخه‌های تبدیل بین واحدها؛ هر تغییر، یک نسخهٔ تاریخ‌دار جدید است.',
+    balancesDescription:
+      'موجودی جاری هر کالا در هر انبار؛ مقدار در دسترس، رزروشده و تاریخ آخرین گردش.',
+
+    newItem: 'کالای جدید',
+    newWarehouse: 'انبار جدید',
+    newUnit: 'واحد جدید',
+    newItemGroup: 'گروه جدید',
+    newUnitConversion: 'نسخهٔ تبدیل جدید',
+    editItem: 'ویرایش کالا',
+    editWarehouse: 'ویرایش انبار',
+    editUnit: 'ویرایش واحد',
+    editItemGroup: 'ویرایش گروه کالا',
+
+    // Shared list chrome
+    code: 'کد',
+    name: 'نام',
+    symbol: 'نماد',
+    status: 'وضعیت',
+    updatedAt: 'آخرین تغییر',
+    actions: 'عملیات',
+    view: 'مشاهده',
+    edit: 'ویرایش',
+    active: 'فعال',
+    inactive: 'غیرفعال',
+    enable: 'فعال‌سازی',
+    disable: 'غیرفعال‌سازی',
+    enabling: 'در حال فعال‌سازی…',
+    disabling: 'در حال غیرفعال‌سازی…',
+    allStatuses: 'همه وضعیت‌ها',
+    searchPlaceholder: 'جست‌وجو در کد یا نام…',
+    searchPlaceholderItem: 'جست‌وجو در کد، نام یا بارکد…',
+    filter: 'اعمال',
+    clear: 'پاک‌کردن فیلترها',
+    itemGroupFilter: 'گروه کالا',
+    allItemGroups: 'همهٔ گروه‌ها',
+    itemKindFilter: 'نوع کالا',
+    allItemKinds: 'همهٔ انواع',
+    branchFilter: 'شعبه',
+    allBranches: 'همهٔ شعبه‌ها',
+    selectBranch: 'انتخاب شعبه…',
+    loadFailed: 'دریافت فهرست انجام نشد. دوباره تلاش کنید.',
+
+    // Shared form chrome
+    saving: 'در حال ذخیره…',
+    create: 'ثبت',
+    update: 'ذخیرهٔ تغییرات',
+    dirtyLeaveTitle: 'ترک فرم',
+    dirtyLeaveDescription:
+      'تغییرات ذخیره‌نشده با خروج از این صفحه از بین می‌رود.',
+    dirtyLeaveConfirm: 'خروج بدون ذخیره',
+    codeRequired: 'وارد کردن کد الزامی است.',
+    codeTooLong: 'کد نباید بیش از ۶۴ نویسه باشد.',
+    nameRequired: 'وارد کردن نام الزامی است.',
+    nameTooLong: 'نام نباید بیش از ۲۰۰ نویسه باشد.',
+    unitCodeTooLong: 'کد واحد نباید بیش از ۳۲ نویسه باشد.',
+    unitNameTooLong: 'نام واحد نباید بیش از ۱۲۰ نویسه باشد.',
+    unitSymbolTooLong: 'نماد نباید بیش از ۱۶ نویسه باشد.',
+    descriptionTooLong: 'توضیحات نباید بیش از ۲۰۰۰ نویسه باشد.',
+    barcodeTooLong: 'بارکد نباید بیش از ۶۴ نویسه باشد.',
+    duplicateCode:
+      'این کد قبلاً در این سازمان ثبت شده است؛ کد دیگری وارد کنید.',
+    serverValidationSummary:
+      'برخی مقدارهای واردشده پذیرفته نشد؛ موارد مشخص‌شده را اصلاح کنید.',
+    errors: {
+      createFailed: 'ثبت رکورد انجام نشد. دوباره تلاش کنید.',
+      updateFailed: 'ذخیرهٔ تغییرات انجام نشد. دوباره تلاش کنید.',
+      enableFailed: 'فعال‌سازی انجام نشد. دوباره تلاش کنید.',
+      disableFailed: 'غیرفعال‌سازی انجام نشد. دوباره تلاش کنید.',
+      loadFailed: 'دریافت اطلاعات رکورد انجام نشد.',
+      notFound:
+        'این رکورد پیدا نشد؛ ممکن است حذف شده باشد یا به سازمان دیگری تعلق داشته باشد.',
+      forbidden: 'برای این عملیات مجوز لازم را ندارید.',
+      conflict: 'این تغییر با وضعیت فعلی سامانه سازگار نیست.',
+      businessRule:
+        'سامانه این تغییر را نپذیرفت؛ قواعد این رکورد را بازبینی کنید.',
+    },
+    lifecycle: {
+      enableTitle: 'فعال‌سازی رکورد',
+      enableBody:
+        'با فعال‌سازی، این رکورد برای استفادهٔ مجدد در عملیات و انتخاب‌گرهای سامانه در دسترس قرار می‌گیرد.',
+      disableTitle: 'غیرفعال‌سازی رکورد',
+      disableBody:
+        'با غیرفعال‌سازی، این رکورد در عملیات جدید قابل انتخاب نیست، اما تاریخچه و گزارش‌های قبلی آن سر جای خود می‌ماند. حذف نهایی انجام نمی‌شود.',
+    },
+    detail: {
+      titleSuffix: 'جزئیات',
+      identity: 'شناسه',
+      flags: 'ویژگی‌ها',
+      references: 'ارتباط‌ها',
+      audit: 'ثبت و به‌روزرسانی',
+      createdAt: 'ایجاد',
+      updatedAgo: 'آخرین تغییر',
+      id: 'شناسهٔ رکورد',
+    },
+
+    // Item kinds — the closed backend vocabulary, untranslated domain terms
+    itemKinds: {
+      goods: 'کالا',
+      service: 'خدمت',
+      consumable: 'مصرفی',
+      asset: 'دارایی',
+      raw_material: 'مادهٔ اولیه',
+      semi_finished: 'نیم‌ساخته',
+      finished_good: 'محصول نهایی',
+      other: 'سایر',
+    },
+
+    // Items
+    item: 'کالا',
+    itemKind: 'نوع کالا',
+    itemKindRequired: 'انتخاب نوع کالا الزامی است.',
+    itemGroup: 'گروه کالا',
+    baseUnit: 'واحد مبنا',
+    baseUnitRequired: 'انتخاب واحد مبنا الزامی است.',
+    baseUnitHint: 'هر مقدار از این کالا در همین واحد ذخیره می‌شود.',
+    description: 'توضیحات',
+    barcode: 'بارکد',
+    flags: 'ویژگی‌های کالا',
+    isStockable: 'قابل انبارش',
+    isStockableHint: 'کالای غیرقابل انبارش وارد موجودی نمی‌شود.',
+    isPurchasable: 'قابل خرید',
+    isSellable: 'قابل فروش',
+    isValued: 'دارای ارزش',
+    isValuedHint: 'کالای دارای ارزش باید قابل انبارش باشد.',
+    requiresLot: 'نیازمند شمارهٔ بچ (Lot)',
+    requiresSerial: 'نیازمند شمارهٔ سری',
+    requiresExpiry: 'نیازمند تاریخ انقضا',
+    allowNegativeStock: 'اجازهٔ موجودی منفی',
+    allowNegativeStockHint:
+      'خالی = پیروی از سیاست انبار؛ فعال = مجاز در همهٔ انبارها؛ غیرفعال = ممنوع در همهٔ انبارها.',
+    noItemGroup: 'بدون گروه',
+    noItemGroupHint: 'خالی = کالا بدون گروه.',
+    selectUnit: 'انتخاب واحد…',
+    itemKindImmutableHint: 'نوع کالا پس از ثبت قابل تغییر نیست.',
+    negativeStockFollow: 'پیروی از سیاست انبار',
+    negativeStockAllow: 'مجاز (نادیده‌گرفتن سیاست انبار)',
+    negativeStockForbid: 'ممنوع (نادیده‌گرفتن سیاست انبار)',
+    capabilities: 'قابلیت‌ها',
+    unitMissingHint:
+      'ابتدا از بخش «واحدها» یک واحد تعریف کنید؛ انتخاب واحد مبنا الزامی است.',
+    itemCreated: 'کالا ثبت شد.',
+    itemUpdated: 'تغییرات کالا ذخیره شد.',
+    itemEnabled: 'کالا فعال شد.',
+    itemDisabled: 'کالا غیرفعال شد.',
+    itemsEmptyFirstUse: 'هنوز کالایی تعریف نشده است. اولین کالا را بسازید.',
+    itemsEmptyFiltered: 'برای فیلترهای انتخاب‌شده کالایی یافت نشد.',
+    unitRequiredServerField: 'واحد مبنا',
+
+    // Warehouses
+    branch: 'شعبه',
+    branchRequired: 'انتخاب شعبه الزامی است.',
+    branchHint: 'انبار باید به یک شعبهٔ فعال همین سازمان تعلق داشته باشد.',
+    warehousePolicies: 'سیاست‌های انبار',
+    allowNegativeStockPolicy: 'سیاست موجودی منفی (پیش‌فرض انبار)',
+    reservationsReduceAvailable: 'رزروها از مقدار در دسترس کم شوند',
+    reservationsReduceAvailableHint:
+      'رزروها هرگز موجودی فیزیکی (on-hand) را تغییر نمی‌دهند؛ این گزینه فقط عدد «در دسترس» را محاسبه می‌کند.',
+    accountingPostingMode: 'حالت ثبت حسابداری',
+    accountingPostingModeHint:
+      'نحوهٔ صدور سند حسابداری هنگام نهایی‌شدن اسناد این انبار.',
+    postingModes: {
+      direct_final: 'مستقیم و قطعی',
+      draft: 'پیش‌نویس برای حسابدار',
+    },
+    noBranchesHint:
+      'ابتدا از بخش «ساختار سازمان» یک شعبه برای این سازمان تعریف کنید.',
+    warehouseCreated: 'انبار ثبت شد.',
+    warehouseUpdated: 'تغییرات انبار ذخیره شد.',
+    warehouseEnabled: 'انبار فعال شد.',
+    warehouseDisabled: 'انبار غیرفعال شد.',
+    warehousesEmptyFirstUse:
+      'هنوز انباری تعریف نشده است. اولین انبار را بسازید.',
+    warehousesEmptyFiltered: 'برای فیلترهای انتخاب‌شده انباری یافت نشد.',
+
+    // Units
+    unitSymbol: 'نماد',
+    unitSymbolHint: 'نماد کوتاه نمایش، مثل «عدد» یا «کیلوگرم» (اختیاری).',
+    unitCreated: 'واحد ثبت شد.',
+    unitUpdated: 'تغییرات واحد ذخیره شد.',
+    unitEnabled: 'واحد فعال شد.',
+    unitDisabled: 'واحد غیرفعال شد.',
+    unitsEmptyFirstUse: 'هنوز واحدی تعریف نشده است. اولین واحد را بسازید.',
+    unitsEmptyFiltered: 'برای فیلترهای انتخاب‌شده واحدی یافت نشد.',
+
+    // Item groups
+    parentGroup: 'گروه والد',
+    parentGroupHint: 'خالی = گروه ریشه.',
+    noParent: 'گروه ریشه',
+    itemGroupCreated: 'گروه کالا ثبت شد.',
+    itemGroupUpdated: 'تغییرات گروه ذخیره شد.',
+    itemGroupEnabled: 'گروه کالا فعال شد.',
+    itemGroupDisabled: 'گروه کالا غیرفعال شد.',
+    itemGroupsEmptyFirstUse:
+      'هنوز گروهی تعریف نشده است. اولین گروه کالا را بسازید.',
+    itemGroupsEmptyFiltered: 'برای فیلترهای انتخاب‌شده گروهی یافت نشد.',
+
+    // Unit conversions — effective-dated versions, never edited in place
+    conversionScope: 'دامنه',
+    conversionScopes: {
+      global: 'سراسری (بین دو واحد)',
+      item: 'مخصوص یک کالا',
+    },
+    conversionItem: 'کالای هدف',
+    conversionItemRequired:
+      'برای دامنهٔ «مخصوص یک کالا»، انتخاب کالا الزامی است.',
+    fromUnit: 'واحد مبدأ',
+    toUnit: 'واحد مقصد',
+    toUnitHint: 'معمولاً واحد مبنای کالا است.',
+    factor: 'ضریب تبدیل',
+    factorHint: 'مثلاً ۱۲ یعنی هر ۱ واحد مبدأ برابر ۱۲ واحد مقصد است.',
+    factorRequired: 'وارد کردن ضریب تبدیل الزامی است.',
+    factorInvalid: 'ضریب باید عددی مثبت با حداکثر ۶ رقم اعشار باشد.',
+    validFrom: 'تاریخ شروع اعتبار',
+    validTo: 'تاریخ پایان اعتبار (اختیاری)',
+    validToHint: 'خالی = باز تا اطلاع بعدی؛ نسخهٔ جدید، نسخهٔ قبلی را می‌بندد.',
+    fromUnitRequired: 'انتخاب واحد مبدأ الزامی است.',
+    toUnitRequired: 'انتخاب واحد مقصد الزامی است.',
+    itemFilter: 'کالا',
+    allItems: 'همهٔ کالاها',
+    columnFactor: 'ضریب',
+    columnValidFrom: 'شروع اعتبار',
+    columnValidTo: 'پایان اعتبار',
+    openEnded: 'باز',
+    superseded: 'بسته‌شده',
+    current: 'جاری',
+    conversionCreated: 'نسخهٔ تبدیل ثبت شد.',
+    conversionsEmptyFirstUse:
+      'هنوز نسخهٔ تبدیلی ثبت نشده است. اولین تبدیل را بسازید.',
+    conversionsEmptyFiltered: 'برای فیلترهای انتخاب‌شده نسخهٔ تبدیلی یافت نشد.',
+    conversionsLoadFailed: 'دریافت نسخه‌های تبدیل انجام نشد.',
+    conversionNoEditNote:
+      'نسخه‌های تبدیل هرگز ویرایش نمی‌شوند؛ برای تغییر، یک نسخهٔ تاریخ‌دار جدید بسازید.',
+
+    // Balances
+    warehouseFilter: 'انبار',
+    allWarehouses: 'همهٔ انبارها',
+    onHand: 'موجودی فیزیکی',
+    reserved: 'رزروشده',
+    available: 'در دسترس',
+    lastMovementDate: 'آخرین گردش',
+    balancesEmptyFirstUse:
+      'هنوز موجودی‌ای ثبت نشده است؛ با ثبت رسید انبار موجودی شکل می‌گیرد.',
+    balancesEmptyFiltered: 'برای فیلترهای انتخاب‌شده موجودی‌ای یافت نشد.',
+    balancesLoadFailed: 'دریافت موجودی‌ها انجام نشد. دوباره تلاش کنید.',
+    seeKardex: 'کاردکس',
+    totalRows: 'ردیف',
   },
   masterData: {
     title: 'اطلاعات پایه حسابداری',

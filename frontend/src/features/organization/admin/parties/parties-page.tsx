@@ -15,7 +15,7 @@ import { ActiveBadge, AdminFilters } from '../admin-ui';
 import {
   ADMIN_PAGE_SIZE_OPTIONS,
   useAdminListState,
-} from '../admin-list-state';
+} from '@/lib/use-admin-list-state';
 import { PARTY_TYPE_LABELS, PARTY_TYPES, parsePartyType } from '../party-types';
 import { PARTY_DEFAULT_SORT, usePartyList } from './party-hooks';
 

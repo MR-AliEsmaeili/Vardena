@@ -14,7 +14,7 @@ import { ActiveBadge, AdminFilters } from '../admin-ui';
 import {
   ADMIN_PAGE_SIZE_OPTIONS,
   useAdminListState,
-} from '../admin-list-state';
+} from '@/lib/use-admin-list-state';
 import { BRANCH_DEFAULT_SORT, useBranchList } from './branch-hooks';
 
 const columns: ColumnDef<Branch, unknown>[] = [

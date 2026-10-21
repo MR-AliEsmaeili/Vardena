@@ -4,7 +4,7 @@ import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
-import type { StatusFilter } from './admin-list-state';
+import type { StatusFilter } from '@/lib/use-admin-list-state';
 
 /**
  * Small presentational atoms shared by the organization-administration

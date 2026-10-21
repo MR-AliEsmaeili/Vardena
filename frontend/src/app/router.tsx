@@ -21,6 +21,33 @@ import { InventoryDocumentDetailPage } from '@/features/inventory/documents/inve
 import { InventoryDocumentFormPage } from '@/features/inventory/documents/inventory-document-form-page';
 import { InventoryDocumentsPage } from '@/features/inventory/documents/inventory-documents-page';
 import { InventoryHomePage } from '@/features/inventory/inventory-home-page';
+import { BalancesPage } from '@/features/inventory/master-data/balances/balances-page';
+import { ItemGroupDetailPage } from '@/features/inventory/master-data/item-groups/item-group-detail-page';
+import {
+  ItemGroupCreatePage,
+  ItemGroupEditPage,
+} from '@/features/inventory/master-data/item-groups/item-group-form-page';
+import { ItemGroupsPage } from '@/features/inventory/master-data/item-groups/item-groups-page';
+import { ItemDetailPage } from '@/features/inventory/master-data/items/item-detail-page';
+import {
+  ItemCreatePage,
+  ItemEditPage,
+} from '@/features/inventory/master-data/items/item-form-page';
+import { ItemsPage } from '@/features/inventory/master-data/items/items-page';
+import { UnitConversionCreatePage } from '@/features/inventory/master-data/unit-conversions/unit-conversion-create-page';
+import { UnitConversionsPage } from '@/features/inventory/master-data/unit-conversions/unit-conversions-page';
+import { UnitDetailPage } from '@/features/inventory/master-data/units/unit-detail-page';
+import {
+  UnitCreatePage,
+  UnitEditPage,
+} from '@/features/inventory/master-data/units/unit-form-page';
+import { UnitsPage } from '@/features/inventory/master-data/units/units-page';
+import { WarehouseDetailPage } from '@/features/inventory/master-data/warehouses/warehouse-detail-page';
+import {
+  WarehouseCreatePage,
+  WarehouseEditPage,
+} from '@/features/inventory/master-data/warehouses/warehouse-form-page';
+import { WarehousesPage } from '@/features/inventory/master-data/warehouses/warehouses-page';
 import { ClientDevicesPage } from '@/features/licensing/client-devices-page';
 import { KardexPage } from '@/features/inventory/kardex-page';
 import { MovementFormPage } from '@/features/inventory/movement-form-page';
@@ -53,6 +80,15 @@ import {
   PartyCreatePage,
   PartyEditPage,
 } from '@/features/organization/admin/parties/party-form-page';
+import { MembersPage } from '@/features/organization/admin/members/members-page';
+import { RoleCreatePage } from '@/features/administration/roles/role-create-page';
+import { RoleDetailPage } from '@/features/administration/roles/role-detail-page';
+import { RoleEditPage } from '@/features/administration/roles/role-edit-page';
+import { RolesPage } from '@/features/administration/roles/roles-page';
+import { UserCreatePage } from '@/features/administration/users/user-create-page';
+import { UserDetailPage } from '@/features/administration/users/user-detail-page';
+import { UserEditPage } from '@/features/administration/users/user-edit-page';
+import { UsersPage } from '@/features/administration/users/users-page';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { AppShell } from './layouts/app-shell';
 import { DashboardRoute } from './routes/dashboard-route';
@@ -240,6 +276,16 @@ export function AppRoutes() {
               }
             >
               <Route path="profile" element={<OrganizationProfilePage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.organization.membershipView]}
+                />
+              }
+            >
+              <Route path="members" element={<MembersPage />} />
             </Route>
 
             <Route
@@ -489,6 +535,200 @@ export function AppRoutes() {
             >
               <Route path="valuation" element={<ValuationStatesPage />} />
             </Route>
+
+            {/*
+              Inventory master data (master-data-strategy.md §3). Every list
+              and detail route is gated by the resource's own VIEW code and
+              every create/edit route by its CREATE/EDIT code — the exact
+              codes the controllers require. The edit routes need VIEW as
+              well because the form loads the record first. Unit conversions
+              have no edit route at all: versions are immutable and a change
+              is a new effective-dated version (ADR-0020 §4). Balances are a
+              read-time projection — list only.
+            */}
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.itemView]}
+                />
+              }
+            >
+              <Route path="items" element={<ItemsPage />} />
+              <Route path="items/:itemId" element={<ItemDetailPage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.itemCreate]}
+                />
+              }
+            >
+              <Route path="items/new" element={<ItemCreatePage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[
+                    PERMISSIONS.inventory.itemView,
+                    PERMISSIONS.inventory.itemEdit,
+                  ]}
+                />
+              }
+            >
+              <Route path="items/:itemId/edit" element={<ItemEditPage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.itemGroupView]}
+                />
+              }
+            >
+              <Route path="item-groups" element={<ItemGroupsPage />} />
+              <Route
+                path="item-groups/:itemGroupId"
+                element={<ItemGroupDetailPage />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.itemGroupCreate]}
+                />
+              }
+            >
+              <Route path="item-groups/new" element={<ItemGroupCreatePage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[
+                    PERMISSIONS.inventory.itemGroupView,
+                    PERMISSIONS.inventory.itemGroupEdit,
+                  ]}
+                />
+              }
+            >
+              <Route
+                path="item-groups/:itemGroupId/edit"
+                element={<ItemGroupEditPage />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.unitView]}
+                />
+              }
+            >
+              <Route path="units" element={<UnitsPage />} />
+              <Route path="units/:unitId" element={<UnitDetailPage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.unitCreate]}
+                />
+              }
+            >
+              <Route path="units/new" element={<UnitCreatePage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[
+                    PERMISSIONS.inventory.unitView,
+                    PERMISSIONS.inventory.unitEdit,
+                  ]}
+                />
+              }
+            >
+              <Route path="units/:unitId/edit" element={<UnitEditPage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.warehouseView]}
+                />
+              }
+            >
+              <Route path="warehouses" element={<WarehousesPage />} />
+              <Route
+                path="warehouses/:warehouseId"
+                element={<WarehouseDetailPage />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.warehouseCreate]}
+                />
+              }
+            >
+              <Route path="warehouses/new" element={<WarehouseCreatePage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[
+                    PERMISSIONS.inventory.warehouseView,
+                    PERMISSIONS.inventory.warehouseEdit,
+                  ]}
+                />
+              }
+            >
+              <Route
+                path="warehouses/:warehouseId/edit"
+                element={<WarehouseEditPage />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.unitConversionView]}
+                />
+              }
+            >
+              <Route
+                path="unit-conversions"
+                element={<UnitConversionsPage />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.unitConversionCreate]}
+                />
+              }
+            >
+              <Route
+                path="unit-conversions/new"
+                element={<UnitConversionCreatePage />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.balanceView]}
+                />
+              }
+            >
+              <Route path="balances" element={<BalancesPage />} />
+            </Route>
           </Route>
 
           <Route
@@ -500,6 +740,76 @@ export function AppRoutes() {
             }
           >
             <Route index element={<ClientDevicesPage />} />
+          </Route>
+
+          {/*
+            System administration: user accounts and roles.
+
+            Same shapes as the organization groups: `…/new` is a sibling of
+            the View-gated group (the POST enforces only `*.Create`), and
+            `…/:id/edit` requires View **and** Edit (the edit screen first
+            reads the record). The password reset and enable/disable
+            operations live ON the user detail page, gated per operation.
+          */}
+          <Route path="admin">
+            <Route
+              element={
+                <RequirePermission permissions={[PERMISSIONS.users.view]} />
+              }
+            >
+              <Route path="users" element={<UsersPage />} />
+              <Route path="users/:userId" element={<UserDetailPage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission permissions={[PERMISSIONS.users.create]} />
+              }
+            >
+              <Route path="users/new" element={<UserCreatePage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.users.view, PERMISSIONS.users.edit]}
+                />
+              }
+            >
+              <Route path="users/:userId/edit" element={<UserEditPage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission permissions={[PERMISSIONS.rbac.roleView]} />
+              }
+            >
+              <Route path="roles" element={<RolesPage />} />
+              <Route path="roles/:roleId" element={<RoleDetailPage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.rbac.roleCreate]}
+                />
+              }
+            >
+              <Route path="roles/new" element={<RoleCreatePage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[
+                    PERMISSIONS.rbac.roleView,
+                    PERMISSIONS.rbac.roleEdit,
+                  ]}
+                />
+              }
+            >
+              <Route path="roles/:roleId/edit" element={<RoleEditPage />} />
+            </Route>
           </Route>
 
           <Route path="*" element={<NotFoundPage />} />

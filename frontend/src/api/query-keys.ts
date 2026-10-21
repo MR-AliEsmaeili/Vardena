@@ -14,6 +14,35 @@
 export const queryKeys = {
   session: () => ['identity', 'session'] as const,
   effectivePermissions: () => ['rbac', 'permissions', 'effective'] as const,
+
+  /**
+   * User administration (`UsersController`). Session-global data — user
+   * accounts are NOT organization-scoped (a user belongs to the
+   * installation, memberships bind them to organizations), so these keys
+   * deliberately carry no organization id and survive a scope switch.
+   */
+  users: {
+    prefix: () => ['users'] as const,
+    list: (filters: Record<string, unknown>) =>
+      ['users', 'list', filters] as const,
+    detail: (userId: string) => ['users', 'detail', userId] as const,
+  },
+
+  /**
+   * Role administration and the permission registry (`RolesController`,
+   * `PermissionsController`) — session-global like the users above.
+   */
+  rbac: {
+    rolesPrefix: () => ['rbac', 'roles'] as const,
+    roleList: (filters: Record<string, unknown>) =>
+      ['rbac', 'roles', 'list', filters] as const,
+    roleDetail: (roleId: string) =>
+      ['rbac', 'roles', 'detail', roleId] as const,
+    permissionsPrefix: () => ['rbac', 'permissions', 'registry'] as const,
+    permissionList: (filters: Record<string, unknown>) =>
+      ['rbac', 'permissions', 'registry', filters] as const,
+  },
+
   licenseState: () => ['licensing', 'license', 'current'] as const,
   clientDevicesPrefix: () => ['licensing', 'devices'] as const,
   clientDeviceInventory: () => ['licensing', 'devices', 'inventory'] as const,
@@ -83,6 +112,16 @@ export const queryKeys = {
       ['organization', organizationId, 'parties', 'list', filters] as const,
     partyDetail: (organizationId: string, partyId: string) =>
       ['organization', organizationId, 'parties', 'detail', partyId] as const,
+
+    /**
+     * Organization memberships (`OrganizationMembershipsController`).
+     * Organization-scoped by construction: the id sits at index 1 like every
+     * other scoped read of this root.
+     */
+    members: (organizationId: string) =>
+      ['organization', organizationId, 'members'] as const,
+    memberList: (organizationId: string, filters: Record<string, unknown>) =>
+      ['organization', organizationId, 'members', 'list', filters] as const,
   },
 
   accounting: {
@@ -296,6 +335,64 @@ export const queryKeys = {
 
     units: (organizationId: string) =>
       ['inventory', organizationId, 'units'] as const,
+
+    // Master-data administration lists and details. The admin keys are
+    // children of the reference-read prefix above on purpose: invalidating
+    // `['inventory', orgId, 'items']` after a mutation refreshes the admin
+    // list, the detail AND the pickers together.
+    warehouseList: (organizationId: string, filters: Record<string, unknown>) =>
+      ['inventory', organizationId, 'warehouses', 'admin', filters] as const,
+    warehouseDetail: (organizationId: string, warehouseId: string) =>
+      [
+        'inventory',
+        organizationId,
+        'warehouses',
+        'detail',
+        warehouseId,
+      ] as const,
+    warehousePrefix: (organizationId: string) =>
+      ['inventory', organizationId, 'warehouses'] as const,
+
+    unitList: (organizationId: string, filters: Record<string, unknown>) =>
+      ['inventory', organizationId, 'units', 'admin', filters] as const,
+    unitDetail: (organizationId: string, unitId: string) =>
+      ['inventory', organizationId, 'units', 'detail', unitId] as const,
+    unitPrefix: (organizationId: string) =>
+      ['inventory', organizationId, 'units'] as const,
+
+    itemGroupList: (organizationId: string, filters: Record<string, unknown>) =>
+      ['inventory', organizationId, 'item-groups', 'list', filters] as const,
+    itemGroupDetail: (organizationId: string, itemGroupId: string) =>
+      [
+        'inventory',
+        organizationId,
+        'item-groups',
+        'detail',
+        itemGroupId,
+      ] as const,
+    itemGroupPrefix: (organizationId: string) =>
+      ['inventory', organizationId, 'item-groups'] as const,
+
+    itemList: (organizationId: string, filters: Record<string, unknown>) =>
+      ['inventory', organizationId, 'items', 'admin', filters] as const,
+    itemDetail: (organizationId: string, itemId: string) =>
+      ['inventory', organizationId, 'items', 'detail', itemId] as const,
+    itemPrefix: (organizationId: string) =>
+      ['inventory', organizationId, 'items'] as const,
+
+    unitConversionList: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+    ) =>
+      [
+        'inventory',
+        organizationId,
+        'unit-conversions',
+        'list',
+        filters,
+      ] as const,
+    unitConversionPrefix: (organizationId: string) =>
+      ['inventory', organizationId, 'unit-conversions'] as const,
   },
 
   workflow: {
