@@ -1,7 +1,7 @@
 # Licensing completion — Owner ↔ Customer end-to-end (2026-10-21)
 
 **Branch:** `arena/3c88d285-vardena` (from `main` @ `24608f03baa3da941ec18d06995fb5ef95267418`)
-**Commits:** one code commit `52661f2b4a2ec6801ec8b6bed130bec2971d91d0`; every later commit is documentation only — see [section E](#e-github-report) for the head, the run that belongs to each SHA and the six CI jobs.
+**Commits:** one code commit `52661f2b4a2ec6801ec8b6bed130bec2971d91d0`; every later commit is documentation only — see [section E](#e-github-report) for the commit list, the run that belongs to each SHA and the six CI jobs.
 **Companion:** [pre-change audit](licensing-completion-audit-2026-10-21.md) — the capability matrix (O1–O16, C1–C8) this report closes.
 **Environment:** Node.js 22.22.3, npm 10.9.8, no Docker, no system PostgreSQL. A disposable PostgreSQL 18.4 on `127.0.0.1:55432` (`owner_test`, `vardena_test`) was used for the database suites. Every number below was produced by a command executed on this branch; commands that could **not** run here are named as such and are not counted as evidence.
 
@@ -165,7 +165,15 @@ A disposable PostgreSQL 18.4 cluster was started from embedded binaries and used
 
 ## E. GitHub report
 
-Read from GitHub for this branch (`gh pr view 191`, `gh run list --branch arena/3c88d285-vardena`, `gh run view <id>`). Exactly one commit on this branch changes code — `52661f2` — and everything after it is documentation only; the last of those is the head. The tables list every commit as of the moment this section was read, each with the run that belongs to it.
+Every value below was read from GitHub for this branch (`gh pr view 191`,
+`gh run list --branch arena/3c88d285-vardena`, `gh run view <id>`), not recalled
+from an earlier session.
+
+**One code commit.** `52661f2` carries every production change described in this
+report — code, tests, migrations read-only, contracts. Everything committed on
+this branch after it changes **only this file**, so the code that CI exercises is
+byte-identical in all runs below (`git diff 52661f2 <any later commit>` touches
+one Markdown file).
 
 | Item                                                     | Value                                                                        |
 | -------------------------------------------------------- | ---------------------------------------------------------------------------- |
@@ -174,20 +182,46 @@ Read from GitHub for this branch (`gh pr view 191`, `gh run list --branch arena/
 | Working branch                                           | `arena/3c88d285-vardena`                                                     |
 | Pull request                                             | [#191](https://github.com/MR-AliEsmaeili/Vardena/pull/191) — open, mergeable |
 | **Code commit** — every production change in this report | `52661f2b4a2ec6801ec8b6bed130bec2971d91d0`                                   |
-| Documentation-only commit                                | `784a1e3e734a47ec262cab00215841e3952c5cfd`                                   |
-| Documentation-only commit (head when read)               | `605446849c9e2bc1012d362774c28776942f91da`                                   |
-| **Final head at the time of writing**                    | `605446849c9e2bc1012d362774c28776942f91da`                                   |
 | CI on `main` before this branch                          | `success` — run `39506001448`, 4m44s                                         |
 
-| SHA                    | CI run (workflow `CI`, event `pull_request`)                                        | Result      | Jobs                                                                                            |
-| ---------------------- | ----------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------- |
-| `52661f2` (code)       | [`39645730522`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39645730522) | **success** | `classify`, `generated-api-client`, `docs`, `frontend`, `backend`, `ci-gate` — six of six green |
-| `784a1e3` (docs)       | [`39646710255`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39646710255) | **success** | the same six jobs green                                                                         |
-| `6054468` (docs, head) | [`39647746919`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39647746919) | **success** | the same six jobs green                                                                         |
+### E.1 Commits on the branch, oldest to newest
 
-**Code commit versus documentation commits.** `52661f2` is the only commit that changes executable code, tests, database access or contracts; commits `784a1e3` and `6054468` change only this report, so the code under test is byte-identical across all three and the three runs exercise the same code. Each run above belongs to the SHA in its own row and is never offered as evidence for another commit.
+Each row names **its own** SHA and **its own** run. `docs` = documentation only.
 
-**A commit cannot contain its own SHA.** The commit that adds this paragraph is a further documentation-only commit on the same branch, so the head moves by one docs-only commit whenever this report is corrected. The authoritative head is therefore the one GitHub reports — `gh pr view 191 --json headRefOid`, and the checks on the pull request page — while `6054468` above is the head this table was written against. No earlier SHA is described as the final head anywhere in this report, and no CI result from an earlier commit is presented as the result of a different one.
+| #   | SHA                                        | Kind     | CI run (workflow `CI`, event `pull_request`)                                        | Result      | Jobs                                                                                      |
+| --- | ------------------------------------------ | -------- | ----------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------- |
+| 1   | `52661f2b4a2ec6801ec8b6bed130bec2971d91d0` | **code** | [`39645730522`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39645730522) | **success** | `classify`, `generated-api-client`, `docs`, `frontend`, `backend`, `ci-gate` — six of six |
+| 2   | `784a1e3e734a47ec262cab00215841e3952c5cfd` | docs     | [`39646710255`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39646710255) | **success** | the same six jobs                                                                         |
+| 3   | `605446849c9e2bc1012d362774c28776942f91da` | docs     | [`39647746919`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39647746919) | **success** | the same six jobs                                                                         |
+| 4   | `dc8a1ab1349a71945112beb3ef65e27f53a73f5b` | docs     | [`39651435273`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39651435273) | **success** | the same six jobs                                                                         |
+
+Row 4 was the head when this table was last filled in. The commit that publishes
+this revision is itself row 5 — a documentation-only commit, identical in code to
+row 1 — and its run appears on the pull request's checks list next to the branch
+head.
+
+### E.2 How to read the head without trusting this file
+
+A commit cannot contain its own SHA, so any table written inside the repository
+is one documentation-only commit behind the branch head. The binding rule that
+makes the table sufficient anyway:
+
+- the **only** commit that changes code is row 1, and every later commit is
+  verified to touch no file other than this report;
+- therefore the code under test never changes after row 1, and each row's green
+  run is a green run of that same code;
+- the authoritative head is whatever GitHub reports, together with the checks
+  rendered on the pull request page.
+
+Reproduce those two facts with:
+
+```bash
+git diff --stat 52661f2 HEAD     # one file: this report
+gh pr view 191 --json headRefOid # the current head
+```
+
+No SHA is described in this report as "the final commit" while a later commit
+exists, and no run is attributed to a commit other than the one it ran on.
 
 ---
 
@@ -268,5 +302,5 @@ The status card shows the validity window and the coverage end. After the end of
 ## G. Decision summary
 
 1. **Is the mission actually complete?** For everything this branch claims: yes — the Owner prepares, signs (offline), archives and hands over a file; the customer verifies, activates and enforces; renewal, supersession and signed revocation are recorded and audited; the customer can import a revocation. Measured by the criterion "a usable end-to-end cycle, not file count": the cycle exists and is covered by executed tests on both sides, and by the cross-implementation check in B.4. It is **not** claimed complete for the customer backend's live-DB suites, which could not be executed in this sandbox.
-2. **Is CI green on the final commit?** Each run in section E belongs to the SHA in its own row, and the head when the table was written is `6054468` with run `39647746919` (six of six jobs). Because this section is corrected by documentation-only commits, the definitive answer for the current head is GitHub's own list of checks on pull request #191; `main` was green before this branch.
+2. **Is CI green on the final commit?** Section E.1 lists every commit on the branch with the run that belongs to that SHA; all of them are green, six jobs each, and the single code commit is `52661f2`. Because a commit cannot contain its own SHA, the definitive answer for the current head is GitHub's own check list on pull request #191; `main` was green before this branch.
 3. **Open Product-Owner decisions?** None block what is implemented here. The genuine open items are the ones already recorded in `docs/open-questions.md` and unchanged by this work: OQ-82 (server-replacement protocol), OQ-84 (activation receipts — closed as "not required"), OQ-76 (clock-integrity evidence), the installation-identity key (designed only) and the deployment-owner items for the artifact backup medium and a production-sized restore rehearsal. No business policy was invented: where the repository had a decision, it was followed; where it had none, no behaviour was added.
