@@ -18,6 +18,8 @@ import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { LoadingState } from '@/ui/patterns/states';
 import { useDirtyGuard } from '@/ui/patterns/owner-states';
 import { customerSchema, type CustomerValues } from './customer-schema';
+import { InstallationIdentities } from './installation-identities';
+import { LimitProfiles } from './limit-profiles';
 
 export function CustomerPage({ mode }: { mode: 'new' | 'detail' | 'edit' }) {
   const { id = '' } = useParams();
@@ -88,8 +90,22 @@ export function CustomerPage({ mode }: { mode: 'new' | 'detail' | 'edit' }) {
       <p className="text-sm text-muted-ink">{o.immutable}</p>
       <p className="text-sm text-muted-ink">{o.contractDatesHelp}</p>
       <div className="flex flex-wrap gap-3">
-        {permissions.has('customers.write') && (
+        {permissions.has('licenses.view') && (
           <Button asChild>
+            <Link to={`/app/licenses?customer=${id}`}>
+              {o.customerLicenses}
+            </Link>
+          </Button>
+        )}
+        {permissions.has('licenses.issue.time_limited') && (
+          <Button asChild variant="outline">
+            <Link to={`/app/licenses?customer=${id}`}>
+              {o.issueForCustomer}
+            </Link>
+          </Button>
+        )}
+        {permissions.has('customers.write') && (
+          <Button asChild variant="outline">
             <Link to={`/app/customers/${id}/edit`}>{o.edit}</Link>
           </Button>
         )}
@@ -104,6 +120,12 @@ export function CustomerPage({ mode }: { mode: 'new' | 'detail' | 'edit' }) {
           <Link to="/app/customers">{o.back}</Link>
         </Button>
       </div>
+      {permissions.has('licenses.view') ? (
+        <>
+          <InstallationIdentities customerId={c.id} />
+          <LimitProfiles customerId={c.id} />
+        </>
+      ) : null}
     </section>
   );
 }

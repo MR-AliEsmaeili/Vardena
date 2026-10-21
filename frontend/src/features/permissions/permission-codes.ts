@@ -32,6 +32,12 @@ export const PERMISSIONS = {
    */
   licensing: {
     licenseActivate: 'Licensing.License.Activate',
+    /**
+     * Import a signed revocation artifact (OD-LIC-17). A distinct act from
+     * activation: the backend route requires this exact code and re-checks it,
+     * so the UI check only decides whether the surface is offered.
+     */
+    licenseRevoke: 'Licensing.License.Revoke',
     deviceView: 'Licensing.Device.View',
     deviceActivate: 'Licensing.Device.Activate',
     deviceDeactivate: 'Licensing.Device.Deactivate',

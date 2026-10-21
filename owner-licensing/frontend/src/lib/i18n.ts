@@ -80,6 +80,29 @@ export const t = {
     rateLimited: 'تعداد درخواست‌ها بیش از حد مجاز است. کمی بعد تلاش کنید.',
     server: 'خطای غیرمنتظره در سرور رخ داد.',
     unknown: 'خطای ناشناخته رخ داد.',
+    // Domain codes the Owner API returns for the licensing workflow. They are
+    // part of that contract (`fail(status, code, …)` in the owner backend), so
+    // the UI renders a specific Persian sentence instead of “invalid request”.
+    duplicateInstallationIdentity:
+      'این شناسه نصب قبلاً برای همین مشتری ثبت شده است.',
+    installationIdentityRetired:
+      'این شناسه نصب بازنشسته شده است؛ صدور جدید برای آن مجاز نیست.',
+    activeProfileExists:
+      'این مشتری از قبل سقف فعال دارد؛ ابتدا سقف فعال را بازنشسته کنید.',
+    limitProfileExceeded:
+      'درخواست با سقف فعال این مشتری سازگار نیست؛ مقدارها یا ماژول‌ها را اصلاح کنید.',
+    signingKeyUnavailable:
+      'کلید امضای انتخاب‌شده فعال نیست یا در فهرست اعتماد امضاکننده نیست.',
+    customerInactive: 'این مشتری غیرفعال است و مجوز جدید نمی‌گیرد.',
+    artifactBindingMismatch:
+      'فایل امضاشده با درخواست تأییدشده مطابقت ندارد و ثبت نشد.',
+    grantNotActive: 'برای این مجوز، اعطای فعالی وجود ندارد.',
+    alreadyRevoked: 'برای این مجوز قبلاً سند ابطال ثبت شده است.',
+    noArtifact: 'فایل امضاشده‌ای برای دانلود موجود نیست.',
+    artifactStorageUnavailable:
+      'مخزن بایگانی فایل امضاشده پیکربندی نشده است؛ عملیات متوقف شد.',
+    trustListUnavailable:
+      'فهرست کلیدهای مورد اعتماد امضاکننده پیکربندی نشده است؛ عملیات متوقف شد.',
     correlationId: 'کد پیگیری',
   },
   table: {

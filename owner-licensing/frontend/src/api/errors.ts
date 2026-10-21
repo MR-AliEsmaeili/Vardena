@@ -11,6 +11,15 @@ import { t } from '@/lib/i18n';
  * never on `message` (the message is human text and may change).
  */
 
+/**
+ * Codes with a fixed Persian sentence. The Owner API *also* returns
+ * domain-specific codes (`fail(status, code, …)` in `owner-licensing/backend`:
+ * `DuplicateInstallationIdentity`, `ActiveProfileExists`, `LimitProfileExceeded`,
+ * `ArtifactBindingMismatch`, …). Dropping those — which the previous
+ * closed-list `isApiErrorBody` did — turned a precise 409 into a generic
+ * “invalid request”, so the code and message are now preserved and only the
+ * message lookup is a closed list.
+ */
 export const API_ERROR_CODES = [
   'ValidationFailed',
   'BadRequest',
@@ -24,6 +33,18 @@ export const API_ERROR_CODES = [
   'RateLimitExceeded',
   'ServiceUnavailable',
   'InternalError',
+  'DuplicateInstallationIdentity',
+  'InstallationIdentityRetired',
+  'ActiveProfileExists',
+  'LimitProfileExceeded',
+  'SigningKeyUnavailable',
+  'CustomerInactive',
+  'ArtifactBindingMismatch',
+  'GrantNotActive',
+  'AlreadyRevoked',
+  'NoArtifact',
+  'ArtifactStorageUnavailable',
+  'TrustListUnavailable',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -78,6 +99,9 @@ function isApiErrorBody(value: unknown): value is ApiErrorBody {
   return (
     typeof body['code'] === 'string' &&
     typeof body['message'] === 'string' &&
+    // A code this build does not know is not rendered: its message could be an
+    // upstream implementation detail. The list above is the Owner API's own
+    // closed vocabulary, so recognizing a code is what makes it displayable.
     (API_ERROR_CODES as readonly string[]).includes(body['code'])
   );
 }
@@ -102,6 +126,30 @@ function messageForCode(code: ApiFailureCode, fallback?: string): string {
       return t.errors.invalidTransition;
     case 'DuplicateOperation':
       return t.errors.duplicateOperation;
+    case 'DuplicateInstallationIdentity':
+      return t.errors.duplicateInstallationIdentity;
+    case 'InstallationIdentityRetired':
+      return t.errors.installationIdentityRetired;
+    case 'ActiveProfileExists':
+      return t.errors.activeProfileExists;
+    case 'LimitProfileExceeded':
+      return t.errors.limitProfileExceeded;
+    case 'SigningKeyUnavailable':
+      return t.errors.signingKeyUnavailable;
+    case 'CustomerInactive':
+      return t.errors.customerInactive;
+    case 'ArtifactBindingMismatch':
+      return t.errors.artifactBindingMismatch;
+    case 'GrantNotActive':
+      return t.errors.grantNotActive;
+    case 'AlreadyRevoked':
+      return t.errors.alreadyRevoked;
+    case 'NoArtifact':
+      return t.errors.noArtifact;
+    case 'ArtifactStorageUnavailable':
+      return t.errors.artifactStorageUnavailable;
+    case 'TrustListUnavailable':
+      return t.errors.trustListUnavailable;
     case 'RateLimitExceeded':
       return t.errors.rateLimited;
     case 'ServiceUnavailable':

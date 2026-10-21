@@ -23,11 +23,15 @@ import {
   licenseFileEnvelope,
   parseLicenseVersionPayload,
   prepareLicenseRequest,
+  sha256Hex,
   signLicenseVersion,
   type LicenseRequestPayload,
   type LicenseVersionPayload,
 } from "../src/protocol.js";
-import { signLicenseRequest } from "../src/signer/signer.js";
+import {
+  signLicenseRequest,
+  signRevocationRequest,
+} from "../src/signer/signer.js";
 import {
   EXPIRED_REQUEST_REASON,
   PREPARED_REQUEST_MAX_AGE_MS,
@@ -537,6 +541,26 @@ describe("installation identity and customer binding (OD-LIC-09)", () => {
     });
     expect(duplicate.status).toBe(409);
     expect(duplicate.body.code).toBe("DuplicateInstallationIdentity");
+  });
+
+  it("lets a LICENSE_OPERATOR list a customer's installation identities (licenses.view)", async () => {
+    // Regression: the route declares `licenses.view` while the service used to
+    // assert `customers.view`, so a licensed operator could prepare an issuance
+    // from ids it was forbidden to look up. Router and domain now agree.
+    const listed = await request(app)
+      .get(`/api/v1/customers/${customerId}/installation-identities`)
+      .set("Cookie", operatorCookie);
+    expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+    expect(listed.body.customerId).toBe(customerId);
+    expect(listed.body.items.map((row: { id: string }) => row.id)).toContain(
+      identityId,
+    );
+    expect(
+      listed.body.items.every(
+        (row: { installationId?: string }) =>
+          typeof row.installationId === "string",
+      ),
+    ).toBe(true);
   });
 
   it("refuses a foreign customer's identity and a retired identity at preparation", async () => {
@@ -1949,6 +1973,206 @@ describe("Owner-side revocation artifacts (OD-LIC-17)", () => {
   });
 });
 
+describe("renewal, supersession and the revocation round trip (OD-LIC-16, OD-LIC-17)", () => {
+  const prepareAs = (cookie: string, overrides: Record<string, unknown>) =>
+    write("post", "/license-issuances", cookie).send({
+      customerId,
+      installationIdentityId: identityId,
+      validUntil: new Date(Date.now() + 200 * 86_400_000).toISOString(),
+      organizationLimit: 2,
+      userLimit: 20,
+      modules: ["inventory"],
+      features: [],
+      signingKeyId,
+      ...overrides,
+    });
+
+  /** The offline step for whichever session owns the prepared request. */
+  async function signAs(cookie: string, issuanceId: string) {
+    const fetched = await request(app)
+      .get(`/api/v1/license-issuances/${issuanceId}/request`)
+      .set("Cookie", cookie);
+    expect(fetched.status).toBe(200);
+    return signLicenseRequest({
+      requestContent: fetched.body.fileContent,
+      expectedDigest: fetched.body.requestPayloadSha256,
+      keyId: signingKeyId,
+      loadPrivateKey: () => privateKey,
+    });
+  }
+
+  async function recordAs(cookie: string, issuanceId: string) {
+    const signed = await signAs(cookie, issuanceId);
+    const imported = await write(
+      "post",
+      `/license-issuances/${issuanceId}/import`,
+      cookie,
+    ).send({ fileContent: signed.envelope });
+    expect(imported.status).toBe(200);
+    expect(imported.body.issuance.status).toBe("SIGNED_RECORDED");
+    return { signed, imported };
+  }
+
+  it("completes a renewal: prepare → sign → import keeps the lineage and the customer", async () => {
+    const base = await prepareAs(adminCookie, {});
+    expect(base.status).toBe(201);
+    const baseOperationId = base.body.issuance.operationId as string;
+    const baseLicenseId = base.body.issuance.licenseId as string;
+    await recordAs(adminCookie, base.body.issuance.id);
+
+    const renewal = await prepareAs(adminCookie, {
+      renewsOperationId: baseOperationId,
+    });
+    expect(renewal.status).toBe(201);
+    expect(renewal.body.issuance.renewsOperationId).toBe(baseOperationId);
+    expect(renewal.body.issuance.supersedesOperationId).toBeNull();
+    // A renewal is a new signed document: new operation and license identity,
+    // the same customer and the same installation.
+    expect(renewal.body.issuance.operationId).not.toBe(baseOperationId);
+    expect(renewal.body.issuance.licenseId).not.toBe(baseLicenseId);
+    expect(renewal.body.issuance.customerId).toBe(customerId);
+    expect(renewal.body.issuance.installationId).toBe(installationId);
+
+    const { imported } = await recordAs(adminCookie, renewal.body.issuance.id);
+    expect(imported.body.issuance.renewsOperationId).toBe(baseOperationId);
+    expect(imported.body.issuance.artifactAvailable).toBe(true);
+    expect(imported.body.issuance.artifactSha256).toMatch(/^[0-9a-f]{64}$/);
+
+    const facts = await db.pool.query<{
+      renews_operation_id: string | null;
+      supersedes_operation_id: string | null;
+      customer_code: string;
+    }>(
+      "SELECT renews_operation_id,supersedes_operation_id,customer_code FROM owner.license_issuances WHERE id=$1",
+      [renewal.body.issuance.id],
+    );
+    expect(facts.rows[0]!.renews_operation_id).toBe(baseOperationId);
+    expect(facts.rows[0]!.supersedes_operation_id).toBeNull();
+  });
+
+  it("completes a supersession and refuses a target that is not a recorded issuance", async () => {
+    const base = await prepareAs(adminCookie, {});
+    await recordAs(adminCookie, base.body.issuance.id);
+    const baseOperationId = base.body.issuance.operationId as string;
+
+    const supersession = await prepareAs(adminCookie, {
+      supersedesOperationId: baseOperationId,
+    });
+    expect(supersession.status).toBe(201);
+    expect(supersession.body.issuance.supersedesOperationId).toBe(
+      baseOperationId,
+    );
+    expect(supersession.body.issuance.renewsOperationId).toBeNull();
+    const { imported } = await recordAs(
+      adminCookie,
+      supersession.body.issuance.id,
+    );
+    expect(imported.body.issuance.supersedesOperationId).toBe(baseOperationId);
+
+    // A prepared-but-unsigned request is not a valid target.
+    const preparedOnly = await prepareAs(adminCookie, {});
+    const refused = await prepareAs(adminCookie, {
+      renewsOperationId: preparedOnly.body.issuance.operationId,
+    });
+    expect(refused.status).toBe(400);
+    expect(refused.body.code).toBe("ValidationFailed");
+  });
+
+  it("records a signed revocation, archives it and refuses a second one", async () => {
+    const base = await prepareAs(adminCookie, {});
+    await recordAs(adminCookie, base.body.issuance.id);
+    const issuanceId = base.body.issuance.id as string;
+
+    const prepared = await write(
+      "post",
+      `/license-issuances/${issuanceId}/revocations`,
+      adminCookie,
+    ).send({ reason: "NON_PAYMENT", signingKeyId });
+    expect(prepared.status).toBe(201);
+    const revocationId = prepared.body.revocation.revocationId as string;
+
+    // The unsigned request is downloadable and carries the payload digest the
+    // operator must confirm out-of-band before the key is read (OD-LIC-11).
+    const fetched = await request(app)
+      .get(`/api/v1/license-revocations/${revocationId}/request`)
+      .set("Cookie", adminCookie);
+    expect(fetched.status).toBe(200);
+    expect(fetched.body.fileContent).toContain(
+      '"format": "vardena-revocation-signing-request"',
+    );
+    expect(fetched.body.requestPayloadSha256).toBe(
+      prepared.body.requestPayloadSha256,
+    );
+
+    const signed = await signRevocationRequest({
+      requestContent: fetched.body.fileContent,
+      expectedDigest: fetched.body.requestPayloadSha256,
+      keyId: signingKeyId,
+      loadPrivateKey: () => privateKey,
+    });
+
+    const imported = await write(
+      "post",
+      `/license-revocations/${revocationId}/import`,
+      adminCookie,
+    ).send({ fileContent: signed.envelope });
+    expect(imported.status).toBe(200);
+    expect(imported.body.revocation.status).toBe("SIGNED_RECORDED");
+    expect(imported.body.revocation.artifactAvailable).toBe(true);
+    expect(imported.body.revocation.artifactSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(imported.body.revocation.reactivationPermitted).toBe(false);
+
+    // The archived bytes are byte-identical to what the signer produced.
+    const download = await request(app)
+      .get(`/api/v1/license-revocations/${revocationId}/artifact`)
+      .set("Origin", origin)
+      .set("Cookie", adminCookie)
+      .buffer(true)
+      .parse((response, resolve) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+        response.on("end", () => resolve(null, Buffer.concat(chunks)));
+      });
+    expect(download.status).toBe(200);
+    const bytes = download.body as Buffer;
+    expect(bytes.toString("utf8")).toBe(signed.envelope);
+    expect(sha256Hex(bytes)).toBe(imported.body.revocation.artifactSha256);
+
+    // The issuance reads back the recorded revocation.
+    const issuance = await request(app)
+      .get(`/api/v1/license-issuances/${issuanceId}`)
+      .set("Cookie", adminCookie);
+    expect(issuance.body.revocation).toMatchObject({
+      revocationId,
+      reason: "NON_PAYMENT",
+      status: "SIGNED_RECORDED",
+    });
+
+    // OD-LIC-18: a replay returns the historical result and writes nothing.
+    const replay = await write(
+      "post",
+      `/license-revocations/${revocationId}/import`,
+      adminCookie,
+    ).send({ fileContent: signed.envelope });
+    expect(replay.status).toBe(200);
+    expect(replay.body.replayed).toBe(true);
+    expect(
+      await count(
+        "SELECT count(*) AS n FROM owner.license_revocations WHERE issuance_id=$1",
+        [issuanceId],
+      ),
+    ).toBe(1);
+
+    const second = await write(
+      "post",
+      `/license-issuances/${issuanceId}/revocations`,
+      adminCookie,
+    ).send({ reason: "FRAUD", signingKeyId });
+    expect(second.status).toBe(409);
+    expect(second.body.code).toBe("AlreadyRevoked");
+  });
+});
+
 describe("archive backup and restore verification (OD-LIC-19)", () => {
   it("verifies the live archive and copies every DURABLE artifact byte-for-byte", async () => {
     const client = await db.pool.connect();
@@ -2276,5 +2500,91 @@ describe("artifact recovery and reconciliation (OD-LIC-19)", () => {
       adminCookie,
     ).send({});
     expect(withOrphan.body.orphanFiles).toContain(orphanKey);
+  });
+});
+
+describe("dashboard summary (TS-8.2)", () => {
+  it("reports counts that agree with the Owner database it reads", async () => {
+    const summary = await request(app)
+      .get("/api/v1/dashboard")
+      .set("Cookie", adminCookie);
+    expect(summary.status).toBe(200);
+    expect(Number.isNaN(Date.parse(summary.body.generatedAt))).toBe(false);
+
+    // Every number is checked against the SAME database state the endpoint
+    // read, so this cannot pass by coincidence of an empty fixture set.
+    const expected = (
+      await db.pool.query<{
+        customers_active: string;
+        identities_active: string;
+        issuances_signed: string;
+        revocations_recorded: string;
+        keys_active: string;
+        artifacts_pending: string;
+      }>(
+        `SELECT
+          (SELECT count(*) FROM owner.customers WHERE status='ACTIVE') AS customers_active,
+          (SELECT count(*) FROM owner.installation_identities WHERE status='ACTIVE') AS identities_active,
+          (SELECT count(*) FROM owner.license_issuances WHERE status='SIGNED_RECORDED') AS issuances_signed,
+          (SELECT count(*) FROM owner.license_revocations WHERE status='SIGNED_RECORDED') AS revocations_recorded,
+          (SELECT count(*) FROM owner.signing_keys WHERE status='ACTIVE') AS keys_active,
+          (SELECT count(*) FROM owner.license_artifacts WHERE status='PENDING') AS artifacts_pending`,
+      )
+    ).rows[0]!;
+
+    expect(summary.body.customers.active).toBe(
+      Number(expected.customers_active),
+    );
+    expect(summary.body.customers.active).toBeGreaterThan(0);
+    expect(summary.body.installationIdentities.active).toBe(
+      Number(expected.identities_active),
+    );
+    expect(summary.body.issuances.signed).toBe(
+      Number(expected.issuances_signed),
+    );
+    expect(summary.body.issuances.signed).toBeGreaterThan(0);
+    expect(summary.body.revocations.recorded).toBe(
+      Number(expected.revocations_recorded),
+    );
+    expect(summary.body.signingKeys.active).toBe(Number(expected.keys_active));
+    expect(summary.body.licenseArtifacts.pending).toBe(
+      Number(expected.artifacts_pending),
+    );
+
+    // The eligibility split uses the one real rule and accounts for every
+    // prepared row exactly once (an expired row is still REQUEST_PREPARED
+    // until its next completion attempt moves it, OD-LIC-20).
+    expect(
+      summary.body.preparedRequests.eligible +
+        summary.body.preparedRequests.expired,
+    ).toBe(summary.body.issuances.prepared);
+  });
+
+  it("requires an authenticated session and licenses.view", async () => {
+    const anonymous = await request(app).get("/api/v1/dashboard");
+    expect(anonymous.status).toBe(401);
+
+    // A session without any licensing read permission sees no summary, and the
+    // service — not only the route — refuses it.
+    const readOnlyUser = await write("post", "/users", adminCookie).send({
+      username: `dash-${ulid().slice(-12).toLowerCase()}`,
+      password: "Dash-Summary-1!",
+      role: "LICENSE_OPERATOR",
+    });
+    expect(readOnlyUser.status).toBe(201);
+    const strangerCookie = await signIn(
+      readOnlyUser.body.username as string,
+      "Dash-Summary-1!",
+      "Dash-Summary-2!",
+    );
+    await db.pool.query(
+      "DELETE FROM owner.user_permission_grants WHERE user_id=$1",
+      [readOnlyUser.body.id],
+    );
+    const refused = await request(app)
+      .get("/api/v1/dashboard")
+      .set("Cookie", strangerCookie);
+    expect(refused.status).toBe(403);
+    expect(refused.body.code).toBe("PermissionDenied");
   });
 });

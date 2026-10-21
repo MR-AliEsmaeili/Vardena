@@ -11,6 +11,7 @@ import {
   CircleUserRound,
 } from 'lucide-react';
 import { PageHeading } from '@/ui/patterns/page-heading';
+import { DashboardPage } from '@/features/home/dashboard-page';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useSession } from '@/features/auth/use-session';
 import { usePermissions } from '@/features/permissions/use-permissions';
@@ -128,6 +129,7 @@ export function OwnerHome() {
           {o.scope}
         </output>
       )}
+      <DashboardPage />
       <LifecyclePage />
     </section>
   );
