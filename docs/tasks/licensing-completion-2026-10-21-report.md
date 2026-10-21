@@ -164,17 +164,18 @@ A disposable PostgreSQL 18.4 cluster was started from embedded binaries and used
 
 ## E. GitHub report
 
-| Item                            | Value                                                                                                                          |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Repository                      | `https://github.com/MR-AliEsmaeili/Vardena`                                                                                    |
-| Base                            | `main` @ `24608f03baa3da941ec18d06995fb5ef95267418`                                                                            |
-| Working branch                  | `arena/3c88d285-vardena`                                                                                                       |
-| Pull request                    | [#191](https://github.com/MR-AliEsmaeili/Vardena/pull/191)                                                                     |
-| Commit                          | `52661f2b4a2ec6801ec8b6bed130bec2971d91d0`                                                                                     |
-| CI on `main` before this branch | `success` — run `39506001448`, 4m44s                                                                                           |
-| CI on `52661f2` (this branch)   | **`success`** — run `39645730522`; jobs `classify`, `generated-api-client`, `docs`, `frontend`, `backend`, `ci-gate` all green |
+| Item                                      | Value                                                                                                                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Repository                                | `https://github.com/MR-AliEsmaeili/Vardena`                                                                                    |
+| Base                                      | `main` @ `24608f03baa3da941ec18d06995fb5ef95267418`                                                                            |
+| Working branch                            | `arena/3c88d285-vardena`                                                                                                       |
+| Pull request                              | [#191](https://github.com/MR-AliEsmaeili/Vardena/pull/191)                                                                     |
+| Commit                                    | `52661f2b4a2ec6801ec8b6bed130bec2971d91d0`                                                                                     |
+| CI on `main` before this branch           | `success` — run `39506001448`, 4m44s                                                                                           |
+| CI on `52661f2` (code commit)             | **`success`** — run `39645730522`; jobs `classify`, `generated-api-client`, `docs`, `frontend`, `backend`, `ci-gate` all green |
+| CI on `784a1e3` (same code + this report) | **`success`** — run `39646710255`; the same six jobs green                                                                     |
 
-Only that run is offered as evidence: an earlier commit's run is never used to claim the current head is green. The report itself is committed afterwards as a documentation-only change, and its own CI run is listed on the pull request.
+Each run above belongs to its own SHA; no run is ever used to claim a different commit is green. Every later commit on this branch is a documentation-only change carrying the same code as `52661f2`, and its own run is listed on the pull request.
 
 ---
 
