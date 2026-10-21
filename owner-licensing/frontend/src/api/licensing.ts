@@ -95,6 +95,81 @@ export interface Paginated<T> {
   pageSize: number;
 }
 
+/**
+ * A registered installation identity (OD-LIC-09).
+ *
+ * `bindingEvidence` is a constant in the wire contract and is deliberately
+ * copied into the type: the identifier is an operator-confirmed claim read from
+ * the customer Vardena page, never cryptographic proof of possession
+ * (ADR-0048 Decision 5).
+ */
+export interface InstallationIdentity {
+  id: string;
+  customerId: string;
+  installationId: string;
+  source: string;
+  sourceDetail: string | null;
+  confirmedBy: string;
+  confirmedAt: string;
+  confirmationEvidenceRef: string | null;
+  status: 'ACTIVE' | 'RETIRED';
+  createdBy: string;
+  createdAt: string;
+  bindingEvidence: 'OPERATOR_RECORDED_NOT_CRYPTOGRAPHIC';
+}
+
+export interface InstallationIdentityList {
+  customerId: string;
+  items: InstallationIdentity[];
+}
+
+export interface RegisterInstallationIdentityInput {
+  customerId: string;
+  /** ULID read from the customer deployment's licensing screen. */
+  installationId: string;
+  source: 'CUSTOMER_VARDENA_SCREEN';
+  sourceDetail?: string;
+  /** Must be re-entered identically; the backend refuses a single paste. */
+  confirmationInstallationId: string;
+  confirmationEvidenceRef?: string;
+  confirmed: true;
+}
+
+/**
+ * A customer limit profile (F-1, OD-LIC-13, OD-LIC-14).
+ *
+ * `null` ceilings mean “no stored ceiling”, which is **not** the same as
+ * “issuance forbidden”. The columns are immutable after creation; a change is
+ * retire-plus-create, and reactivating the same retired row restores the
+ * identical ceiling.
+ */
+export interface LimitProfile {
+  id: string;
+  customerId: string;
+  organizationLimit: number | null;
+  userLimit: number | null;
+  allowedModules: string[];
+  perpetualAllowed: boolean;
+  status: 'ACTIVE' | 'RETIRED';
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export interface LimitProfileList {
+  customerId: string;
+  activeProfile: LimitProfile | null;
+  items: LimitProfile[];
+}
+
+export interface CreateLimitProfileInput {
+  organizationLimit: number | null;
+  userLimit: number | null;
+  allowedModules: string[];
+  perpetualAllowed: boolean;
+}
+
 export const MODULE_CODES = [
   'accounting',
   'documents',
@@ -115,16 +190,64 @@ export const REVOCATION_REASONS: readonly RevocationReason[] = [
   'OTHER',
 ];
 
-export const issuances = (page: number, signal?: AbortSignal) =>
+export const issuances = (
+  page: number,
+  filters: { customerId?: string } = {},
+  signal?: AbortSignal,
+) =>
   apiGet<Paginated<Issuance>>('/license-issuances', {
-    params: { page },
+    params: { page, customerId: filters.customerId || undefined },
     ...(signal ? { signal } : {}),
   });
 
-export const recordLimitProfiles = (customerId: string, signal?: AbortSignal) =>
-  apiGet<{ items: unknown[] }>(
+/** Registered installations of one customer (OD-LIC-09). */
+export const installationIdentities = (
+  customerId: string,
+  signal?: AbortSignal,
+) =>
+  apiGet<InstallationIdentityList>(
+    `/customers/${encodeURIComponent(customerId)}/installation-identities`,
+    signal ? { signal } : {},
+  );
+
+export const registerInstallationIdentity = (
+  body: RegisterInstallationIdentityInput,
+) => apiPost<InstallationIdentityList>('/installation-identities', body);
+
+export const retireInstallationIdentity = (
+  id: string,
+  body: { reason: string },
+) =>
+  apiPost<InstallationIdentityList>(
+    `/installation-identities/${encodeURIComponent(id)}/retire`,
+    body,
+  );
+
+export const limitProfiles = (customerId: string, signal?: AbortSignal) =>
+  apiGet<LimitProfileList>(
     `/customers/${encodeURIComponent(customerId)}/limit-profiles`,
     signal ? { signal } : {},
+  );
+
+export const createLimitProfile = (
+  customerId: string,
+  body: CreateLimitProfileInput,
+) =>
+  apiPost<LimitProfile>(
+    `/customers/${encodeURIComponent(customerId)}/limit-profiles`,
+    body,
+  );
+
+export const retireLimitProfile = (id: string, body: { reason: string }) =>
+  apiPost<LimitProfileList>(
+    `/limit-profiles/${encodeURIComponent(id)}/retire`,
+    body,
+  );
+
+export const reactivateLimitProfile = (id: string, body: { reason: string }) =>
+  apiPost<LimitProfileList>(
+    `/limit-profiles/${encodeURIComponent(id)}/reactivate`,
+    body,
   );
 
 export interface PrepareIssuanceInput {
@@ -157,6 +280,12 @@ export const prepareIssuance = (body: PrepareIssuanceInput) =>
   apiPost<PreparedRequest<Issuance>, PrepareIssuanceInput>(
     '/license-issuances',
     body,
+  );
+
+export const issuance = (id: string, signal?: AbortSignal) =>
+  apiGet<Issuance>(
+    `/license-issuances/${encodeURIComponent(id)}`,
+    signal ? { signal } : {},
   );
 
 export const issuanceRequest = (id: string) =>

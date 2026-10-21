@@ -1,53 +1,153 @@
-import { LocalFetchingIndicator } from '@/ui/patterns/request-activity';
-import { Select } from '@/ui/select';
-import { PageHeading } from '@/ui/patterns/page-heading';
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import * as lic from '@/api/licensing';
-import type { Issuance, RevocationReason } from '@/api/licensing';
-import { normalizeApiError } from '@/api/errors';
+import type { Issuance } from '@/api/licensing';
 import { usePermissions } from '@/features/permissions/use-permissions';
+import type { CustomerOption } from '@/features/customers/customer-picker';
 import { o } from '@/lib/owner-i18n';
-import { formatOwnerInstant, calendarDayStartInstant } from '@/lib/date-time';
-import { Button } from '@/ui/button';
-import { Input } from '@/ui/input';
-import { DateInput } from '@/ui/patterns/date-input';
+import { PageHeading } from '@/ui/patterns/page-heading';
+import { LocalFetchingIndicator } from '@/ui/patterns/request-activity';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { EmptyState, LoadingState } from '@/ui/patterns/states';
 import { Pagination } from '@/ui/patterns/owner-states';
+import { IssuanceCard } from './issuance-card';
+import {
+  PrepareIssuanceForm,
+  type IssuancePrefill,
+} from './prepare-issuance-form';
 
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 
 /**
- * Owner-side license issuance (OD-LIC-07…19).
+ * Owner-side license issuance and lifecycle (OD-LIC-07…19).
  *
- * Everything cryptographic happens elsewhere: the Owner API prepares an
- * unsigned request, an operator carries its digest to the air-gapped signer,
- * and the signed bytes come back here for server-side verification and durable
- * archiving. This page never claims a license was issued until the backend
- * reports `SIGNED_RECORDED`, and it never displays anything the server did not
- * return.
+ * The page has two jobs: prepare unsigned requests from *selected, real*
+ * records (customer → registered installation → active signing key, with the
+ * customer's active ceiling visible and a review step), and follow each
+ * issuance to its signed artifact, renewal, and revocation.
+ *
+ * `?renews=` / `?supersedes=` open the form pre-filled from the named issuance
+ * (OWNER_ADMIN only — the backend re-enforces that), and `?customer=` narrows
+ * the list to one customer. All three are links from real records; none of them
+ * selects anything by guesswork.
  */
 export function LicensesPage() {
   const permissions = usePermissions();
+  const [params, setParams] = useSearchParams();
   const [page, setPage] = useState(1);
+  const customerFilter = params.get('customer') ?? '';
+  const lineageParam = params.get('renews')
+    ? { mode: 'renew' as const, operationId: params.get('renews') ?? '' }
+    : params.get('supersedes')
+      ? {
+          mode: 'supersede' as const,
+          operationId: params.get('supersedes') ?? '',
+        }
+      : null;
+
+  const lineageIssuance = useQuery({
+    queryKey: [
+      'owner',
+      'license-issuance',
+      'lineage',
+      lineageParam?.operationId,
+    ],
+    queryFn: ({ signal }) =>
+      lic.issuance(lineageParam?.operationId ?? '', signal),
+    enabled:
+      lineageParam !== null &&
+      ULID.test(lineageParam.operationId) &&
+      permissions.has('licenses.view'),
+  });
+
   const query = useQuery({
-    queryKey: ['owner', 'license-issuances', page],
-    queryFn: ({ signal }) => lic.issuances(page, signal),
+    queryKey: ['owner', 'license-issuances', page, customerFilter],
+    queryFn: ({ signal }) =>
+      lic.issuances(
+        page,
+        {
+          ...(ULID.test(customerFilter) ? { customerId: customerFilter } : {}),
+        },
+        signal,
+      ),
     enabled: permissions.has('licenses.view'),
   });
+
   if (!permissions.loaded) return <LoadingState />;
   if (!permissions.has('licenses.view'))
     return (
       <p className="owner-panel p-4 text-sm text-secondary">{o.forbidden}</p>
     );
+
+  const prefill = buildPrefill(lineageParam, lineageIssuance.data);
+  const clearLineage = () => {
+    const next = new URLSearchParams(params);
+    next.delete('renews');
+    next.delete('supersedes');
+    setParams(next, { replace: true });
+  };
+
   return (
     <section className="space-y-5">
       <header className="space-y-1">
         <PageHeading>{o.licenses.title}</PageHeading>
         <p className="text-sm text-secondary">{o.licenses.intro}</p>
       </header>
-      <PrepareForm />
+      {lineageParam && !prefill ? (
+        <p className="owner-panel p-3 text-sm text-secondary">
+          {lineageIssuance.isPending
+            ? o.licenses.importing
+            : o.licenses.lineageNoTargets}
+        </p>
+      ) : null}
+      {prefill ? (
+        <p className="owner-panel p-3 text-sm">
+          {o.licenses.lineagePreselected}{' '}
+          <button
+            type="button"
+            className="text-accent underline"
+            onClick={clearLineage}
+          >
+            {o.licenses.lineageNone}
+          </button>
+        </p>
+      ) : null}
+      {lineageIssuance.isError ? (
+        <ApiErrorAlert
+          error={lineageIssuance.error}
+          onRetry={() => void lineageIssuance.refetch()}
+        />
+      ) : null}
+      {/*
+        The form owns its draft state, and a renewal link arrives
+        asynchronously (the named issuance is fetched first). Keying the form by
+        the pre-filled record remounts it exactly once when that data lands, so
+        the draft starts from the real source instead of an empty one.
+      */}
+      <PrepareIssuanceForm
+        key={prefill ? prefill.source.id : 'new-issuance'}
+        prefill={prefill}
+      />
+      {customerFilter && ULID.test(customerFilter) ? (
+        <p className="text-sm text-secondary">
+          {o.licenses.filterCustomer}:{' '}
+          <span dir="ltr" className="code">
+            {customerFilter}
+          </span>{' '}
+          <button
+            type="button"
+            className="text-accent underline"
+            onClick={() => {
+              const next = new URLSearchParams(params);
+              next.delete('customer');
+              setParams(next, { replace: true });
+            }}
+          >
+            {o.licenses.allCustomers}
+          </button>
+        </p>
+      ) : null}
       <LocalFetchingIndicator active={query.isFetching && !query.isPending} />
       {query.isPending ? (
         <LoadingState />
@@ -60,6 +160,11 @@ export function LicensesPage() {
         <EmptyState
           title={o.licenses.empty}
           description={o.licenses.emptyHelp}
+          action={
+            <Link className="text-sm text-accent underline" to="/app/customers">
+              {o.newCustomer}
+            </Link>
+          }
         />
       ) : (
         <>
@@ -80,646 +185,22 @@ export function LicensesPage() {
   );
 }
 
-function prepareError(inputs: {
-  customerId: string;
-  installationIdentityId: string;
-  signingKeyId: string;
-  kind: lic.LicenseKind;
-  validUntil: string;
-  modules: readonly string[];
-}): string | null {
-  if (!ULID.test(inputs.customerId.trim())) return o.licenses.errorCustomer;
-  if (!ULID.test(inputs.installationIdentityId.trim()))
-    return o.licenses.errorInstallation;
-  if (!inputs.signingKeyId.trim()) return o.licenses.errorKey;
-  if (inputs.modules.length === 0) return o.licenses.errorModules;
-  if (inputs.kind === 'TIME_LIMITED') {
-    const instant = calendarDayStartInstant(inputs.validUntil, 'UTC');
-    if (instant === undefined) return o.licenses.errorEndDate;
-    if (Date.parse(instant) <= Date.now()) return o.licenses.errorEndFuture;
-  }
-  return null;
-}
-
-function PrepareForm() {
-  const permissions = usePermissions();
-  const client = useQueryClient();
-  const [customerId, setCustomerId] = useState('');
-  const [installationIdentityId, setInstallationIdentityId] = useState('');
-  const [signingKeyId, setSigningKeyId] = useState('');
-  const [kind, setKind] = useState<lic.LicenseKind>('TIME_LIMITED');
-  const [validUntil, setValidUntil] = useState('');
-  const [organizationLimit, setOrganizationLimit] = useState('');
-  const [userLimit, setUserLimit] = useState('');
-  const [deviceLimit, setDeviceLimit] = useState('');
-  const [deviceLimitSpecified, setDeviceLimitSpecified] = useState(false);
-  const [modules, setModules] = useState<string[]>(['accounting']);
-  const [features, setFeatures] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [prepared, setPrepared] = useState<{
-    issuance: Issuance;
-    requestPayloadSha256: string;
-    requestBindingSha256: string;
-  } | null>(null);
-
-  const canPrepare =
-    kind === 'PERPETUAL'
-      ? permissions.has('licenses.issue.perpetual')
-      : permissions.has('licenses.issue.time_limited');
-  const mutation = useMutation({
-    mutationFn: async () => {
-      const problem = prepareError({
-        customerId,
-        installationIdentityId,
-        signingKeyId,
-        kind,
-        validUntil,
-        modules,
-      });
-      if (problem) throw new Error(problem);
-      const limit = (value: string, label: string): number | null => {
-        if (!value.trim()) return null;
-        const parsed = Number(value);
-        if (!Number.isInteger(parsed) || parsed <= 0)
-          throw new Error(`${label} ${o.licenses.errorPositive}`);
-        return parsed;
-      };
-      const device = deviceLimitSpecified
-        ? (() => {
-            const parsed = Number(deviceLimit);
-            if (!Number.isInteger(parsed) || parsed < 0)
-              throw new Error(o.licenses.errorDevice);
-            return parsed;
-          })()
-        : null;
-      const result = await lic.prepareIssuance({
-        customerId: customerId.trim(),
-        installationIdentityId: installationIdentityId.trim(),
-        validUntil:
-          kind === 'PERPETUAL'
-            ? null
-            : (calendarDayStartInstant(validUntil, 'UTC') ?? null),
-        organizationLimit: limit(
-          organizationLimit,
-          o.licenses.organizationLimit,
-        ),
-        userLimit: limit(userLimit, o.licenses.userLimit),
-        deviceLimit: device,
-        deviceLimitSpecified,
-        modules,
-        features: features
-          .split(',')
-          .map((entry) => entry.trim())
-          .filter(Boolean),
-        signingKeyId: signingKeyId.trim(),
-        supersedesOperationId: null,
-        renewsOperationId: null,
-      });
-      if (!result.issuance) throw new Error(o.licenses.errorResponse);
-      return {
-        issuance: result.issuance,
-        requestPayloadSha256: result.requestPayloadSha256,
-        requestBindingSha256: result.requestBindingSha256,
-      };
-    },
-    onSuccess: (value) => {
-      setPrepared(value);
-      setError(null);
-      void client.invalidateQueries({
-        queryKey: ['owner', 'license-issuances'],
-      });
-    },
-    onError: (cause) => {
-      setPrepared(null);
-      setError(
-        cause instanceof Error && !('status' in cause)
-          ? cause.message
-          : normalizeApiError(cause).message,
-      );
-    },
-  });
-
-  if (!permissions.has('licenses.issue.time_limited'))
-    return (
-      <output className="block owner-panel p-4 text-sm text-secondary">
-        {o.licenses.noPrepare}
-      </output>
-    );
-  return (
-    <section className="space-y-3 owner-panel p-4">
-      <h2 className="font-bold">{o.licenses.prepareTitle}</h2>
-      <p className="text-sm text-secondary">{o.licenses.prepareHelp}</p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="space-y-1 text-sm">
-          <span>{o.licenses.customerId}</span>
-          <Input
-            dir="ltr"
-            value={customerId}
-            maxLength={26}
-            onChange={(event) => setCustomerId(event.target.value)}
-          />
-        </label>
-        <div className="space-y-1 text-sm">
-          <label className="block space-y-1">
-            <span>{o.licenses.installationIdentity}</span>
-            <Input
-              dir="ltr"
-              value={installationIdentityId}
-              maxLength={26}
-              onChange={(event) =>
-                setInstallationIdentityId(event.target.value)
-              }
-            />
-          </label>
-          <p className="text-xs text-muted-ink">
-            {o.licenses.installationIdentityHelp}
-          </p>
-        </div>
-        <label className="space-y-1 text-sm">
-          <span>{o.licenses.signingKey}</span>
-          <Input
-            dir="ltr"
-            value={signingKeyId}
-            onChange={(event) => setSigningKeyId(event.target.value)}
-          />
-        </label>
-        <label className="space-y-1 text-sm">
-          <span>{o.licenses.kind}</span>
-          <Select
-            value={kind}
-            onChange={(event) => setKind(event.target.value as lic.LicenseKind)}
-          >
-            <option value="TIME_LIMITED">{o.licenses.timeLimited}</option>
-            {permissions.has('licenses.issue.perpetual') && (
-              <option value="PERPETUAL">{o.licenses.perpetual}</option>
-            )}
-          </Select>
-        </label>
-        {kind === 'TIME_LIMITED' ? (
-          <label className="space-y-1 text-sm">
-            <span>{o.licenses.endDate}</span>
-            <DateInput
-              id="license-valid-until"
-              value={validUntil}
-              onChange={setValidUntil}
-            />
-          </label>
-        ) : (
-          <p className="self-end text-sm text-secondary">
-            {o.licenses.perpetualHelp}
-          </p>
-        )}
-        <div className="grid gap-2 sm:grid-cols-3">
-          <label className="space-y-1 text-sm">
-            <span>{o.licenses.organizationLimit}</span>
-            <Input
-              dir="ltr"
-              inputMode="numeric"
-              value={organizationLimit}
-              onChange={(event) => setOrganizationLimit(event.target.value)}
-            />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span>{o.licenses.userLimit}</span>
-            <Input
-              dir="ltr"
-              inputMode="numeric"
-              value={userLimit}
-              onChange={(event) => setUserLimit(event.target.value)}
-            />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span>{o.licenses.deviceLimit}</span>
-            <Input
-              dir="ltr"
-              inputMode="numeric"
-              value={deviceLimit}
-              disabled={!deviceLimitSpecified}
-              onChange={(event) => setDeviceLimit(event.target.value)}
-            />
-          </label>
-        </div>
-      </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={deviceLimitSpecified}
-          onChange={(event) => setDeviceLimitSpecified(event.target.checked)}
-        />
-        {o.licenses.deviceSpecified}
-      </label>
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-semibold">{o.licenses.modules}</legend>
-        <div className="flex flex-wrap gap-3">
-          {lic.MODULE_CODES.map((code) => (
-            <label key={code} className="flex items-center gap-1 text-sm">
-              <input
-                type="checkbox"
-                checked={modules.includes(code)}
-                onChange={(event) =>
-                  setModules((current) =>
-                    event.target.checked
-                      ? [...current, code]
-                      : current.filter((entry) => entry !== code),
-                  )
-                }
-              />
-              <span dir="ltr">{code}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <label className="space-y-1 text-sm">
-        <span>{o.licenses.features}</span>
-        <Input
-          dir="ltr"
-          value={features}
-          onChange={(event) => setFeatures(event.target.value)}
-        />
-      </label>
-      {error && (
-        <p role="alert" className="text-sm text-danger">
-          {error}
-        </p>
-      )}
-      <Button
-        loading={mutation.isPending}
-        disabled={mutation.isPending || !canPrepare}
-        onClick={() => mutation.mutate()}
-      >
-        {mutation.isPending ? o.licenses.preparing : o.licenses.prepare}
-      </Button>
-      {prepared && (
-        <PreparedPanel
-          issuance={prepared.issuance}
-          requestPayloadSha256={prepared.requestPayloadSha256}
-          requestBindingSha256={prepared.requestBindingSha256}
-        />
-      )}
-    </section>
-  );
-}
-
-function Digest({ label, value }: { label: string; value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold">{label}</span>
-        <Button
-          variant="outline"
-          onClick={() => {
-            void navigator.clipboard?.writeText(value).then(() => {
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1500);
-            });
-          }}
-        >
-          {copied ? o.licenses.copied : o.licenses.copy}
-        </Button>
-      </div>
-      <code
-        dir="ltr"
-        className="block break-all rounded bg-canvas p-2 font-mono text-xs"
-      >
-        {value}
-      </code>
-    </div>
-  );
-}
-
-function PreparedPanel({
-  issuance,
-  requestPayloadSha256,
-  requestBindingSha256,
-}: {
-  issuance: Issuance;
-  requestPayloadSha256: string;
-  requestBindingSha256: string;
-}) {
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const download = useMutation({
-    mutationFn: async () => {
-      const request = await lic.issuanceRequest(issuance.id);
-      lic.saveBlob(
-        new Blob([request.fileContent], { type: 'application/json' }),
-        request.fileName,
-      );
-      setFileName(request.fileName);
-    },
-    onError: (cause) => setError(normalizeApiError(cause).message),
-  });
-  return (
-    <div className="space-y-3 rounded border border-accent-line bg-accent-soft p-3">
-      <h3 className="font-semibold">{o.licenses.preparedTitle}</h3>
-      <p className="text-sm">{o.licenses.digestWarning}</p>
-      <Digest label={o.licenses.payloadDigest} value={requestPayloadSha256} />
-      <Digest label={o.licenses.bindingDigest} value={requestBindingSha256} />
-      <p className="text-sm text-secondary">
-        {o.licenses.operationId}: <span dir="ltr">{issuance.operationId}</span>
-      </p>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          loading={download.isPending}
-          disabled={download.isPending}
-          onClick={() => download.mutate()}
-        >
-          {download.isPending
-            ? o.licenses.downloading
-            : o.licenses.downloadRequest}
-        </Button>
-      </div>
-      {fileName && <p className="text-xs text-secondary">{fileName}</p>}
-      {error && (
-        <p role="alert" className="text-sm text-danger">
-          {error}
-        </p>
-      )}
-      <ArtifactImporter issuanceId={issuance.id} />
-    </div>
-  );
-}
-
-function ArtifactImporter({ issuanceId }: { issuanceId: string }) {
-  const client = useQueryClient();
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  return (
-    <div className="space-y-2">
-      <label className="block text-sm font-semibold">
-        {o.licenses.importLabel}
-        <input
-          className="mt-1 block w-full text-sm"
-          type="file"
-          accept="application/json,.json"
-          disabled={busy}
-          onChange={async (event) => {
-            const file = event.target.files?.[0];
-            if (!file) return;
-            setBusy(true);
-            setError(null);
-            setMessage(null);
-            try {
-              const content = await file.text();
-              const result = await lic.importIssuanceArtifact(
-                issuanceId,
-                content,
-              );
-              setMessage(
-                result.replayed
-                  ? o.licenses.importReplayed
-                  : o.licenses.importSuccess,
-              );
-              await client.invalidateQueries({
-                queryKey: ['owner', 'license-issuances'],
-              });
-            } catch (cause) {
-              setError(normalizeApiError(cause).message);
-            } finally {
-              setBusy(false);
-              event.target.value = '';
-            }
-          }}
-        />
-      </label>
-      {busy && <p className="text-sm">{o.licenses.importing}</p>}
-      {message && <p className="text-sm text-success">{message}</p>}
-      {error && (
-        <p role="alert" className="text-sm text-danger">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function IssuanceCard({ issuance }: { issuance: Issuance }) {
-  const permissions = usePermissions();
-  const client = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
-  const [revocationReason, setRevocationReason] =
-    useState<RevocationReason>('NON_PAYMENT');
-  const [reasonDetail, setReasonDetail] = useState('');
-  const [revocationKeyId, setRevocationKeyId] = useState(
-    issuance.signingKeyId ?? '',
-  );
-  const [revocationMessage, setRevocationMessage] = useState<string | null>(
-    null,
-  );
-  const download = useMutation({
-    mutationFn: () => lic.downloadArtifact('license-issuances', issuance.id),
-    onSuccess: (blob) =>
-      lic.saveBlob(blob, `vardena-license-${issuance.operationId}.json`),
-    onError: (cause) => setError(normalizeApiError(cause).message),
-  });
-  const revoke = useMutation({
-    mutationFn: async () => {
-      if (!revocationKeyId.trim()) throw new Error(o.licenses.errorKey);
-      const prepared = await lic.prepareRevocation(issuance.id, {
-        reason: revocationReason,
-        reasonDetail: reasonDetail.trim() ? reasonDetail.trim() : null,
-        signingKeyId: revocationKeyId.trim(),
-      });
-      return prepared;
-    },
-    onSuccess: () => {
-      setRevocationMessage(o.licenses.revocationPrepared);
-      void client.invalidateQueries({
-        queryKey: ['owner', 'license-issuances'],
-      });
-    },
-    onError: (cause) =>
-      setRevocationMessage(
-        cause instanceof Error && !('status' in cause)
-          ? cause.message
-          : normalizeApiError(cause).message,
-      ),
-  });
-
-  const statusLabel =
-    issuance.status === 'SIGNED_RECORDED'
-      ? o.licenses.statusSigned
-      : issuance.status === 'ABANDONED'
-        ? o.licenses.statusAbandoned
-        : o.licenses.statusPrepared;
-  return (
-    <li className="space-y-3 owner-panel p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="space-y-1">
-          <h3 className="font-semibold">
-            {issuance.customerName}{' '}
-            <span dir="ltr" className="text-sm text-muted-ink">
-              ({issuance.customerCode})
-            </span>
-          </h3>
-          <p className="text-sm text-secondary">
-            {o.licenses.operationId}:{' '}
-            <span dir="ltr">{issuance.operationId}</span>
-          </p>
-          <p className="text-sm text-secondary">
-            {issuance.licenseKind === 'PERPETUAL'
-              ? o.licenses.perpetual
-              : `${o.licenses.validFrom} ${issuance.validFrom.slice(0, 10)} — ${o.licenses.validUntil} ${issuance.validUntil?.slice(0, 10) ?? ''}`}
-          </p>
-        </div>
-        <span
-          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-            issuance.status === 'SIGNED_RECORDED'
-              ? 'bg-success-soft text-success'
-              : issuance.status === 'ABANDONED'
-                ? 'bg-line text-secondary'
-                : 'bg-warning-soft text-warning'
-          }`}
-        >
-          {statusLabel}
-        </span>
-      </div>
-      <dl className="grid gap-1 text-xs text-secondary sm:grid-cols-2">
-        <div>
-          <dt className="inline font-semibold">
-            {o.licenses.installationId}:{' '}
-          </dt>
-          <dd className="inline" dir="ltr">
-            {issuance.installationId}
-          </dd>
-        </div>
-        <div>
-          <dt className="inline font-semibold">{o.licenses.modules}: </dt>
-          <dd className="inline" dir="ltr">
-            {issuance.modules.join(', ')}
-          </dd>
-        </div>
-        <div>
-          <dt className="inline font-semibold">{o.licenses.requestedAt}: </dt>
-          <dd className="inline" dir="ltr">
-            {formatOwnerInstant(issuance.requestedAt)}
-          </dd>
-        </div>
-        <div>
-          <dt className="inline font-semibold">{o.licenses.age}: </dt>
-          <dd className="inline">{issuance.requestAgeDays}</dd>
-        </div>
-      </dl>
-      {issuance.customerImportAdvisory === 'TERM_ENDED' && (
-        <p className="rounded bg-warning-soft p-2 text-sm text-warning">
-          {o.licenses.termEnded}
-        </p>
-      )}
-      {issuance.revocation && (
-        <div className="space-y-1 rounded bg-danger-soft p-2 text-sm text-danger">
-          <p>
-            {o.licenses.revokedWith}: {issuance.revocation.reason} —{' '}
-            {issuance.revocation.status === 'SIGNED_RECORDED'
-              ? o.licenses.revocationStatusSigned
-              : o.licenses.revocationStatusPrepared}
-          </p>
-          <p className="text-xs text-danger">
-            {o.licenses.revocationNotApplied}
-          </p>
-        </div>
-      )}
-      {issuance.status === 'SIGNED_RECORDED' ? (
-        <div className="space-y-2">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              loading={download.isPending}
-              disabled={
-                !permissions.has('licenses.download') || download.isPending
-              }
-              onClick={() => download.mutate()}
-            >
-              {download.isPending
-                ? o.licenses.downloading
-                : o.licenses.downloadSigned}
-            </Button>
-            {issuance.artifactSha256 && (
-              <span className="self-center font-mono text-xs" dir="ltr">
-                sha256:{issuance.artifactSha256.slice(0, 16)}…
-              </span>
-            )}
-          </div>
-          {permissions.has('licenses.issue.perpetual') &&
-            issuance.revocation === null && (
-              <details className="rounded border border-line p-2">
-                <summary className="cursor-pointer text-sm font-semibold">
-                  {o.licenses.revokeTitle}
-                </summary>
-                <p className="mt-2 text-sm text-secondary">
-                  {o.licenses.revokeHelp}
-                </p>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <label className="space-y-1 text-sm">
-                    <span>{o.licenses.reason}</span>
-                    <Select
-                      value={revocationReason}
-                      onChange={(event) =>
-                        setRevocationReason(
-                          event.target.value as RevocationReason,
-                        )
-                      }
-                    >
-                      {lic.REVOCATION_REASONS.map((reason) => (
-                        <option key={reason} value={reason}>
-                          {reason}
-                        </option>
-                      ))}
-                    </Select>
-                  </label>
-                  <label className="space-y-1 text-sm">
-                    <span>{o.licenses.signingKey}</span>
-                    <Input
-                      dir="ltr"
-                      value={revocationKeyId}
-                      onChange={(event) =>
-                        setRevocationKeyId(event.target.value)
-                      }
-                    />
-                  </label>
-                </div>
-                {revocationReason === 'OTHER' && (
-                  <label className="mt-2 block space-y-1 text-sm">
-                    <span>{o.licenses.reasonDetail}</span>
-                    <Input
-                      value={reasonDetail}
-                      maxLength={500}
-                      onChange={(event) => setReasonDetail(event.target.value)}
-                    />
-                  </label>
-                )}
-                <Button
-                  className="mt-2"
-                  variant="outline"
-                  loading={revoke.isPending}
-                  disabled={revoke.isPending}
-                  onClick={() => revoke.mutate()}
-                >
-                  {revoke.isPending
-                    ? o.licenses.preparing
-                    : o.licenses.revokePrepare}
-                </Button>
-                {revocationMessage && (
-                  <p className="mt-2 text-sm text-secondary">
-                    {revocationMessage}
-                  </p>
-                )}
-                <p className="mt-2 text-xs text-muted-ink">
-                  {o.licenses.revokeImportHint}
-                </p>
-              </details>
-            )}
-        </div>
-      ) : issuance.status === 'REQUEST_PREPARED' ? (
-        <p className="text-sm text-secondary">{o.licenses.waitingSignature}</p>
-      ) : null}
-      {error && (
-        <p role="alert" className="text-sm text-danger">
-          {error}
-        </p>
-      )}
-    </li>
-  );
+/**
+ * A renewal/supersession link names a real issuance; the form is pre-filled
+ * from that record so the operator never re-types a customer or installation.
+ * The source is deliberately not copied blindly: the operator still reviews and
+ * can change limits, modules, kind and end date.
+ */
+function buildPrefill(
+  lineage: { mode: 'renew' | 'supersede'; operationId: string } | null,
+  source: Issuance | undefined,
+): IssuancePrefill | null {
+  if (!lineage || !source) return null;
+  const customer: CustomerOption = {
+    id: source.customerId,
+    customerCode: source.customerCode,
+    displayName: source.customerName,
+    status: 'ACTIVE',
+  };
+  return { customer, source, mode: lineage.mode };
 }

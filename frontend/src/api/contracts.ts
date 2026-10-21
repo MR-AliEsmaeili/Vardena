@@ -230,6 +230,56 @@ export interface ImportLicenseDocumentRequest {
 export const LICENSE_DOCUMENT_MAX_LENGTH = 65536;
 
 /**
+ * `POST /api/v1/license/revocations/import` request body
+ * (`ImportLicenseRevocationDto`, OD-LIC-17).
+ *
+ * One field, exactly like the license import: the signed revocation document —
+ * either the `vardena-revocation` file envelope the Owner produced or the bare
+ * `VREV1` artifact. What it revokes, for which installation and customer, and
+ * whether it is stale are decided by the verified payload, never by the client.
+ */
+export interface ImportLicenseRevocationRequest {
+  document: string;
+}
+
+/** The stored revocation, as this installation retains it (protocol §8). */
+export interface LicenseRevocation {
+  revocationId: string;
+  licenseId: string;
+  installationId: string;
+  customerId: string;
+  customerCode: string;
+  targetOperationId: string;
+  reason: string;
+  reasonDetail: string | null;
+  issuerKeyId: string;
+  issuedAt: string;
+  importedAt: string;
+  importedBy: string | null;
+  artifactSha256: string;
+  canonicalPayloadSha256: string;
+}
+
+/**
+ * Result receipt of a revocation import. `changed: false` means the artifact
+ * was already applied (a byte-identical replay); it is never a new fact and
+ * never a reactivation.
+ */
+export interface LicenseRevocationImportResult {
+  changed: boolean;
+  outcome: 'APPLIED' | 'UNCHANGED';
+  revocation: LicenseRevocation;
+  alreadyApplied: boolean;
+}
+
+/** Compile-time guard against the generated response schema. */
+type LicenseRevocationImportMatchesOpenApi =
+  LicenseRevocationImportResult extends Schemas['LicenseRevocationImportResultDto']
+    ? true
+    : never;
+export const LICENSE_REVOCATION_IMPORT_MATCHES_OPENAPI: LicenseRevocationImportMatchesOpenApi = true;
+
+/**
  * `LicenseImportController.import()` answers with the SAME evaluated state as
  * `GET /license/current` plus `changed` (false when a repeated legacy code was
  * already the governing version) and the applied outcome.

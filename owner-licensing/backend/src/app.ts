@@ -18,6 +18,7 @@ import {
   verifyAuditArchiveIntegrity,
 } from "./archive.js";
 import { listAuditEvents } from "./audit.js";
+import { getDashboardSummary } from "./dashboard.js";
 import { Database, audit } from "./db.js";
 import {
   ApiError,
@@ -1175,6 +1176,15 @@ export async function createApp(
         req.params.id,
         req.body,
       );
+    },
+  );
+  route(
+    "get",
+    "/dashboard",
+    "licenses.view",
+    true,
+    async (tx, a, _req, res) => {
+      res.locals.body = await getDashboardSummary(tx, a.user);
     },
   );
   route(

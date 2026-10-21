@@ -14,6 +14,7 @@ import {
 } from '@/ui/card';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { LicenseImportForm } from './license-import-form';
+import { LicenseRevocationImportForm } from './revocation-import-form';
 import { useLicenseState } from './use-license-state';
 
 /** Half-open window rendered as one line in the organization's zone. */
@@ -49,6 +50,11 @@ export function LicenseStatusCard(): ReactElement | null {
   const isPermitted =
     permissions.loaded &&
     permissions.has(PERMISSIONS.licensing.licenseActivate);
+
+  // The revocation surface needs its own code (`Licensing.License.Revoke`):
+  // an operator who may import a license cannot necessarily revoke one.
+  const isRevokePermitted =
+    permissions.loaded && permissions.has(PERMISSIONS.licensing.licenseRevoke);
 
   // No permission → no surface. The license READ itself needs no permission,
   // but this card's only action does, and a card without its action would be
@@ -242,6 +248,27 @@ export function LicenseStatusCard(): ReactElement | null {
               </p>
               <LicenseImportForm />
             </div>
+
+            {/*
+              Signed revocation (OD-LIC-17). A separate act with a separate
+              permission: importing a revocation turns this installation's
+              license off, so it is never offered as part of license import.
+              Hidden once the license IS revoked — the backend refuses a second
+              revocation (409 `already-revoked`) and re-importing a license
+              cannot restore it, so the form would only imply a recovery path
+              that does not exist.
+            */}
+            {isRevokePermitted && state.inactiveReason !== 'revoked' && (
+              <div className="border-t border-slate-100 pt-3">
+                <p className="mb-1 text-xs font-medium text-slate-700">
+                  {t.license.revocationTitle}
+                </p>
+                <p className="mb-2 text-xs text-slate-500">
+                  {t.license.revocationBody}
+                </p>
+                <LicenseRevocationImportForm />
+              </div>
+            )}
           </>
         )}
       </CardContent>

@@ -23,7 +23,8 @@
     "migrate:remediate-roles": "tsx src/migrate.ts --remediate-roles",
     "bootstrap": "tsx src/bootstrap.ts",
     "build:signer": "tsc -p tsconfig.signer.json",
-    "signer": "node dist-signer/signer/cli.js"
+    "signer": "node dist-signer/signer/cli.js",
+    "verify:interop": "tsx ../../scripts/verify-licensing-interop.ts"
   },
   "dependencies": {
     "argon2": "^0.45.1",

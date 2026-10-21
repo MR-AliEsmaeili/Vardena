@@ -560,12 +560,25 @@ function installationIdentityResponse(row: InstallationIdentityRow) {
   };
 }
 
+/**
+ * The installation identities registered for ONE customer (OD-LIC-09).
+ *
+ * Authorization matches the route exactly: `GET /customers/:id/installation-identities`
+ * declares `licenses.view`, so the service asserts `licenses.view` too. It
+ * used to assert `customers.view`, which made the endpoint answer 403 to a
+ * LICENSE_OPERATOR whenever the operator had been granted the licensing read
+ * scopes without the customer read scope — a role/permission disagreement
+ * between the router and the domain, not a deliberate restriction. Both
+ * seeded roles hold `licenses.view`, and the identities are licensing data
+ * (they exist to bind a signed license to one installation), so the licensing
+ * code is the correct one to require.
+ */
 export async function listInstallationIdentities(
   tx: PoolClient,
   actor: ServiceActor,
   customerId: string,
 ) {
-  assertActiveAuthorizedActor(actor, "customers.view");
+  assertActiveAuthorizedActor(actor, "licenses.view");
   const customer = ulidValue(customerId, "customerId");
   const rows = await tx.query<InstallationIdentityRow>(
     "SELECT * FROM owner.installation_identities WHERE customer_id=$1 ORDER BY created_at DESC, id DESC",

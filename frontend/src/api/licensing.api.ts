@@ -13,6 +13,8 @@ import type {
   DeviceReplacementResult,
   ImportDeviceReplacementResponseRequest,
   ImportLicenseDocumentRequest,
+  ImportLicenseRevocationRequest,
+  LicenseRevocationImportResult,
   LicenseImportResult,
   LicenseState,
   ProveDeviceEnrollmentRequest,
@@ -62,6 +64,32 @@ export function importLicenseDocument(
     request,
     // The license import form owns its own «در حال بررسی و ثبت مجوز…» state;
     // a second generic global announcement would be duplicate feedback.
+    { vardenaRequestActivity: { scope: 'background' } },
+  );
+}
+
+/**
+ * Signed revocation import (`POST /api/v1/license/revocations/import`,
+ * OD-LIC-17, `docs/licensing/revocation-artifact-protocol.md`).
+ *
+ * The transport is identical to the license import — one document in one body,
+ * never in a URL, a header, a log line or browser storage — but the *act* is
+ * different and so is the permission (`Licensing.License.Revoke`). The backend
+ * verifies the signature, canonical form, installation/customer/license
+ * binding and staleness, then marks exactly that license revoked and writes a
+ * typed audit event in one transaction. A byte-identical replay returns the
+ * historical result and changes nothing.
+ *
+ * A 200 here is a receipt, not a state: callers re-read `GET /license/current`,
+ * exactly as with the license import, because the evaluated access mode (not
+ * this response) is what the application is allowed to believe.
+ */
+export function importLicenseRevocation(
+  request: ImportLicenseRevocationRequest,
+): Promise<LicenseRevocationImportResult> {
+  return apiPost<LicenseRevocationImportResult, ImportLicenseRevocationRequest>(
+    '/license/revocations/import',
+    request,
     { vardenaRequestActivity: { scope: 'background' } },
   );
 }
