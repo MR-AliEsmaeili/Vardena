@@ -8,13 +8,13 @@
 
 ## A. Overall status
 
-**READY FOR CI VERIFICATION.**
+**READY FOR REVIEW.**
 
 The end-to-end licensing cycle exists in code and is exercised by executed tests on both sides:
 
 Owner prepares a request from selected real records → signs offline (outside the API) → imports the signed artifact and archives the exact bytes → the customer imports the file, verifies the signature against its trust list and activates → the backend enforces modules and ceilings and the Read-Only mode → renewal, supersession and signed revocation round trips are recorded with audit → a revocation makes the customer runtime refuse every later license artifact.
 
-Nothing in this branch is a mockup, an analysis-only document or a disabled feature. What remains is **verification, not construction**: the customer backend's live-DB (e2e) suites and the GitHub CI run for this exact commit cannot be executed from this sandbox (see D.4), so the honest status is "ready for CI verification" rather than "ready for review". No Product-Owner decision is outstanding for anything implemented here (see G).
+Nothing in this branch is a mockup, an analysis-only document or a disabled feature. CI is green on the branch head (section E); the suites that could not run from this sandbox are the customer backend live-DB ones, which CI executes (D.4). No Product-Owner decision is outstanding for anything implemented here (see G).
 
 ---
 
@@ -164,17 +164,17 @@ A disposable PostgreSQL 18.4 cluster was started from embedded binaries and used
 
 ## E. GitHub report
 
-_(Fill-in values below are the ones recorded when this branch was pushed; the CI row states the run for this exact SHA.)_
+| Item                            | Value                                                                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Repository                      | `https://github.com/MR-AliEsmaeili/Vardena`                                                                                    |
+| Base                            | `main` @ `24608f03baa3da941ec18d06995fb5ef95267418`                                                                            |
+| Working branch                  | `arena/3c88d285-vardena`                                                                                                       |
+| Pull request                    | [#191](https://github.com/MR-AliEsmaeili/Vardena/pull/191)                                                                     |
+| Commit                          | `52661f2b4a2ec6801ec8b6bed130bec2971d91d0`                                                                                     |
+| CI on `main` before this branch | `success` — run `39506001448`, 4m44s                                                                                           |
+| CI on `52661f2` (this branch)   | **`success`** — run `39645730522`; jobs `classify`, `generated-api-client`, `docs`, `frontend`, `backend`, `ci-gate` all green |
 
-| Item                            | Value                                               |
-| ------------------------------- | --------------------------------------------------- |
-| Repository                      | `https://github.com/MR-AliEsmaeili/Vardena`         |
-| Base                            | `main` @ `24608f03baa3da941ec18d06995fb5ef95267418` |
-| Working branch                  | `arena/3c88d285-vardena`                            |
-| Commit                          | see the final commit on the branch (`git log -1`)   |
-| Pull request                    | see `gh pr list --head arena/3c88d285-vardena`      |
-| CI on `main` before this branch | `success` (run `39506001448`, 4m44s)                |
-| CI on this commit               | see the run for the branch head                     |
+Only that run is offered as evidence: an earlier commit's run is never used to claim the current head is green. The report itself is committed afterwards as a documentation-only change, and its own CI run is listed on the pull request.
 
 ---
 
