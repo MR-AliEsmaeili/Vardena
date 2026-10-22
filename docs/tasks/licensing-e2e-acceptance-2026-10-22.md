@@ -12,11 +12,14 @@ PDR-19 was demonstrated in this audit.
 
 The initial audit found a missing combined test. This PR now adds a required
 Owner-to-customer acceptance suite and a fresh, dual-database CI step. Local static
-checks pass, and the suite's missing-URL path was verified to fail explicitly; the
-live dual-PostgreSQL execution remains **BLOCKED pending the exact final PR-head CI
-run**. `verify:interop` and the existing Owner/customer tests remain component
-coverage, not substitutes for the combined run. The critical Persian RTL workflow
-was not driven by a human operator.
+checks pass, and missing/unavailable-URL paths fail explicitly. First combined CI
+attempt on `c54cf5914e93b5e5504ede1221b038590351de8c` failed at Owner signing-key
+fixture setup because its harmless `notes` text included the server-forbidden phrase
+`private key`; the fixture note was changed to neutral text. The live
+dual-PostgreSQL flow remains **BLOCKED pending a passing exact-final-head CI run**.
+`verify:interop` and existing Owner/customer tests remain component coverage, not
+substitutes for the combined run. The critical Persian RTL workflow was not driven
+by a human operator.
 
 ## Repository and GitHub evidence
 
@@ -43,6 +46,12 @@ was not driven by a human operator.
   skipped for the documentation-only change. A later documentation-only refresh of
   this audit needs its own check run; the PR checks page is authoritative for the
   latest exact SHA.
+- First combined acceptance CI attempt: [run 39702199010](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39702199010)
+  on exact head `c54cf5914e93b5e5504ede1221b038590351de8c` failed at the required dual-DB
+  test. The Owner API correctly rejected test signing-key metadata with HTTP 400
+  because its `notes` fixture text contained the forbidden `private key` phrase;
+  the fixture was changed to neutral text. All earlier backend steps and the other
+  CI jobs passed. This is a corrected test-fixture failure, not a product API change.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it

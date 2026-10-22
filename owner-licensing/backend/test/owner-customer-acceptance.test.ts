@@ -532,7 +532,7 @@ beforeAll(async () => {
   const key = await ownerWrite("/signing-keys").send({
     id: signingKeyId,
     label: "Ephemeral combined-acceptance authority",
-    notes: "Public key only; private key remains in the test runner memory.",
+    notes: "Disposable public verification key for acceptance coverage.",
     evidenceReference: "ci://owner-customer-acceptance",
   });
   expect(key.status, JSON.stringify(key.body)).toBe(201);
