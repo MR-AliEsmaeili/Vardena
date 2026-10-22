@@ -19,7 +19,7 @@ export function AmountCell({
   const negative = isNegativeAmount(value);
   return (
     <span
-      className={cn('num block', negative && 'text-rose-700', className)}
+      className={cn('num block', negative && 'text-danger-ink', className)}
       title={value ?? undefined}
     >
       {formatAmount(value)}

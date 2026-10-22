@@ -121,7 +121,7 @@ export function ConfirmDialog({
   return (
     <div
       role="presentation"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4"
       onMouseDown={(event) => {
         // Backdrop dismissal is a cancel, but never while a request runs.
         if (event.target === event.currentTarget && !loading) onCancel();
@@ -131,7 +131,7 @@ export function ConfirmDialog({
         open
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className="m-0 w-full max-w-md rounded-lg border-0 bg-white p-5 shadow-xl"
+        className="m-0 w-full max-w-md rounded-card border-0 bg-surface p-5 shadow-raised"
       >
         {/* The focus trap keyboard handler lives on this presentation
             wrapper (display:contents — no layout of its own). */}
@@ -141,12 +141,12 @@ export function ConfirmDialog({
           className="contents"
           onKeyDown={onKeyDown}
         >
-          <h2 id={titleId} className="text-base font-semibold text-slate-900">
+          <h2 id={titleId} className="text-base font-semibold text-ink">
             {title}
           </h2>
           <div
             id={descriptionId}
-            className="mt-2 space-y-2 text-sm leading-6 text-slate-600"
+            className="mt-2 space-y-2 text-sm leading-6 text-ink-muted"
           >
             {description}
           </div>
@@ -172,7 +172,7 @@ export function ConfirmDialog({
             <Button
               type="button"
               variant={danger ? 'danger' : 'default'}
-              className={cn(danger && 'focus-visible:outline-rose-600')}
+              className={cn(danger && 'focus-visible:outline-danger')}
               onClick={onConfirm}
               disabled={loading || confirmDisabled}
               loading={loading}

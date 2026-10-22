@@ -1,13 +1,23 @@
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 
+/**
+ * Text input primitive.
+ *
+ * Height, radius, border, focus ring and invalid state are defined once here
+ * so every form control in the product has the same hit area and the same
+ * keyboard feedback (standards.md §6/§13). The focus ring uses the brand
+ * token, not a literal palette value.
+ */
 export function Input({ className, ...props }: ComponentProps<'input'>) {
   return (
     <input
       className={cn(
-        'h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400',
-        'focus-visible:border-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-indigo-500',
-        'disabled:cursor-not-allowed disabled:bg-slate-100 aria-[invalid=true]:border-rose-400',
+        'h-9 w-full rounded-control border border-line-strong bg-surface px-3 text-sm text-ink transition-colors placeholder:text-ink-subtle/70',
+        'hover:border-ink-subtle/60',
+        'focus-visible:border-brand focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-brand',
+        'disabled:cursor-not-allowed disabled:bg-sunken disabled:text-ink-muted',
+        'aria-[invalid=true]:border-danger aria-[invalid=true]:focus-visible:outline-danger',
         className,
       )}
       {...props}

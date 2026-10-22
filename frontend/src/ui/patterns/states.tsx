@@ -1,3 +1,4 @@
+import { AlertCircle, Inbox } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -27,7 +28,7 @@ export function LoadingState({
       aria-busy="true"
       data-testid="loading-state"
     >
-      <span className="flex items-center gap-2 text-sm text-slate-600">
+      <span className="flex items-center gap-2 text-xs text-ink-muted">
         <ThinkingOrbIndicator size={20} decorative />
         <span>{label}</span>
       </span>
@@ -40,7 +41,14 @@ export function LoadingState({
   );
 }
 
-/** Neutral "nothing to show" block (never an error). */
+/**
+ * Neutral "nothing to show" block (never an error).
+ *
+ * Two distinct empties exist in the product (standards.md §8): "no row matches
+ * the current filters" and "this list has no records yet, create the first
+ * one". The wording is owned by the caller; `action` is the recovery path, so
+ * an empty screen is never a dead end.
+ */
 export function EmptyState({
   title = t.table.emptyTitle,
   description = t.table.emptyBody,
@@ -55,12 +63,62 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-6 py-10 text-center',
+        'flex flex-col items-center justify-center gap-3 rounded-card border border-dashed border-line-strong bg-surface px-6 py-12 text-center',
+        className,
+      )}
+      data-testid="empty-state"
+    >
+      <span
+        aria-hidden="true"
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-sunken text-ink-subtle"
+      >
+        <Inbox className="h-5 w-5" />
+      </span>
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-ink">{title}</p>
+        <p className="mx-auto max-w-md text-xs leading-6 text-ink-muted">
+          {description}
+        </p>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+/** Terminal error block with a mandatory recovery affordance. */
+export function ErrorState({
+  title = t.errors.title,
+  description,
+  action,
+  className,
+}: {
+  title?: string;
+  description?: string;
+  action?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      role="alert"
+      className={cn(
+        'flex flex-col items-center justify-center gap-3 rounded-card border border-danger-line bg-danger-soft px-6 py-10 text-center',
         className,
       )}
     >
-      <p className="text-sm font-semibold text-slate-800">{title}</p>
-      <p className="max-w-md text-sm text-slate-600">{description}</p>
+      <span
+        aria-hidden="true"
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-surface text-danger-ink"
+      >
+        <AlertCircle className="h-5 w-5" />
+      </span>
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-danger-ink">{title}</p>
+        {description !== undefined && (
+          <p className="mx-auto max-w-md text-xs leading-6 text-danger-ink/90">
+            {description}
+          </p>
+        )}
+      </div>
       {action}
     </div>
   );
@@ -74,14 +132,14 @@ export function EmptyState({
 export function FullPageLoading({ label = t.app.loading }: { label?: string }) {
   return (
     <output
-      className="flex min-h-screen items-center justify-center bg-slate-50"
+      className="flex min-h-screen items-center justify-center bg-canvas"
       aria-live="polite"
       aria-busy="true"
       data-testid="full-page-loading"
     >
       <div className="flex flex-col items-center gap-3">
         <ThinkingOrbIndicator size={64} decorative />
-        <p className="text-sm text-slate-600">{label}</p>
+        <p className="text-sm text-ink-muted">{label}</p>
       </div>
     </output>
   );

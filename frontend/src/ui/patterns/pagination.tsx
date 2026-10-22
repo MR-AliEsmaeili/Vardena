@@ -41,15 +41,15 @@ export function Pagination({
   const canNext = page < pageCount && !disabled;
 
   return (
-    <div className="flex flex-col gap-3 border-t border-slate-100 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-3 text-slate-600">
+    <div className="flex flex-col gap-3 border-t border-line/80 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-wrap items-center gap-3 text-ink-muted">
         <span>
           {t.table.rowsTotal}: <span className="num">{formatCount(total)}</span>
         </span>
         <LocalFetchingIndicator active={fetching} />
         {onPageSizeChange !== undefined && (
           <label className="flex items-center gap-2">
-            <span className="text-xs text-slate-500">{t.table.pageSize}</span>
+            <span className="text-ink-subtle">{t.table.pageSize}</span>
             <Select
               className="h-8 w-20"
               value={pageSize}
@@ -77,7 +77,7 @@ export function Pagination({
         >
           {t.table.previous}
         </Button>
-        <span className="text-slate-600">
+        <span className="text-ink-muted" aria-live="polite" aria-atomic="true">
           {t.table.page} <span className="num">{page}</span> {t.table.of}{' '}
           <span className="num">{pageCount}</span>
         </span>
