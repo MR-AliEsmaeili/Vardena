@@ -1,5 +1,14 @@
 # Owner-side issuance — decision → implementation → evidence traceability
 
+> **Current-head overlay (2026-10-22):** the PostgreSQL counts and local run claims
+> below are historical evidence from the earlier implementation branch, not runs
+> from the current audit session. For current base/head SHAs, exact GitHub run IDs,
+> local commands/results, and the strict Option C gap matrix, see
+> [`licensing-e2e-acceptance-2026-10-22.md`](./licensing-e2e-acceptance-2026-10-22.md).
+> In particular, the Owner and customer component suites do not constitute one
+> dual-database acceptance run. Do not report licensing as fully verified until
+> the combined flow and manual Persian RTL checklist are completed.
+
 **What this file is.** For every recordable decision in PDR-19 and every open
 question that touches the Owner-side issuance slice, it states what exists in
 code, what proves it, and what does not exist. A row is only **DONE** when the
@@ -232,3 +241,30 @@ the remaining verification step.
    accepted by the customer's committed vectors and unit tests; a signed
    artifact produced by the Owner signer has not been replayed into a running
    customer installation in this environment.
+
+## 5. Current Option C acceptance overlay (2026-10-22)
+
+The per-decision/component evidence above remains useful, but it is not equivalent
+to an executed Owner-to-customer acceptance flow. The current matrix in
+[`licensing-e2e-acceptance-2026-10-22.md`](./licensing-e2e-acceptance-2026-10-22.md)
+tracks the requirements across both applications and their separate PostgreSQL
+databases, with explicit `PASS` / `BLOCKED` / `NOT RUN` statuses.
+
+Current distinctions:
+
+- `npm run verify:interop` passed **7/7** on 2026-10-22, but only exercises signed
+  VLIC2/VREV1 documents through the two domain implementations in process. It does
+  not create persisted Owner records or call either application's import endpoint.
+- Owner lifecycle and customer persistence tests exist separately. GitHub CI run
+  [39657663222](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39657663222)
+  passed on exact base SHA `92586fa87b7aa678fc26dddcc775b54eddbc15c3`; it ran both
+  applications' database suites independently, not as one artifact handoff flow.
+- Current local environment had no PostgreSQL binaries/service, so Owner integration
+  and customer live-DB tests were **not run locally**. The selected customer
+  in-memory E2E and unit tests did run; their commands and exact counts are in the
+  acceptance audit.
+- Human Persian RTL acceptance is **NOT RUN**. Automated component tests do not
+  substitute for an operator record.
+
+No PDR-19 decision is reopened. The gap is combined executable evidence and the
+operator-run checklist, not a demonstrated inconsistency in accepted behavior.

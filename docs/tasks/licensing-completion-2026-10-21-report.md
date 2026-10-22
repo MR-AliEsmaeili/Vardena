@@ -1,5 +1,14 @@
 # Licensing completion — Owner ↔ Customer end-to-end (2026-10-21)
 
+> **Historical report, not current Option C acceptance.** This records the earlier
+> PR #191 work and its test/CI evidence. Its component suites and protocol-level
+> interop check are not a combined Owner + customer dual-PostgreSQL acceptance run.
+> The current-head audit (2026-10-22), explicit gap matrix, command record, manual
+> checklist, and final status are in
+> [`licensing-e2e-acceptance-2026-10-22.md`](licensing-e2e-acceptance-2026-10-22.md).
+> The strict Option C status is **BLOCKED** until that audit's cross-app and manual
+> acceptance evidence is supplied.
+
 **Branch:** `arena/3c88d285-vardena` (from `main` @ `24608f03baa3da941ec18d06995fb5ef95267418`)
 **Commits:** one code commit `52661f2b4a2ec6801ec8b6bed130bec2971d91d0`; every later commit is documentation only — see [section E](#e-github-report) for the commit list, the run that belongs to each SHA and the six CI jobs.
 **Companion:** [pre-change audit](licensing-completion-audit-2026-10-21.md) — the capability matrix (O1–O16, C1–C8) this report closes.
@@ -7,15 +16,29 @@
 
 ---
 
-## A. Overall status
+## A. Historical disposition for PR #191 (not strict Option C acceptance)
 
-**READY FOR REVIEW.**
+**The PR #191 implementation was reviewed on its then-current branch; this
+historical status does not mean the current Option C acceptance flow is complete.**
 
-The end-to-end licensing cycle exists in code and is exercised by executed tests on both sides:
+The code contains the lifecycle components on both sides: Owner prepares a request
+from persisted records, signs offline, imports and archives exact bytes; the customer
+runtime imports, verifies and activates; customer services enforce limits and
+Read-Only; Owner renewal/supersession and signed revocation workflows are recorded;
+the customer can apply a signed revocation. The tests, however, are principally
+Owner-side lifecycle tests, customer-side lifecycle tests, and a separate
+protocol/domain interop script. They do **not** establish that one Owner-produced,
+archived artifact was carried through both applications' real HTTP/service paths
+while both disposable PostgreSQL databases were inspected in a single acceptance
+run.
 
-Owner prepares a request from selected real records → signs offline (outside the API) → imports the signed artifact and archives the exact bytes → the customer imports the file, verifies the signature against its trust list and activates → the backend enforces modules and ceilings and the Read-Only mode → renewal, supersession and signed revocation round trips are recorded with audit → a revocation makes the customer runtime refuse every later license artifact.
-
-Nothing in this branch is a mockup, an analysis-only document or a disabled feature. Section E lists the six CI jobs and the run for each commit on the branch, including the head; the suites that could not run from this sandbox are the customer backend live-DB ones, which CI executes (D.4). No Product-Owner decision is outstanding for anything implemented here (see G).
+The former PR #191 CI results remain historical evidence for the tested PR head.
+For current repository state, exact base CI evidence, local commands, the requirement
+matrix, manual checklist, and outstanding gaps, see
+[`licensing-e2e-acceptance-2026-10-22.md`](licensing-e2e-acceptance-2026-10-22.md).
+No Product-Owner decision is outstanding for the product behavior already
+implemented; the missing work is executable combined-flow evidence and human UI
+acceptance, not a reopening of accepted decisions.
 
 ---
 
@@ -299,8 +322,8 @@ The status card shows the validity window and the coverage end. After the end of
 
 ---
 
-## G. Decision summary
+## G. Historical decision summary (PR #191 scope only)
 
-1. **Is the mission actually complete?** For everything this branch claims: yes — the Owner prepares, signs (offline), archives and hands over a file; the customer verifies, activates and enforces; renewal, supersession and signed revocation are recorded and audited; the customer can import a revocation. Measured by the criterion "a usable end-to-end cycle, not file count": the cycle exists and is covered by executed tests on both sides, and by the cross-implementation check in B.4. It is **not** claimed complete for the customer backend's live-DB suites, which could not be executed in this sandbox.
-2. **Is CI green on the final commit?** Section E.1 lists every commit on the branch with the run that belongs to that SHA; all of them are green, six jobs each, and the single code commit is `52661f2`. Because a commit cannot contain its own SHA, the definitive answer for the current head is GitHub's own check list on pull request #191; `main` was green before this branch.
-3. **Open Product-Owner decisions?** None block what is implemented here. The genuine open items are the ones already recorded in `docs/open-questions.md` and unchanged by this work: OQ-82 (server-replacement protocol), OQ-84 (activation receipts — closed as "not required"), OQ-76 (clock-integrity evidence), the installation-identity key (designed only) and the deployment-owner items for the artifact backup medium and a production-sized restore rehearsal. No business policy was invented: where the repository had a decision, it was followed; where it had none, no behaviour was added.
+1. **Does this report establish strict Option C acceptance?** No. It records separate Owner and customer test evidence plus a domain-level protocol interop check. It does not prove one persisted Owner issuance artifact passed through both applications' real endpoints while both disposable PostgreSQL databases were checked. The current strict status is **BLOCKED**; see [`licensing-e2e-acceptance-2026-10-22.md`](licensing-e2e-acceptance-2026-10-22.md).
+2. **Were checks green for the earlier PR #191 code?** The historical run list in section E belongs to the prior PR branch. Current base CI evidence is recorded by exact SHA and run URL in the 2026-10-22 acceptance audit; those checks do not supply a combined cross-app test.
+3. **Are product decisions reopened?** No. Existing PDR-19, PDR-14, PDR-16, PDR-18 and the revocation protocol remain controlling. The remaining work is combined integration evidence and a human Persian RTL acceptance record, not new product policy.
