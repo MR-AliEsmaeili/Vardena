@@ -62,8 +62,13 @@ on `6ed38f669bce63bfefb2d3318ce256b1655b64fe` reached the audit-count assertion;
 snapshot correctly contained three events (one applied activation plus two
 pre-activation signature rejections), not four. The test now checks that exact count
 and verifies the later customer-binding rejection audit rows and unverified-signature
-audit fields explicitly. The live dual-PostgreSQL flow remains **BLOCKED pending a
-passing exact-final-head CI run**.
+audit fields explicitly. Thirteenth combined CI attempt on
+`a249a1a85a60ab92239b9b698e66b8cb3fa95fd0` passed those checks and reached the
+Read-Only mutation refusal, where the fixture expected an internal `license_read_only`
+detail that is intentionally not exposed by the authorization guard's existing public
+403 contract. The test now checks the stable public `Forbidden` code and retained state;
+component tests continue to pin internal Read-Only policy details. The live
+dual-PostgreSQL flow remains **BLOCKED pending a passing exact-final-head CI run**.
 `verify:interop` and existing Owner/customer tests remain component coverage, not
 substitutes for the combined run. The critical Persian RTL workflow was not driven
 by a human operator.
@@ -170,6 +175,12 @@ by a human operator.
   two unverified signature rejections. The fixture now asserts that exact pre-binding
   count and checks the later binding-rejection audit details directly. Other CI jobs
   passed.
+- Thirteenth combined acceptance attempt: [run 39709779746](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39709779746)
+  on exact head `a249a1a85a60ab92239b9b698e66b8cb3fa95fd0` passed through Grace,
+  then reached the Read-Only mutation refusal. The fixture expected an internal reason
+  in the API body, but the established authorization guard returns the stable public
+  `Forbidden` code without that detail. The assertion now checks that contract and that
+  the rejected write left persisted state unchanged. Other CI jobs passed.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it

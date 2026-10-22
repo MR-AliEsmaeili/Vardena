@@ -1130,13 +1130,15 @@ describe("persisted Owner → offline signer → Owner archive → authenticated
     expect((await customerGet("/api/v1/license/current")).status).toBe(200);
     expect((await customerGet("/api/v1/organizations")).status).toBe(200);
     const beforeReadOnlyWrite = await snapshotCustomerState();
+    // The entitlement-filtered RBAC guard preserves the public Forbidden
+    // response; component tests separately pin the internal read-only reason.
     const readOnlyWrite = await customerPost("/api/v1/organizations").send({
       code: "readonly_write_refused",
       name: "Read-only write must fail",
       timeZone: "Asia/Tehran",
     });
     expect(readOnlyWrite.status).toBe(403);
-    expect(readOnlyWrite.body.details?.reason).toBe("license_read_only");
+    expect(readOnlyWrite.body.code).toBe("Forbidden");
     await assertUnchanged(beforeReadOnlyWrite);
 
     // Rewind the injected acceptance clock to the signing day for an independent
