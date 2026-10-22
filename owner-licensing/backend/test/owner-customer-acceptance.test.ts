@@ -849,6 +849,12 @@ describe("persisted Owner → offline signer → Owner archive → authenticated
     expect(ownerErrorCode(ownerConflict)).toBe("OperationConflict");
     const archived = await ownerArchivedBytes(baseIssuanceId);
     expect(archived.toString("utf8")).toBe(signed.envelope);
+    const archivedDocument = (
+      JSON.parse(archived.toString("utf8")) as { document: string }
+    ).document;
+    const archivedDocumentHash = sha256Bytes(
+      Buffer.from(archivedDocument, "utf8"),
+    );
     const ownerArtifactRow = await ownerDb.pool.query<{
       sha256: string;
       status: string;
@@ -941,7 +947,7 @@ describe("persisted Owner → offline signer → Owner archive → authenticated
       supersedes_version_id: null,
     });
     expect(persistedAfterBase.versions[0]!.document_hash).toBe(
-      sha256Bytes(archived),
+      archivedDocumentHash,
     );
     const beforeBindingNegatives = await snapshotCustomerState();
     const wrongCustomerPayload = {
@@ -977,14 +983,22 @@ describe("persisted Owner → offline signer → Owner archive → authenticated
     );
     await assertUnchanged(beforeBindingNegatives);
     expect(persistedAfterBase.counts?.audits).toBeGreaterThanOrEqual(4n);
-    const appliedAudits = await customerQuery<Array<{ count: bigint }>>(
+    const appliedAudits = await customerQuery<Array<Record<string, unknown>>>(
       `
-      SELECT count(*) AS count FROM licensing.license_audit_events
+      SELECT event_type, outcome, license_id, operation_id, document_hash
+        FROM licensing.license_audit_events
        WHERE event_type='license.import.applied' AND operation_id=$1
     `,
       baseOperationId,
     );
-    expect(appliedAudits[0]!.count).toBe(1n);
+    expect(appliedAudits).toHaveLength(1);
+    expect(appliedAudits[0]).toMatchObject({
+      event_type: "license.import.applied",
+      outcome: "APPLIED",
+      license_id: baseLicenseId,
+      operation_id: baseOperationId,
+      document_hash: archivedDocumentHash,
+    });
     const ownerAudits = await countOwner(
       "SELECT count(*)::text AS count FROM owner.audit_events WHERE target_id=$1 AND event_type='LICENSE_ARTIFACT_IMPORTED'",
       [baseIssuanceId],
@@ -1196,6 +1210,14 @@ describe("persisted Owner → offline signer → Owner archive → authenticated
     expect(archivedRevocation.status).toBe(200);
     const revocationBytes = Buffer.from(archivedRevocation.body as Buffer);
     expect(revocationBytes.toString("utf8")).toBe(signedRevocation.envelope);
+    const revocationDocument = (
+      JSON.parse(revocationBytes.toString("utf8")) as { revocation: string }
+    ).revocation;
+    const revocationPayloadPart = revocationDocument.split(".")[1];
+    expect(revocationPayloadPart).toBeTruthy();
+    const canonicalRevocationPayloadHash = sha256Bytes(
+      Buffer.from(revocationPayloadPart!, "base64url"),
+    );
     const ownerRevocationRow = await ownerDb.pool.query<{
       status: string;
       artifact_sha256: string;
@@ -1246,6 +1268,8 @@ describe("persisted Owner → offline signer → Owner archive → authenticated
       license_id: renewalLicenseId,
       target_operation_id: renewal.operationId,
       issuer_key_id: signingKeyId,
+      artifact_sha256: sha256Bytes(revocationBytes),
+      canonical_payload_sha256: canonicalRevocationPayloadHash,
     });
     const revocationAudit = await customerQuery<Array<Record<string, unknown>>>(
       `
@@ -1262,7 +1286,7 @@ describe("persisted Owner → offline signer → Owner archive → authenticated
       revocation_id: revokePrepared.body.revocation.revocationId,
       license_id: renewalLicenseId,
       operation_id: renewal.operationId,
-      document_hash: sha256Bytes(revocationBytes),
+      document_hash: canonicalRevocationPayloadHash,
     });
     const revocationReplay = await customerPost(
       "/api/v1/license/revocations/import",

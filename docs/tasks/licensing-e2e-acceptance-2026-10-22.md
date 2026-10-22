@@ -47,8 +47,13 @@ permission before activation, and only assigns `License.Revoke` plus Organizatio
 permissions after customer persistence confirms activation. Ninth combined CI attempt
 on `671ce7c3545f7dd148ce670bf3d75371cbd8067b` passed the Owner tamper, binding and
 customer auth gates, then failed an assertion that compared PostgreSQL's numeric
-artifact byte-size value to a string. The assertion now compares numeric types. The
-live dual-PostgreSQL flow remains **BLOCKED pending a passing exact-final-head CI run**.
+artifact byte-size value to a string. The assertion now compares numeric types. Tenth combined CI attempt on
+`818b64415324c3e13f6dabe8bae121f2de7d7778` passed Owner archival and customer import,
+then exposed that `license_versions.document_hash` is the hash of the signed VLIC2
+document, not the outer archived envelope bytes. The checks now distinguish the
+artifact SHA-256 from the signed-document digest, and assert both raw artifact and
+canonical-payload hashes for customer revocation persistence. The live dual-PostgreSQL
+flow remains **BLOCKED pending a passing exact-final-head CI run**.
 `verify:interop` and existing Owner/customer tests remain component coverage, not
 substitutes for the combined run. The critical Persian RTL workflow was not driven
 by a human operator.
@@ -137,6 +142,12 @@ by a human operator.
   binding and customer auth assertions; Owner archive persistence reached its byte-size
   check, which compared a PostgreSQL numeric value to a string. The assertion now
   compares numeric values; other CI jobs passed.
+- Tenth combined acceptance attempt: [run 39708270039](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39708270039)
+  on exact head `818b64415324c3e13f6dabe8bae121f2de7d7778` passed archival and
+  authenticated customer activation, then failed because the test equated the VLIC2
+  document digest in customer persistence with the outer artifact-envelope digest.
+  Assertions now verify each digest according to its distinct persisted contract,
+  including raw/canonical hashes for customer revocation. Other CI jobs passed.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it
