@@ -33,9 +33,12 @@ Organization permissions after customer persistence confirms the license. Fifth
 combined CI attempt on `22351e42861e73725b4d82284bd12980f84f4af0` reached the tamper
 case but the Owner's fixed 2030 clock made a DB-created request appear expired against
 PostgreSQL's current clock; the test now captures Owner PostgreSQL time once and uses
-that exact instant for the deterministic Owner/customer clock and offline signer. The
-live dual-PostgreSQL flow remains **BLOCKED pending a passing exact-final-head CI
-run**.
+that exact instant for the deterministic Owner/customer clock and offline signer.
+Sixth combined CI attempt on `5fb20618bb7a54ecf98b550aa4bd6ada22c229fc` passed the
+Owner expiry/tamper path but failed in the isolated signer's payload-mismatch helper:
+JSON transport had converted payload `Date` fields to strings. The signer now revives
+the protocol date fields in its own process before canonicalization. The live
+dual-PostgreSQL flow remains **BLOCKED pending a passing exact-final-head CI run**.
 `verify:interop` and existing Owner/customer tests remain component coverage, not
 substitutes for the combined run. The critical Persian RTL workflow was not driven
 by a human operator.
@@ -100,6 +103,12 @@ by a human operator.
   so Owner correctly expired the prepared request. The test now captures
   `clock_timestamp()` from the disposable Owner DB, uses that instant as its frozen
   app/customer clock, and passes it explicitly to the offline signer.
+- Sixth combined acceptance attempt: [run 39706220846](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39706220846)
+  on exact head `5fb20618bb7a54ecf98b550aa4bd6ada22c229fc` reached the signed tamper
+  and binding cases but failed in the signer's mismatch helper because JSON transport
+  converted `Date` fields to strings. The isolated signer now reconstructs the signed
+  protocol dates before canonicalization; no production protocol behavior changed.
+  Other jobs passed.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it

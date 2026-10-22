@@ -33,6 +33,23 @@ function signingTime(value: unknown): Date {
   return date;
 }
 
+function revivePayloadDates(value: unknown): LicenseVersionPayload {
+  if (value === null || typeof value !== "object") {
+    throw new Error("The acceptance signer requires a license payload.");
+  }
+  const payload = value as Record<string, unknown>;
+  const validFrom = signingTime(payload.validFrom);
+  const issuedAt = signingTime(payload.issuedAt);
+  const validUntil =
+    payload.validUntil === null ? null : signingTime(payload.validUntil);
+  return {
+    ...(payload as unknown as LicenseVersionPayload),
+    validFrom,
+    validUntil,
+    issuedAt,
+  };
+}
+
 reply({ type: "ready", keyId, publicMaterial });
 
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -64,7 +81,7 @@ for await (const line of input) {
     }
     if (action === "payload" || action === "rogue-payload") {
       const canonicalPayload = canonicalizeLicenseVersion(
-        message.payload as LicenseVersionPayload,
+        revivePayloadDates(message.payload),
       );
       const payload = parseLicenseVersionPayload(JSON.parse(canonicalPayload));
       const signingKey =
