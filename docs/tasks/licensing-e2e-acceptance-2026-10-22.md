@@ -52,8 +52,13 @@ artifact byte-size value to a string. The assertion now compares numeric types. 
 then exposed that `license_versions.document_hash` is the hash of the signed VLIC2
 document, not the outer archived envelope bytes. The checks now distinguish the
 artifact SHA-256 from the signed-document digest, and assert both raw artifact and
-canonical-payload hashes for customer revocation persistence. The live dual-PostgreSQL
-flow remains **BLOCKED pending a passing exact-final-head CI run**.
+canonical-payload hashes for customer revocation persistence. Eleventh combined CI
+attempt on `e61de3e8d6bc32f52bbee41290cf570183aae7b7` verified the corrected
+signed-document digest assertion, then showed that the wrong-customer case reused the
+already-applied operation ID and was therefore correctly rejected first as
+`duplicate-operation`. That negative fixture now uses distinct operation and license
+IDs so it reaches the intended customer binding check. The live dual-PostgreSQL flow
+remains **BLOCKED pending a passing exact-final-head CI run**.
 `verify:interop` and existing Owner/customer tests remain component coverage, not
 substitutes for the combined run. The critical Persian RTL workflow was not driven
 by a human operator.
@@ -148,6 +153,12 @@ by a human operator.
   document digest in customer persistence with the outer artifact-envelope digest.
   Assertions now verify each digest according to its distinct persisted contract,
   including raw/canonical hashes for customer revocation. Other CI jobs passed.
+- Eleventh combined acceptance attempt: [run 39708752719](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39708752719)
+  on exact head `e61de3e8d6bc32f52bbee41290cf570183aae7b7` passed the revised digest
+  assertion, then the wrong-customer case returned `duplicate-operation` because it
+  reused the activated license's operation ID. The negative fixture now assigns unique
+  operation and license IDs to reach the intended customer-binding rejection. Other
+  CI jobs passed.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it

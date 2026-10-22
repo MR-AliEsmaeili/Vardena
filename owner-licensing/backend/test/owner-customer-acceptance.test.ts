@@ -952,6 +952,8 @@ describe("persisted Owner → offline signer → Owner archive → authenticated
     const beforeBindingNegatives = await snapshotCustomerState();
     const wrongCustomerPayload = {
       ...projectedPayload,
+      operationId: ulid(),
+      licenseId: ulid(),
       customerId: ulid(),
       customerCode: `C-${ulid()}`,
     };
