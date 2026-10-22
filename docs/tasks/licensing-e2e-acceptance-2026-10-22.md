@@ -57,8 +57,13 @@ attempt on `e61de3e8d6bc32f52bbee41290cf570183aae7b7` verified the corrected
 signed-document digest assertion, then showed that the wrong-customer case reused the
 already-applied operation ID and was therefore correctly rejected first as
 `duplicate-operation`. That negative fixture now uses distinct operation and license
-IDs so it reaches the intended customer binding check. The live dual-PostgreSQL flow
-remains **BLOCKED pending a passing exact-final-head CI run**.
+IDs so it reaches the intended customer binding check. Twelfth combined CI attempt
+on `6ed38f669bce63bfefb2d3318ce256b1655b64fe` reached the audit-count assertion; the
+snapshot correctly contained three events (one applied activation plus two
+pre-activation signature rejections), not four. The test now checks that exact count
+and verifies the later customer-binding rejection audit rows and unverified-signature
+audit fields explicitly. The live dual-PostgreSQL flow remains **BLOCKED pending a
+passing exact-final-head CI run**.
 `verify:interop` and existing Owner/customer tests remain component coverage, not
 substitutes for the combined run. The critical Persian RTL workflow was not driven
 by a human operator.
@@ -159,6 +164,12 @@ by a human operator.
   reused the activated license's operation ID. The negative fixture now assigns unique
   operation and license IDs to reach the intended customer-binding rejection. Other
   CI jobs passed.
+- Twelfth combined acceptance attempt: [run 39709253540](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39709253540)
+  on exact head `6ed38f669bce63bfefb2d3318ce256b1655b64fe` reached an incorrect
+  expectation of four audit events; the snapshot had three—one applied activation and
+  two unverified signature rejections. The fixture now asserts that exact pre-binding
+  count and checks the later binding-rejection audit details directly. Other CI jobs
+  passed.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it

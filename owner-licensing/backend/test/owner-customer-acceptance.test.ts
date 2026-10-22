@@ -984,7 +984,68 @@ describe("persisted Owner → offline signer → Owner archive → authenticated
       "installation-mismatch",
     );
     await assertUnchanged(beforeBindingNegatives);
-    expect(persistedAfterBase.counts?.audits).toBeGreaterThanOrEqual(4n);
+    const bindingRejectAudits = await customerQuery<
+      Array<{
+        operation_id: string;
+        license_id: string;
+        reason: string;
+        outcome: string;
+        document_hash: string | null;
+      }>
+    >(
+      `
+      SELECT operation_id, license_id, reason, outcome, document_hash
+        FROM licensing.license_audit_events
+       WHERE event_type='license.import.rejected'
+         AND operation_id IN ($1, $2)
+    `,
+      wrongCustomerPayload.operationId,
+      wrongInstallationPayload.operationId,
+    );
+    expect(bindingRejectAudits).toHaveLength(2);
+    const signatureRejectAudits = await customerQuery<
+      Array<{
+        outcome: string;
+        operation_id: string | null;
+        document_hash: string | null;
+      }>
+    >(
+      `
+      SELECT outcome, operation_id, document_hash
+        FROM licensing.license_audit_events
+       WHERE event_type='license.import.rejected'
+         AND installation_id=$1 AND reason='signature'
+    `,
+      installationId,
+    );
+    expect(signatureRejectAudits).toHaveLength(2);
+    expect(
+      signatureRejectAudits.every(
+        (audit) =>
+          audit.outcome === "REJECTED" &&
+          audit.operation_id === null &&
+          audit.document_hash === null,
+      ),
+    ).toBe(true);
+    expect(bindingRejectAudits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          operation_id: wrongCustomerPayload.operationId,
+          license_id: wrongCustomerPayload.licenseId,
+          reason: "installation-customer-mismatch",
+          outcome: "REJECTED",
+          document_hash: expect.any(String),
+        }),
+        expect.objectContaining({
+          operation_id: wrongInstallationPayload.operationId,
+          license_id: wrongInstallationPayload.licenseId,
+          reason: "installation-mismatch",
+          outcome: "REJECTED",
+          document_hash: expect.any(String),
+        }),
+      ]),
+    );
+    expect(persistedAfterBase.counts?.audits).toBe(3n);
     const appliedAudits = await customerQuery<Array<Record<string, unknown>>>(
       `
       SELECT event_type, outcome, license_id, operation_id, document_hash
