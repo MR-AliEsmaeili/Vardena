@@ -109,6 +109,11 @@ by a human operator.
   converted `Date` fields to strings. The isolated signer now reconstructs the signed
   protocol dates before canonicalization; no production protocol behavior changed.
   Other jobs passed.
+- Seventh combined acceptance attempt: [run 39706773283](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39706773283)
+  on exact head `cc01b0186c7bc79d5ebce18509baf9140e972350` passed Owner's expiry and
+  tampered-signature assertions, then failed in the signer's binding-mismatch helper
+  on the same JSON `Date` serialization issue. The worker now revives `validFrom`,
+  `validUntil` and `issuedAt` before canonicalizing test payloads; other CI jobs passed.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it
