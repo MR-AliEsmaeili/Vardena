@@ -1,6 +1,6 @@
 # گزارش مأموریت FE-UX-11 — تکمیل کیفیت بصری و ممیزی پوشش فرانت‌اند
 
-**وضعیت:** READY FOR CI VERIFICATION
+**وضعیت:** READY FOR REVIEW
 **تاریخ:** ۲۰۲۶-۱۰-۲۲
 **مبنا:** `main` پس از ادغام PR #192 و PR #193 — کامیت `6e5c1a6`
 **شاخهٔ کار:** `feat/frontend-ux-completion`
@@ -129,7 +129,7 @@
 | گارد تاریخ | `py -3 scripts/check-date-contract.py` | ✅ PASS |
 | لینک مستندات | `py -3 scripts/check-docs-links.py` | ✅ ۳۴۸ فایل، ۱۲۶۲ لینک، ۰ خراب |
 | گارد طراحی | `node scripts/check-frontend-design-tokens.mjs` | ✅ OK (۳۴۴ فایل) |
-| ساخت | `npm run build` | ❌ روی این ماشین اجرا نمی‌شود (بخش ۶.۱) — نیازمند CI |
+| ساخت | `npm run build` | ⚠️ روی این ماشین اجرا نمی‌شود (بخش ۶.۱)؛ ✅ در CI سبز شد (بخش ۵.۲) |
 
 > قالب‌بندی محلی با `--end-of-line crlf` اجرا شد چون `core.autocrlf=true` است؛ CI لینوکسی همان اسکریپت معمول `format:check` را با LF اجرا می‌کند.
 
@@ -141,6 +141,30 @@
 - `testTimeout: 15_000` با توضیح در `vitest.config.ts` — تست‌های جریان‌محور با `userEvent` روی استک کامل provider به بیش از ۵ ثانیه در ماشین اشباع‌شده نیاز دارند. هیچ assertion حذف یا سست نشد؛ تایم‌اوت تنها سقف شکست واقعی را بالا می‌برد.
 
 پس از این تنظیم: ۷۱/۷۱ فایل و ۵۰۲/۵۰۲ تست سبز در اجرای کامل.
+
+### ۵.۲ شواهد CI (GitHub Actions)
+
+- PR: **#195** — `https://github.com/MR-AliEsmaeili/Vardena/pull/195`
+- Workflow Run: **#774** — `https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39778372801`
+- کامیت: `1c358b2`
+- نتیجهٔ کل: **Success** (مدت ۵m ۵۸s)؛ jobها: `classify`, `docs`, `backend`, `frontend`, `generated-api-client`, `ci-gate` — همه موفق.
+
+stepهای job فرانت‌اند (همه `success`):
+
+```
+Cross-project date contract guard
+Setup Node.js
+Frontend design-token guard      <-- گارد جدید
+Upgrade npm to v11
+Install dependencies
+Lint
+Typecheck
+Format check
+Tests
+Build                            <-- ساخت تأیید شد
+```
+
+بنابراین تنها بررسی‌ای که محلی ممکن نبود (build) در CI تأیید شده است. `ci-gate` هم که «fail-closed» است، موفق شد؛ یعنی هیچ job لازم دیگری skip/ناموفق نبوده است.
 
 ---
 
@@ -154,7 +178,7 @@
 [vite:esbuild-transpile] remove C:\Users\...\Temp\esbuild-<hash>: Access is denied
 ```
 
-این خطا **مستقل از تغییرات این دور** است: روی یک baseline پاک از `origin/main` (با stash کردن تغییرات و کنار گذاشتن فایل‌های تست جدید) هم بازتولید شد؛ یعنی قفل فایل/آنتی‌ویروس روی پوشهٔ Temp. بنابراین تأیید build به CI سپرده می‌شود و در این گزارش سبز اعلام نمی‌شود.
+این خطا **مستقل از تغییرات این دور** است: روی یک baseline پاک از `origin/main` (با stash کردن تغییرات و کنار گذاشتن فایل‌های تست جدید) هم بازتولید شد؛ یعنی قفل فایل/آنتی‌ویروس روی پوشهٔ Temp. بنابراین build محلی به‌عنوان شاهد استفاده نشد و **همان بررسی در CI اجرا و سبز شد** (بخش ۵.۲).
 
 ### ۶.۲ رنگ خام در صفحه‌های feature
 
@@ -182,8 +206,8 @@
 
 ## ۸) وضعیت نهایی
 
-- تغییرات روی شاخهٔ `feat/frontend-ux-completion` است؛ PR جداگانه باز می‌شود و **ادغام خودکار نمی‌شود**.
+- تغییرات روی شاخهٔ `feat/frontend-ux-completion` است و در PR **#195** باز شده؛ **ادغام خودکار نمی‌شود**.
 - typecheck، lint، prettier، ۵۰۲ تست، سه گارد مستندات/تاریخ/طراحی: **همه سبز و اجراشده**.
-- تنها بررسی تأییدنشده، `npm run build` است که به‌دلیل محدودیت محیطی محلی (با اثبات بازتولید روی baseline پاک) به CI واگذار می‌شود.
+- `npm run build` محلی به‌دلیل محدودیت محیطی (با اثبات بازتولید روی baseline پاک) اجرا نشد، اما همان step در CI برای همین تغییرات **سبز** است (بخش ۵.۲) — پس این مورد «تأییدنشده» نیست.
 
-**وضعیت: READY FOR CI VERIFICATION**
+**وضعیت: READY FOR REVIEW**
