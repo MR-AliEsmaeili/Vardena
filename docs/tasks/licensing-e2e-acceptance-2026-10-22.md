@@ -31,11 +31,18 @@ critical Persian RTL workflow was not driven by a human operator.
   and `ci-gate` all passed. The backend run included the Owner fresh-migration/API
   suite and customer live-PostgreSQL E2E/licensing-persistence steps. This is CI
   evidence for that exact base SHA, not evidence for this audit branch's later head.
-- Only open PR at audit time: [#192](https://github.com/MR-AliEsmaeili/Vardena/pull/192),
+- At initial audit time, the only open PR was [#192](https://github.com/MR-AliEsmaeili/Vardena/pull/192),
   head `bb055f9d0b2e654f1a9f79e09258180bcde50c5b`. Its CI run
   [39693999819](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39693999819)
   passed `classify`, `frontend`, `generated-api-client`, and `ci-gate`; `docs` and
   `backend` were skipped. It is unrelated frontend coverage and was not modified.
+- This audit is submitted as [PR #193](https://github.com/MR-AliEsmaeili/Vardena/pull/193).
+  Its first CI run [39698666695](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39698666695)
+  passed on head `d2f73428356c50ab258d00d41ade112507a5406a`: `classify`, `docs`,
+  and `ci-gate` passed; backend, frontend and generated-client jobs were correctly
+  skipped for the documentation-only change. A later documentation-only refresh of
+  this audit needs its own check run; the PR checks page is authoritative for the
+  latest exact SHA.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it
@@ -57,7 +64,7 @@ critical Persian RTL workflow was not driven by a human operator.
 | Module and numeric ceiling enforcement | Customer authorization and limit services enforce modules and ceilings server-side | `backend/src/modules/licensing/application/license-limit-concurrency.spec.ts`, `backend/test/licensing-limits-live.e2e-spec.ts`, import and organization/user service tests; base CI live suite green | Combined issued profile → imported artifact → denied over-ceiling operations not demonstrated | Use the persisted Owner profile in the acceptance flow; assert boundary and boundary+1 results at customer API and DB state | BLOCKED |
 | Signed revocation and archive recovery | Owner VREV1 prep/import/download and archive backup/verify exist; customer revocation endpoint/service persists revocation; recovery requires new license | Owner `artifact-backup.test.ts`, lifecycle tests; customer revocation service and live persistence tests; documented PostgreSQL 16 backup/restore drill in `docs/licensing/artifacts-backup-restore.md` | No combined run proves Owner-produced archived VREV1 applies to customer. Existing restore drill is not production-sized and is not a cross-app run | Add the positive flow and replay/old-license checks; retain current documented restore test as limited evidence, not production readiness | BLOCKED |
 | Critical Owner/customer Persian RTL UI paths | Both SPAs implement licensing pages/forms and Persian RTL translations | Owner and customer frontend test suites passed locally on 2026-10-22 | No actual human operation in the UI; automated UI tests do not count as manual acceptance | Named operator executes checklist below in a staging/test installation and records date, build SHA, result and redacted evidence | NOT RUN |
-| Full CI on final PR head | Base SHA has a fully green CI run; PR #192 unrelated backend was skipped | Exact run 39657663222 passed at base SHA | This documentation-only PR has no run yet; it will not add the missing combined test | Require `docs` and `ci-gate` for this documentation-only PR on its exact head. The follow-up code PR that adds the combined test must run all classifier-applicable backend/customer live-DB, Owner integration, frontend, generated-client, docs and gate checks on that code PR head | BLOCKED |
+| Full CI on final PR head | Base SHA has a fully green CI run; this docs-only PR uses change-aware checks | Run 39698666695 passed on exact tested SHA `d2f73428356c50ab258d00d41ade112507a5406a` (`classify`, `docs`, `ci-gate`); backend/frontend/generated-client skipped as not applicable | The combined acceptance test is absent; a docs-only green run cannot satisfy the Option C CI requirement. Check PR #193 for the latest run after this audit update | Require `docs` and `ci-gate` on this docs-only PR's current exact head. The follow-up code PR that adds the combined test must run all classifier-applicable backend/customer live-DB, Owner integration, frontend, generated-client, docs and gate checks on that code PR head | BLOCKED |
 
 ## Command record (executed 2026-10-22 UTC)
 
@@ -73,6 +80,8 @@ changed by installs.
 | `gh run view 39657663222 --json ...` | Exact base SHA CI successful; all six jobs passed; backend included fresh Owner migrations/API and customer live DB licensing suites |
 | `gh run list --commit 92586fa87b7aa678fc26dddcc775b54eddbc15c3 ...` | Failed: installed `gh` reports `unknown flag: --commit`; reran successfully with `gh run list --branch main` and inspected exact SHA via `gh run view 39657663222` |
 | `gh pr view 192 --json ...` | Head `bb055f9...`; classify/frontend/generated-client/ci-gate passed; backend/docs skipped |
+| `gh pr create --base main --head arena/70985c35-vardena ...` | Created focused documentation audit PR #193: https://github.com/MR-AliEsmaeili/Vardena/pull/193 |
+| `gh run watch 39698666695 --exit-status` | Passed at the then-current PR head `d2f73428356c50ab258d00d41ade112507a5406a`: `classify`, `docs`, `ci-gate`; other jobs skipped as not applicable |
 | `node --version`; `npm --version`; `command -v psql`; `command -v docker`; `pg_isready` | Node `v22.22.3`; npm `10.9.8`; psql/docker unavailable; `pg_isready` unavailable |
 | `owner-licensing/backend: npm ci --ignore-scripts --no-audit --no-fund` | Passed, 208 packages |
 | `backend: npm ci --ignore-scripts --no-audit --no-fund` | Passed, 459 packages |
