@@ -1333,7 +1333,7 @@ describe("persisted Owner → offline signer → Owner archive → authenticated
       license_id: renewalLicenseId,
       target_operation_id: renewal.operationId,
       issuer_key_id: signingKeyId,
-      artifact_sha256: sha256Bytes(revocationBytes),
+      artifact_sha256: canonicalRevocationPayloadHash,
       canonical_payload_sha256: canonicalRevocationPayloadHash,
     });
     const revocationAudit = await customerQuery<Array<Record<string, unknown>>>(

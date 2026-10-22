@@ -69,8 +69,15 @@ detail that is intentionally not exposed by the authorization guard's existing p
 403 contract. Fourteenth attempt on `9aade497a2ab94aff08e317b2fe03e878bf6d3ef` then
 showed the public code is `PermissionDenied`, not the generic `Forbidden`; the test now
 pins the exact established code and retained state. Component tests continue to pin
-internal Read-Only policy details. The live dual-PostgreSQL flow remains **BLOCKED
-pending a passing exact-final-head CI run**.
+internal Read-Only policy details. Fifteenth combined CI attempt on
+`aa7e503ef5817e87bbcf26cf7dc1e25f52e26082` passed Read-Only enforcement and reached
+customer revocation persistence. The existing customer service stores the canonical
+VREV1 payload digest in both `artifact_sha256` and `canonical_payload_sha256`; the
+fixture had expected the outer JSON-envelope digest in the former. It now follows the
+implemented customer persistence contract while separately asserting Owner's raw
+archived-artifact SHA-256 and exact-byte transport. No product or protocol behavior
+changed. The live dual-PostgreSQL flow remains **BLOCKED pending a passing
+exact-final-head CI run**.
 `verify:interop` and existing Owner/customer tests remain component coverage, not
 substitutes for the combined run. The critical Persian RTL workflow was not driven
 by a human operator.
@@ -187,6 +194,12 @@ by a human operator.
   on exact head `9aade497a2ab94aff08e317b2fe03e878bf6d3ef` confirmed the actual public
   denial code is `PermissionDenied`, not `Forbidden`. The fixture now asserts the exact
   existing code and verifies persisted state remains unchanged. Other CI jobs passed.
+- Fifteenth combined acceptance attempt: [run 39710676331](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39710676331)
+  on exact head `aa7e503ef5817e87bbcf26cf7dc1e25f52e26082` passed the Read-Only
+  public denial, then showed customer `license_revocations.artifact_sha256` matches the
+  canonical VREV1 payload digest (the same value as `canonical_payload_sha256`), rather
+  than the outer envelope digest. The assertion now matches that persisted service
+  contract; Owner's envelope digest check remains separate. Other CI jobs passed.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it
