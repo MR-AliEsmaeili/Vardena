@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Boxes } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { Navigate, useLocation } from 'react-router-dom';
 import { normalizeApiError } from '@/api/errors';
@@ -92,12 +93,18 @@ export function LoginPage() {
   const passwordError = form.formState.errors.password?.message;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
-      <div className="w-full max-w-md space-y-4">
-        <div className="text-center">
-          <p className="text-2xl font-bold text-indigo-700">{t.app.name}</p>
-          <p className="mt-1 text-sm text-slate-600">{t.app.tagline}</p>
-        </div>
+    <main className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
+      <div className="w-full max-w-md space-y-5">
+        <header className="text-center">
+          <span
+            aria-hidden="true"
+            className="mx-auto flex h-11 w-11 items-center justify-center rounded-card bg-brand text-white shadow-raised"
+          >
+            <Boxes className="h-5 w-5" />
+          </span>
+          <p className="mt-3 text-xl font-bold text-ink">{t.app.name}</p>
+          <p className="mt-1 text-xs text-ink-muted">{t.app.tagline}</p>
+        </header>
 
         {session.sessionExpired && (
           <Alert variant="warning">
@@ -105,17 +112,18 @@ export function LoginPage() {
           </Alert>
         )}
 
-        <Card>
-          <CardHeader>
+        <Card className="shadow-raised">
+          <CardHeader className="space-y-1 p-5">
             <CardTitle>{t.auth.loginTitle}</CardTitle>
-            <p className="text-sm text-slate-600">{t.auth.loginSubtitle}</p>
+            <p className="text-xs text-ink-muted">{t.auth.loginSubtitle}</p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-5">
             <form className="space-y-4" onSubmit={onSubmit} noValidate>
               <FormField
                 id="username"
                 label={t.auth.username}
                 error={usernameError}
+                required
               >
                 {(fieldProps) => (
                   <Input
@@ -133,6 +141,7 @@ export function LoginPage() {
                 id="password"
                 label={t.auth.password}
                 error={passwordError}
+                required
               >
                 {(fieldProps) => (
                   <Input

@@ -160,7 +160,7 @@ export function LicenseGate({ children }: { children: ReactNode }) {
           <>
             <output
               aria-live="polite"
-              className="block border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs text-amber-900"
+              className="block border-b border-warn-line bg-warn-soft px-4 py-2 text-center text-xs text-warn-ink"
             >
               {mode === 'GRACE'
                 ? t.license.graceNotice

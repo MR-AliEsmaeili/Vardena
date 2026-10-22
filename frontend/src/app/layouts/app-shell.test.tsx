@@ -528,3 +528,82 @@ describe('shell navigation and breadcrumb', () => {
     ).not.toBeInTheDocument();
   });
 });
+
+/**
+ * The sidebar is the product's only navigation surface on a small screen, so
+ * it has to behave like a real dialog: hidden from layout/focus when closed,
+ * announced by its own control, closable with Escape without losing the
+ * user's place, and unable to leak Tab into the page underneath.
+ */
+describe('shell navigation drawer (keyboard and focus)', () => {
+  async function openDrawer() {
+    const user = userEvent.setup();
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+    await screen.findByRole('heading', { level: 1, name: t.dashboard.title });
+
+    const toggle = screen.getByRole('button', { name: t.nav.openMenu });
+    const navigation = screen.getByRole('navigation', { name: t.nav.mainMenu });
+    await user.click(toggle);
+
+    return { user, toggle, navigation };
+  }
+
+  it('starts closed and hidden from the accessibility tree until opened', async () => {
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+    await screen.findByRole('heading', { level: 1, name: t.dashboard.title });
+
+    const toggle = screen.getByRole('button', { name: t.nav.openMenu });
+    const navigation = screen.getByRole('navigation', { name: t.nav.mainMenu });
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-controls', 'app-navigation');
+    expect(navigation).toHaveAttribute('id', 'app-navigation');
+    expect(navigation).toHaveClass('invisible');
+    expect(document.body.style.overflow).not.toBe('hidden');
+  });
+
+  it('opens the drawer, locks the page scroll and closes on Escape with focus returned', async () => {
+    const { user, toggle, navigation } = await openDrawer();
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(navigation).toHaveClass('visible');
+    expect(navigation).not.toHaveClass('invisible');
+    expect(document.body.style.overflow).toBe('hidden');
+
+    await user.keyboard('{Escape}');
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(navigation).toHaveClass('invisible');
+    expect(toggle).toHaveFocus();
+    expect(document.body.style.overflow).not.toBe('hidden');
+  });
+
+  it('traps Tab inside the open drawer in both directions', async () => {
+    const { user, navigation } = await openDrawer();
+
+    const links = within(navigation).getAllByRole('link');
+    const first = links[0]!;
+    const last = links[links.length - 1]!;
+    expect(links.length).toBeGreaterThan(1);
+
+    last.focus();
+    expect(last).toHaveFocus();
+    await user.keyboard('{Tab}');
+    expect(first).toHaveFocus();
+
+    await user.keyboard('{Shift>}{Tab}{/Shift}');
+    expect(last).toHaveFocus();
+  });
+
+  it('closes the drawer after a navigation click so the page underneath is reachable', async () => {
+    const { user, toggle } = await openDrawer();
+
+    await user.click(screen.getByRole('link', { name: t.nav.chartTree }));
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(document.body.style.overflow).not.toBe('hidden');
+    expect(
+      await screen.findByRole('heading', { name: t.chartTree.title }),
+    ).toBeInTheDocument();
+  });
+});

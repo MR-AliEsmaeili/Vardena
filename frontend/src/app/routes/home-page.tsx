@@ -43,9 +43,9 @@ export function HomePage() {
         title={t.home.welcome}
         description={t.home.body}
         actions={
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-ink-subtle">
             {t.auth.signedInAs}:{' '}
-            <span className="font-medium text-slate-700" dir="ltr">
+            <span className="font-medium text-ink-muted" dir="ltr">
               {session.user?.username ?? ''}
             </span>
           </span>
@@ -58,7 +58,7 @@ export function HomePage() {
             <Card key={item.to}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <item.icon className="h-4 w-4 text-indigo-600" aria-hidden />
+                  <item.icon className="h-4 w-4 text-brand" aria-hidden />
                   {item.label}
                 </CardTitle>
                 <CardDescription>{section.label}</CardDescription>

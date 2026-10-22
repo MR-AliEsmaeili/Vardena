@@ -42,28 +42,28 @@ export function AppBreadcrumb() {
 
   return (
     <nav aria-label={t.breadcrumb.label}>
-      <ol className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+      <ol className="flex flex-wrap items-center gap-1.5 text-xs text-ink-subtle">
         {items.map((item, index) => {
           const isLast = index === items.length - 1;
           return (
             <li key={item.to} className="flex items-center gap-1.5">
               {index > 0 && (
                 <ChevronLeft
-                  className="h-3.5 w-3.5 shrink-0 text-slate-300"
+                  className="h-3.5 w-3.5 shrink-0 text-ink-subtle/60"
                   aria-hidden
                 />
               )}
               {isLast ? (
                 <span
                   aria-current="page"
-                  className="font-medium text-slate-700"
+                  className="font-medium text-ink-muted"
                 >
                   {item.label}
                 </span>
               ) : (
                 <Link
                   to={item.to}
-                  className="rounded hover:text-slate-700 hover:underline focus-visible:outline-2 focus-visible:outline-indigo-500"
+                  className="rounded-control hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-brand"
                 >
                   {item.label}
                 </Link>
