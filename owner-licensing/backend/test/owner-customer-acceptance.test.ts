@@ -32,6 +32,7 @@ import { UsersService } from "../../../backend/src/modules/users/application/use
 import { RolesService } from "../../../backend/src/modules/rbac/application/roles.service.js";
 import { UserRolesService } from "../../../backend/src/modules/rbac/application/user-roles.service.js";
 import { ORGANIZATION_PERMISSIONS } from "../../../backend/src/modules/organization/domain/organization-permissions.js";
+import { LICENSING_PERMISSIONS } from "../../../backend/src/modules/licensing/domain/licensing-permissions.js";
 
 class OfflineAcceptanceSigner {
   private readonly child: ChildProcessWithoutNullStreams;
@@ -595,7 +596,7 @@ beforeAll(async () => {
   const role = await customerApp.get(RolesService).createRole({
     name: "OwnerCustomerAcceptanceAdmin",
     description: "Isolated acceptance user",
-    permissionCodes: [],
+    permissionCodes: [LICENSING_PERMISSIONS.LICENSE_ACTIVATE],
   });
   customerRoleId = role.id;
   await customerApp.get(UserRolesService).assignRoleToUser(role.id, user.id);
@@ -991,9 +992,15 @@ describe("persisted Owner → offline signer → Owner archive → authenticated
       [baseIssuanceId],
     );
     expect(ownerAudits).toBe(1);
-    // The fixture starts with no business permissions while unlicensed. Once
-    // customer persistence confirms activation, grant only the permissions for
-    // the real organization API coverage below.
+    // Before activation the fixture holds only the platform bootstrap
+    // permission. Once customer persistence confirms activation, grant the
+    // revocation and organization permissions needed by the real API flows.
+    await customerApp
+      .get(RolesService)
+      .assignPermissionToRole(
+        customerRoleId,
+        LICENSING_PERMISSIONS.LICENSE_REVOKE,
+      );
     await customerApp
       .get(RolesService)
       .assignPermissionToRole(customerRoleId, ORGANIZATION_PERMISSIONS.VIEW);

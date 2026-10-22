@@ -28,8 +28,10 @@ Vitest config so real customer modules and generated client stay in the normal a
 module graph. Fourth combined CI attempt on
 `9af1f0a556fd0e4ec1dc023b4470ad888b985a26` reached role setup but failed because the
 fixture assigned every registered permission, including modules not granted by the
-artifact; the product correctly denied an Accounting permission. The fixture now creates an empty role before activation, then grants only the two
-Organization permissions after customer persistence confirms the license. Fifth
+artifact; the product correctly denied an Accounting permission. The fixture now
+starts with only the unconditionally available `Licensing.License.Activate` bootstrap
+permission, then grants its other necessary permissions after customer activation.
+Fifth
 combined CI attempt on `22351e42861e73725b4d82284bd12980f84f4af0` reached the tamper
 case but the Owner's fixed 2030 clock made a DB-created request appear expired against
 PostgreSQL's current clock; the test now captures Owner PostgreSQL time once and uses
@@ -37,8 +39,13 @@ that exact instant for the deterministic Owner/customer clock and offline signer
 Sixth combined CI attempt on `5fb20618bb7a54ecf98b550aa4bd6ada22c229fc` passed the
 Owner expiry/tamper path but failed in the isolated signer's payload-mismatch helper:
 JSON transport had converted payload `Date` fields to strings. The signer now revives
-the protocol date fields in its own process before canonicalization. The live
-dual-PostgreSQL flow remains **BLOCKED pending a passing exact-final-head CI run**.
+the protocol date fields in its own process before canonicalization. Seventh combined
+CI attempt on `cc01b0186c7bc79d5ebce18509baf9140e972350` passed the Owner signer and
+binding cases but customer import returned 403: the unlicensed fixture role lacked the
+platform `Licensing.License.Activate` permission. The test now grants that bootstrap
+permission before activation, and only assigns `License.Revoke` plus Organization
+permissions after customer persistence confirms activation. The live dual-PostgreSQL
+flow remains **BLOCKED pending a passing exact-final-head CI run**.
 `verify:interop` and existing Owner/customer tests remain component coverage, not
 substitutes for the combined run. The critical Persian RTL workflow was not driven
 by a human operator.
@@ -114,6 +121,14 @@ by a human operator.
   tampered-signature assertions, then failed in the signer's binding-mismatch helper
   on the same JSON `Date` serialization issue. The worker now revives `validFrom`,
   `validUntil` and `issuedAt` before canonicalizing test payloads; other CI jobs passed.
+- Eighth combined acceptance attempt: [run 39707257267](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39707257267)
+  on exact head `a75aa75f7397184f17f9f27103ff9ed35bc18f92` passed the tamper and
+  binding-rejection assertions, then got HTTP 403 at the customer's required
+  authenticated import route. The setup user had no `Licensing.License.Activate`,
+  which is intentionally required even before an installation is licensed. The test
+  now grants that platform bootstrap permission pre-activation and waits for persisted
+  customer activation before granting `License.Revoke` and Organization permissions.
+  Other CI jobs passed.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it
