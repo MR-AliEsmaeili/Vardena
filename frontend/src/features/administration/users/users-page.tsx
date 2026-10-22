@@ -12,6 +12,7 @@ import {
 import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
 import { DataTable } from '@/ui/patterns/data-table';
+import { FilterBar, FilterField } from '@/ui/patterns/filter-bar';
 import { PageHeader } from '@/ui/patterns/page-header';
 import { Select } from '@/ui/select';
 import { USER_DEFAULT_SORT, USER_SORT_FIELDS, useUserList } from './user-hooks';
@@ -111,11 +112,14 @@ export function UsersPage() {
         }
       />
 
-      <div className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-3">
-        <label className="w-full text-xs text-slate-600 sm:w-56">
-          <span>{t.usersAdmin.status}</span>
+      <FilterBar
+        onClear={list.clear}
+        clearLabel={t.orgAdmin.clear}
+        columns={4}
+        aria-label={t.filters.title}
+      >
+        <FilterField label={t.usersAdmin.status}>
           <Select
-            className="mt-1"
             value={statusValue}
             onChange={(event) => list.update({ status: event.target.value })}
           >
@@ -123,12 +127,8 @@ export function UsersPage() {
             <option value="active">{t.usersAdmin.active}</option>
             <option value="inactive">{t.usersAdmin.inactive}</option>
           </Select>
-        </label>
-        <div className="flex-1" />
-        <Button type="button" variant="ghost" size="sm" onClick={list.clear}>
-          {t.orgAdmin.clear}
-        </Button>
-      </div>
+        </FilterField>
+      </FilterBar>
 
       <DataTable
         columns={columns}
@@ -142,6 +142,18 @@ export function UsersPage() {
         onRetry={() => void query.refetch()}
         emptyTitle={t.usersAdmin.title}
         emptyDescription={t.usersAdmin.usersEmptyFirstUse}
+        // Only the "no users yet" empty state offers creation. With a status
+        // filter active the grid is empty because of the filter, and a create
+        // CTA would not be the recovery for what the user sees.
+        emptyAction={
+          statusValue === '' ? (
+            <PermissionGate permission={PERMISSIONS.users.create}>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/app/admin/users/new">{t.usersAdmin.newUser}</Link>
+              </Button>
+            </PermissionGate>
+          ) : undefined
+        }
         sorting={list.state.sorting}
         onSortingChange={list.setSorting}
         pagination={{

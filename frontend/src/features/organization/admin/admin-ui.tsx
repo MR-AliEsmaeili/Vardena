@@ -1,8 +1,8 @@
 import type { FormEvent, ReactNode } from 'react';
 import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
-import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
+import { FilterBar, FilterField } from '@/ui/patterns/filter-bar';
 import { Select } from '@/ui/select';
 import type { StatusFilter } from '@/lib/use-admin-list-state';
 
@@ -23,28 +23,7 @@ export function ActiveBadge({ active }: { active: boolean }) {
   );
 }
 
-export function DefinitionList({ children }: { children: ReactNode }) {
-  return (
-    <dl className="grid gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 sm:grid-cols-2">
-      {children}
-    </dl>
-  );
-}
-
-export function Definition({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="bg-white p-4">
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className="mt-1 text-sm font-medium text-slate-900">{children}</dd>
-    </div>
-  );
-}
+export { Definition, DefinitionList } from '@/ui/patterns/definition-list';
 
 export interface AdminFiltersProps {
   search: string;
@@ -85,39 +64,33 @@ export function AdminFilters({
   };
 
   return (
-    <form
+    <FilterBar
       key={synchronizationKey}
-      className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-3"
       onSubmit={submit}
+      onClear={onClear}
+      applyLabel={t.orgAdmin.filter}
+      clearLabel={t.orgAdmin.clear}
+      columns={4}
+      aria-label={t.filters.title}
       data-testid="org-admin-filters"
     >
-      <label className="min-w-52 flex-1 text-xs text-slate-600">
-        <span>{t.app.search}</span>
+      <FilterField label={t.app.search} className="sm:col-span-2">
         <Input
           name="search"
           defaultValue={search}
           placeholder={t.orgAdmin.searchPlaceholder}
-          className="mt-1"
         />
-      </label>
+      </FilterField>
 
       {children}
 
-      <label className="min-w-36 text-xs text-slate-600">
-        <span>{t.orgAdmin.status}</span>
-        <Select name="status" defaultValue={status} className="mt-1">
+      <FilterField label={t.orgAdmin.status}>
+        <Select name="status" defaultValue={status}>
           <option value="">{t.orgAdmin.allStatuses}</option>
           <option value="active">{t.orgAdmin.active}</option>
           <option value="inactive">{t.orgAdmin.inactive}</option>
         </Select>
-      </label>
-
-      <Button type="submit" size="sm">
-        {t.orgAdmin.filter}
-      </Button>
-      <Button type="button" variant="ghost" size="sm" onClick={onClear}>
-        {t.orgAdmin.clear}
-      </Button>
-    </form>
+      </FilterField>
+    </FilterBar>
   );
 }

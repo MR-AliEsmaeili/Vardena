@@ -11,8 +11,8 @@ import {
   formatDateOnlyCanonical,
 } from '@/lib/format';
 import { t } from '@/lib/i18n';
-import { Button } from '@/ui/button';
 import { DataTable } from '@/ui/patterns/data-table';
+import { FilterBar } from '@/ui/patterns/filter-bar';
 import { FormField } from '@/ui/patterns/form-field';
 import { DateInput } from '@/ui/patterns/date-input';
 import { EmptyState, LoadingState } from '@/ui/patterns/states';
@@ -179,13 +179,16 @@ export function KardexPage() {
         description={t.inventory.kardexSubtitle}
       />
 
-      <form
-        className="grid items-end gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-2 xl:grid-cols-5"
+      <FilterBar
+        columns={5}
         onSubmit={(event) => {
           event.preventDefault();
           setPage(1);
           setSnapshot(undefined);
         }}
+        applyLabel={t.inventory.kardexShow}
+        isFetching={kardexQuery.isFetching}
+        applyDisabled={!scopeReady}
       >
         <FormField id="kardex-item" label={t.inventory.item}>
           {(fieldProps) => (
@@ -266,11 +269,7 @@ export function KardexPage() {
             />
           )}
         </FormField>
-
-        <Button type="submit" disabled={!scopeReady || kardexQuery.isFetching}>
-          {t.inventory.kardexShow}
-        </Button>
-      </form>
+      </FilterBar>
 
       {organizationId === null || references.isLoading ? (
         <LoadingState rows={6} label={t.filters.referencesLoading} />

@@ -112,6 +112,13 @@ export function RolesPage() {
         onRetry={() => void query.refetch()}
         emptyTitle={t.rolesAdmin.title}
         emptyDescription={t.rolesAdmin.rolesEmpty}
+        emptyAction={
+          <PermissionGate permission={PERMISSIONS.rbac.roleCreate}>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/app/admin/roles/new">{t.rolesAdmin.newRole}</Link>
+            </Button>
+          </PermissionGate>
+        }
         sorting={list.state.sorting}
         onSortingChange={list.setSorting}
         pagination={{
