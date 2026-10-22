@@ -15,7 +15,12 @@ Owner-to-customer acceptance suite and a fresh, dual-database CI step. Local sta
 checks pass, and missing/unavailable-URL paths fail explicitly. First combined CI
 attempt on `c54cf5914e93b5e5504ede1221b038590351de8c` failed at Owner signing-key
 fixture setup because its harmless `notes` text included the server-forbidden phrase
-`private key`; the fixture note was changed to neutral text. The live
+`private key`; the fixture note was changed to neutral text. Second combined CI attempt
+on `646da4f3cfaf1a042b731ed09d7a539008e6bcee` reached the real applications but failed
+because Vitest's worker did not load the generated customer Prisma TypeScript client
+when the test imported cross-project source; the acceptance command now starts Vitest
+with the `tsx` ESM loader and customer backend `tsconfig.json` (including decorators).
+The live
 dual-PostgreSQL flow remains **BLOCKED pending a passing exact-final-head CI run**.
 `verify:interop` and existing Owner/customer tests remain component coverage, not
 substitutes for the combined run. The critical Persian RTL workflow was not driven
@@ -52,6 +57,13 @@ by a human operator.
   because its `notes` fixture text contained the forbidden `private key` phrase;
   the fixture was changed to neutral text. All earlier backend steps and the other
   CI jobs passed. This is a corrected test-fixture failure, not a product API change.
+- Second combined acceptance attempt: [run 39702748443](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39702748443)
+  on exact head `646da4f3cfaf1a042b731ed09d7a539008e6bcee` reached real app setup but
+  failed because Vitest could not load the generated customer Prisma TypeScript client
+  through its dynamic `.js` import when loading cross-project source. The acceptance
+  command now starts Vitest with `NODE_OPTIONS=--import=tsx` and
+  `TSX_TSCONFIG_PATH=../../backend/tsconfig.json`; no production loader or service
+  code was changed. Frontend, generated-client and docs jobs passed.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it
