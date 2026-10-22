@@ -18,14 +18,19 @@ fixture setup because its harmless `notes` text included the server-forbidden ph
 `private key`; the fixture note was changed to neutral text. Second combined CI attempt
 on `646da4f3cfaf1a042b731ed09d7a539008e6bcee` reached the real applications but failed
 because Vitest's worker did not load the generated customer Prisma TypeScript client
-when the test imported cross-project source; the acceptance command was then tried with the `tsx` ESM loader and customer backend
-`tsconfig.json` (including decorators). Third combined CI attempt on
+when the test imported cross-project source; the command was then tried with the `tsx`
+ESM loader and customer backend `tsconfig.json` (including decorators). Third combined
+CI attempt on
 `596e95ea2789f691b1c096f6772ef1ad98e0776d` still failed: importing customer source
 outside the Owner Vitest root left Prisma's generated `.js` import outside Vitest's
 module resolver. The runner now delegates execution to a dedicated customer-root
 Vitest config so real customer modules and generated client stay in the normal app
-module graph. The live dual-PostgreSQL flow remains **BLOCKED pending a passing
-exact-final-head CI run**.
+module graph. Fourth combined CI attempt on
+`9af1f0a556fd0e4ec1dc023b4470ad888b985a26` reached role setup but failed because the
+fixture assigned every registered permission, including modules not granted by the
+artifact; the product correctly denied an Accounting permission. The fixture now creates an empty role before activation, then grants only the two
+Organization permissions after customer persistence confirms the license. The live
+dual-PostgreSQL flow remains **BLOCKED pending a passing exact-final-head CI run**.
 `verify:interop` and existing Owner/customer tests remain component coverage, not
 substitutes for the combined run. The critical Persian RTL workflow was not driven
 by a human operator.
@@ -74,6 +79,15 @@ by a human operator.
   import outside Vitest's module resolver. The runner now delegates to a dedicated
   customer-root Vitest config so the real customer app and generated client stay in
   the normal module graph. Frontend, generated-client and docs jobs passed.
+- Fourth combined acceptance attempt: [run 39704794416](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39704794416)
+  on exact head `9af1f0a556fd0e4ec1dc023b4470ad888b985a26` reached real service/API
+  execution but failed while preparing the fixture role: it attempted to grant every
+  registry permission, including `Accounting.Account.Create`, although this test
+  artifact grants only Organization/Users modules. License-gated assignment correctly
+  denied it. The fixture now creates the role empty before activation, then assigns
+  only `Organization.Organization.View` and `Organization.Organization.Create` after
+  customer persistence confirms activation. This preserves real entitlement checks.
+  Other CI jobs passed.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it

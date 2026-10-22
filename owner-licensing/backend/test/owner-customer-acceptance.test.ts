@@ -31,7 +31,7 @@ import { PrismaService } from "../../../backend/src/kernel/prisma/prisma.service
 import { UsersService } from "../../../backend/src/modules/users/application/users.service.js";
 import { RolesService } from "../../../backend/src/modules/rbac/application/roles.service.js";
 import { UserRolesService } from "../../../backend/src/modules/rbac/application/user-roles.service.js";
-import { PermissionRegistry } from "../../../backend/src/modules/rbac/application/permission-registry.js";
+import { ORGANIZATION_PERMISSIONS } from "../../../backend/src/modules/organization/domain/organization-permissions.js";
 
 class OfflineAcceptanceSigner {
   private readonly child: ChildProcessWithoutNullStreams;
@@ -200,6 +200,7 @@ let ownerCookie: string;
 let customerApp: Awaited<ReturnType<typeof createTestApp>>["app"];
 let customerAgent: ReturnType<typeof request.agent>;
 let prisma: PrismaService;
+let customerRoleId: string;
 let artifactDir: string;
 let signer: OfflineAcceptanceSigner;
 let publicMaterial: string;
@@ -560,16 +561,13 @@ beforeAll(async () => {
   });
   customerApp = built.app;
   prisma = customerApp.get(PrismaService);
-  const allPermissions = customerApp
-    .get(PermissionRegistry)
-    .all()
-    .map((entry) => entry.code);
   const user = await customerApp.get(UsersService).createUser(customerUser);
   const role = await customerApp.get(RolesService).createRole({
     name: "OwnerCustomerAcceptanceAdmin",
     description: "Isolated acceptance user",
-    permissionCodes: allPermissions,
+    permissionCodes: [],
   });
+  customerRoleId = role.id;
   await customerApp.get(UserRolesService).assignRoleToUser(role.id, user.id);
   customerAgent = request.agent(customerApp.getHttpServer());
   const customerLogin = await customerAgent
@@ -963,6 +961,15 @@ describe("persisted Owner → offline signer → Owner archive → authenticated
       [baseIssuanceId],
     );
     expect(ownerAudits).toBe(1);
+    // The fixture starts with no business permissions while unlicensed. Once
+    // customer persistence confirms activation, grant only the permissions for
+    // the real organization API coverage below.
+    await customerApp
+      .get(RolesService)
+      .assignPermissionToRole(customerRoleId, ORGANIZATION_PERMISSIONS.VIEW);
+    await customerApp
+      .get(RolesService)
+      .assignPermissionToRole(customerRoleId, ORGANIZATION_PERMISSIONS.CREATE);
     await createTestEntitlementUse();
 
     const beforeDuplicate = await snapshotCustomerState();
