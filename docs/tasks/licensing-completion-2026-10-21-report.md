@@ -327,3 +327,13 @@ The status card shows the validity window and the coverage end. After the end of
 1. **Does this report establish strict Option C acceptance?** No. It records separate Owner and customer test evidence plus a domain-level protocol interop check. It does not prove one persisted Owner issuance artifact passed through both applications' real endpoints while both disposable PostgreSQL databases were checked. The current strict status is **BLOCKED**; see [`licensing-e2e-acceptance-2026-10-22.md`](licensing-e2e-acceptance-2026-10-22.md).
 2. **Were checks green for the earlier PR #191 code?** The historical run list in section E belongs to the prior PR branch. Current base CI evidence is recorded by exact SHA and run URL in the 2026-10-22 acceptance audit; those checks do not supply a combined cross-app test.
 3. **Are product decisions reopened?** No. Existing PDR-19, PDR-14, PDR-16, PDR-18 and the revocation protocol remain controlling. The remaining work is combined integration evidence and a human Persian RTL acceptance record, not new product policy.
+
+## H. Combined acceptance implementation follow-up (2026-10-22)
+
+A later follow-up now adds the required non-skipping, dual-PostgreSQL Owner-to-customer
+suite and CI provisioning in PR #193. The historical report above is not revised into
+combined-flow evidence: its Owner/customer tests and protocol interop remained separate
+component runs. The new suite is documented with exact code/commands and current CI
+status in [`licensing-e2e-acceptance-2026-10-22.md`](licensing-e2e-acceptance-2026-10-22.md)
+and the traceability addendum. No licensing-system completion claim is made. Manual
+Persian RTL acceptance remains **NOT RUN**.

@@ -16,6 +16,8 @@
     "format:check": "prettier --check src test *.json",
     "test": "vitest run test/unit.test.ts test/domain-operations.test.ts test/audit-query.test.ts test/signing-keys.test.ts test/protocol.test.ts test/signer.test.ts test/licensing.test.ts test/artifact-store.test.ts test/artifact-backup.test.ts",
     "test:integration": "vitest run --no-file-parallelism test/api.test.ts test/licensing-lifecycle.test.ts",
+    "typecheck:acceptance": "tsc --noEmit -p tsconfig.acceptance.json",
+    "test:acceptance": "npm run typecheck:acceptance && vitest run --no-file-parallelism test/owner-customer-acceptance.test.ts",
     "migrate": "tsx src/migrate.ts",
     "artifacts:backup": "tsx src/artifacts.ts backup",
     "artifacts:verify": "tsx src/artifacts.ts verify",

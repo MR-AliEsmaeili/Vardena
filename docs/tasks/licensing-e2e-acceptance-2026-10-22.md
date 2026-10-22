@@ -10,13 +10,13 @@ customer runtime remain separate applications with separate databases. No accept
 product or protocol decision was changed, and no code defect or contradiction with
 PDR-19 was demonstrated in this audit.
 
-The concrete gap is test evidence, not a newly proven production defect: the current
-`verify:interop` command generates an ephemeral Ed25519 key and exercises Owner
-protocol signing against customer **domain parsers** in process. It does not prepare
-from persisted Owner records, import through Owner and customer HTTP/service paths,
-verify customer PostgreSQL state, or test both databases in one orchestrated flow.
-Owner and customer live-database suites test their own applications separately. The
-critical Persian RTL workflow was not driven by a human operator.
+The initial audit found a missing combined test. This PR now adds a required
+Owner-to-customer acceptance suite and a fresh, dual-database CI step. Local static
+checks pass, and the suite's missing-URL path was verified to fail explicitly; the
+live dual-PostgreSQL execution remains **BLOCKED pending the exact final PR-head CI
+run**. `verify:interop` and the existing Owner/customer tests remain component
+coverage, not substitutes for the combined run. The critical Persian RTL workflow
+was not driven by a human operator.
 
 ## Repository and GitHub evidence
 
@@ -52,21 +52,21 @@ critical Persian RTL workflow was not driven by a human operator.
 
 | Requirement | Current implementation | Existing test/evidence | Missing evidence | Exact next action | Status |
 |---|---|---|---|---|---|
-| Separate Owner/customer applications and databases; no Owner-to-customer connection | Owner has its own `owner` schema and database configuration; customer uses its own Prisma database; `scripts/check-owner-isolation.py` and CI image checks enforce packaging/isolation | CI run 39657663222 at base SHA passed Owner isolation and production artifact checks; repo isolation check exists | The new acceptance harness must prove two distinct disposable database URLs are used in the same test run | Add a non-skipping CI acceptance test that requires distinct disposable Owner/customer DB URLs and fails closed if either is absent/equal | PASS for architectural separation; BLOCKED for combined flow |
-| Owner administrator bootstrap/authentication and real-record issuance preparation | Owner API supports bootstrap, login, customer, installation identity, profile, signing-key selection, preparation and digest generation | `owner-licensing/backend/test/licensing-lifecycle.test.ts`; CI base run passed fresh Owner migrations and API/security regressions | No single scenario carries the persisted Owner request through customer activation | Use Owner API lifecycle fixture as first phase of a dedicated cross-app test; persist and assert all source rows and digests | BLOCKED |
-| Offline signing and exact-byte Owner import/archive | Offline signer validates request digest before loading a private key; Owner stores and re-downloads exact signed artifact bytes | `test/signer.test.ts`, `test/artifact-store.test.ts`, Owner lifecycle tests; `npm run verify:interop` uses an ephemeral in-memory key | Current interop check does not sign the persisted prepared request nor compare Owner archived bytes to customer-submitted bytes | In the combined test, sign only with a generated ephemeral test key outside Owner API process, import via Owner endpoint, then byte-compare archive download | BLOCKED |
-| Customer import and backend-confirmed activation persistence | Customer import/current-state routes and persistence repositories are implemented; frontend releases its gate only after GET current re-read | `backend/test/license-import.e2e-spec.ts`; 24 customer licensing unit/DB test files represented in code; CI base run passed live licensing PostgreSQL suite; frontend import tests | No persisted Owner artifact is imported through customer endpoint in a run that also asserts database identity/version/operation/entitlements | Send Owner-downloaded bytes through customer authenticated API; query customer DB and GET current after import; assert exact identities, limits, entitlements, dates, operation/version | BLOCKED |
-| Tamper, malformed input, untrusted/mismatched signer, customer/install/lineage binding; API errors and no mutation | Customer parsers/services and Owner APIs enforce signature/trust/binding/replay rules | `verify-licensing-interop.ts` covers signature-level tamper and unknown signer; customer domain/service specs cover stable reasons and binding; Owner lifecycle tests cover Owner rejection/authorization | Cross-app API-level outcomes and before/after persisted state are not asserted together for the requested matrix | Add table-driven API tests recording stable codes plus row/audit/archive counts before and after each rejected case | BLOCKED |
-| Duplicate/replayed issuance and revocation; stale revocation; old license after revocation | Both apps implement idempotency/conflict handling; customer rejects old license artifacts once a license is revoked | Owner lifecycle replay tests; customer revocation service specs and live DB test; frontend revocation gating tests | No test imports Owner-produced VREV1 into a real customer database after Owner archives it | Continue the combined flow through revocation endpoint; assert customer revocation/audit rows, replay stability, and old-license refusal | BLOCKED |
+| Separate Owner/customer applications and databases; no Owner-to-customer connection | Owner and customer remain separate apps/databases; the acceptance suite receives two URLs, verifies reachability, checks the acceptance-only name marker and rejects equal database identities | Base CI run 39657663222 passed Owner image/isolation checks; new suite has explicit URL, availability, distinct-database and empty-state assertions | Exact-head live run pending; no app-to-app network connection is added | Run `owner-licensing/backend: npm run test:acceptance` from CI after provisioning two fresh databases | BLOCKED pending exact-head CI |
+| Owner administrator bootstrap/authentication and real-record issuance preparation | New suite bootstraps/migrates a fresh Owner DB and uses authenticated Owner APIs to persist customer, confirmed installation identity, profile, public signing-key metadata and issuance/request digests | New `owner-licensing/backend/test/owner-customer-acceptance.test.ts` asserts those persisted records and IDs | Exact-head live run pending | Run the required acceptance command on two fresh PostgreSQL DBs | BLOCKED pending exact-head CI |
+| Offline signing and exact-byte Owner import/archive | A dedicated child-process test signer generates the ephemeral key; only the public key reaches Owner/customer services. It signs the persisted Owner request, and Owner imports/downloads the archived artifact through authenticated APIs | New combined suite compares signer envelope, Owner download bytes, archived digest/size, and customer request body; Owner remains unaware of private key | Exact-head live run pending | Run the dual-DB acceptance suite; no private key is written or passed to Owner/customer process | BLOCKED pending exact-head CI |
+| Customer import and backend-confirmed activation persistence | New suite posts the Owner-downloaded exact bytes to authenticated customer `POST /api/v1/license/import`, then reads authenticated `GET /api/v1/license/current` and PostgreSQL licensing rows | Assertions cover customer/installation/license/operation/version, signature key ID, raw artifact hash, validity dates, entitlement rows, limits, typed audit and effective status | Exact-head live run pending | Run the required acceptance command against fresh separate DBs | BLOCKED pending exact-head CI |
+| Tamper, signer/binding mismatch, replay/conflict; stable errors and retained state | New suite tests tampered signature, alternate private signer falsely claiming the pinned test key ID, signed Owner request binding mismatch, wrong customer binding, Owner conflicting replay and customer duplicate operation | Each rejected Owner/customer request asserts a stable HTTP/code/reason and unchanged issuance/license/version/entitlement/revocation/organization state; designed rejection audit rows are counted separately | Malformed and every possible lineage/error variant remain covered by component tests, not this combined scenario; exact-head run pending | Run exact-head CI; retain component-only distinctions | BLOCKED pending exact-head CI |
+| Duplicate/replayed issuance and revocation; stale revocation; old license after revocation | New suite exercises Owner license archive replay/conflict, customer duplicate license refusal, Owner VREV1 preparation/sign/import/archive replay, customer VREV1 import/replay and refusal to re-import the revoked renewal | Real authenticated APIs and two PostgreSQL stores; customer current state and revocation/audit rows inspected | Stale-revocation dates remain component coverage only; exact-head run pending | Run exact-head CI; do not infer activation/revocation from Owner archive state | BLOCKED pending exact-head CI |
 | Expired/abandoned prepared request and rejected lineage target | Owner has a fixed 14×24-hour prepared-request age, terminal abandonment and same-customer recorded-lineage validation | Owner `licensing.test.ts` and `licensing-lifecycle.test.ts` cover injected-clock boundaries, abandonment, immutable snapshot, operator denial and unknown lineage target; CI base run passed those suites | No combined acceptance record asserts stable API errors plus Owner/customer/archive state for these cases within a cross-app flow | Include expiry/abandonment and rejected renewal/supersession target cases in the dual-DB acceptance suite; snapshot issuance, audit and artifact counts before/after | BLOCKED |
-| Positive renewal and early import; separate supersession with retained signed history | Owner API and UI support renewal/supersession; customer version model preserves history and governs by effective dates | Owner lifecycle positive renewal/supersession tests; `backend/test/license-import.e2e-spec.ts`; customer import unit tests | No shared scenario proves Owner lineage records are consumed by customer persistence and early import leaves the current window intact | In the acceptance suite, perform one early renewal and a separate supersession; query both databases and current license state after each | BLOCKED |
-| Grace exactly 14 calendar days UTC and Read-Only allowances/refusals | Customer clock/status and authorization enforcement are implemented; business operations are backend guarded | Grace domain/application tests; CI base run passed customer backend suites; repository report documents existing Grace/Read-Only tests | No cross-app flow seeds/activates the actual entitlement before deterministic clock transitions and checks every permitted operation on customer backend | Add deterministic-clock tests using existing abstractions; cover pre-expiry, 14-day Grace, post-Grace mutation refusal and each allowed endpoint | BLOCKED for combined acceptance; local component evidence exists |
-| Module and numeric ceiling enforcement | Customer authorization and limit services enforce modules and ceilings server-side | `backend/src/modules/licensing/application/license-limit-concurrency.spec.ts`, `backend/test/licensing-limits-live.e2e-spec.ts`, import and organization/user service tests; base CI live suite green | Combined issued profile → imported artifact → denied over-ceiling operations not demonstrated | Use the persisted Owner profile in the acceptance flow; assert boundary and boundary+1 results at customer API and DB state | BLOCKED |
-| Signed revocation and archive recovery | Owner VREV1 prep/import/download and archive backup/verify exist; customer revocation endpoint/service persists revocation; recovery requires new license | Owner `artifact-backup.test.ts`, lifecycle tests; customer revocation service and live persistence tests; documented PostgreSQL 16 backup/restore drill in `docs/licensing/artifacts-backup-restore.md` | No combined run proves Owner-produced archived VREV1 applies to customer. Existing restore drill is not production-sized and is not a cross-app run | Add the positive flow and replay/old-license checks; retain current documented restore test as limited evidence, not production readiness | BLOCKED |
+| Positive renewal and early import; separate supersession with retained signed history | Combined suite prepares/signs/imports an Owner renewal against the persisted predecessor; early customer import leaves the predecessor effective and exposes the signed end date at `governsFrom` | Customer versions and `license.import.renewed` audit are queried; effective state is checked before and at hand-over | Supersession is not part of the combined case; continue to rely on separate component tests. Exact-head live run pending | Run exact-head CI and keep supersession listed as component-only | BLOCKED pending exact-head CI |
+| Grace exactly 14×24 hours UTC and Read-Only allowances/refusals | Combined suite freezes customer time and exercises actual customer status, organization view/create and post-Grace write denial; login is repeated at the simulated boundaries | Current route reports Grace then Read-Only; a Grace write succeeds subject to its signed cap; Read-Only preserves view/status and rejects mutation with stable reason | Print/export/backup-specific endpoint checks are not in this combined scenario; existing policy tests cover permission classification; human UI still NOT RUN | Verify exact-head CI and retain endpoint/manual residuals | BLOCKED pending exact-head CI; manual NOT RUN |
+| Module and numeric ceiling enforcement | Combined profile/artifact grants organization and user modules with an organization cap; actual organization API creates to the cap and rejects the next create in Grace | Current persisted signed limits/entitlements and organization row count are asserted | Exact-head live run pending; user-cap boundary is component coverage only | Run exact-head CI and retain module/user-specific distinction | BLOCKED pending exact-head CI |
+| Signed revocation and archive recovery | Combined suite prepares, signs, records, downloads and imports VREV1; customer remains unrevoked until its real authenticated import, then persists one revocation and refuses the old license | Customer revocation table, exact artifact hash, typed audit and current-state API are asserted; replay is unchanged | No production-sized archive-restore rehearsal or post-revocation recovery issuance is claimed; exact-head run pending | Run exact-head CI; archive presence alone is never stated as customer revocation | BLOCKED pending exact-head CI |
 | Critical Owner/customer Persian RTL UI paths | Both SPAs implement licensing pages/forms and Persian RTL translations | Owner and customer frontend test suites passed locally on 2026-10-22 | No actual human operation in the UI; automated UI tests do not count as manual acceptance | Named operator executes checklist below in a staging/test installation and records date, build SHA, result and redacted evidence | NOT RUN |
 | Full CI on final PR head | Base SHA has a fully green CI run; this docs-only PR uses change-aware checks | Run 39698666695 passed on exact tested SHA `d2f73428356c50ab258d00d41ade112507a5406a` (`classify`, `docs`, `ci-gate`); backend/frontend/generated-client skipped as not applicable | The combined acceptance test is absent; a docs-only green run cannot satisfy the Option C CI requirement. Check PR #193 for the latest run after this audit update | Require `docs` and `ci-gate` on this docs-only PR's current exact head. The follow-up code PR that adds the combined test must run all classifier-applicable backend/customer live-DB, Owner integration, frontend, generated-client, docs and gate checks on that code PR head | BLOCKED |
 
-## Command record (executed 2026-10-22 UTC)
+## Command record (historical audit plus implementation follow-up)
 
 All commands ran from the indicated directory. Dependency installation used
 `npm ci --ignore-scripts --no-audit --no-fund`; no lockfiles or source files were
@@ -100,7 +100,12 @@ changed by installs.
 | `git diff --check` | Passed |
 | Owner `npm run test:integration` | **NOT RUN locally**: no PostgreSQL binaries/service/URL. Base CI did run these tests, but not cross-app orchestrated. |
 | Customer `npm run test:e2e -- test/licensing-persistence-live.e2e-spec.ts` | **NOT RUN locally**: live PostgreSQL unavailable. Not run without `VARDENA_TEST_DATABASE_URL`; thus no skipped-as-pass claim. Base CI did run the live suite on base SHA. |
-| Cross-app dual-database acceptance scenario | **NOT RUN / not currently implemented as a combined suite** |
+| From `owner-licensing/backend`: `npm run typecheck:acceptance` | Passed; acceptance test and imported customer production-pipeline source type-check on this branch |
+| From `owner-licensing/backend`: `npm run typecheck && npm run lint && npm run format:check` | Passed; 0 lint warnings/errors |
+| From `owner-licensing/backend`: `node --import tsx test/support/offline-acceptance-signer.ts </dev/null` | Passed signer subprocess startup; emitted ephemeral public key only; private key not emitted or persisted |
+| From `owner-licensing/backend`: `npm run test:acceptance` with both DB URLs unset | Failed explicitly at suite import with `OWNER_ACCEPTANCE_DATABASE_URL is required`; no success/skip path exists |
+| From `owner-licensing/backend`: `npm run test:acceptance` with two acceptance-marked URLs at `127.0.0.1:1` | Failed explicitly in `beforeAll` with `Both disposable PostgreSQL databases must be reachable` / `ECONNREFUSED`; Vitest labels the test body skipped only because the setup hook failed, but the suite is **failed**, not skipped/passed. No `skipIf`/`it.skip` is used. |
+| Owner→customer dual-PostgreSQL acceptance against live services | **Not run locally**: no PostgreSQL tooling/service or disposable DB URLs. Required CI suite is implemented; exact-head CI result is recorded below after it runs. |
 
 The known lint warnings are unrelated to code changes in this audit. Frontend build
 warnings from third-party Zod pure-comment annotations and existing chunk-size
@@ -108,24 +113,29 @@ limits were non-fatal; builds succeeded.
 
 ## Security review summary
 
-- **Private signing keys:** interop tool generates a disposable keypair in memory;
-  the Owner signer is a separate offline executable. No production key, credential,
-  or private key was used or added. The signer tests cover digest-before-key-load.
+- **Private signing keys:** the new combined test starts a dedicated signer child process
+  with a sanitized environment containing no database URLs. That process generates
+  its ephemeral key and holds the private key; the Owner and customer processes receive
+  only public material. The signing request/digest and signed public artifact cross the
+  test boundary; no private key is written, logged, committed or uploaded.
 - **Trust and signed bytes:** VLIC2/VREV1 canonical formats, vectors, signed fields,
   and public error contracts were not changed. Interop checks cryptographic parsing
   and some negative cases only; service/persistence binding still requires the
   combined suite.
-- **Isolation:** Owner's code has no customer database connection; the repository
-  and CI verify Owner exclusion from the customer production artifact. Preserve
-  distinct DB URLs in a future integrated test.
-- **Replay/transactions/archive:** existing Owner/customer service and live DB tests
-  provide component evidence, but this audit does not claim cross-system transaction
-  behavior or production recovery. The archive is separate from PostgreSQL by design.
-- **Residuals:** no actual installation revocation was performed; no production-sized
-  archive restore rehearsal, production key custody audit, deployment review, or
-  human UI acceptance was performed in this session. No concrete exploitable defect
-  was found in the reviewed evidence; these are verification limits, not findings of
-  safety.
+- **Isolation:** Owner code still has no customer DB connection; Owner exclusion from
+  the customer production image remains checked by CI. The new suite requires two
+  separate URLs with an `acceptance` database-name marker, probes both identities,
+  rejects same-database targets and requires empty licensing/application state.
+- **Replay/transactions/archive:** the combined suite verifies each application's
+  own API transaction and persisted facts; it does not create a cross-database
+  transaction. Owner archive and customer activation remain separate operations by
+  design. Production backup independence and restore readiness are not claimed.
+- **Residuals:** full dual-database execution awaits the exact final-head CI result.
+  Supersession, stale-revocation, post-revocation recovery and every Print/Export/Backup
+  route are not all repeated in the new combined scenario; they remain component or
+  manual evidence. No production-sized archive restore rehearsal, production-key
+  custody audit, deployment review, or human UI acceptance was performed. This is not
+  a claim of full licensing-system completion or a finding of safety.
 
 ## Manual Persian RTL acceptance checklist — NOT RUN
 
@@ -147,18 +157,22 @@ screenshots/log correlation IDs. Use disposable databases and ephemeral test key
 
 ## Next actions and decision status
 
-1. Engineering: add a dedicated, non-skipping cross-application acceptance test that
-   exercises real Owner and customer endpoints against two separately migrated,
-   disposable PostgreSQL databases and asserts API outcomes **and** persisted state.
-   Reuse the existing lifecycle, live persistence, and `verify:interop` coverage;
-   do not replace them or modify PR #192.
-2. CI: this documentation-only audit PR must at least pass its applicable `docs`
-   and `ci-gate` jobs on its exact PR head. The follow-up code PR must run the new
-   combined suite and all classifier-applicable checks on that exact code head.
-3. Product Owner / test operator: nominate an operator and test installation for the
-   Persian RTL checklist. No new product decision is requested; existing PDR-19,
-   PDR-14, PDR-16, PDR-18, and revocation protocol decisions remain controlling.
+1. **CI verification:** the implementation adds the required non-skipping combined
+   suite and a CI step that creates fresh `vardena_owner_acceptance` and
+   `vardena_customer_acceptance` PostgreSQL databases, applies customer migrations,
+   then runs `npm run test:acceptance` from `owner-licensing/backend`. Record the
+   exact run URL and head SHA here after completion; do not treat a docs-only PR run
+   as acceptance evidence.
+2. **Manual operator work:** the Persian RTL checklist below remains **NOT RUN**.
+   A named operator must record test build SHA/date/result and redacted evidence in
+   a disposable environment. In particular, print/export/backup and UI recovery
+   actions are not implied by the API scenario.
+3. **Scope:** do not change PR #192, accepted PDR/protocol/public error contracts,
+   historical migrations, or Owner/customer separation. Do not claim a revocation
+   until the customer API has persisted it, and do not label component tests as
+   combined-flow proof.
 
-**Final acceptance status: BLOCKED.** The existing implementation and component
-coverage are substantial, and current base CI is green, but Option C's required
-cross-application dual-database run and actual manual UI evidence are outstanding.
+**Disposition: BLOCKED pending exact-head live CI and manual Persian RTL acceptance.**
+The new acceptance implementation is present, but until its two-database CI run passes
+on the final PR head, the requested combined evidence is not established. Manual RTL
+acceptance and the residual coverage listed above remain outstanding regardless of CI.

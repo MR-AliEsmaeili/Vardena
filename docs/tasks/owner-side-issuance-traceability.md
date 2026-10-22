@@ -268,3 +268,45 @@ Current distinctions:
 
 No PDR-19 decision is reopened. The gap is combined executable evidence and the
 operator-run checklist, not a demonstrated inconsistency in accepted behavior.
+
+## 6. Combined Owner → customer acceptance follow-up (2026-10-22)
+
+The original component/test map above remains accurate historically, but the missing
+combined test has now been implemented in
+`owner-licensing/backend/test/owner-customer-acceptance.test.ts`, with the isolated
+test-only signer in `owner-licensing/backend/test/support/offline-acceptance-signer.ts`.
+It is a separate suite—not a relabeling of `verify:interop`, Owner lifecycle tests,
+or the customer live-persistence suite.
+
+The suite uses two distinct, fresh PostgreSQL databases and real application paths:
+Owner bootstrap/login and persisted customer, confirmed installation identity, active
+limit profile, signing-key metadata, issuance/request digest, offline signing, Owner
+artifact import/archive/download; then customer authenticated license import/current
+state and PostgreSQL inspection. A spawned signer process generates and retains the
+private key; only public trust material reaches either application. The suite rejects
+missing URLs, unavailable databases, non-`acceptance` database names, equal database
+identities, stale Owner migration state, and non-empty customer licensing/organization/
+user data. No skip path exists.
+
+Combined scenario coverage includes Owner/customer signature tampering and binding
+refusals, alternate signer, customer and installation mismatch, Owner replay/conflict,
+customer duplicate-operation refusal, exact archived-byte import and before/after
+persistence, effective renewal boundary, real Grace/Read-Only customer API behavior,
+organization entitlement/limit enforcement, Owner VREV1 archive without activation,
+customer revocation persistence/replay and old-license refusal. Expected rejection audit
+rows are distinguished from unchanged license/version/entitlement/business state.
+
+| Command/result | Scope and status |
+|---|---|
+| `owner-licensing/backend: npm run typecheck:acceptance` | Passed locally; type-checks the combined suite and imported customer production-pipeline source. |
+| `owner-licensing/backend: npm run typecheck && npm run lint && npm run format:check` | Passed locally; 0 lint warnings/errors. |
+| `owner-licensing/backend: npm test && npm run build && npm run verify:interop` | Passed locally: 9 files / 140 tests, build passed, protocol interop 7/7. These are component evidence only. |
+| `owner-licensing/backend: npm run test:acceptance` with DB URLs unset | Failed explicitly with `OWNER_ACCEPTANCE_DATABASE_URL is required`; this is the required fail-closed behavior, not an accepted live run. |
+| CI | A fresh dual-database CI step is added to `.github/workflows/ci.yml`; exact final-head run/result and URL are recorded in `licensing-e2e-acceptance-2026-10-22.md` and the PR checks after completion. |
+
+Not covered by the combined scenario: expired prepared-request handling, separate
+supersession flow, stale revocation, post-revocation recovery issuance, every
+Print/Export/Backup operation, production-sized artifact restore, and human Persian RTL
+acceptance. Existing component suites remain component coverage; these omissions are
+not promoted to combined-flow passes. Final disposition remains **BLOCKED** until the
+required exact-head CI live run passes; manual Persian RTL remains **NOT RUN**.

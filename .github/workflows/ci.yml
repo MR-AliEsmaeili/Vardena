@@ -217,6 +217,18 @@ jobs:
           BOOTSTRAP_SYSTEM_ADMIN_PASSWORD: vardena_ci_bootstrap_password
         run: npm run bootstrap:system-admin
 
+      - name: Required Owner-to-customer dual-PostgreSQL acceptance
+        env:
+          OWNER_ACCEPTANCE_DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_owner_acceptance
+          CUSTOMER_ACCEPTANCE_DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_customer_acceptance
+          PGPASSWORD: vardena_test_password
+        run: |
+          createdb -h localhost -U vardena vardena_owner_acceptance
+          createdb -h localhost -U vardena vardena_customer_acceptance
+          (cd backend && DATABASE_URL="$CUSTOMER_ACCEPTANCE_DATABASE_URL" npm run prisma:deploy)
+          cd owner-licensing/backend
+          npm run test:acceptance
+
       # Exercise actual PrismaPg/PostgreSQL DATE round-trips with a non-UTC
       # process timezone. BusinessDate must remain the same calendar day in
       # model reads, raw history queries and write responses; it is not an

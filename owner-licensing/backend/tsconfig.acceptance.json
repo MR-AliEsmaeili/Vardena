@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strictPropertyInitialization": false,
+    "isolatedModules": true,
+    "exactOptionalPropertyTypes": true
+  },
+  "include": ["test/owner-customer-acceptance.test.ts"],
+  "exclude": ["node_modules", "dist", "coverage"]
+}
