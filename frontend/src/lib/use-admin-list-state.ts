@@ -4,9 +4,12 @@ import type { SortingState } from '@tanstack/react-table';
 import { sortingFromParam } from '@/lib/sort-param';
 
 /**
- * URL-owned list state for the organization master-data lists
+ * URL-owned list state for master-data and administration lists
  * (standards.md §5/§8: filters, page and sort live in the router search
  * params, and sorting/paging are server-side).
+ *
+ * Shared by the organization-administration and inventory master-data
+ * features (standards.md §2: shared by two features ⇒ `src/lib`).
  *
  * The invariant this hook protects is **URL ↔ visible controls ↔ server
  * query**: every value below maps onto a query parameter the matching
@@ -15,10 +18,9 @@ import { sortingFromParam } from '@/lib/sort-param';
  * for any parameter outside the DTO whitelist).
  *
  * It is deliberately NOT a generic CRUD engine: it owns paging, search,
- * `isActive` and sort — the four parameters every organization master-data
- * list endpoint shares — while each resource keeps its own extra filters
- * (`parentDepartmentId`, `departmentId`, `branchId`, `partyType`, …) and
- * builds its own query object.
+ * `isActive` and sort — the four parameters every master-data list endpoint
+ * shares — while each resource keeps its own extra filters (`parentId`,
+ * `itemKind`, `warehouseId`, …) and builds its own query object.
  */
 
 export const ADMIN_PAGE_SIZE_OPTIONS: readonly number[] = [25, 50, 100, 200];

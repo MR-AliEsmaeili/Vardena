@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost, cleanParams } from './client';
+import { apiDelete, apiGet, apiPatch, apiPost, cleanParams } from './client';
 import type {
   Branch,
   BranchListQuery,
@@ -13,6 +13,8 @@ import type {
   EmployeeListQuery,
   GrantMembershipRequest,
   Organization,
+  OrganizationMembership,
+  OrganizationMembersListQuery,
   Paginated,
   Party,
   PartyListQuery,
@@ -117,6 +119,48 @@ export function grantMembership(
   return apiPost<void, GrantMembershipRequest>(
     `/organizations/${encodeURIComponent(organizationId)}/members`,
     body,
+  );
+}
+
+/**
+ * List the members of one organization
+ * (`GET /organizations/:id/members`).
+ *
+ * `Organization.Membership.View` administration. The rows carry the member's
+ * USER id only — resolving them to usernames is the UI's job (and only
+ * possible with `Users.User.View`); the backend offers no joined read.
+ */
+export function listOrganizationMembers(
+  organizationId: string,
+  query: OrganizationMembersListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<OrganizationMembership>> {
+  return apiGet<Paginated<OrganizationMembership>>(
+    `/organizations/${encodeURIComponent(organizationId)}/members`,
+    {
+      params: cleanParams({
+        page: query.page,
+        pageSize: query.pageSize,
+        ...(query.sort !== undefined ? { sort: query.sort } : {}),
+      }),
+      ...(signal ? { signal } : {}),
+    },
+  );
+}
+
+/**
+ * Revoke one member's access (`DELETE /organizations/:id/members/:userId`).
+ *
+ * `Organization.Membership.Revoke` administration. Revoking own membership is
+ * allowed by the backend (an administrator can remove themselves); the UI
+ * confirms before acting and reports the backend's 404 for a non-member.
+ */
+export function revokeOrganizationMembership(
+  organizationId: string,
+  userId: string,
+): Promise<void> {
+  return apiDelete<void>(
+    `/organizations/${encodeURIComponent(organizationId)}/members/${encodeURIComponent(userId)}`,
   );
 }
 

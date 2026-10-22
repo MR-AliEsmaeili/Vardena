@@ -76,7 +76,37 @@ export const PERMISSIONS = {
     partyEnable: 'Organization.Party.Enable',
     partyDisable: 'Organization.Party.Disable',
 
+    membershipView: 'Organization.Membership.View',
     membershipGrant: 'Organization.Membership.Grant',
+    membershipRevoke: 'Organization.Membership.Revoke',
+  },
+  /**
+   * User account administration
+   * (`backend/src/modules/users/domain/user-permissions.ts`). There is
+   * deliberately no `Users.User.Delete` — the backend registers no such code
+   * and offers no delete endpoint.
+   */
+  users: {
+    view: 'Users.User.View',
+    create: 'Users.User.Create',
+    edit: 'Users.User.Edit',
+    enable: 'Users.User.Enable',
+    disable: 'Users.User.Disable',
+    resetPassword: 'Users.User.ResetPassword',
+  },
+  /**
+   * Role administration and the permission registry
+   * (`backend/src/modules/rbac/domain/rbac-permissions.ts`).
+   */
+  rbac: {
+    permissionView: 'Rbac.Permission.View',
+    roleView: 'Rbac.Role.View',
+    roleCreate: 'Rbac.Role.Create',
+    roleEdit: 'Rbac.Role.Edit',
+    rolePermissionAssign: 'Rbac.RolePermission.Assign',
+    rolePermissionRemove: 'Rbac.RolePermission.Remove',
+    userRoleAssign: 'Rbac.UserRole.Assign',
+    userRoleRemove: 'Rbac.UserRole.Remove',
   },
   accounting: {
     accountView: 'Accounting.Account.View',
@@ -105,6 +135,34 @@ export const PERMISSIONS = {
     itemView: 'Inventory.Item.View',
     warehouseView: 'Inventory.Warehouse.View',
     unitView: 'Inventory.Unit.View',
+
+    // Master-data administration — each lifecycle mirrors the backend
+    // registry exactly: five codes per entity except UnitConversion, which
+    // has only View+Create because conversions are effective-dated versions
+    // that are never edited in place (ADR-0020 §4).
+    itemCreate: 'Inventory.Item.Create',
+    itemEdit: 'Inventory.Item.Edit',
+    itemEnable: 'Inventory.Item.Enable',
+    itemDisable: 'Inventory.Item.Disable',
+
+    itemGroupView: 'Inventory.ItemGroup.View',
+    itemGroupCreate: 'Inventory.ItemGroup.Create',
+    itemGroupEdit: 'Inventory.ItemGroup.Edit',
+    itemGroupEnable: 'Inventory.ItemGroup.Enable',
+    itemGroupDisable: 'Inventory.ItemGroup.Disable',
+
+    unitCreate: 'Inventory.Unit.Create',
+    unitEdit: 'Inventory.Unit.Edit',
+    unitEnable: 'Inventory.Unit.Enable',
+    unitDisable: 'Inventory.Unit.Disable',
+
+    unitConversionView: 'Inventory.UnitConversion.View',
+    unitConversionCreate: 'Inventory.UnitConversion.Create',
+
+    warehouseCreate: 'Inventory.Warehouse.Create',
+    warehouseEdit: 'Inventory.Warehouse.Edit',
+    warehouseEnable: 'Inventory.Warehouse.Enable',
+    warehouseDisable: 'Inventory.Warehouse.Disable',
 
     // Movement ledger (post/read) and transfers
     // (`inventory-core-permissions.ts`).
@@ -139,6 +197,8 @@ export const PERMISSIONS = {
 export type PermissionCode =
   | (typeof PERMISSIONS.licensing)[keyof typeof PERMISSIONS.licensing]
   | (typeof PERMISSIONS.organization)[keyof typeof PERMISSIONS.organization]
+  | (typeof PERMISSIONS.users)[keyof typeof PERMISSIONS.users]
+  | (typeof PERMISSIONS.rbac)[keyof typeof PERMISSIONS.rbac]
   | (typeof PERMISSIONS.accounting)[keyof typeof PERMISSIONS.accounting]
   | (typeof PERMISSIONS.inventory)[keyof typeof PERMISSIONS.inventory]
   | (typeof PERMISSIONS.workflow)[keyof typeof PERMISSIONS.workflow];

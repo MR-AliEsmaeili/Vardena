@@ -18,7 +18,7 @@ import { ActiveBadge, AdminFilters } from '../admin-ui';
 import {
   ADMIN_PAGE_SIZE_OPTIONS,
   useAdminListState,
-} from '../admin-list-state';
+} from '@/lib/use-admin-list-state';
 import { EMPLOYEE_DEFAULT_SORT, useEmployeeList } from './employee-hooks';
 
 const columns: ColumnDef<Employee, unknown>[] = [

@@ -74,6 +74,65 @@ export type LoginRequest = Schemas['LoginRequestDto'];
 export type ChangePasswordRequest = Schemas['ChangePasswordRequestDto'];
 export type EffectivePermissions = Schemas['EffectivePermissionsDto'];
 
+/**
+ * User/role administration (`UsersController`, `RolesController`,
+ * `PermissionsController`). The untyped-nullable `description` keys of the
+ * role DTOs are re-typed with `NullableString` exactly like every other
+ * `@ApiProperty({ nullable: true })` without an explicit type (refinement 1
+ * in the file header).
+ */
+export type AdminUser = Schemas['UserResponseDto'];
+export type CreateUserRequest = Schemas['CreateUserDto'];
+export type UpdateUserRequest = Schemas['UpdateUserDto'];
+export type ResetPasswordRequest = Schemas['ResetPasswordDto'];
+export type AdminRole = NullableString<Schemas['RoleDto'], 'description'>;
+export type AdminRoleDetail = NullableString<
+  Schemas['RoleDetailDto'],
+  'description'
+>;
+export type AdminPermission = Schemas['PermissionDto'];
+export type CreateRoleRequest = NullableString<
+  Schemas['CreateRoleDto'],
+  'description'
+>;
+export type UpdateRoleRequest = OptionalNullableString<
+  Schemas['UpdateRoleDto'],
+  'description'
+>;
+
+/** User list query (`ListUsersQueryDto`; no search parameter exists). */
+export interface AdminUserListQuery {
+  page: number;
+  pageSize: number;
+  sort?: string;
+  isActive?: boolean;
+}
+
+/** Role list query (`ListRolesQueryDto`). */
+export interface AdminRoleListQuery {
+  page: number;
+  pageSize: number;
+  sort?: string;
+}
+
+/** Permission registry list query (`ListPermissionsQueryDto`). */
+export interface AdminPermissionListQuery {
+  page: number;
+  pageSize: number;
+  sort?: string;
+}
+
+/** One membership row of an organization (`GET /organizations/:id/members`). */
+export type OrganizationMembership =
+  Schemas['OrganizationMembershipResponseDto'];
+
+/** Members list query (`OrganizationMembershipsController_list_v1`). */
+export interface OrganizationMembersListQuery {
+  page: number;
+  pageSize: number;
+  sort?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Licensing (ADR-0030 / ADR-0046)
 //
@@ -928,3 +987,99 @@ export type InventoryUnit = NullableString<
 
 export type InventoryUnitListQuery =
   operations['UnitsController_list_v1']['parameters']['query'];
+
+// ---------------------------------------------------------------------------
+// Inventory master-data administration (FE-INV-MD)
+//
+// The admin surfaces over the same five master-data resources the reference
+// pickers already read. Same derivation rules as the slice above: the
+// generated schema is the only source; `NullableString` re-types only the
+// confirmed untyped-nullable keys (refinement 1). Lifecycle is enable/disable
+// — there is no DELETE for any master-data resource
+// (master-data-strategy.md §7.4), and unit conversions are never edited in
+// place: a change is a NEW effective-dated version (ADR-0020 §4).
+// ---------------------------------------------------------------------------
+
+export type InventoryItemKind = InventoryItem['itemKind'];
+
+/** One item group (`ItemGroupResponseDto`); `parentId` is a group reference. */
+export type InventoryItemGroup = NullableString<
+  Schemas['ItemGroupResponseDto'],
+  'parentId'
+>;
+
+export type InventoryItemGroupListQuery =
+  operations['ItemGroupsController_list_v1']['parameters']['query'];
+
+export type CreateInventoryItemGroupInput = Schemas['CreateItemGroupDto'];
+
+/** `PATCH /item-groups/:id` — `parentId: null` moves the group to the root. */
+export type UpdateInventoryItemGroupInput = NullableString<
+  Schemas['UpdateItemGroupDto'],
+  'parentId'
+>;
+
+/** `POST /items` body (`CreateItemDto`). */
+export type CreateInventoryItemInput = Schemas['CreateItemDto'];
+
+/**
+ * `PATCH /items/:id`. `NullableString` is NOT used here: the generated
+ * `allowNegativeStock` renders as `Record<string, never> | null` (nullable
+ * BOOLEAN), so the string refinement would lie. Both nullable keys are
+ * re-typed explicitly from the backend DTO declaration
+ * (`itemGroupId?: string | null`, `allowNegativeStock?: boolean | null`).
+ */
+export type UpdateInventoryItemInput = Omit<
+  Schemas['UpdateItemDto'],
+  'itemGroupId' | 'allowNegativeStock'
+> & {
+  itemGroupId?: string | null;
+  allowNegativeStock?: boolean | null;
+};
+
+/** One effective-dated conversion version (`UnitConversionResponseDto`). */
+export type InventoryUnitConversion = NullableString<
+  Schemas['UnitConversionResponseDto'],
+  'itemId' | 'validTo'
+>;
+
+export type InventoryUnitConversionListQuery =
+  operations['UnitConversionsController_list_v1']['parameters']['query'];
+
+/**
+ * `POST /unit-conversions` body. `validFrom`/`validTo` are BusinessDate
+ * inputs (canonical Gregorian day or declared Jalali day — OQ-73); a new
+ * open-ended version closes the previous one automatically.
+ */
+export type CreateInventoryUnitConversionInput = Omit<
+  Schemas['CreateUnitConversionDto'],
+  'validFrom' | 'validTo'
+> & {
+  validFrom?: BusinessDateInput;
+  validTo?: BusinessDateInput;
+};
+
+/** `POST /units` body (`CreateUnitDto`). */
+export type CreateInventoryUnitInput = Schemas['CreateUnitDto'];
+
+/** `PATCH /units/:id` body (`UpdateUnitDto`). */
+export type UpdateInventoryUnitInput = Schemas['UpdateUnitDto'];
+
+/** `POST /warehouses` body (`CreateWarehouseDto`). */
+export type CreateInventoryWarehouseInput = Schemas['CreateWarehouseDto'];
+
+/** `PATCH /warehouses/:id` body (`UpdateWarehouseDto`). */
+export type UpdateInventoryWarehouseInput = Schemas['UpdateWarehouseDto'];
+
+/** Read-time availability of one item in one warehouse (`InventoryAvailabilityResponseDto`). */
+export type InventoryAvailability = Schemas['InventoryAvailabilityResponseDto'];
+
+export type InventoryAvailabilityQuery =
+  operations['InventoryBalancesController_availability_v1']['parameters']['query'];
+
+/** Availability of one item across every warehouse (`ItemWarehouseAvailabilityResponseDto`). */
+export type InventoryItemWarehouseAvailability =
+  Schemas['ItemWarehouseAvailabilityResponseDto'];
+
+export type InventoryItemWarehouseAvailabilityQuery =
+  operations['InventoryBalancesController_availabilityAcrossWarehouses_v1']['parameters']['query'];

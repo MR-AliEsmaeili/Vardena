@@ -16,7 +16,7 @@ import { ActiveBadge, AdminFilters } from '../admin-ui';
 import {
   ADMIN_PAGE_SIZE_OPTIONS,
   useAdminListState,
-} from '../admin-list-state';
+} from '@/lib/use-admin-list-state';
 import { DEPARTMENT_DEFAULT_SORT, useDepartmentList } from './department-hooks';
 
 const columns: ColumnDef<Department, unknown>[] = [
