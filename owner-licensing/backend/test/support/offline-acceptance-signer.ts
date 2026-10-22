@@ -20,10 +20,17 @@ const keyId = deriveKeyId(pair.publicKey);
 const publicMaterial = Buffer.from(
   pair.publicKey.export({ format: "der", type: "spki" }),
 ).toString("base64");
-const now = new Date("2026-10-22T12:00:00.000Z");
 
 function reply(value: unknown) {
   process.stdout.write(`${JSON.stringify(value)}\n`);
+}
+
+function signingTime(value: unknown): Date {
+  const date = new Date(String(value));
+  if (!Number.isFinite(date.getTime())) {
+    throw new Error("The acceptance signer requires the fixed test clock.");
+  }
+  return date;
 }
 
 reply({ type: "ready", keyId, publicMaterial });
@@ -39,7 +46,7 @@ for await (const line of input) {
         expectedDigest: String(message.expectedDigest),
         keyId,
         loadPrivateKey: () => pair.privateKey,
-        now,
+        now: signingTime(message.now),
       });
       reply({ ok: true, result });
       continue;
@@ -50,7 +57,7 @@ for await (const line of input) {
         expectedDigest: String(message.expectedDigest),
         keyId,
         loadPrivateKey: () => pair.privateKey,
-        now,
+        now: signingTime(message.now),
       });
       reply({ ok: true, result });
       continue;

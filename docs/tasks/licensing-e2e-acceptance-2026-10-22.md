@@ -29,8 +29,13 @@ module graph. Fourth combined CI attempt on
 `9af1f0a556fd0e4ec1dc023b4470ad888b985a26` reached role setup but failed because the
 fixture assigned every registered permission, including modules not granted by the
 artifact; the product correctly denied an Accounting permission. The fixture now creates an empty role before activation, then grants only the two
-Organization permissions after customer persistence confirms the license. The live
-dual-PostgreSQL flow remains **BLOCKED pending a passing exact-final-head CI run**.
+Organization permissions after customer persistence confirms the license. Fifth
+combined CI attempt on `22351e42861e73725b4d82284bd12980f84f4af0` reached the tamper
+case but the Owner's fixed 2030 clock made a DB-created request appear expired against
+PostgreSQL's current clock; the test now captures Owner PostgreSQL time once and uses
+that exact instant for the deterministic Owner/customer clock and offline signer. The
+live dual-PostgreSQL flow remains **BLOCKED pending a passing exact-final-head CI
+run**.
 `verify:interop` and existing Owner/customer tests remain component coverage, not
 substitutes for the combined run. The critical Persian RTL workflow was not driven
 by a human operator.
@@ -88,6 +93,13 @@ by a human operator.
   only `Organization.Organization.View` and `Organization.Organization.Create` after
   customer persistence confirms activation. This preserves real entitlement checks.
   Other CI jobs passed.
+- Fifth combined acceptance attempt: [run 39705475724](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39705475724)
+  on exact head `22351e42861e73725b4d82284bd12980f84f4af0` reached the real Owner
+  tamper path but returned `InvalidTransition` rather than the expected signature
+  refusal. The fixture's 2030 app clock was ahead of PostgreSQL's real `requested_at`,
+  so Owner correctly expired the prepared request. The test now captures
+  `clock_timestamp()` from the disposable Owner DB, uses that instant as its frozen
+  app/customer clock, and passes it explicitly to the offline signer.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it

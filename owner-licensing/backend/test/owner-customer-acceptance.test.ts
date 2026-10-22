@@ -124,12 +124,24 @@ class OfflineAcceptanceSigner {
     return signer;
   }
 
-  async signLicense(requestContent: string, expectedDigest: string) {
-    return await this.call("license", { requestContent, expectedDigest });
+  async signLicense(requestContent: string, expectedDigest: string, now: Date) {
+    return await this.call("license", {
+      requestContent,
+      expectedDigest,
+      now: now.toISOString(),
+    });
   }
 
-  async signRevocation(requestContent: string, expectedDigest: string) {
-    return await this.call("revocation", { requestContent, expectedDigest });
+  async signRevocation(
+    requestContent: string,
+    expectedDigest: string,
+    now: Date,
+  ) {
+    return await this.call("revocation", {
+      requestContent,
+      expectedDigest,
+      now: now.toISOString(),
+    });
   }
 
   async signPayload(payload: unknown) {
@@ -184,7 +196,7 @@ if (!customerUrl) {
   );
 }
 
-const FIXED_NOW = new Date("2030-10-22T12:00:00.000Z");
+let FIXED_NOW = new Date("2030-10-22T12:00:00.000Z");
 const ownerOrigin = "https://owner.acceptance.test";
 const ownerInitialPassword = "Disposable_acceptance_initial_91";
 const ownerPassword = "Disposable_acceptance_password_92";
@@ -350,6 +362,7 @@ async function ownerSign(issuanceId: string) {
   const signed = await signer.signLicense(
     fetched.body.fileContent as string,
     fetched.body.requestPayloadSha256 as string,
+    FIXED_NOW,
   );
   return { fetched, signed };
 }
@@ -426,9 +439,6 @@ async function createTestEntitlementUse() {
 beforeAll(async () => {
   assertDisposableDatabaseName(ownerUrl, "OWNER_ACCEPTANCE_DATABASE_URL");
   assertDisposableDatabaseName(customerUrl, "CUSTOMER_ACCEPTANCE_DATABASE_URL");
-  vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(FIXED_NOW);
-
   const ownerProbe = new Pool({ connectionString: ownerUrl, max: 1 });
   customerPool = new Pool({ connectionString: customerUrl, max: 1 });
   let ownerIdentity: Record<string, unknown>;
@@ -439,7 +449,8 @@ beforeAll(async () => {
         .query(
           `SELECT current_database() AS database_name,
         COALESCE(inet_server_addr()::text, 'local-socket') AS server_address,
-        inet_server_port() AS server_port`,
+        inet_server_port() AS server_port,
+        clock_timestamp() AS acceptance_now`,
         )
         .then((result) => result.rows[0]!),
       customerPool
@@ -458,8 +469,16 @@ beforeAll(async () => {
       `Both disposable PostgreSQL databases must be reachable before acceptance; connection probe failed: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  const ownerIdentityKey = JSON.stringify(ownerIdentity);
-  const customerIdentityKey = JSON.stringify(customerIdentity);
+  const ownerIdentityKey = JSON.stringify({
+    database_name: ownerIdentity.database_name,
+    server_address: ownerIdentity.server_address,
+    server_port: ownerIdentity.server_port,
+  });
+  const customerIdentityKey = JSON.stringify({
+    database_name: customerIdentity.database_name,
+    server_address: customerIdentity.server_address,
+    server_port: customerIdentity.server_port,
+  });
   if (ownerIdentityKey === customerIdentityKey) {
     await ownerProbe.end();
     await customerPool.end();
@@ -468,6 +487,17 @@ beforeAll(async () => {
       "OWNER_ACCEPTANCE_DATABASE_URL and CUSTOMER_ACCEPTANCE_DATABASE_URL resolve to the same PostgreSQL database; two distinct databases are required.",
     );
   }
+  FIXED_NOW = new Date(ownerIdentity.acceptance_now as Date);
+  if (!Number.isFinite(FIXED_NOW.getTime())) {
+    await ownerProbe.end();
+    await customerPool.end();
+    customerPoolClosed = true;
+    throw new Error(
+      "Owner PostgreSQL did not provide a usable deterministic clock.",
+    );
+  }
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(FIXED_NOW);
   await ownerProbe.end();
 
   // Fail closed on any pre-existing application rows: CI provisions both
@@ -1133,6 +1163,7 @@ describe("persisted Owner → offline signer → Owner archive → authenticated
     const signedRevocation = await signer.signRevocation(
       revokeRequest.body.fileContent as string,
       revokeRequest.body.requestPayloadSha256 as string,
+      FIXED_NOW,
     );
     const revokeRecorded = await ownerWrite(
       `/license-revocations/${revocationId}/import`,
