@@ -2,14 +2,22 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 
-const alertVariants = cva('rounded-md border p-4 text-sm', {
+/**
+ * Inline, persistent message block.
+ *
+ * A semantic variant carries three things: a soft surface, a matching border
+ * and a readable ink colour. Status is never communicated by colour alone
+ * (standards.md §13) — callers pass a title/label in the body, which is why
+ * the surface can stay quiet.
+ */
+const alertVariants = cva('rounded-control border p-3.5 text-sm leading-6', {
   variants: {
     variant: {
-      info: 'border-indigo-200 bg-indigo-50 text-indigo-900',
-      success: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-      warning: 'border-amber-200 bg-amber-50 text-amber-900',
-      danger: 'border-rose-200 bg-rose-50 text-rose-900',
-      neutral: 'border-slate-200 bg-slate-50 text-slate-800',
+      info: 'border-info-line bg-info-soft text-info-ink',
+      success: 'border-ok-line bg-ok-soft text-ok-ink',
+      warning: 'border-warn-line bg-warn-soft text-warn-ink',
+      danger: 'border-danger-line bg-danger-soft text-danger-ink',
+      neutral: 'border-line bg-sunken text-ink-muted',
     },
   },
   defaultVariants: { variant: 'info' },
@@ -31,7 +39,7 @@ export function Alert({
 }
 
 export function AlertTitle({ className, ...props }: ComponentProps<'p'>) {
-  return <p className={cn('font-semibold', className)} {...props} />;
+  return <p className={cn('text-sm font-semibold', className)} {...props} />;
 }
 
 export function AlertBody({ className, ...props }: ComponentProps<'div'>) {

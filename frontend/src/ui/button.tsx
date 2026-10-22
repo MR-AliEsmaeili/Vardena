@@ -5,20 +5,22 @@ import { cn } from '@/lib/utils';
 import { ThinkingOrbIndicator } from './thinking-orb';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600',
+  'inline-flex shrink-0 items-center justify-center gap-2 rounded-control text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50',
   {
     variants: {
       variant: {
-        default: 'bg-indigo-600 text-white hover:bg-indigo-700',
+        default:
+          'bg-brand text-white shadow-card hover:bg-brand-strong active:bg-brand-strong',
         outline:
-          'border border-slate-300 bg-white text-slate-800 hover:bg-slate-100',
-        ghost: 'text-slate-700 hover:bg-slate-100',
-        subtle: 'bg-slate-100 text-slate-800 hover:bg-slate-200',
-        danger: 'bg-rose-600 text-white hover:bg-rose-700',
+          'border border-line-strong bg-surface text-ink hover:bg-sunken active:bg-sunken',
+        ghost: 'text-ink-muted hover:bg-sunken hover:text-ink',
+        subtle: 'bg-sunken text-ink hover:bg-line/70',
+        danger:
+          'bg-danger text-white shadow-card hover:bg-danger-strong active:bg-danger-strong',
       },
       size: {
-        sm: 'h-8 px-3',
-        md: 'h-10 px-4',
+        sm: 'h-8 px-3 text-xs',
+        md: 'h-9 px-4',
         icon: 'h-9 w-9',
       },
     },

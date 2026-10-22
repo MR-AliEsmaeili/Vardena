@@ -1,8 +1,8 @@
 import type { FormEvent, ReactNode } from 'react';
 import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
-import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
+import { FilterBar, FilterField } from '@/ui/patterns/filter-bar';
 import { Select } from '@/ui/select';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -67,39 +67,39 @@ export function MasterFilters({
     });
   };
   return (
-    <form
+    <FilterBar
       key={synchronizationKey}
-      className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-3"
       onSubmit={submit}
+      onClear={onClear}
+      applyLabel={t.masterData.filter}
+      clearLabel={t.masterData.clear}
+      columns={4}
+      aria-label={t.filters.title}
     >
       {search !== undefined && (
-        <label className="min-w-52 flex-1 text-xs text-slate-600">
-          <span>{t.app.search}</span>
+        <FilterField label={t.app.search}>
           <Input
             name="search"
             defaultValue={search}
             placeholder={t.masterData.searchPlaceholder}
-            className="mt-1"
           />
-        </label>
+        </FilterField>
       )}
       {scopeOptions !== undefined && (
-        <label className="min-w-48 text-xs text-slate-600">
-          <span>{scopeLabel}</span>
-          <Select name="scopeId" defaultValue={scope} className="mt-1">
+        <FilterField label={scopeLabel ?? t.filters.title}>
+          <Select name="scopeId" defaultValue={scope}>
             {scopeOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
           </Select>
-        </label>
+        </FilterField>
       )}
       {children}
       {statusOptions !== undefined && (
-        <label className="min-w-36 text-xs text-slate-600">
-          <span>{t.masterData.status}</span>
-          <Select name="status" defaultValue={status} className="mt-1">
+        <FilterField label={t.masterData.status}>
+          <Select name="status" defaultValue={status}>
             <option value="">{t.masterData.allStatuses}</option>
             {statusOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -107,37 +107,10 @@ export function MasterFilters({
               </option>
             ))}
           </Select>
-        </label>
+        </FilterField>
       )}
-      <Button type="submit" size="sm">
-        {t.masterData.filter}
-      </Button>
-      <Button type="button" variant="ghost" size="sm" onClick={onClear}>
-        {t.masterData.clear}
-      </Button>
-    </form>
+    </FilterBar>
   );
 }
 
-export function DefinitionList({ children }: { children: ReactNode }) {
-  return (
-    <dl className="grid gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 sm:grid-cols-2">
-      {children}
-    </dl>
-  );
-}
-
-export function Definition({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="bg-white p-4">
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className="mt-1 text-sm font-medium text-slate-900">{children}</dd>
-    </div>
-  );
-}
+export { Definition, DefinitionList } from '@/ui/patterns/definition-list';

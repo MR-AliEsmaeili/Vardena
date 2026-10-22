@@ -6,8 +6,8 @@ import { isBusinessDay } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
-import { Button } from '@/ui/button';
 import { DateInput } from '@/ui/patterns/date-input';
+import { FilterBar } from '@/ui/patterns/filter-bar';
 import { FormField } from '@/ui/patterns/form-field';
 import {
   useAccountingPeriods,
@@ -142,181 +142,157 @@ export function DocumentsFilterBar({
   }, [financialAreaId, fiscalYearId, setValue, years]);
 
   return (
-    <form
+    <FilterBar
       key={synchronizationKey}
-      className="space-y-3 rounded-lg border border-slate-200 bg-white p-3"
       onSubmit={form.handleSubmit(onApply)}
-      noValidate
+      onClear={onClear}
+      applyLabel={t.documents.apply}
+      clearLabel={t.documents.clear}
+      isFetching={isFetching}
+      columns={4}
+      aria-label={t.documents.filters}
     >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <FormField id="documents-search" label={t.app.search}>
+      <FormField id="documents-search" label={t.app.search}>
+        {(fieldProps) => (
+          <Input {...fieldProps} {...form.register('search')} className="h-9" />
+        )}
+      </FormField>
+
+      <FormField id="documents-filter-state" label={t.documents.filterState}>
+        {(fieldProps) => (
+          <Select {...fieldProps} className="h-9" {...form.register('state')}>
+            <option value="">{t.documents.allStates}</option>
+            <option value="draft">{t.documents.stateDraft}</option>
+            <option value="temporary">{t.documents.stateTemporary}</option>
+            <option value="final">{t.documents.stateFinal}</option>
+          </Select>
+        )}
+      </FormField>
+
+      <FormField id="documents-filter-origin" label={t.documents.filterOrigin}>
+        {(fieldProps) => (
+          <Select {...fieldProps} className="h-9" {...form.register('origin')}>
+            <option value="">{t.documents.allOrigins}</option>
+            <option value="manual">{t.documents.originManual}</option>
+            <option value="system">{t.documents.originSystem}</option>
+          </Select>
+        )}
+      </FormField>
+
+      <FormField id="documents-filter-number" label={t.documents.filterNumber}>
+        {(fieldProps) => (
+          <Input
+            {...fieldProps}
+            {...form.register('documentNumber')}
+            dir="ltr"
+            inputMode="numeric"
+            className="h-9"
+          />
+        )}
+      </FormField>
+
+      <FormField id="documents-filter-area" label={t.documents.filterArea}>
+        {(fieldProps) => (
+          <Select
+            {...fieldProps}
+            className="h-9"
+            {...register('financialAreaId', {
+              onChange: () => {
+                setValue('fiscalYearId', '');
+                setValue('accountingPeriodId', '');
+              },
+            })}
+          >
+            <option value="">{t.documents.allAreas}</option>
+            {areas.map((area) => (
+              <option key={area.id} value={area.id}>
+                {area.code} — {area.title}
+              </option>
+            ))}
+          </Select>
+        )}
+      </FormField>
+
+      <FormField id="documents-filter-year" label={t.documents.filterYear}>
+        {(fieldProps) => (
+          <Select
+            {...fieldProps}
+            className="h-9"
+            disabled={financialAreaId === ''}
+            {...register('fiscalYearId', {
+              onChange: () => setValue('accountingPeriodId', ''),
+            })}
+          >
+            <option value="">{t.documents.allYears}</option>
+            {years.map((year) => (
+              <option key={year.id} value={year.id}>
+                {year.code} — {year.title}
+              </option>
+            ))}
+          </Select>
+        )}
+      </FormField>
+
+      <FormField id="documents-filter-period" label={t.documents.filterPeriod}>
+        {(fieldProps) => (
+          <Select
+            {...fieldProps}
+            className="h-9"
+            disabled={fiscalYearId === ''}
+            {...form.register('accountingPeriodId')}
+          >
+            <option value="">{t.documents.allPeriods}</option>
+            {periods.map((period) => (
+              <option key={period.id} value={period.id}>
+                {period.sequence} — {period.title}
+              </option>
+            ))}
+          </Select>
+        )}
+      </FormField>
+
+      <div className="grid grid-cols-2 gap-2">
+        <FormField
+          id="documents-filter-date-from"
+          label={t.filters.dateFrom}
+          error={formState.errors.dateFrom?.message}
+        >
           {(fieldProps) => (
-            <Input
-              {...fieldProps}
-              {...form.register('search')}
-              className="h-9"
+            <Controller
+              control={form.control}
+              name="dateFrom"
+              render={({ field }) => (
+                <DateInput
+                  {...fieldProps}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  className="h-9"
+                />
+              )}
             />
           )}
         </FormField>
-
-        <FormField id="documents-filter-state" label={t.documents.filterState}>
-          {(fieldProps) => (
-            <Select {...fieldProps} className="h-9" {...form.register('state')}>
-              <option value="">{t.documents.allStates}</option>
-              <option value="draft">{t.documents.stateDraft}</option>
-              <option value="temporary">{t.documents.stateTemporary}</option>
-              <option value="final">{t.documents.stateFinal}</option>
-            </Select>
-          )}
-        </FormField>
-
         <FormField
-          id="documents-filter-origin"
-          label={t.documents.filterOrigin}
+          id="documents-filter-date-to"
+          label={t.filters.dateTo}
+          error={formState.errors.dateTo?.message}
         >
           {(fieldProps) => (
-            <Select
-              {...fieldProps}
-              className="h-9"
-              {...form.register('origin')}
-            >
-              <option value="">{t.documents.allOrigins}</option>
-              <option value="manual">{t.documents.originManual}</option>
-              <option value="system">{t.documents.originSystem}</option>
-            </Select>
-          )}
-        </FormField>
-
-        <FormField
-          id="documents-filter-number"
-          label={t.documents.filterNumber}
-        >
-          {(fieldProps) => (
-            <Input
-              {...fieldProps}
-              {...form.register('documentNumber')}
-              dir="ltr"
-              inputMode="numeric"
-              className="h-9"
+            <Controller
+              control={form.control}
+              name="dateTo"
+              render={({ field }) => (
+                <DateInput
+                  {...fieldProps}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  className="h-9"
+                />
+              )}
             />
           )}
         </FormField>
-
-        <FormField id="documents-filter-area" label={t.documents.filterArea}>
-          {(fieldProps) => (
-            <Select
-              {...fieldProps}
-              className="h-9"
-              {...register('financialAreaId', {
-                onChange: () => {
-                  setValue('fiscalYearId', '');
-                  setValue('accountingPeriodId', '');
-                },
-              })}
-            >
-              <option value="">{t.documents.allAreas}</option>
-              {areas.map((area) => (
-                <option key={area.id} value={area.id}>
-                  {area.code} — {area.title}
-                </option>
-              ))}
-            </Select>
-          )}
-        </FormField>
-
-        <FormField id="documents-filter-year" label={t.documents.filterYear}>
-          {(fieldProps) => (
-            <Select
-              {...fieldProps}
-              className="h-9"
-              disabled={financialAreaId === ''}
-              {...register('fiscalYearId', {
-                onChange: () => setValue('accountingPeriodId', ''),
-              })}
-            >
-              <option value="">{t.documents.allYears}</option>
-              {years.map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.code} — {year.title}
-                </option>
-              ))}
-            </Select>
-          )}
-        </FormField>
-
-        <FormField
-          id="documents-filter-period"
-          label={t.documents.filterPeriod}
-        >
-          {(fieldProps) => (
-            <Select
-              {...fieldProps}
-              className="h-9"
-              disabled={fiscalYearId === ''}
-              {...form.register('accountingPeriodId')}
-            >
-              <option value="">{t.documents.allPeriods}</option>
-              {periods.map((period) => (
-                <option key={period.id} value={period.id}>
-                  {period.sequence} — {period.title}
-                </option>
-              ))}
-            </Select>
-          )}
-        </FormField>
-
-        <div className="grid grid-cols-2 gap-2">
-          <FormField
-            id="documents-filter-date-from"
-            label={t.filters.dateFrom}
-            error={formState.errors.dateFrom?.message}
-          >
-            {(fieldProps) => (
-              <Controller
-                control={form.control}
-                name="dateFrom"
-                render={({ field }) => (
-                  <DateInput
-                    {...fieldProps}
-                    value={field.value}
-                    onValueChange={field.onChange}
-                    className="h-9"
-                  />
-                )}
-              />
-            )}
-          </FormField>
-          <FormField
-            id="documents-filter-date-to"
-            label={t.filters.dateTo}
-            error={formState.errors.dateTo?.message}
-          >
-            {(fieldProps) => (
-              <Controller
-                control={form.control}
-                name="dateTo"
-                render={({ field }) => (
-                  <DateInput
-                    {...fieldProps}
-                    value={field.value}
-                    onValueChange={field.onChange}
-                    className="h-9"
-                  />
-                )}
-              />
-            )}
-          </FormField>
-        </div>
       </div>
-
-      <div className="flex items-center justify-end gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={onClear}>
-          {t.documents.clear}
-        </Button>
-        <Button type="submit" size="sm" disabled={isFetching}>
-          {t.documents.apply}
-        </Button>
-      </div>
-    </form>
+    </FilterBar>
   );
 }

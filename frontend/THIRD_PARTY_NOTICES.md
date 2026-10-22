@@ -4,6 +4,26 @@ The frontend bundles the following third-party packages whose licenses require
 attribution. The canonical license text is shipped in each npm package and is
 reproduced here for the distributed build.
 
+## Vazirmatn 33.003 (self-hosted webfont)
+
+Used as the product typeface (`src/styles/index.css` `@font-face`, files in
+`public/fonts/`). Self-hosted on purpose — the UI must not depend on a
+third-party font CDN at runtime (standards.md §14). Source:
+<https://github.com/rastikerdar/vazirmatn>. License: SIL Open Font License 1.1.
+
+The font files (`Vazirmatn-Regular.woff2`, `Vazirmatn-Medium.woff2`,
+`Vazirmatn-SemiBold.woff2`, `Vazirmatn-Bold.woff2`) are unmodified copies of
+the official release and remain under the OFL 1.1:
+<https://scripts.sil.org/OFL>.
+
+```
+Copyright (c) 2015-2024, Saber Rastikerdar <saber.rastikerdar@gmail.com>
+with Reserved Font Name "Vazirmatn".
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is available with a FAQ at: https://scripts.sil.org/OFL
+```
+
 ## thinking-orbs 0.3.2
 
 Used for the shared loading animation (`src/ui/thinking-orb.tsx`). Source:

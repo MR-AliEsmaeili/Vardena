@@ -1,8 +1,10 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import { act, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/errors';
 import { t } from '@/lib/i18n';
+import { Button } from '@/ui/button';
 import { DataTable } from './data-table';
 
 /**
@@ -103,5 +105,118 @@ describe('DataTable loading surfaces', () => {
 
     expect(screen.getAllByTestId('local-fetching-indicator')).toHaveLength(1);
     expect(screen.getByRole('button', { name: t.table.next })).toBeDisabled();
+  });
+});
+
+describe('DataTable empty result', () => {
+  it('renders the labelled empty block instead of a bare header row', () => {
+    render(
+      <DataTable<Row> columns={columns} data={[]} getRowId={(row) => row.id} />,
+    );
+
+    const empty = screen.getByTestId('data-table-empty');
+    expect(empty).toHaveTextContent(t.table.emptyTitle);
+    expect(empty).toHaveTextContent(t.table.emptyBody);
+    expect(screen.queryByText('ردیف یک')).toBeNull();
+  });
+
+  it('renders the caller recovery action only in the empty state', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn();
+    const { rerender } = render(
+      <DataTable<Row>
+        columns={columns}
+        data={[]}
+        getRowId={(row) => row.id}
+        emptyAction={
+          <Button size="sm" onClick={onCreate}>
+            ساخت اولین ردیف
+          </Button>
+        }
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'ساخت اولین ردیف' }));
+    expect(onCreate).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <DataTable<Row>
+        columns={columns}
+        data={rows}
+        getRowId={(row) => row.id}
+        emptyAction={
+          <Button size="sm" onClick={onCreate}>
+            ساخت اولین ردیف
+          </Button>
+        }
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'ساخت اولین ردیف' }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('DataTable server-side sorting affordance', () => {
+  it('marks the sortable header with aria-sort and an icon per state', async () => {
+    const user = userEvent.setup();
+    const onSortingChange = vi.fn();
+    const { rerender } = render(
+      <DataTable<Row>
+        columns={columns}
+        data={rows}
+        getRowId={(row) => row.id}
+        sorting={[]}
+        onSortingChange={onSortingChange}
+      />,
+    );
+
+    const header = screen.getByRole('columnheader');
+    expect(header).toHaveAttribute('aria-sort', 'none');
+    expect(screen.getByTestId('sort-icon-none')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'نام' }));
+    expect(onSortingChange).toHaveBeenCalledWith([{ id: 'name', desc: false }]);
+
+    rerender(
+      <DataTable<Row>
+        columns={columns}
+        data={rows}
+        getRowId={(row) => row.id}
+        sorting={[{ id: 'name', desc: false }]}
+        onSortingChange={onSortingChange}
+      />,
+    );
+
+    expect(screen.getByRole('columnheader')).toHaveAttribute(
+      'aria-sort',
+      'ascending',
+    );
+    expect(screen.getByTestId('sort-icon-asc')).toBeInTheDocument();
+
+    rerender(
+      <DataTable<Row>
+        columns={columns}
+        data={rows}
+        getRowId={(row) => row.id}
+        sorting={[{ id: 'name', desc: true }]}
+        onSortingChange={onSortingChange}
+      />,
+    );
+
+    expect(screen.getByRole('columnheader')).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    );
+    expect(screen.getByTestId('sort-icon-desc')).toBeInTheDocument();
+  });
+
+  it('leaves an unsortable table without a header button or sort state', () => {
+    renderTable({});
+
+    expect(screen.queryByRole('button', { name: 'نام' })).toBeNull();
+    expect(screen.getByRole('columnheader')).not.toHaveAttribute('aria-sort');
+    expect(screen.queryByTestId('sort-icon-none')).toBeNull();
   });
 });

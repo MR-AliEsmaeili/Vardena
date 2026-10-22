@@ -7,12 +7,99 @@
  * index.html). Layout uses Tailwind's logical utilities (`ms-*`, `me-*`,
  * `text-start`, `text-end`, `border-s`, …) so a single stylesheet serves RTL
  * without duplicated direction-specific pages.
+ *
+ * Design tokens (standards.md §6): every shared component reads SEMANTIC
+ * tokens from this block, never a raw palette value. Feature pages may still
+ * inherit the palette utilities for one-off typography, but colour decisions
+ * that repeat (surface, line, ink, brand, status) live here only. The token
+ * values intentionally mirror the palette the product already ships, so this
+ * layer is a centralisation, not a redesign of contrast.
  */
+
+/* Vazirmatn is self-hosted (standards.md §14: a third-party CDN is not a
+ * dependency of the product). Persian subset, four weights actually used. */
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/Vazirmatn-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/Vazirmatn-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/Vazirmatn-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/Vazirmatn-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 
 @theme {
   --font-sans:
     'Vazirmatn', 'IRANSans', 'IRANYekan', 'Segoe UI', 'Tahoma', system-ui,
     sans-serif;
+
+  /* Surfaces */
+  --color-canvas: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-sunken: #f8fafc;
+  --color-line: #e2e8f0;
+  --color-line-strong: #cbd5e1;
+
+  /* Text */
+  --color-ink: #0f172a;
+  --color-ink-muted: #475569;
+  --color-ink-subtle: #64748b;
+
+  /* Brand (primary action, active navigation, focus) */
+  --color-brand: #4f46e5;
+  --color-brand-strong: #4338ca;
+  --color-brand-soft: #eef2ff;
+  --color-brand-ink: #3730a3;
+
+  /* Semantic status — soft surface / border / readable ink */
+  --color-ok-soft: #ecfdf5;
+  --color-ok-line: #a7f3d0;
+  --color-ok-ink: #065f46;
+  --color-warn-soft: #fffbeb;
+  --color-warn-line: #fde68a;
+  --color-warn-ink: #92400e;
+  --color-danger: #e11d48;
+  --color-danger-strong: #be123c;
+  --color-danger-soft: #fff1f2;
+  --color-danger-line: #fecdd3;
+  --color-danger-ink: #9f1239;
+  --color-info-soft: #eff6ff;
+  --color-info-line: #bfdbfe;
+  --color-info-ink: #1e40af;
+
+  /* Shape */
+  --radius-control: 0.5rem;
+  --radius-card: 0.875rem;
+
+  /* Elevation — two levels only; no decorative shadows */
+  --shadow-card:
+    0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
+  --shadow-raised: 0 12px 32px -16px rgb(15 23 42 / 0.24);
+
+  /* Layout */
+  --spacing-app-header: 3.5rem;
 }
 
 @layer base {
@@ -22,9 +109,23 @@
     height: 100%;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-canvas text-ink antialiased;
     font-family: var(--font-sans);
+    /* Persian script needs a taller default line box than Latin at the same
+     * size; 1.75 keeps dense table rows readable without wasting height. */
+    line-height: 1.75;
+  }
+
+  h1,
+  h2,
+  h3 {
+    line-height: 1.4;
+    text-wrap: balance;
   }
 
   /* Numbers stay readable (and aligned) inside an RTL document. */
@@ -43,6 +144,41 @@
   }
 
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-indigo-600;
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+
+  /* A thin, neutral scrollbar for dense grids and the module sidebar; the
+   * default Windows/track colouring is visually louder than the content. */
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+
+  .scroll-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scroll-thin::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background-color: var(--color-line-strong);
+  }
+
+  .scroll-thin::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+}
+
+/* standards.md §13: honour the operating-system reduced-motion preference.
+ * The Thinking Orb and every transition become effectively static. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

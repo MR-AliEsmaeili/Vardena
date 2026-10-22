@@ -22,7 +22,8 @@ export interface ApiErrorAlertProps {
  * It shows the normalized, code-derived message (or an explicit `description`
  * override supplied by the caller) plus the backend correlation id (the id the
  * server logged the failure under). It never renders raw server internals and
- * never uses `dangerouslySetInnerHTML`.
+ * never uses `dangerouslySetInnerHTML`. A retryable failure always offers the
+ * recovery action next to the message, not at the bottom of the page.
  */
 export function ApiErrorAlert({
   error,
@@ -33,27 +34,31 @@ export function ApiErrorAlert({
   const apiError = normalizeApiError(error);
   return (
     <Alert variant="danger" role="alert">
-      <AlertTitle>{title ?? t.errors.title}</AlertTitle>
-      <AlertBody>
-        <p>{description ?? apiError.message}</p>
-        {apiError.correlationId !== undefined && (
-          <p className="mt-2 text-xs text-rose-800/80">
-            {t.errors.correlationId}:{' '}
-            <span className="code">{apiError.correlationId}</span>
-          </p>
-        )}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <AlertTitle>{title ?? t.errors.title}</AlertTitle>
+          <AlertBody>
+            <p>{description ?? apiError.message}</p>
+            {apiError.correlationId !== undefined && (
+              <p className="mt-2 text-xs text-danger-ink/80">
+                {t.errors.correlationId}:{' '}
+                <span className="code">{apiError.correlationId}</span>
+              </p>
+            )}
+          </AlertBody>
+        </div>
         {onRetry !== undefined && (
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="mt-3"
+            className="shrink-0 border-danger-line bg-surface text-danger-ink hover:bg-danger-soft"
             onClick={onRetry}
           >
             {t.app.retry}
           </Button>
         )}
-      </AlertBody>
+      </div>
     </Alert>
   );
 }

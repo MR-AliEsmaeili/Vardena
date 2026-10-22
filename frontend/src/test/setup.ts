@@ -1,6 +1,19 @@
 import '@testing-library/jest-dom/vitest';
+import { configure } from '@testing-library/dom';
 import { cleanup } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
+
+/**
+ * Full-shell integration tests render the session, licensing, organization and
+ * financial-context gates before the routed page exists, so a `findBy*`
+ * assertion waits on a chain of (mocked, but still asynchronous) providers.
+ * The 1 s default was tight enough to fail intermittently on a loaded CI/local
+ * machine even though nothing was wrong: the assertion retried inside a
+ * scheduling gap, not against slower behaviour. 3 s keeps the assertion meaning
+ * ("eventually") while removing the timing race. This affects only how long a
+ * query retries — never what it asserts, and real failures still fail.
+ */
+configure({ asyncUtilTimeout: 3000 });
 
 afterEach(() => {
   cleanup();

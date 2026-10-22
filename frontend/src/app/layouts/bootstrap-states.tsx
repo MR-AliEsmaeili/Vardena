@@ -45,7 +45,7 @@ export function ResolvingState({ label }: { label: string }) {
       data-testid="resolving-state"
     >
       <ThinkingOrbIndicator size={64} decorative />
-      <p className="text-sm text-slate-600">{label}</p>
+      <p className="text-sm text-ink-muted">{label}</p>
     </output>
   );
 }

@@ -22,6 +22,7 @@ import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
 import { DataTable } from '@/ui/patterns/data-table';
 import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
+import { FilterBar, FilterField } from '@/ui/patterns/filter-bar';
 import { Select } from '@/ui/select';
 import { LoadingState } from '@/ui/patterns/states';
 import { PageHeader } from '@/ui/patterns/page-header';
@@ -276,37 +277,36 @@ export function ValuationStatesPage() {
         description={t.inventory.valuationSubtitle}
       />
 
-      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-3">
-        <label htmlFor="valuation-status-filter" className="text-sm">
-          {t.inventory.valuationStatusFilter}:
-        </label>
-        <Select
-          id="valuation-status-filter"
-          className="h-9 w-56"
-          value={status}
-          onChange={(event) => {
-            const next = new URLSearchParams(params);
-            next.delete('page');
-            if (event.target.value === '') {
-              next.delete('status');
-            } else {
-              next.set('status', event.target.value);
-            }
-            setParams(next);
-          }}
-        >
-          <option value="">{t.inventory.allValuationStatuses}</option>
-          <option value="pending_cost">
-            {t.inventory.valuationStateStatuses.pending_cost}
-          </option>
-          <option value="stale">
-            {t.inventory.valuationStateStatuses.stale}
-          </option>
-          <option value="valued">
-            {t.inventory.valuationStateStatuses.valued}
-          </option>
-        </Select>
-      </div>
+      <FilterBar columns={2} aria-label={t.inventory.valuationStatusFilter}>
+        <FilterField label={t.inventory.valuationStatusFilter}>
+          <Select
+            id="valuation-status-filter"
+            className="h-9 w-full"
+            value={status}
+            onChange={(event) => {
+              const next = new URLSearchParams(params);
+              next.delete('page');
+              if (event.target.value === '') {
+                next.delete('status');
+              } else {
+                next.set('status', event.target.value);
+              }
+              setParams(next);
+            }}
+          >
+            <option value="">{t.inventory.allValuationStatuses}</option>
+            <option value="pending_cost">
+              {t.inventory.valuationStateStatuses.pending_cost}
+            </option>
+            <option value="stale">
+              {t.inventory.valuationStateStatuses.stale}
+            </option>
+            <option value="valued">
+              {t.inventory.valuationStateStatuses.valued}
+            </option>
+          </Select>
+        </FilterField>
+      </FilterBar>
 
       <DataTable
         columns={columns}

@@ -1,5 +1,5 @@
-import { LogOut, Menu, UserRound, X } from 'lucide-react';
-import { useState } from 'react';
+import { Boxes, LogOut, Menu, UserRound, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useSession } from '@/features/auth/use-session';
 import { useLicenseState } from '@/features/licensing/use-license-state';
@@ -18,6 +18,8 @@ import { BootstrapScreen } from './bootstrap-states';
 import { FinancialContextGate } from './financial-context-gate';
 import { LicenseGate } from './license-gate';
 import { OrganizationGate } from './organization-gate';
+
+const NAVIGATION_ID = 'app-navigation';
 
 /**
  * The authenticated application shell.
@@ -44,6 +46,11 @@ import { OrganizationGate } from './organization-gate';
  * There is deliberately no search field in the top bar: the API exposes no
  * global search contract, and an input that cannot search would be a fake
  * capability (recorded as a CONTRACT GAP in the UX docs).
+ *
+ * The mobile drawer is a real keyboard surface: it is `inert`-equivalent while
+ * closed (hidden from layout, focus and the accessibility tree), closes on
+ * Escape, keeps Tab inside itself while open, locks the document scroll and
+ * returns focus to the toggle that opened it.
  */
 export function AppShell() {
   const session = useSession();
@@ -51,6 +58,8 @@ export function AppShell() {
   const organization = useOrganization();
   const permissions = usePermissions();
   const [menuOpen, setMenuOpen] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const navigationRef = useRef<HTMLElement>(null);
 
   const visibleSections = navigationSections
     .map((section) => ({
@@ -84,25 +93,71 @@ export function AppShell() {
     (!canResolveFinancialContext ||
       organization.financialContextStatus === 'ready');
 
+  const closeMenu = useCallback((restoreFocus: boolean) => {
+    setMenuOpen(false);
+    if (restoreFocus) toggleRef.current?.focus();
+  }, []);
+
+  // While the drawer covers the workspace, Escape must not be swallowed by
+  // anything underneath, and Tab must stay inside the open drawer.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeMenu(true);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const container = navigationRef.current;
+      if (container === null) return;
+      const focusable = container.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [closeMenu, menuOpen]);
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-canvas text-ink">
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:rounded focus:bg-white focus:p-2 focus:shadow"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:start-2 focus:z-50 focus:rounded-control focus:bg-surface focus:px-3 focus:py-2 focus:text-sm focus:shadow-raised"
       >
         {t.app.skipToContent}
       </a>
 
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
-        <div className="flex h-14 items-center gap-3 px-3 sm:px-4">
+      <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/85">
+        <div className="mx-auto flex h-14 w-full max-w-[1600px] items-center gap-2 px-3 sm:px-4">
           <Button
+            ref={toggleRef}
             type="button"
             variant="ghost"
             size="icon"
-            className={isWorkspaceReady ? 'lg:hidden' : 'hidden'}
+            className={cn(
+              'shrink-0',
+              isWorkspaceReady ? 'lg:hidden' : 'hidden',
+            )}
             aria-label={menuOpen ? t.nav.closeMenu : t.nav.openMenu}
             aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((open) => !open)}
+            aria-controls={NAVIGATION_ID}
+            onClick={() => (menuOpen ? closeMenu(false) : setMenuOpen(true))}
           >
             {menuOpen ? (
               <X className="h-5 w-5" aria-hidden />
@@ -111,16 +166,24 @@ export function AppShell() {
             )}
           </Button>
 
-          <div className="flex items-baseline gap-2">
-            <span className="text-lg font-bold text-indigo-700">
-              {t.app.name}
+          <div className="flex min-w-0 items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-brand text-white shadow-card"
+            >
+              <Boxes className="h-4.5 w-4.5" />
             </span>
-            <span className="hidden text-xs text-slate-500 sm:inline">
-              {t.app.tagline}
+            <span className="flex min-w-0 flex-col justify-center leading-tight">
+              <span className="truncate text-sm font-bold text-ink">
+                {t.app.name}
+              </span>
+              <span className="hidden truncate text-[11px] text-ink-subtle sm:block">
+                {t.app.tagline}
+              </span>
             </span>
           </div>
 
-          <div className="ms-auto flex items-center gap-3">
+          <div className="ms-auto flex min-w-0 items-center gap-2 sm:gap-3">
             {/* Ambient refetch/background activity — never a page overlay. */}
             <BackgroundActivityIndicator />
             {/*
@@ -133,9 +196,14 @@ export function AppShell() {
             {licenseActive && isOrganizationReady && (
               <FinancialContextSwitcher />
             )}
-            <span className="hidden items-center gap-1.5 text-sm text-slate-700 sm:flex">
-              <UserRound className="h-4 w-4 text-slate-400" aria-hidden />
-              <span className="font-medium" dir="ltr">
+            <span className="hidden items-center gap-2 border-s border-line ps-3 text-sm text-ink-muted sm:flex">
+              <span
+                aria-hidden="true"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-sunken text-ink-subtle"
+              >
+                <UserRound className="h-3.5 w-3.5" />
+              </span>
+              <span className="max-w-32 truncate font-medium" dir="ltr">
                 {session.user?.username ?? ''}
               </span>
             </span>
@@ -150,7 +218,9 @@ export function AppShell() {
               }}
             >
               <LogOut className="h-4 w-4" aria-hidden />
-              {session.isLoggingOut ? t.auth.loggingOut : t.auth.logout}
+              <span className="hidden sm:inline">
+                {session.isLoggingOut ? t.auth.loggingOut : t.auth.logout}
+              </span>
             </Button>
           </div>
         </div>
@@ -158,45 +228,50 @@ export function AppShell() {
 
       <LicenseGate>
         {isWorkspaceReady ? (
-          <div className="mx-auto flex w-full max-w-[1600px]">
+          <div className="mx-auto flex w-full max-w-[1600px] items-start">
             {menuOpen && (
               <button
                 type="button"
-                className="fixed inset-0 z-20 bg-slate-900/30 lg:hidden"
+                className="fixed inset-0 z-20 bg-ink/35 lg:hidden"
+                tabIndex={-1}
                 aria-label={t.nav.closeMenu}
-                onClick={() => setMenuOpen(false)}
+                onClick={() => closeMenu(false)}
               />
             )}
 
             <nav
+              id={NAVIGATION_ID}
+              ref={navigationRef}
               aria-label={t.nav.mainMenu}
               className={cn(
-                'fixed inset-y-0 start-0 z-30 mt-14 w-64 shrink-0 overflow-y-auto border-e border-slate-200 bg-white p-3 transition-transform lg:static lg:mt-0 lg:translate-x-0',
+                'scroll-thin fixed top-14 bottom-0 start-0 z-30 w-72 overflow-y-auto border-e border-line bg-surface px-3 py-4',
+                'transition-transform duration-200 ease-out motion-reduce:transition-none',
+                'lg:sticky lg:top-14 lg:z-0 lg:h-[calc(100vh-3.5rem)] lg:w-64 lg:translate-x-0 lg:visible lg:shrink-0',
                 menuOpen
-                  ? 'translate-x-0'
-                  : 'translate-x-full lg:translate-x-0',
-                !menuOpen && 'hidden lg:block',
+                  ? 'visible translate-x-0'
+                  : 'invisible translate-x-full',
               )}
             >
-              <ul className="space-y-4">
+              <ul className="space-y-5">
                 {visibleSections.map((section) => (
                   <li key={section.id}>
-                    <p className="px-2 pb-1 text-xs font-semibold text-slate-400">
+                    <p className="px-2 pb-1.5 text-[11px] font-semibold tracking-wide text-ink-subtle">
                       {section.label}
                     </p>
-                    <ul className="space-y-1">
+                    <ul className="space-y-0.5">
                       {section.items.map((item) => (
                         <li key={item.to}>
                           <NavLink
                             to={item.to}
                             end={item.end ?? false}
-                            onClick={() => setMenuOpen(false)}
+                            onClick={() => closeMenu(false)}
+                            title={item.label}
                             className={({ isActive }) =>
                               cn(
-                                'flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors',
+                                'relative flex items-center gap-2 rounded-control px-2.5 py-2 text-[0.8125rem] transition-colors',
                                 isActive
-                                  ? 'bg-indigo-50 font-medium text-indigo-700'
-                                  : 'text-slate-700 hover:bg-slate-100',
+                                  ? 'bg-brand-soft font-medium text-brand-ink before:absolute before:inset-y-1.5 before:start-0 before:w-0.5 before:rounded-full before:bg-brand'
+                                  : 'text-ink-muted hover:bg-sunken hover:text-ink',
                               )
                             }
                           >
@@ -216,8 +291,7 @@ export function AppShell() {
 
             <main
               id="main-content"
-              className="min-w-0 flex-1 space-y-4 p-3 sm:p-5"
-              dir="rtl"
+              className="min-w-0 flex-1 space-y-4 px-3 py-4 sm:px-5 sm:py-5 lg:px-6"
             >
               <AppBreadcrumb />
               <Outlet />

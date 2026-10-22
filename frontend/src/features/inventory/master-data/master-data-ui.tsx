@@ -2,8 +2,8 @@ import type { FormEvent, ReactNode } from 'react';
 import { t } from '@/lib/i18n';
 import type { StatusFilter } from '@/lib/use-admin-list-state';
 import { Badge } from '@/ui/badge';
-import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
+import { FilterBar, FilterField } from '@/ui/patterns/filter-bar';
 import { Select } from '@/ui/select';
 
 /**
@@ -30,28 +30,7 @@ export function MasterDataStatusBadge({
   );
 }
 
-export function DefinitionList({ children }: { children: ReactNode }) {
-  return (
-    <dl className="grid gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 sm:grid-cols-2">
-      {children}
-    </dl>
-  );
-}
-
-export function Definition({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="bg-white p-4">
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className="mt-1 text-sm font-medium text-slate-900">{children}</dd>
-    </div>
-  );
-}
+export { Definition, DefinitionList } from '@/ui/patterns/definition-list';
 
 export interface MasterDataFiltersProps {
   search: string;
@@ -99,43 +78,37 @@ export function MasterDataFilters({
   };
 
   return (
-    <form
+    <FilterBar
       key={synchronizationKey}
-      className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-3"
       onSubmit={submit}
+      onClear={onClear}
+      applyLabel={t.inventoryMaster.filter}
+      clearLabel={t.inventoryMaster.clear}
+      columns={4}
+      aria-label={t.filters.title}
       data-testid="inventory-master-filters"
     >
       {showSearch && (
-        <label className="min-w-52 flex-1 text-xs text-slate-600">
-          <span>{t.app.search}</span>
+        <FilterField label={t.app.search}>
           <Input
             name="search"
             defaultValue={search}
             placeholder={searchPlaceholder}
-            className="mt-1"
           />
-        </label>
+        </FilterField>
       )}
 
       {children}
 
       {showStatus && (
-        <label className="min-w-36 text-xs text-slate-600">
-          <span>{t.inventoryMaster.status}</span>
-          <Select name="status" defaultValue={status} className="mt-1">
+        <FilterField label={t.inventoryMaster.status}>
+          <Select name="status" defaultValue={status}>
             <option value="">{t.inventoryMaster.allStatuses}</option>
             <option value="active">{t.inventoryMaster.active}</option>
             <option value="inactive">{t.inventoryMaster.inactive}</option>
           </Select>
-        </label>
+        </FilterField>
       )}
-
-      <Button type="submit" size="sm">
-        {t.inventoryMaster.filter}
-      </Button>
-      <Button type="button" variant="ghost" size="sm" onClick={onClear}>
-        {t.inventoryMaster.clear}
-      </Button>
-    </form>
+    </FilterBar>
   );
 }

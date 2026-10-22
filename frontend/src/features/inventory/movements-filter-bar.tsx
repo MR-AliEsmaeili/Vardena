@@ -3,7 +3,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { isBusinessDay } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
-import { Button } from '@/ui/button';
+import { FilterBar } from '@/ui/patterns/filter-bar';
 import { FormField } from '@/ui/patterns/form-field';
 import { DateInput } from '@/ui/patterns/date-input';
 import { Select } from '@/ui/select';
@@ -84,128 +84,108 @@ export function MovementsFilterBar({
   const { formState } = form;
 
   return (
-    <form
+    <FilterBar
       key={synchronizationKey}
-      className="space-y-3 rounded-lg border border-slate-200 bg-white p-3"
       onSubmit={form.handleSubmit(onApply)}
-      noValidate
-    >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <FormField
-          id="movements-filter-warehouse"
-          label={t.inventory.warehouse}
-        >
-          {(fieldProps) => (
-            <Select
-              {...fieldProps}
-              className="h-9"
-              {...form.register('warehouseId')}
-            >
-              <option value="">{t.filters.allWarehouses}</option>
-              {references.warehouses.map((warehouse) => (
-                <option key={warehouse.id} value={warehouse.id}>
-                  {warehouse.code} — {warehouse.name}
-                </option>
-              ))}
-            </Select>
-          )}
-        </FormField>
-
-        <FormField id="movements-filter-item" label={t.inventory.item}>
-          {(fieldProps) => (
-            <Select
-              {...fieldProps}
-              className="h-9"
-              {...form.register('itemId')}
-            >
-              <option value="">{t.filters.allItems}</option>
-              {references.items.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.code} — {item.name}
-                </option>
-              ))}
-            </Select>
-          )}
-        </FormField>
-
-        <FormField
-          id="movements-filter-type"
-          label={t.inventory.movementTypeFilter}
-        >
-          {(fieldProps) => (
-            <Select
-              {...fieldProps}
-              className="h-9"
-              {...form.register('movementType')}
-            >
-              <option value="">{t.inventory.allMovementTypes}</option>
-              {MOVEMENT_TYPE_FILTERS.map((type) => (
-                <option key={type} value={type}>
-                  {movementTypeLabel(type)}
-                </option>
-              ))}
-            </Select>
-          )}
-        </FormField>
-
-        <FormField id="movements-filter-date-from" label={t.inventory.dateFrom}>
-          {(fieldProps) => (
-            <Controller
-              control={form.control}
-              name="dateFrom"
-              render={({ field }) => (
-                <DateInput
-                  {...fieldProps}
-                  id="movements-filter-date-from"
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  className="h-9"
-                />
-              )}
-            />
-          )}
-        </FormField>
-
-        <FormField id="movements-filter-date-to" label={t.inventory.dateTo}>
-          {(fieldProps) => (
-            <Controller
-              control={form.control}
-              name="dateTo"
-              render={({ field }) => (
-                <DateInput
-                  {...fieldProps}
-                  id="movements-filter-date-to"
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  className="h-9"
-                />
-              )}
-            />
-          )}
-        </FormField>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <Button type="submit" size="sm" disabled={isFetching}>
-          {t.app.apply}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={onClear}
-          disabled={isFetching}
-        >
-          {t.app.reset}
-        </Button>
-        {formState.errors.dateFrom !== undefined ||
+      onClear={onClear}
+      isFetching={isFetching}
+      columns={5}
+      aria-label={t.filters.title}
+      actions={
+        formState.errors.dateFrom !== undefined ||
         formState.errors.dateTo !== undefined ? (
-          <p role="alert" className="text-xs text-rose-700">
+          <p role="alert" className="text-xs font-medium text-danger-ink">
             {formState.errors.dateFrom?.message ??
               formState.errors.dateTo?.message}
           </p>
-        ) : null}
-      </div>
-    </form>
+        ) : undefined
+      }
+    >
+      <FormField id="movements-filter-warehouse" label={t.inventory.warehouse}>
+        {(fieldProps) => (
+          <Select
+            {...fieldProps}
+            className="h-9"
+            {...form.register('warehouseId')}
+          >
+            <option value="">{t.filters.allWarehouses}</option>
+            {references.warehouses.map((warehouse) => (
+              <option key={warehouse.id} value={warehouse.id}>
+                {warehouse.code} — {warehouse.name}
+              </option>
+            ))}
+          </Select>
+        )}
+      </FormField>
+
+      <FormField id="movements-filter-item" label={t.inventory.item}>
+        {(fieldProps) => (
+          <Select {...fieldProps} className="h-9" {...form.register('itemId')}>
+            <option value="">{t.filters.allItems}</option>
+            {references.items.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.code} — {item.name}
+              </option>
+            ))}
+          </Select>
+        )}
+      </FormField>
+
+      <FormField
+        id="movements-filter-type"
+        label={t.inventory.movementTypeFilter}
+      >
+        {(fieldProps) => (
+          <Select
+            {...fieldProps}
+            className="h-9"
+            {...form.register('movementType')}
+          >
+            <option value="">{t.inventory.allMovementTypes}</option>
+            {MOVEMENT_TYPE_FILTERS.map((type) => (
+              <option key={type} value={type}>
+                {movementTypeLabel(type)}
+              </option>
+            ))}
+          </Select>
+        )}
+      </FormField>
+
+      <FormField id="movements-filter-date-from" label={t.inventory.dateFrom}>
+        {(fieldProps) => (
+          <Controller
+            control={form.control}
+            name="dateFrom"
+            render={({ field }) => (
+              <DateInput
+                {...fieldProps}
+                id="movements-filter-date-from"
+                value={field.value}
+                onValueChange={field.onChange}
+                className="h-9"
+              />
+            )}
+          />
+        )}
+      </FormField>
+
+      <FormField id="movements-filter-date-to" label={t.inventory.dateTo}>
+        {(fieldProps) => (
+          <Controller
+            control={form.control}
+            name="dateTo"
+            render={({ field }) => (
+              <DateInput
+                {...fieldProps}
+                id="movements-filter-date-to"
+                value={field.value}
+                onValueChange={field.onChange}
+                className="h-9"
+              />
+            )}
+          />
+        )}
+      </FormField>
+    </FilterBar>
   );
 }

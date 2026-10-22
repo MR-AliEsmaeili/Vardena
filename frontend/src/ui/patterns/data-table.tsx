@@ -5,6 +5,8 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table';
+import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import {
@@ -33,6 +35,11 @@ export interface DataTableProps<TRow> {
   onRetry?: () => void;
   emptyTitle?: string;
   emptyDescription?: string;
+  /**
+   * Recovery path for the empty grid (usually "create the first record").
+   * Rendered only when the grid has no rows, never on top of data.
+   */
+  emptyAction?: ReactNode;
   /** Server-side sorting state; omit for an unsorted table. */
   sorting?: SortingState;
   onSortingChange?: (sorting: SortingState) => void;
@@ -47,6 +54,12 @@ export interface DataTableProps<TRow> {
  * `sort` fields and `page`/`pageSize`), so the table never re-sorts or
  * re-pages a cached window client-side. Column definitions live next to their
  * feature, never inside this component.
+ *
+ * The four states are structurally separate (standards.md §10): a failure
+ * replaces the grid with a retryable alert, the first page renders
+ * content-shaped skeletons, an empty result renders a labelled empty block
+ * with its own CTA, and a refetch keeps the rows visible while announcing the
+ * local refresh.
  */
 export function DataTable<TRow>({
   columns,
@@ -59,6 +72,7 @@ export function DataTable<TRow>({
   onRetry,
   emptyTitle = t.table.emptyTitle,
   emptyDescription = t.table.emptyBody,
+  emptyAction,
   sorting,
   onSortingChange,
   pagination,
@@ -96,10 +110,15 @@ export function DataTable<TRow>({
     return <LoadingState label={t.table.loading} rows={6} />;
   }
 
+  const rows = table.getRowModel().rows;
+
   return (
     <div className="space-y-0" aria-busy={isFetching ? true : undefined}>
       <TableWrapper
-        className={cn(isFetching && 'opacity-70 transition-opacity')}
+        className={cn(
+          'scroll-thin',
+          isFetching && 'opacity-70 transition-opacity',
+        )}
       >
         <Table>
           {caption !== undefined && (
@@ -107,7 +126,7 @@ export function DataTable<TRow>({
           )}
           <TableHead>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
+              <TableRow key={headerGroup.id} className="hover:bg-transparent">
                 {headerGroup.headers.map((header) => {
                   const canSort = header.column.getCanSort();
                   const sortDirection = header.column.getIsSorted();
@@ -122,26 +141,25 @@ export function DataTable<TRow>({
                           ? 'ascending'
                           : sortDirection === 'desc'
                             ? 'descending'
-                            : undefined
+                            : canSort
+                              ? 'none'
+                              : undefined
                       }
                     >
                       {header.isPlaceholder ? null : canSort ? (
                         <button
                           type="button"
-                          className="inline-flex items-center gap-1 font-semibold hover:text-slate-900"
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded-sm font-semibold transition-colors hover:text-ink',
+                            meta?.align === 'end' && 'flex-row-reverse',
+                          )}
                           onClick={header.column.getToggleSortingHandler()}
                         >
                           {flexRender(
                             header.column.columnDef.header,
                             header.getContext(),
                           )}
-                          <span aria-hidden="true" className="text-[10px]">
-                            {sortDirection === 'asc'
-                              ? '▲'
-                              : sortDirection === 'desc'
-                                ? '▼'
-                                : '↕'}
-                          </span>
+                          {renderSortIcon(sortDirection)}
                         </button>
                       ) : (
                         flexRender(
@@ -156,22 +174,28 @@ export function DataTable<TRow>({
             ))}
           </TableHead>
           <TableBody>
-            {table.getRowModel().rows.length === 0 ? (
-              <TableRow>
+            {rows.length === 0 ? (
+              <TableRow className="hover:bg-transparent">
                 <TableCell
                   colSpan={columns.length}
-                  className="px-3 py-10 text-center"
+                  className="px-4 py-12 text-center"
                 >
-                  <p className="text-sm font-semibold text-slate-800">
-                    {emptyTitle}
-                  </p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {emptyDescription}
-                  </p>
+                  <div
+                    className="mx-auto flex max-w-sm flex-col items-center gap-2"
+                    data-testid="data-table-empty"
+                  >
+                    <p className="text-sm font-semibold text-ink">
+                      {emptyTitle}
+                    </p>
+                    <p className="text-xs leading-6 text-ink-muted">
+                      {emptyDescription}
+                    </p>
+                    {emptyAction}
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
-              table.getRowModel().rows.map((row) => (
+              rows.map((row) => (
                 <TableRow key={row.id}>
                   {row.getVisibleCells().map((cell) => {
                     const meta = cell.column.columnDef.meta as
@@ -202,11 +226,46 @@ export function DataTable<TRow>({
         ) : (
           // Tables without server pagination still get their OWN local
           // refresh status, so the section never depends on the global panel.
-          <div className="border-t border-slate-100 px-3 py-2">
+          <div className="border-t border-line/80 px-3 py-2">
             <LocalFetchingIndicator active={isFetching} />
           </div>
         )}
       </TableWrapper>
     </div>
+  );
+}
+
+/**
+ * Sort affordance. The `aria-sort` attribute on the header cell carries the
+ * state for assistive technology, so the icon is decorative and announces a
+ * stable glyph rather than a direction after every click. This is a plain
+ * render helper (not a nested component) so the header never remounts a new
+ * component type on every state change.
+ */
+function renderSortIcon(direction: false | 'asc' | 'desc') {
+  if (direction === 'asc') {
+    return (
+      <ArrowUp
+        aria-hidden="true"
+        className="h-3.5 w-3.5 text-brand-ink"
+        data-testid="sort-icon-asc"
+      />
+    );
+  }
+  if (direction === 'desc') {
+    return (
+      <ArrowDown
+        aria-hidden="true"
+        className="h-3.5 w-3.5 text-brand-ink"
+        data-testid="sort-icon-desc"
+      />
+    );
+  }
+  return (
+    <ChevronsUpDown
+      aria-hidden="true"
+      className="h-3.5 w-3.5 text-ink-subtle/70"
+      data-testid="sort-icon-none"
+    />
   );
 }
