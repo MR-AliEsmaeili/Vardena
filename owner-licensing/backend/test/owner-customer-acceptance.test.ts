@@ -852,16 +852,14 @@ describe("persisted Owner → offline signer → Owner archive → authenticated
     const ownerArtifactRow = await ownerDb.pool.query<{
       sha256: string;
       status: string;
-      byte_size: string;
+      byte_size: number;
     }>(
       `SELECT sha256,status,byte_size FROM owner.license_artifacts WHERE issuance_id=$1`,
       [baseIssuanceId],
     );
     expect(ownerArtifactRow.rows).toHaveLength(1);
     expect(ownerArtifactRow.rows[0]!.status).toBe("DURABLE");
-    expect(ownerArtifactRow.rows[0]!.byte_size).toBe(
-      String(archived.byteLength),
-    );
+    expect(ownerArtifactRow.rows[0]!.byte_size).toBe(archived.byteLength);
     expect(ownerArtifactRow.rows[0]!.sha256).toBe(sha256Bytes(archived));
 
     // Owner has durably archived the bytes, but only its API import occurred.

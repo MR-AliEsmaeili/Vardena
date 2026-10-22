@@ -44,8 +44,11 @@ CI attempt on `cc01b0186c7bc79d5ebce18509baf9140e972350` passed the Owner signer
 binding cases but customer import returned 403: the unlicensed fixture role lacked the
 platform `Licensing.License.Activate` permission. The test now grants that bootstrap
 permission before activation, and only assigns `License.Revoke` plus Organization
-permissions after customer persistence confirms activation. The live dual-PostgreSQL
-flow remains **BLOCKED pending a passing exact-final-head CI run**.
+permissions after customer persistence confirms activation. Ninth combined CI attempt
+on `671ce7c3545f7dd148ce670bf3d75371cbd8067b` passed the Owner tamper, binding and
+customer auth gates, then failed an assertion that compared PostgreSQL's numeric
+artifact byte-size value to a string. The assertion now compares numeric types. The
+live dual-PostgreSQL flow remains **BLOCKED pending a passing exact-final-head CI run**.
 `verify:interop` and existing Owner/customer tests remain component coverage, not
 substitutes for the combined run. The critical Persian RTL workflow was not driven
 by a human operator.
@@ -129,6 +132,11 @@ by a human operator.
   now grants that platform bootstrap permission pre-activation and waits for persisted
   customer activation before granting `License.Revoke` and Organization permissions.
   Other CI jobs passed.
+- Ninth combined acceptance attempt: [run 39707721579](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39707721579)
+  on exact head `671ce7c3545f7dd148ce670bf3d75371cbd8067b` passed the Owner tamper,
+  binding and customer auth assertions; Owner archive persistence reached its byte-size
+  check, which compared a PostgreSQL numeric value to a string. The assertion now
+  compares numeric values; other CI jobs passed.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it
