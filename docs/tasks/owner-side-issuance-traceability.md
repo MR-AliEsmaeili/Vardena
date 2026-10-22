@@ -1,5 +1,14 @@
 # Owner-side issuance — decision → implementation → evidence traceability
 
+> **Current-head overlay (2026-10-22):** the PostgreSQL counts and local run claims
+> below are historical evidence from the earlier implementation branch, not runs
+> from the current audit session. For current base/head SHAs, exact GitHub run IDs,
+> local commands/results, and the strict Option C gap matrix, see
+> [`licensing-e2e-acceptance-2026-10-22.md`](./licensing-e2e-acceptance-2026-10-22.md).
+> In particular, the Owner and customer component suites do not constitute one
+> dual-database acceptance run. Do not report licensing as fully verified until
+> the combined flow and manual Persian RTL checklist are completed.
+
 **What this file is.** For every recordable decision in PDR-19 and every open
 question that touches the Owner-side issuance slice, it states what exists in
 code, what proves it, and what does not exist. A row is only **DONE** when the
@@ -232,3 +241,72 @@ the remaining verification step.
    accepted by the customer's committed vectors and unit tests; a signed
    artifact produced by the Owner signer has not been replayed into a running
    customer installation in this environment.
+
+## 5. Current Option C acceptance overlay (2026-10-22)
+
+The per-decision/component evidence above remains useful, but it is not equivalent
+to an executed Owner-to-customer acceptance flow. The current matrix in
+[`licensing-e2e-acceptance-2026-10-22.md`](./licensing-e2e-acceptance-2026-10-22.md)
+tracks the requirements across both applications and their separate PostgreSQL
+databases, with explicit `PASS` / `BLOCKED` / `NOT RUN` statuses.
+
+Current distinctions:
+
+- `npm run verify:interop` passed **7/7** on 2026-10-22, but only exercises signed
+  VLIC2/VREV1 documents through the two domain implementations in process. It does
+  not create persisted Owner records or call either application's import endpoint.
+- Owner lifecycle and customer persistence tests exist separately. GitHub CI run
+  [39657663222](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39657663222)
+  passed on exact base SHA `92586fa87b7aa678fc26dddcc775b54eddbc15c3`; it ran both
+  applications' database suites independently, not as one artifact handoff flow.
+- Current local environment had no PostgreSQL binaries/service, so Owner integration
+  and customer live-DB tests were **not run locally**. The selected customer
+  in-memory E2E and unit tests did run; their commands and exact counts are in the
+  acceptance audit.
+- Human Persian RTL acceptance is **NOT RUN**. Automated component tests do not
+  substitute for an operator record.
+
+No PDR-19 decision is reopened. The gap is combined executable evidence and the
+operator-run checklist, not a demonstrated inconsistency in accepted behavior.
+
+## 6. Combined Owner → customer acceptance follow-up (2026-10-22)
+
+The original component/test map above remains accurate historically, but the missing
+combined test has now been implemented in
+`owner-licensing/backend/test/owner-customer-acceptance.test.ts`, with the isolated
+test-only signer in `owner-licensing/backend/test/support/offline-acceptance-signer.ts`.
+It is a separate suite—not a relabeling of `verify:interop`, Owner lifecycle tests,
+or the customer live-persistence suite.
+
+The suite uses two distinct, fresh PostgreSQL databases and real application paths:
+Owner bootstrap/login and persisted customer, confirmed installation identity, active
+limit profile, signing-key metadata, issuance/request digest, offline signing, Owner
+artifact import/archive/download; then customer authenticated license import/current
+state and PostgreSQL inspection. A spawned signer process generates and retains the
+private key; only public trust material reaches either application. The suite rejects
+missing URLs, unavailable databases, non-`acceptance` database names, equal database
+identities, stale Owner migration state, and non-empty customer licensing/organization/
+user data. No skip path exists.
+
+Combined scenario coverage includes Owner/customer signature tampering and binding
+refusals, alternate signer, customer and installation mismatch, Owner replay/conflict,
+customer duplicate-operation refusal, exact archived-byte import and before/after
+persistence, effective renewal boundary, real Grace/Read-Only customer API behavior,
+organization entitlement/limit enforcement, Owner VREV1 archive without activation,
+customer revocation persistence/replay and old-license refusal. Expected rejection audit
+rows are distinguished from unchanged license/version/entitlement/business state.
+
+| Command/result | Scope and status |
+|---|---|
+| `owner-licensing/backend: npm run typecheck:acceptance` | Passed locally; type-checks the combined suite and imported customer production-pipeline source. |
+| `owner-licensing/backend: npm run typecheck && npm run lint && npm run format:check` | Passed locally; 0 lint warnings/errors. |
+| `owner-licensing/backend: npm test && npm run build && npm run verify:interop` | Passed locally: 9 files / 140 tests, build passed, protocol interop 7/7. These are component evidence only. |
+| `owner-licensing/backend: npm run test:acceptance` with DB URLs unset | Failed explicitly with `OWNER_ACCEPTANCE_DATABASE_URL is required`; this is the required fail-closed behavior, not an accepted live run. |
+| CI | A fresh dual-database CI step is added to `.github/workflows/ci.yml`; exact final-head run/result and URL are recorded in `licensing-e2e-acceptance-2026-10-22.md` and the PR checks after completion. |
+
+Not covered by the combined scenario: expired prepared-request handling, separate
+supersession flow, stale revocation, post-revocation recovery issuance, every
+Print/Export/Backup operation, production-sized artifact restore, and human Persian RTL
+acceptance. Existing component suites remain component coverage; these omissions are
+not promoted to combined-flow passes. Final disposition remains **BLOCKED** until the
+required exact-head CI live run passes; manual Persian RTL remains **NOT RUN**.
