@@ -5,6 +5,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { ulid } from "ulid";
@@ -43,15 +44,23 @@ class OfflineAcceptanceSigner {
   publicMaterial = "";
 
   private constructor() {
-    this.child = spawn(
-      process.execPath,
-      ["--import", "tsx", "test/support/offline-acceptance-signer.ts"],
-      {
-        cwd: process.cwd(),
-        env: { PATH: process.env.PATH ?? "", NODE_ENV: "test" },
-        stdio: "pipe",
-      },
+    const ownerBackendDirectory = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
     );
+    const signerScript = path.join(
+      ownerBackendDirectory,
+      "test/support/offline-acceptance-signer.ts",
+    );
+    this.child = spawn(process.execPath, ["--import", "tsx", signerScript], {
+      cwd: ownerBackendDirectory,
+      env: {
+        PATH: process.env.PATH ?? "",
+        NODE_ENV: "test",
+        TSX_TSCONFIG_PATH: "tsconfig.acceptance.json",
+      },
+      stdio: "pipe",
+    });
     this.input = createInterface({
       input: this.child.stdout,
       crlfDelay: Infinity,

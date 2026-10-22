@@ -18,10 +18,14 @@ fixture setup because its harmless `notes` text included the server-forbidden ph
 `private key`; the fixture note was changed to neutral text. Second combined CI attempt
 on `646da4f3cfaf1a042b731ed09d7a539008e6bcee` reached the real applications but failed
 because Vitest's worker did not load the generated customer Prisma TypeScript client
-when the test imported cross-project source; the acceptance command now starts Vitest
-with the `tsx` ESM loader and customer backend `tsconfig.json` (including decorators).
-The live
-dual-PostgreSQL flow remains **BLOCKED pending a passing exact-final-head CI run**.
+when the test imported cross-project source; the acceptance command was then tried with the `tsx` ESM loader and customer backend
+`tsconfig.json` (including decorators). Third combined CI attempt on
+`596e95ea2789f691b1c096f6772ef1ad98e0776d` still failed: importing customer source
+outside the Owner Vitest root left Prisma's generated `.js` import outside Vitest's
+module resolver. The runner now delegates execution to a dedicated customer-root
+Vitest config so real customer modules and generated client stay in the normal app
+module graph. The live dual-PostgreSQL flow remains **BLOCKED pending a passing
+exact-final-head CI run**.
 `verify:interop` and existing Owner/customer tests remain component coverage, not
 substitutes for the combined run. The critical Persian RTL workflow was not driven
 by a human operator.
@@ -61,9 +65,15 @@ by a human operator.
   on exact head `646da4f3cfaf1a042b731ed09d7a539008e6bcee` reached real app setup but
   failed because Vitest could not load the generated customer Prisma TypeScript client
   through its dynamic `.js` import when loading cross-project source. The acceptance
-  command now starts Vitest with `NODE_OPTIONS=--import=tsx` and
+  attempt used Vitest with `NODE_OPTIONS=--import=tsx` and
   `TSX_TSCONFIG_PATH=../../backend/tsconfig.json`; no production loader or service
   code was changed. Frontend, generated-client and docs jobs passed.
+- Third combined acceptance attempt: [run 39703367826](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39703367826)
+  on exact head `596e95ea2789f691b1c096f6772ef1ad98e0776d` still failed because customer
+  source imported from outside the Owner Vitest root left Prisma's generated `.js`
+  import outside Vitest's module resolver. The runner now delegates to a dedicated
+  customer-root Vitest config so the real customer app and generated client stay in
+  the normal module graph. Frontend, generated-client and docs jobs passed.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it
