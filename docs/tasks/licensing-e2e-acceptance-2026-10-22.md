@@ -66,9 +66,11 @@ audit fields explicitly. Thirteenth combined CI attempt on
 `a249a1a85a60ab92239b9b698e66b8cb3fa95fd0` passed those checks and reached the
 Read-Only mutation refusal, where the fixture expected an internal `license_read_only`
 detail that is intentionally not exposed by the authorization guard's existing public
-403 contract. The test now checks the stable public `Forbidden` code and retained state;
-component tests continue to pin internal Read-Only policy details. The live
-dual-PostgreSQL flow remains **BLOCKED pending a passing exact-final-head CI run**.
+403 contract. Fourteenth attempt on `9aade497a2ab94aff08e317b2fe03e878bf6d3ef` then
+showed the public code is `PermissionDenied`, not the generic `Forbidden`; the test now
+pins the exact established code and retained state. Component tests continue to pin
+internal Read-Only policy details. The live dual-PostgreSQL flow remains **BLOCKED
+pending a passing exact-final-head CI run**.
 `verify:interop` and existing Owner/customer tests remain component coverage, not
 substitutes for the combined run. The critical Persian RTL workflow was not driven
 by a human operator.
@@ -179,8 +181,12 @@ by a human operator.
   on exact head `a249a1a85a60ab92239b9b698e66b8cb3fa95fd0` passed through Grace,
   then reached the Read-Only mutation refusal. The fixture expected an internal reason
   in the API body, but the established authorization guard returns the stable public
-  `Forbidden` code without that detail. The assertion now checks that contract and that
-  the rejected write left persisted state unchanged. Other CI jobs passed.
+  `Forbidden` code without that detail. The assertion was changed to check the public
+  403 code and retained state. Other CI jobs passed.
+- Fourteenth combined acceptance attempt: [run 39710257851](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/39710257851)
+  on exact head `9aade497a2ab94aff08e317b2fe03e878bf6d3ef` confirmed the actual public
+  denial code is `PermissionDenied`, not `Forbidden`. The fixture now asserts the exact
+  existing code and verifies persisted state remains unchanged. Other CI jobs passed.
 - Environment: Node `v22.22.3`, npm `10.9.8`; no `psql`, `pg_isready`, or Docker
   executable was available. No database URLs were set. Therefore no local live-DB
   run is claimed. The repository's CI at the base SHA did run live DB tests, but it
