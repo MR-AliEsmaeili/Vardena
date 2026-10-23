@@ -129,9 +129,9 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   if (error instanceof SignerError) {
-    process.stderr.write(`refused\\t${error.code}\\t${error.message}\n`);
+    process.stderr.write(`refused\t${error.code}\\t${error.message}\n`);
     process.exit(error.exitCode);
   }
-  process.stderr.write("refused\\tsigner-failure\\tKey generation failed.\n");
+  process.stderr.write("refused\tsigner-failure\\tKey generation failed.\n");
   process.exit(2);
 });
