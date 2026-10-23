@@ -37,6 +37,7 @@ GATED_JOBS: dict[str, str] = {
     "backend": "backend",
     "frontend": "frontend",
     "generated-api-client": "generated",
+    "owner-artifact-store-windows": "owner",
 }
 
 CLASSIFIER_JOB = "classify"

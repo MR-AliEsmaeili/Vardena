@@ -6,6 +6,8 @@
 #                         PostgreSQL migrations, bootstrap, live-DB E2E
 #    frontend             lint, typecheck, format, tests, build
 #    generated-api-client OpenAPI dump vs the committed generated client
+#    owner-artifact-store-windows
+#                         Node 24 Windows artifact-store regression coverage
 #    ci-gate              the always-running aggregate result
 #
 # The workflow always starts (no `paths`/`paths-ignore` filter anywhere: a
@@ -54,6 +56,7 @@ jobs:
       backend: ${{ steps.scope.outputs.backend }}
       frontend: ${{ steps.scope.outputs.frontend }}
       generated: ${{ steps.scope.outputs.generated }}
+      owner: ${{ steps.scope.outputs.owner }}
       broad: ${{ steps.scope.outputs.broad }}
     steps:
       - name: Checkout
@@ -396,6 +399,35 @@ jobs:
             backend/test-results/**
             /tmp/vardena-*.log
 
+  # Focused Windows coverage for the Owner artifact store. This is deliberately
+  # separate from the Linux/PostgreSQL backend job: making that job an OS matrix
+  # would duplicate every customer and Owner suite. The classifier limits this
+  # job to Owner backend changes (plus fail-open/broad change sets).
+  owner-artifact-store-windows:
+    name: owner-artifact-store-windows
+    runs-on: windows-latest
+    timeout-minutes: 10
+    needs: classify
+    if: needs.classify.outputs.owner == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: owner-licensing/backend/package-lock.json
+
+      - name: Install Owner API dependencies
+        working-directory: owner-licensing/backend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Test Owner artifact storage on Windows
+        working-directory: owner-licensing/backend
+        run: npm run test:artifact-store
+
   frontend:
     name: frontend
     runs-on: ubuntu-latest
@@ -528,6 +560,7 @@ jobs:
       - backend
       - frontend
       - generated-api-client
+      - owner-artifact-store-windows
     steps:
       - name: Checkout
         uses: actions/checkout@v4

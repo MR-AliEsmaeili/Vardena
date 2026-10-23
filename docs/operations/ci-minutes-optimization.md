@@ -174,3 +174,20 @@ step fails without adding a second skippable aggregate gate. Customer vectors,
 full backend/frontend/generated-client gates, secret scan and migration rehearsals
 are retained. Image export is temporary CI storage, never an uploaded artifact.
 No redundant workflow reruns are requested; diagnose failures then push fixes.
+
+## Owner artifact-store Windows extension (2026-10-23)
+
+Non-Markdown `owner-licensing/backend/**` changes also emit the `owner` scope and
+run `owner-artifact-store-windows` on `windows-latest` with Node.js 24. The job
+installs the locked Owner API dependencies and runs only
+`npm run test:artifact-store`; it does not duplicate the Linux/PostgreSQL
+backend matrix or the Owner UI suite. Existing `backend` and `frontend` Owner
+checks remain required, and Owner frontend/documentation-only paths do not
+trigger the Windows job. Unknown, workflow and other broad change sets run it as
+part of the fail-open full scope.
+
+The job has its own classifier output and is included in both `ci-gate`'s
+`needs` and `scripts/ci-gate.py`. Consequently an applicable Windows job that is
+skipped, cancelled, missing or failed prevents a green aggregate result, while
+a genuinely out-of-scope skip remains acceptable. CI-helper tests cover the
+path classification, gate wiring and fail-closed behavior.

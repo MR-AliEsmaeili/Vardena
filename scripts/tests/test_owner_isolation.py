@@ -23,8 +23,8 @@ class OwnerIsolationTest(unittest.TestCase):
         repo = Path(__file__).parents[2]
         self.assertEqual(module.inspect_sources(repo), [])
 
-    def test_owner_scope_runs_api_and_ui_without_generated_customer_client(self):
+    def test_owner_scope_runs_api_ui_and_windows_without_generated_customer_client(self):
         import runpy
         scope = runpy.run_path(str(Path(__file__).parents[1] / 'ci-classify-scope.py'))
         decision = scope['classify_paths'](['owner-licensing/backend/src/app.ts'])
-        self.assertEqual(decision.jobs, ['backend', 'frontend'])
+        self.assertEqual(decision.jobs, ['backend', 'frontend', 'owner'])
