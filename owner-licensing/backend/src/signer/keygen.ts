@@ -3,7 +3,11 @@ import { generateKeyPairSync } from "node:crypto";
 import { open, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { deriveKeyId } from "../protocol.js";
-import { assertKeyFilePrivate, assertSignerEnvironment, SignerError } from "./signer.js";
+import {
+  assertKeyFilePrivate,
+  assertSignerEnvironment,
+  SignerError,
+} from "./signer.js";
 
 /**
  * Generate an Ed25519 signing key for the offline Vardena signer.
@@ -37,8 +41,12 @@ async function main(): Promise<void> {
   await assertKeyFilePrivate(outDir);
 
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
-  const privateMaterial = privateKey.export({ format: "der", type: "pkcs8" }).toString("base64");
-  const publicMaterial = publicKey.export({ format: "der", type: "spki" }).toString("base64");
+  const privateMaterial = privateKey
+    .export({ format: "der", type: "pkcs8" })
+    .toString("base64");
+  const publicMaterial = publicKey
+    .export({ format: "der", type: "spki" })
+    .toString("base64");
   const keyId = deriveKeyId(publicKey);
   const privatePath = path.join(outDir, "key.pkcs8");
   const publicPath = path.join(outDir, "public-key.txt");
@@ -51,7 +59,9 @@ async function main(): Promise<void> {
     if (existing !== null) {
       throw new SignerError(
         "key-unavailable",
-        "Refusing to overwrite an existing key artifact: " + path.basename(destination) + ".",
+        "Refusing to overwrite an existing key artifact: " +
+          path.basename(destination) +
+          ".",
       );
     }
   }
