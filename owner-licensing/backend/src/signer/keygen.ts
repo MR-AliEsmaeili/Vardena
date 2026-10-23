@@ -24,7 +24,10 @@ function parseOutDir(argv: string[]): string {
   }
   const outDir = path.resolve(argv[1]);
   if (!path.isAbsolute(outDir)) {
-    throw new SignerError("key-unavailable", "The output directory must be absolute.");
+    throw new SignerError(
+      "key-unavailable",
+      "The output directory must be absolute.",
+    );
   }
   return outDir;
 }
@@ -34,7 +37,10 @@ async function main(): Promise<void> {
   const outDir = parseOutDir(process.argv.slice(2));
   const info = await stat(outDir).catch(() => null);
   if (info === null || !info.isDirectory()) {
-    throw new SignerError("key-unavailable", "The output directory does not exist.");
+    throw new SignerError(
+      "key-unavailable",
+      "The output directory does not exist.",
+    );
   }
 
   // Validate the directory's own access policy before creating key material.
@@ -96,7 +102,12 @@ async function main(): Promise<void> {
     infoCreated = true;
     try {
       await infoHandle.writeFile(
-        JSON.stringify({ keyId, publicKeySpkiBase64: publicMaterial }, null, 2) + "\n",
+        JSON.stringify(
+          { keyId, publicKeySpkiBase64: publicMaterial },
+          null,
+          2,
+        ) + "
+",
         "utf8",
       );
       await infoHandle.sync();
@@ -129,9 +140,15 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   if (error instanceof SignerError) {
-    process.stderr.write(`refused\t${error.code}\\t${error.message}\n`);
+    process.stderr.write(
+      `refused\t${error.code}\t${error.message}
+`,
+    );
     process.exit(error.exitCode);
   }
-  process.stderr.write("refused\tsigner-failure\\tKey generation failed.\n");
+  process.stderr.write(
+    "refused\tsigner-failure\tKey generation failed.
+",
+  );
   process.exit(2);
 });
