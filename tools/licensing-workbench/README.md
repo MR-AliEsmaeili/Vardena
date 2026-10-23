@@ -23,7 +23,7 @@ The execution-policy command affects only the current PowerShell process. If you
 ## Existing signing key
 
 1. Use **Select folder** to choose the folder containing the existing `key.pkcs8` file.
-2. Enter the key ID registered in Owner and trusted by the customer backend.
+2. Click **Identify existing key** to derive the public Key ID without displaying the private key. Confirm that this ID is the one registered in Owner and trusted by the customer backend.
 3. Do not click **Generate new key** just to fix an existing installation. A new key is a new trust authority and will not automatically verify in customer installations.
 4. Click **Build signer** when the signer build is missing or source code changed.
 
