@@ -1,8 +1,11 @@
 import 'dotenv/config';
+import { rmSync } from 'node:fs';
 import { NestFactory } from '@nestjs/core';
 import { runEntrypoint } from './kernel/bootstrap.js';
 import { loadAppConfig } from './kernel/config/app-config.js';
 import { JsonLogger } from './kernel/logging/json-logger.service.js';
+import { PrismaService } from './kernel/prisma/prisma.service.js';
+import { WorkerHealth, WORKER_HEALTH_FILE } from './worker-health.js';
 import { WorkerModule } from './worker.module.js';
 
 /**
@@ -25,6 +28,8 @@ import { WorkerModule } from './worker.module.js';
  * loop (Jobs/Sync) will own the worker lifetime and remove it (ADR-0015).
  */
 async function bootstrap(): Promise<void> {
+  // A container restart must not reuse a previous process's readiness evidence.
+  rmSync(WORKER_HEALTH_FILE, { force: true });
   // Throws on invalid env — fail fast before booting (DI loads it again).
   loadAppConfig();
   const app = await NestFactory.createApplicationContext(WorkerModule, {
@@ -32,16 +37,34 @@ async function bootstrap(): Promise<void> {
   });
   const logger = app.get(JsonLogger);
   app.useLogger(logger);
-  // Runs WorkerService.onApplicationBootstrap (DB gate + handler listing).
-  await app.init();
+  const health = new WorkerHealth(
+    () => app.get(PrismaService).checkHealth(),
+    () =>
+      logger.warn(
+        'Worker health check failed: database probe or heartbeat unavailable',
+        {},
+        'WorkerHealth',
+      ),
+  );
+  let keepAlive: NodeJS.Timeout | undefined;
+  try {
+    // Publish only after all Nest startup hooks (including the DB gate) succeeded.
+    await app.init();
+    await health.start();
 
-  const keepAlive = setInterval(() => {}, 2_147_483_647);
-  await new Promise<void>((resolve) => {
-    process.once('SIGTERM', () => resolve());
-    process.once('SIGINT', () => resolve());
-  });
-  clearInterval(keepAlive);
-  await app.close();
+    keepAlive = setInterval(() => {}, 2_147_483_647);
+    await new Promise<void>((resolve) => {
+      process.once('SIGTERM', () => resolve());
+      process.once('SIGINT', () => resolve());
+    });
+  } finally {
+    clearInterval(keepAlive);
+    try {
+      health.stop();
+    } finally {
+      await app.close();
+    }
+  }
   logger.log('Worker stopped', {}, 'Bootstrap');
 }
 

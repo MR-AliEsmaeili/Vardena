@@ -106,7 +106,11 @@ no HTTP endpoint and performs no runtime authorization bypass.
 
 The API boots **without** a database (liveness is DB-free; `/ready` reports DB
 state). The worker **fails fast** when the database is unreachable — a worker
-without the database cannot do its future jobs.
+without the database cannot do its future jobs. After initialization it publishes
+a DB-backed local heartbeat; Compose probes it with
+`node dist/worker-healthcheck.js`, not an HTTP request. See
+[worker health checks](../docs/operations/worker-healthcheck.md) for the contract,
+failure detection window, Docker inspection and CI regression smoke.
 
 ## Tests
 

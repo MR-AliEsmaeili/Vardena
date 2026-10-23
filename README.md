@@ -63,6 +63,10 @@ already-provisioned installation may leave it unset. The API is available at
 <http://localhost:3000/api/v1/health/live>, and Swagger is enabled at
 <http://localhost:3000/api/docs>.
 
+API Docker health uses HTTP readiness; the non-HTTP worker uses its own
+DB-backed heartbeat probe. See [health checks and troubleshooting](docs/operations/worker-healthcheck.md)
+for effective-probe inspection and safe deployment (no database-volume deletion).
+
 Initial login is `مدیر` with the initial password you configured via
 `BOOTSTRAP_SYSTEM_ADMIN_PASSWORD` (required when provisioning a new `مدیر`
 account; never a fixed default). The password is stored only

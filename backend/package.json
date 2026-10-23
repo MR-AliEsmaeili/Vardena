@@ -26,6 +26,7 @@
     "test:watch": "vitest --config ./vitest.config.ts",
     "test:cov": "vitest run --config ./vitest.config.ts --coverage",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "test:worker-health:docker": "python3 test/worker-health.docker.py",
     "test:owner-customer-acceptance": "vitest run --config ./vitest.config.owner-acceptance.ts --no-file-parallelism",
     "test:migration-rehearsal": "node prisma/rehearsal/task-11-configuration-foundation/rehearse.mjs",
     "test:business-date-validity-rehearsal": "node prisma/rehearsal/business-date-validity-windows/rehearse.mjs",
