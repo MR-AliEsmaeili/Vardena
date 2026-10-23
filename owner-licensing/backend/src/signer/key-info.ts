@@ -55,8 +55,7 @@ async function main(): Promise<void> {
 main().catch((error: unknown) => {
   if (error instanceof SignerError) {
     process.stderr.write(
-      "refused\t" + error.code + "\t" + error.message + "
-",
+      "refused\t" + error.code + "\t" + error.message + "\n",
     );
     process.exit(error.exitCode);
   }
