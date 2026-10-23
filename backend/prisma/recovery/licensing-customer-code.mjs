@@ -139,30 +139,22 @@ async function readLedger(client, forUpdate = false) {
       ORDER BY started_at DESC, id DESC${forUpdate ? ' FOR UPDATE' : ''}`,
     [MIGRATION_NAME],
   );
-  // Fail closed on any ambiguous ledger history. We accept:
-  // - 0 rows (fresh database)
-  // - 1 row (any state)
-  // - Multiple rows where exactly one is finished and it is the most recent (rows[0])
-  //   due to ORDER BY started_at DESC, id DESC
+  // Fail closed on any ambiguous ledger history.
+  // Prisma creates exactly one row per migration name. Multiple rows indicate
+  // manual manipulation, a bug, or concurrent execution and must be rejected.
+  //
+  // Valid states:
+  // - 0 rows: fresh database, migration not yet run
+  // - 1 row: any state (pending, applied, failed, rolled-back)
+  //
+  // Invalid states (all rejected):
+  // - Multiple rows: indicates ledger corruption or concurrent writes
   if (result.rows.length > 1) {
-    const finishedRows = result.rows.filter((row) => row.finished_at !== null);
-    const rolledBackRows = result.rows.filter(
-      (row) => row.rolled_back_at !== null,
+    throw new RecoveryError(
+      `Ambiguous ledger history for ${MIGRATION_NAME}: found ${result.rows.length} rows. ` +
+        'Prisma creates exactly one row per migration; multiple rows indicate ' +
+        'manual manipulation or corruption. Stop and inspect the migration ledger.',
     );
-    requireCondition(
-      finishedRows.length <= 1 && rolledBackRows.length <= 1,
-      `Ambiguous ledger history for ${MIGRATION_NAME}: found ${result.rows.length} rows ` +
-        `(finished: ${finishedRows.length}, rolled_back: ${rolledBackRows.length}). ` +
-        `Stop and inspect the migration ledger rather than guessing.`,
-    );
-    // If there is a finished row, it must be the most recent (rows[0] by our ORDER BY)
-    if (finishedRows.length === 1) {
-      requireCondition(
-        finishedRows[0].id === result.rows[0].id,
-        `Ambiguous ledger history for ${MIGRATION_NAME}: finished row is not the most recent. ` +
-          `Stop and inspect the migration ledger.`,
-      );
-    }
   }
   return result.rows[0] ?? null;
 }
