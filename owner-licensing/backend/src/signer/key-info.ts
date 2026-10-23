@@ -38,21 +38,31 @@ async function main(): Promise<void> {
   }
   const publicKey = createPublicKey(privateKey);
   process.stdout.write(
-    JSON.stringify({
-      ok: true,
-      keyId: deriveKeyId(publicKey),
-      publicKeySpkiBase64: publicKey
-        .export({ format: "der", type: "spki" })
-        .toString("base64"),
-    }, null, 2) + "\n",
+    JSON.stringify(
+      {
+        ok: true,
+        keyId: deriveKeyId(publicKey),
+        publicKeySpkiBase64: publicKey
+          .export({ format: "der", type: "spki" })
+          .toString("base64"),
+      },
+      null,
+      2,
+    ) + "\n",
   );
 }
 
 main().catch((error: unknown) => {
   if (error instanceof SignerError) {
-    process.stderr.write("refused\t" + error.code + "\t" + error.message + "\n");
+    process.stderr.write(
+      "refused\t" + error.code + "\t" + error.message + "
+",
+    );
     process.exit(error.exitCode);
   }
-  process.stderr.write("refused\tsigner-failure\tKey inspection failed.\n");
+  process.stderr.write(
+    "refused\tsigner-failure\tKey inspection failed.
+",
+  );
   process.exit(2);
 });
