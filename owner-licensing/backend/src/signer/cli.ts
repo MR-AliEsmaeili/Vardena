@@ -51,7 +51,17 @@ function parse(argv: string[]): Args {
   const values = new Map<string, string>();
   for (let index = 1; index < argv.length; index += 1) {
     const arg = argv[index] as string;
-    if (!arg.startsWith("--")) continue;
+    if (
+      !arg.startsWith("--") ||
+      !["request", "key", "key-id", "out", "state", "digest-file"].includes(
+        arg.slice(2),
+      ) ||
+      values.has(arg.slice(2))
+    )
+      throw new SignerError(
+        "request-malformed",
+        `Unexpected or repeated argument: ${arg}.`,
+      );
     const value = argv[index + 1];
     if (value === undefined || value.startsWith("--"))
       throw new SignerError("request-malformed", `Missing value for ${arg}.`);

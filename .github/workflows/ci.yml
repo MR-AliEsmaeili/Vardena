@@ -177,6 +177,7 @@ jobs:
           npm run typecheck
           npm test
           npm run build
+          npm run build:signer
 
       - name: Owner fresh migrations and PostgreSQL API/security regressions
         working-directory: owner-licensing/backend
@@ -436,6 +437,26 @@ jobs:
       - name: Install Owner API dependencies
         working-directory: owner-licensing/backend
         run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Parse Windows PowerShell 5.1 workbench and check digest/handler structure
+        shell: powershell
+        run: |
+          $file = 'tools/licensing-workbench/Start-VardenaLicensingWorkbench.ps1'
+          $tokens = $null; $errors = $null
+          $ast = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file), [ref]$tokens, [ref]$errors)
+          if ($errors.Count -ne 0) { $errors | Format-List | Out-String | Write-Error; exit 1 }
+          $text = [System.IO.File]::ReadAllText((Resolve-Path $file))
+          $patterns = @($ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.StringConstantExpressionAst] -and $node.Value -eq '^[0-9a-f]{64}$' }, $true))
+          if ($patterns.Count -ne 1) { throw 'Digest validation must use one complete anchored pattern' }
+          $pattern = $patterns[0].Value
+          if (-not ('a' * 64 -cmatch $pattern) -or ('a' * 63 -cmatch $pattern) -or ('A' * 64 -cmatch $pattern)) { throw 'Digest validation accepted wrong length or case' }
+          $functions = @($ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-Sign' }, $true))
+          if ($functions.Count -ne 1) { throw 'Invoke-Sign must be defined exactly once' }
+          if ([regex]::Matches($text, '\.Add_Click\(\{ Invoke-Sign').Count -ne 2) { throw 'Sign button handlers missing or duplicated' }
+
+      - name: Test Owner signer key utilities on Windows
+        working-directory: owner-licensing/backend
+        run: npm run test:signer
 
       - name: Test Owner artifact storage on Windows
         working-directory: owner-licensing/backend
