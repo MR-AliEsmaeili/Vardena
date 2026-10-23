@@ -418,7 +418,7 @@ function DocumentFacts({
         document.reversedByDocumentId !== null) && (
         <section
           aria-label={t.documents.referencesSection}
-          className="space-y-1 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900"
+          className="space-y-1 rounded-lg border border-brand/30 bg-brand-soft p-3 text-sm text-brand-ink"
         >
           {document.reversedByDocumentId !== null && (
             <p>
@@ -466,9 +466,7 @@ function DocumentLines({
 }): ReactElement {
   return (
     <section aria-label={t.documents.linesSection} className="space-y-2">
-      <h2 className="text-sm font-bold text-slate-800">
-        {t.documents.linesSection}
-      </h2>
+      <h2 className="text-sm font-bold text-ink">{t.documents.linesSection}</h2>
       <TableWrapper>
         <Table>
           <TableHead>

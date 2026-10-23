@@ -9,11 +9,7 @@
  * without duplicated direction-specific pages.
  *
  * Design tokens (standards.md §6): every shared component reads SEMANTIC
- * tokens from this block, never a raw palette value. Feature pages may still
- * inherit the palette utilities for one-off typography, but colour decisions
- * that repeat (surface, line, ink, brand, status) live here only. The token
- * values intentionally mirror the palette the product already ships, so this
- * layer is a centralisation, not a redesign of contrast.
+ * tokens from this block, never a raw palette value.
  */
 
 /* Vazirmatn is self-hosted (standards.md §14: a third-party CDN is not a
@@ -55,14 +51,14 @@
     'Vazirmatn', 'IRANSans', 'IRANYekan', 'Segoe UI', 'Tahoma', system-ui,
     sans-serif;
 
-  /* Surfaces */
+  /* Surfaces — light (default) */
   --color-canvas: #f6f7f9;
   --color-surface: #ffffff;
   --color-sunken: #f8fafc;
   --color-line: #e2e8f0;
   --color-line-strong: #cbd5e1;
 
-  /* Text */
+  /* Text — light */
   --color-ink: #0f172a;
   --color-ink-muted: #475569;
   --color-ink-subtle: #64748b;
@@ -100,6 +96,65 @@
 
   /* Layout */
   --spacing-app-header: 3.5rem;
+  --spacing-app-sidebar: 16rem;
+  --spacing-app-sidebar-collapsed: 3.75rem;
+}
+
+/* ──────────────────────────────────────────────────────────
+   Dark theme — applied via html[data-theme="dark"]
+   Only semantic tokens change; every token-based component adapts.
+   ────────────────────────────────────────────────────────── */
+[data-theme='dark'] {
+  --color-canvas: #0b1120;
+  --color-surface: #131c31;
+  --color-sunken: #1b2640;
+  --color-line: #293654;
+  --color-line-strong: #3d4f75;
+
+  --color-ink: #f1f5f9;
+  --color-ink-muted: #cbd5e1;
+  --color-ink-subtle: #94a3b8;
+
+  --color-brand: #6366f1;
+  --color-brand-strong: #818cf8;
+  --color-brand-soft: #1e1b4b;
+  --color-brand-ink: #c7d2fe;
+
+  --color-ok-soft: #052e23;
+  --color-ok-line: #065f46;
+  --color-ok-ink: #6ee7b7;
+  --color-warn-soft: #2e1f00;
+  --color-warn-line: #92400e;
+  --color-warn-ink: #fde68a;
+  --color-danger: #f43f5e;
+  --color-danger-strong: #e11d48;
+  --color-danger-soft: #2f0d18;
+  --color-danger-line: #9f1239;
+  --color-danger-ink: #fecdd3;
+  --color-info-soft: #0c1e3a;
+  --color-info-line: #1e40af;
+  --color-info-ink: #bfdbfe;
+
+  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.28), 0 1px 3px 0 rgb(0 0 0 / 0.36);
+  --shadow-raised: 0 16px 36px -14px rgb(0 0 0 / 0.65);
+}
+
+/* ──────────────────────────────────────────────────────────
+   Three-level font scale — html[data-font-scale]
+   `default` keeps 1rem = 16px so existing rem spacing/typography stays exact;
+   `compact` (14.5px) and `comfortable` (17.5px) scale all rem units cleanly
+   without overflowing dense ERP tables or forms.
+   ────────────────────────────────────────────────────────── */
+[data-font-scale='compact'] {
+  font-size: 14.5px;
+}
+
+[data-font-scale='default'] {
+  font-size: 16px;
+}
+
+[data-font-scale='comfortable'] {
+  font-size: 17.5px;
 }
 
 @layer base {
@@ -167,6 +222,26 @@
 
   .scroll-thin::-webkit-scrollbar-track {
     background-color: transparent;
+  }
+}
+
+/* Clean print layout for operational documents and tables. */
+@media print {
+  [data-testid='app-header'],
+  [data-testid='app-sidebar'],
+  [data-testid='operational-toolbar'],
+  [data-testid='document-list-toolbar'],
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  #main-content {
+    padding: 0 !important;
   }
 }
 

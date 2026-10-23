@@ -154,7 +154,7 @@ export function LicenseRevocationImportForm(): ReactElement {
               key={fileInputKey}
               type="file"
               dir="ltr"
-              className="block w-full cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:text-slate-800 hover:file:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+              className="block w-full cursor-pointer rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink-muted file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:text-slate-800 hover:file:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
               accept={LICENSE_FILE_ACCEPT}
               autoComplete="off"
               aria-required="true"
@@ -162,7 +162,7 @@ export function LicenseRevocationImportForm(): ReactElement {
               onChange={(event) => void onFileChange(event)}
             />
             {fileName !== null && (
-              <p className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+              <p className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
                 {t.license.importSelectedFile}{' '}
                 <span className="code" dir="ltr">
                   {fileName}
@@ -212,7 +212,7 @@ export function LicenseRevocationImportForm(): ReactElement {
                 dir="ltr"
                 spellCheck={false}
                 autoComplete="off"
-                className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs text-slate-900 focus-visible:border-indigo-500 focus-visible:outline-2 focus-visible:outline-indigo-500 aria-[invalid=true]:border-rose-400"
+                className="w-full rounded-md border border-line-strong px-3 py-2 font-mono text-xs text-ink focus-visible:border-indigo-500 focus-visible:outline-2 focus-visible:outline-indigo-500 aria-[invalid=true]:border-rose-400"
                 disabled={mutation.isPending}
                 aria-required="true"
                 {...form.register('document')}
@@ -225,7 +225,7 @@ export function LicenseRevocationImportForm(): ReactElement {
       {/* Support data only: the failure sentence is rendered once, under the
           field, by `FormField` (role="alert" + aria-describedby). */}
       {failure?.correlationId !== undefined && (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-subtle">
           {t.errors.correlationId}:{' '}
           <span className="code" dir="ltr">
             {failure.correlationId}

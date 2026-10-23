@@ -198,7 +198,7 @@ export function DocumentActionDialog({
 
   const numberHint = documentNumber ?? t.app.none;
   const numberLine = (
-    <p className="text-xs text-slate-500">
+    <p className="text-xs text-ink-subtle">
       {t.documents.number}: <span className="code">{numberHint}</span>
     </p>
   );
@@ -263,11 +263,11 @@ export function DocumentActionDialog({
           danger
         >
           <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-slate-700">
+            <span className="text-xs font-medium text-ink-muted">
               {t.documents.reverseReason}
             </span>
             <textarea
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus-visible:border-indigo-500 focus-visible:outline-2 focus-visible:outline-indigo-500 aria-[invalid=true]:border-rose-400"
+              className="w-full rounded-md border border-line-strong px-3 py-2 text-sm text-ink focus-visible:border-indigo-500 focus-visible:outline-2 focus-visible:outline-indigo-500 aria-[invalid=true]:border-rose-400"
               rows={3}
               value={reason}
               aria-invalid={reasonError !== null}
@@ -278,7 +278,7 @@ export function DocumentActionDialog({
               }}
             />
             {reasonError !== null && (
-              <p role="alert" className="text-xs text-rose-700">
+              <p role="alert" className="text-xs text-danger-ink">
                 {reasonError}
               </p>
             )}

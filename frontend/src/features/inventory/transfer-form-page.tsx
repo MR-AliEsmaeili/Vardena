@@ -210,7 +210,7 @@ function TransferForm({
       <TransferFormHeader />
 
       <form
-        className="space-y-4 rounded-lg border border-slate-200 bg-white p-4"
+        className="space-y-4 rounded-lg border border-line bg-surface p-4"
         onSubmit={(event) => {
           void onSubmit(event);
         }}

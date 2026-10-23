@@ -97,7 +97,7 @@ export function movementsColumns(
         return (
           <span className="num">
             {formatQuantity(row.original.quantity)}{' '}
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-ink-subtle">
               {unit?.code ?? row.original.enteredUnitId}
             </span>
           </span>
@@ -114,7 +114,7 @@ export function movementsColumns(
         return (
           <span className="num">
             {formatQuantity(row.original.baseQuantity)}{' '}
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-ink-subtle">
               {unit?.code ?? row.original.baseUnitId}
             </span>
           </span>

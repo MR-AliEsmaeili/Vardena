@@ -18,12 +18,12 @@ import {
  */
 
 function PendingLabel(): ReactElement {
-  return <span className="text-slate-400">…</span>;
+  return <span className="text-ink-subtle">…</span>;
 }
 
 function FallbackIdLabel({ id }: { id: string }): ReactElement {
   return (
-    <span className="code text-xs text-slate-500" title={id}>
+    <span className="code text-xs text-ink-subtle" title={id}>
       {id}
     </span>
   );
@@ -48,7 +48,7 @@ export function AccountLabel({
   return (
     <span>
       <span className="code">{account.code}</span>
-      <span className="text-slate-500"> — {account.title}</span>
+      <span className="text-ink-subtle"> — {account.title}</span>
     </span>
   );
 }
@@ -89,7 +89,7 @@ export function DetailLabel({
     );
   }
   return (
-    <span className="text-xs text-slate-600">
+    <span className="text-xs text-ink-muted">
       <span className="code">{detail.code}</span> — {detail.title}
     </span>
   );
@@ -114,12 +114,12 @@ export function BranchLabel({
   return (
     <span>
       <span className="code">{branch.code}</span>
-      <span className="text-slate-500"> — {branch.name}</span>
+      <span className="text-ink-subtle"> — {branch.name}</span>
     </span>
   );
 }
 
 /** A generic reference row that is absent in the contract (null id). */
 export function NoneLabel(): ReactElement {
-  return <span className="text-slate-400">{t.app.none}</span>;
+  return <span className="text-ink-subtle">{t.app.none}</span>;
 }

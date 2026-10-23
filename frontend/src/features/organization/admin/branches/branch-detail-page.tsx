@@ -114,7 +114,7 @@ export function BranchDetailPage() {
         </Definition>
       </DefinitionList>
 
-      <p className="text-xs text-slate-500">{t.orgAdmin.noDeleteHint}</p>
+      <p className="text-xs text-ink-subtle">{t.orgAdmin.noDeleteHint}</p>
     </div>
   );
 }

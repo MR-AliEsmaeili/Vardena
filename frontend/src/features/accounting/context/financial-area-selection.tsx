@@ -37,7 +37,7 @@ export function FinancialAreaSelection({ invalid }: { invalid: boolean }) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FolderKanban className="h-5 w-5 text-indigo-600" aria-hidden />
+            <FolderKanban className="h-5 w-5 text-brand" aria-hidden />
             {t.financialContext.areaTitle}
           </CardTitle>
           <CardDescription>{t.financialContext.areaBody}</CardDescription>
@@ -56,8 +56,8 @@ export function FinancialAreaSelection({ invalid }: { invalid: boolean }) {
                   className={cn(
                     'flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors',
                     validChosenId === area.id
-                      ? 'border-indigo-500 bg-indigo-50'
-                      : 'border-slate-200 bg-white hover:bg-slate-50',
+                      ? 'border-brand bg-brand-soft'
+                      : 'border-line bg-surface hover:bg-sunken',
                   )}
                 >
                   <input
@@ -68,10 +68,10 @@ export function FinancialAreaSelection({ invalid }: { invalid: boolean }) {
                     onChange={() => setChosenId(area.id)}
                   />
                   <span className="min-w-0">
-                    <span className="block font-medium text-slate-900">
+                    <span className="block font-medium text-ink">
                       {area.title}
                     </span>
-                    <span className="code text-xs text-slate-500">
+                    <span className="code text-xs text-ink-subtle">
                       {area.code}
                     </span>
                   </span>

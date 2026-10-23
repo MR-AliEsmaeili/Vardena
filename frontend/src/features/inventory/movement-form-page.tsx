@@ -464,7 +464,7 @@ function MovementForm({
               </Button>
             </div>
             {recalculateError !== null && (
-              <p role="alert" className="mt-2 text-xs text-rose-700">
+              <p role="alert" className="mt-2 text-xs text-danger-ink">
                 {recalculateError}
               </p>
             )}
@@ -473,7 +473,7 @@ function MovementForm({
       )}
 
       <form
-        className="space-y-4 rounded-lg border border-slate-200 bg-white p-4"
+        className="space-y-4 rounded-lg border border-line bg-surface p-4"
         onSubmit={(event) => {
           void onSubmit(event);
         }}

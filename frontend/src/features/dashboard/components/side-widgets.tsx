@@ -8,18 +8,6 @@ import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { EmptyState } from '@/ui/patterns/states';
 import { formatCount, formatDateTime, formatQuantity } from '@/lib/format';
 
-/**
- * Side widgets (reference right column).
- *
- * - **Workflow bindings**: real `GET /workflow/instances` data, DISPLAY ONLY.
- *   Approve/reject actions are sensitive business operations; the reference's
- *   inline buttons are not reproduced because deciding an approval is a
- *   separate backend capability (POST /workflow/approvals/:id/decide is not
- *   wired to a dashboard surface). The gap is documented, not faked.
- * - **Lowest on-hand inventory**: real balances ordered by the backend's
- *   supported `onHand` field. Availability is not presented as the ranking.
- * - **Fiscal period status**: real periods of the scoped fiscal year.
- */
 export function WorkflowWidget({
   instances,
   isLoading,
@@ -48,7 +36,7 @@ export function WorkflowWidget({
       </CardHeader>
       <div className="px-4 pb-3 pt-2">
         {!isPermitted ? (
-          <p className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-6 text-center text-xs text-slate-500">
+          <p className="rounded-card border border-dashed border-line-strong bg-surface px-6 py-6 text-center text-xs text-ink-subtle">
             {t.dashboard.noPermission}
           </p>
         ) : isLoading ? (
@@ -56,14 +44,14 @@ export function WorkflowWidget({
             {[0, 1, 2].map((index) => (
               <li
                 key={index}
-                className="flex items-center gap-3 py-1 text-sm text-slate-400"
+                className="flex items-center gap-3 py-1 text-sm text-ink-subtle"
               >
                 <span
-                  className="h-8 w-8 animate-pulse rounded-lg bg-slate-200"
+                  className="h-8 w-8 animate-pulse rounded-control bg-sunken"
                   aria-hidden
                 />
                 <span
-                  className="h-3 w-2/3 animate-pulse rounded bg-slate-200"
+                  className="h-3 w-2/3 animate-pulse rounded bg-sunken"
                   aria-hidden
                 />
               </li>
@@ -86,29 +74,29 @@ export function WorkflowWidget({
             {instances.map((instance) => (
               <li
                 key={instance.id}
-                className="flex items-center gap-3 border-b border-slate-100 py-2.5 last:border-b-0"
+                className="flex items-center gap-3 border-b border-line py-2.5 last:border-b-0"
               >
-                <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-indigo-50 text-indigo-600">
+                <span className="grid h-8 w-8 flex-none place-items-center rounded-control bg-brand-soft text-brand">
                   <ClipboardCheck className="h-4 w-4" aria-hidden />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-semibold text-slate-800">
+                  <span className="block truncate text-[0.8125rem] font-semibold text-ink">
                     {instance.entityType}
                   </span>
-                  <span className="mt-0.5 block text-[11px] text-slate-400">
+                  <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
                     <span className="code">{instance.entityId}</span> ·{' '}
                     {formatDateTime(instance.updatedAt)}
                   </span>
                 </div>
                 <ShieldQuestion
-                  className="h-4 w-4 flex-none text-slate-300"
+                  className="h-4 w-4 flex-none text-ink-subtle"
                   aria-hidden
                 />
               </li>
             ))}
           </ul>
         )}
-        <p className="mt-2 text-[11px] leading-5 text-slate-400">
+        <p className="mt-2 text-[0.6875rem] leading-5 text-ink-subtle">
           {t.dashboard.approvalsActionUnavailable}
         </p>
       </div>
@@ -135,13 +123,13 @@ export function InventoryAlertWidget({
         <CardTitle className="text-sm font-bold">
           {t.dashboard.inventoryTitle}
         </CardTitle>
-        <CardDescription className="text-[11px]">
+        <CardDescription className="text-[0.6875rem]">
           {t.dashboard.inventorySubtitle}
         </CardDescription>
       </CardHeader>
       <div className="px-4 pb-3 pt-2">
         {!isPermitted ? (
-          <p className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-6 text-center text-xs text-slate-500">
+          <p className="rounded-card border border-dashed border-line-strong bg-surface px-6 py-6 text-center text-xs text-ink-subtle">
             {t.dashboard.noPermission}
           </p>
         ) : isLoading ? (
@@ -149,7 +137,7 @@ export function InventoryAlertWidget({
             {[0, 1, 2].map((index) => (
               <li
                 key={index}
-                className="h-10 animate-pulse rounded bg-slate-100"
+                className="h-10 animate-pulse rounded bg-sunken"
                 aria-hidden
               />
             ))}
@@ -171,19 +159,19 @@ export function InventoryAlertWidget({
             {balances.map((balance) => (
               <li
                 key={balance.id}
-                className="flex items-center gap-3 border-b border-slate-100 py-2.5 last:border-b-0"
+                className="flex items-center gap-3 border-b border-line py-2.5 last:border-b-0"
                 title={`${t.dashboard.inventoryOnHand}: ${balance.onHand} · ${t.dashboard.inventoryReserved}: ${balance.reserved}`}
               >
-                <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-slate-100 text-slate-500">
+                <span className="grid h-8 w-8 flex-none place-items-center rounded-control bg-sunken text-ink-subtle">
                   <Boxes className="h-4 w-4" aria-hidden />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-semibold text-slate-800">
+                  <span className="block truncate text-[0.8125rem] font-semibold text-ink">
                     <span className="code">{balance.itemId}</span>
                   </span>
-                  <span className="mt-0.5 block text-[11px] text-slate-400">
+                  <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
                     {t.dashboard.inventoryOnHand}:{' '}
-                    <strong className="num text-slate-700">
+                    <strong className="num text-ink-muted">
                       {formatQuantity(balance.onHand)}
                     </strong>
                   </span>
@@ -239,7 +227,7 @@ export function PeriodStatusWidget({
       </CardHeader>
       <div className="px-4 pb-3 pt-2">
         {!isPermitted || scopeMissing ? (
-          <p className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-6 text-center text-xs text-slate-500">
+          <p className="rounded-card border border-dashed border-line-strong bg-surface px-6 py-6 text-center text-xs text-ink-subtle">
             {scopeMissing
               ? t.dashboard.scopeMissingShort
               : t.dashboard.noPermission}
@@ -249,7 +237,7 @@ export function PeriodStatusWidget({
             {[0, 1, 2].map((index) => (
               <div
                 key={index}
-                className="h-8 animate-pulse rounded bg-slate-100"
+                className="h-8 animate-pulse rounded bg-sunken"
                 aria-hidden
               />
             ))}
@@ -273,12 +261,12 @@ export function PeriodStatusWidget({
               return (
                 <li
                   key={period.id}
-                  className="flex items-center gap-3 border-b border-slate-100 py-2 text-[13px] last:border-b-0"
+                  className="flex items-center gap-3 border-b border-line py-2 text-[0.8125rem] last:border-b-0"
                 >
-                  <span className="font-medium text-slate-700">
+                  <span className="font-medium text-ink-muted">
                     {period.title}
                     {period.isCurrent && (
-                      <span className="text-[11px] text-slate-400">
+                      <span className="text-[0.6875rem] text-ink-subtle">
                         {' '}
                         {t.dashboard.periodCurrent}
                       </span>

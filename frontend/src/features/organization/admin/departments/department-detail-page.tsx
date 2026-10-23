@@ -130,10 +130,10 @@ function DepartmentDetailView({
         <Definition label={t.orgAdmin.name}>{department.name}</Definition>
         <Definition label={t.orgAdmin.parentDepartment}>
           {department.parentDepartmentId === null ? (
-            <span className="text-slate-500">{t.orgAdmin.rootDepartment}</span>
+            <span className="text-ink-subtle">{t.orgAdmin.rootDepartment}</span>
           ) : parentQuery.data !== undefined ? (
             <Link
-              className="text-indigo-700 hover:underline"
+              className="text-brand hover:underline"
               to={`/app/organization/departments/${encodeURIComponent(department.parentDepartmentId)}`}
             >
               {parentQuery.data.code} — {parentQuery.data.name}
@@ -157,7 +157,7 @@ function DepartmentDetailView({
         </Definition>
       </DefinitionList>
 
-      <p className="text-xs text-slate-500">{t.orgAdmin.noDeleteHint}</p>
+      <p className="text-xs text-ink-subtle">{t.orgAdmin.noDeleteHint}</p>
     </div>
   );
 }

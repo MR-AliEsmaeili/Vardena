@@ -34,7 +34,7 @@ const columns: ColumnDef<Party, unknown>[] = [
     header: t.orgAdmin.code,
     cell: ({ row }) => (
       <Link
-        className="code font-medium text-indigo-700 hover:underline"
+        className="code font-medium text-brand hover:underline"
         to={`/app/organization/parties/${encodeURIComponent(row.original.id)}`}
       >
         {row.original.code}
@@ -121,7 +121,7 @@ export function PartiesPage() {
         }
         onClear={list.clear}
       >
-        <label className="min-w-40 text-xs text-slate-600">
+        <label className="min-w-40 text-xs text-ink-muted">
           <span>{t.orgAdmin.partyType}</span>
           <Select
             className="mt-1"
@@ -136,7 +136,7 @@ export function PartiesPage() {
             ))}
           </Select>
         </label>
-        <label className="min-w-40 text-xs text-slate-600">
+        <label className="min-w-40 text-xs text-ink-muted">
           <span>{t.orgAdmin.capabilities}</span>
           <Select
             className="mt-1"

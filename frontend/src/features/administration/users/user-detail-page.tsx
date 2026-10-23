@@ -108,7 +108,7 @@ export function UserDetailPage(): ReactElement {
                   {t.usersAdmin.mustChangePasswordYes}
                 </Badge>
               ) : (
-                <span className="text-slate-400">
+                <span className="text-ink-subtle">
                   {t.usersAdmin.mustChangePasswordNo}
                 </span>
               )}
@@ -308,7 +308,7 @@ function PasswordResetCard({ userId }: { userId: string }): ReactElement {
           <div className="space-y-1.5">
             <label
               htmlFor="reset-password-input"
-              className="block text-sm font-medium text-slate-700"
+              className="block text-sm font-medium text-ink-muted"
             >
               {t.usersAdmin.newPassword}
             </label>
@@ -323,7 +323,7 @@ function PasswordResetCard({ userId }: { userId: string }): ReactElement {
               onChange={(event) => setNewPassword(event.target.value)}
             />
             {fieldError !== null && (
-              <p role="alert" className="text-xs text-rose-700">
+              <p role="alert" className="text-xs text-danger-ink">
                 {fieldError}
               </p>
             )}

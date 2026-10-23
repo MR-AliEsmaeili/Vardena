@@ -127,7 +127,7 @@ export function UnitConversionsPage() {
         onApply={() => undefined}
         onClear={list.clear}
       >
-        <label className="min-w-44 text-xs text-slate-600">
+        <label className="min-w-44 text-xs text-ink-muted">
           <span>{t.inventoryMaster.conversionScope}</span>
           <Select
             className="mt-1"
@@ -145,7 +145,7 @@ export function UnitConversionsPage() {
           </Select>
         </label>
         {scope === 'item' && (
-          <label className="min-w-52 text-xs text-slate-600">
+          <label className="min-w-52 text-xs text-ink-muted">
             <span>{t.inventoryMaster.conversionItem}</span>
             <Select
               className="mt-1"
@@ -192,7 +192,7 @@ export function UnitConversionsPage() {
         }}
       />
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ink-subtle">
         {t.inventoryMaster.conversionNoEditNote}
       </p>
     </div>

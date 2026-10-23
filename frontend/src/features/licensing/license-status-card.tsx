@@ -122,11 +122,11 @@ export function LicenseStatusCard(): ReactElement | null {
 
       <CardContent className="space-y-4">
         {state === null || license.status === 'loading' ? (
-          <p className="text-xs text-slate-500">{t.license.checking}</p>
+          <p className="text-xs text-ink-subtle">{t.license.checking}</p>
         ) : (
           <>
             {state.revokedAt !== null && (
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-ink-muted">
                 {t.license.revokedAtLabel}:{' '}
                 <span className="num" dir="ltr">
                   {formatDateTime(state.revokedAt)}
@@ -135,7 +135,7 @@ export function LicenseStatusCard(): ReactElement | null {
             )}
 
             {state.graceEndsAt !== null && (
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-ink-muted">
                 {t.license.graceEndsAtLabel}:{' '}
                 <span className="num" dir="ltr">
                   {formatDateTime(state.graceEndsAt)}
@@ -144,7 +144,7 @@ export function LicenseStatusCard(): ReactElement | null {
             )}
 
             {state.licensed && state.validFrom !== null && (
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-ink-muted">
                 {t.license.statusWindow}:{' '}
                 <span className="num" dir="ltr">
                   {windowLabel(state.validFrom, state.validUntil)}
@@ -161,19 +161,19 @@ export function LicenseStatusCard(): ReactElement | null {
             */}
             {state.coverageEnd !== null &&
               state.coverageEnd !== state.validUntil && (
-                <p className="text-xs text-slate-600">
+                <p className="text-xs text-ink-muted">
                   <span>{t.license.statusCoverageEnd}</span>:{' '}
                   <span className="num" dir="ltr">
                     {formatDateTime(state.coverageEnd)}
                   </span>{' '}
-                  <span className="text-slate-500">
+                  <span className="text-ink-subtle">
                     {t.license.statusCoverageEndHint}
                   </span>
                 </p>
               )}
 
             {scheduled !== null && (
-              <div className="rounded-md border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-xs text-indigo-900">
+              <div className="rounded-md border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-xs text-brand-ink">
                 <p className="font-medium">{t.license.statusScheduled}</p>
                 {/*
                   `effectiveFrom`, not `validFrom`: a renewal is issued early
@@ -199,11 +199,11 @@ export function LicenseStatusCard(): ReactElement | null {
               display-only; the backend re-resolves every rule on import.
             */}
             {state.versions.length > 0 && (
-              <div className="rounded-md border border-slate-100 px-3 py-2 text-xs text-slate-600">
-                <p className="font-medium text-slate-700">
+              <div className="rounded-md border border-line px-3 py-2 text-xs text-ink-muted">
+                <p className="font-medium text-ink-muted">
                   {t.license.statusHistory}
                 </p>
-                <p className="mt-1 text-slate-500">
+                <p className="mt-1 text-ink-subtle">
                   {t.license.statusHistoryHint}
                 </p>
                 <ul className="mt-2 space-y-1">
@@ -230,7 +230,7 @@ export function LicenseStatusCard(): ReactElement | null {
                       <span className="num" dir="ltr">
                         {windowLabel(version.effectiveFrom, version.validUntil)}
                       </span>
-                      <span className="text-slate-500">
+                      <span className="text-ink-subtle">
                         {t.license.statusOperationId}:{' '}
                         <span className="code" dir="ltr">
                           {version.operationId}
@@ -242,8 +242,8 @@ export function LicenseStatusCard(): ReactElement | null {
               </div>
             )}
 
-            <div className="border-t border-slate-100 pt-3">
-              <p className="mb-2 text-xs font-medium text-slate-700">
+            <div className="border-t border-line pt-3">
+              <p className="mb-2 text-xs font-medium text-ink-muted">
                 {t.license.importTitle}
               </p>
               <LicenseImportForm />
@@ -259,11 +259,11 @@ export function LicenseStatusCard(): ReactElement | null {
               that does not exist.
             */}
             {isRevokePermitted && state.inactiveReason !== 'revoked' && (
-              <div className="border-t border-slate-100 pt-3">
-                <p className="mb-1 text-xs font-medium text-slate-700">
+              <div className="border-t border-line pt-3">
+                <p className="mb-1 text-xs font-medium text-ink-muted">
                   {t.license.revocationTitle}
                 </p>
-                <p className="mb-2 text-xs text-slate-500">
+                <p className="mb-2 text-xs text-ink-subtle">
                   {t.license.revocationBody}
                 </p>
                 <LicenseRevocationImportForm />

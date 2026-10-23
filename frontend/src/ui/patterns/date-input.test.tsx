@@ -66,4 +66,66 @@ describe('DateInput', () => {
     expect(field).toHaveValue('');
     expect(field).toHaveAttribute('data-calendar', 'JALALI');
   });
+
+  it('opens the interactive Jalali calendar popover, navigates months, and emits canonical Gregorian day on selection', async () => {
+    const user = userEvent.setup();
+    const onValueChange = vi.fn();
+    render(
+      <DateInput id="day" value="2026-10-08" onValueChange={onValueChange} />,
+    );
+
+    await user.click(screen.getByTestId('jalali-calendar-trigger'));
+    expect(screen.getByTestId('jalali-calendar-popover')).toBeInTheDocument();
+    expect(screen.getByTestId('jalali-calendar-heading')).toHaveTextContent(
+      'مهر ۱۴۰۵',
+    );
+
+    // Navigate to next month (آبان ۱۴۰۵) and select day 10
+    await user.click(screen.getByTestId('jalali-calendar-next-month'));
+    expect(screen.getByTestId('jalali-calendar-heading')).toHaveTextContent(
+      'آبان ۱۴۰۵',
+    );
+
+    await user.click(screen.getByTestId('jalali-day-10'));
+    // 1405-08-10 Jalali === 2026-11-01 Gregorian
+    expect(onValueChange).toHaveBeenLastCalledWith('2026-11-01');
+    expect(
+      screen.queryByTestId('jalali-calendar-popover'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders 30 days in Esfand of a leap Jalali year (1403) and 29 days in a non-leap year (1404), and supports Clear and Escape', async () => {
+    const user = userEvent.setup();
+    const onValueChange = vi.fn();
+    // 1403-12-01 (leap year Esfand) === 2025-02-19
+    const { rerender } = render(
+      <DateInput id="day" value="2025-02-19" onValueChange={onValueChange} />,
+    );
+
+    await user.click(screen.getByTestId('jalali-calendar-trigger'));
+    expect(screen.getByTestId('jalali-calendar-heading')).toHaveTextContent(
+      'اسفند ۱۴۰۳',
+    );
+    expect(screen.getByTestId('jalali-day-30')).toBeInTheDocument();
+
+    // Escape closes the popover cleanly
+    await user.keyboard('{Escape}');
+    expect(
+      screen.queryByTestId('jalali-calendar-popover'),
+    ).not.toBeInTheDocument();
+
+    // 1404-12-01 (non-leap year Esfand) === 2026-02-20
+    rerender(
+      <DateInput id="day" value="2026-02-20" onValueChange={onValueChange} />,
+    );
+    await user.click(screen.getByTestId('jalali-calendar-trigger'));
+    expect(screen.getByTestId('jalali-calendar-heading')).toHaveTextContent(
+      'اسفند ۱۴۰۴',
+    );
+    expect(screen.getByTestId('jalali-day-29')).toBeInTheDocument();
+    expect(screen.queryByTestId('jalali-day-30')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('jalali-calendar-clear'));
+    expect(onValueChange).toHaveBeenLastCalledWith('');
+  });
 });

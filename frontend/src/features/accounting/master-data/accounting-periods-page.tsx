@@ -94,7 +94,7 @@ export function AccountingPeriodsPage() {
         title={t.masterData.periods}
         description={t.masterData.periodsDescription}
       />
-      <p className="text-xs font-medium text-slate-500">
+      <p className="text-xs font-medium text-ink-subtle">
         {t.masterData.contextHint}
       </p>
       <MasterFilters

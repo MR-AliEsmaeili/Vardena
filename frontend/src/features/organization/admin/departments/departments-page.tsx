@@ -25,7 +25,7 @@ const columns: ColumnDef<Department, unknown>[] = [
     header: t.orgAdmin.code,
     cell: ({ row }) => (
       <Link
-        className="code font-medium text-indigo-700 hover:underline"
+        className="code font-medium text-brand hover:underline"
         to={`/app/organization/departments/${encodeURIComponent(row.original.id)}`}
       >
         {row.original.code}
@@ -39,10 +39,10 @@ const columns: ColumnDef<Department, unknown>[] = [
     enableSorting: false,
     cell: ({ row }) =>
       row.original.parentDepartmentId === null ? (
-        <span className="text-slate-500">{t.orgAdmin.rootDepartment}</span>
+        <span className="text-ink-subtle">{t.orgAdmin.rootDepartment}</span>
       ) : (
         <Link
-          className="code text-indigo-700 hover:underline"
+          className="code text-brand hover:underline"
           to={`/app/organization/departments/${encodeURIComponent(row.original.parentDepartmentId)}`}
         >
           {row.original.parentDepartmentId}
@@ -129,7 +129,7 @@ export function DepartmentsPage() {
         }
         onClear={list.clear}
       >
-        <label className="min-w-48 text-xs text-slate-600">
+        <label className="min-w-48 text-xs text-ink-muted">
           <span>{t.orgAdmin.parentDepartment}</span>
           <Select
             className="mt-1"

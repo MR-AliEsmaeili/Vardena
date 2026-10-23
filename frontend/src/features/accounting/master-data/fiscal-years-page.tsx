@@ -60,7 +60,7 @@ export function FiscalYearsPage() {
         title={t.masterData.fiscalYears}
         description={t.masterData.fiscalYearsDescription}
       />
-      <p className="text-xs font-medium text-slate-500">
+      <p className="text-xs font-medium text-ink-subtle">
         {t.masterData.contextHint}
       </p>
       <MasterFilters

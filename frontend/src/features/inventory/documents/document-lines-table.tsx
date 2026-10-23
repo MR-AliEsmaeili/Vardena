@@ -34,7 +34,7 @@ export function DocumentLinesTable({
 
   return (
     <Card className="p-4">
-      <h2 className="mb-3 text-sm font-semibold text-slate-800">
+      <h2 className="mb-3 text-sm font-semibold text-ink">
         {t.inventoryDocuments.lines}
       </h2>
       <TableWrapper>
@@ -81,13 +81,13 @@ export function DocumentLinesTable({
                   </TableCell>
                   <TableCell className="num">
                     {formatQuantity(line.quantity)}{' '}
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-ink-subtle">
                       {unit?.code ?? line.unitId}
                     </span>
                   </TableCell>
                   <TableCell className="num">
                     {formatQuantity(line.baseQuantity)}{' '}
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-ink-subtle">
                       {baseUnit?.code ?? line.baseUnitId}
                     </span>
                   </TableCell>
@@ -125,6 +125,8 @@ function LineMovements({ line }: { line: InventoryDocument['lines'][number] }) {
     );
   }
   return (
-    <span className="text-slate-500">{t.inventoryDocuments.noMovementYet}</span>
+    <span className="text-ink-subtle">
+      {t.inventoryDocuments.noMovementYet}
+    </span>
   );
 }

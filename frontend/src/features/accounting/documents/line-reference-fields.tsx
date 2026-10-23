@@ -77,7 +77,7 @@ export function LineAccountSelect({
         ))}
       </Select>
       {error !== undefined && (
-        <p id={`${id}-error`} role="alert" className="text-xs text-rose-700">
+        <p id={`${id}-error`} role="alert" className="text-xs text-danger-ink">
           {error}
         </p>
       )}
@@ -90,7 +90,7 @@ export function LineAccountSelect({
         aria-label={`${t.documents.lineAccount} — ${t.app.search}`}
         onChange={(event) => setSearch(event.target.value)}
       />
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[0.6875rem] text-ink-subtle">
         {t.documents.postableAccountHint}
       </p>
     </div>
@@ -147,7 +147,7 @@ export function LineDetailSelect({
         ))}
       </Select>
       {error !== undefined && (
-        <p id={`${id}-error`} role="alert" className="text-xs text-rose-700">
+        <p id={`${id}-error`} role="alert" className="text-xs text-danger-ink">
           {error}
         </p>
       )}
@@ -160,7 +160,9 @@ export function LineDetailSelect({
         aria-label={`${t.documents.lineDetail} — ${t.app.search}`}
         onChange={(event) => setSearch(event.target.value)}
       />
-      <p className="text-[11px] text-slate-500">{t.documents.detailHint}</p>
+      <p className="text-[0.6875rem] text-ink-subtle">
+        {t.documents.detailHint}
+      </p>
     </div>
   );
 }

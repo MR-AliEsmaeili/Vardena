@@ -78,6 +78,7 @@ export function DocumentHeaderFields({
           <FormField
             id="document-source-warehouse"
             label={t.inventoryDocuments.sourceWarehouse}
+            required
             error={errors.sourceWarehouseId?.message}
           >
             {(fieldProps) => (
@@ -96,6 +97,7 @@ export function DocumentHeaderFields({
           <FormField
             id="document-destination-warehouse"
             label={t.inventoryDocuments.destinationWarehouse}
+            required
             error={errors.destinationWarehouseId?.message}
           >
             {(fieldProps) => (
@@ -116,6 +118,7 @@ export function DocumentHeaderFields({
         <FormField
           id="document-warehouse"
           label={t.inventoryDocuments.warehouse}
+          required
           error={errors.warehouseId?.message}
         >
           {(fieldProps) => (
@@ -156,12 +159,12 @@ export function DocumentHeaderFields({
       ) : null}
 
       {kind === 'issue' ? (
-        <p className="self-end text-xs text-slate-500">
+        <p className="self-end text-xs text-ink-subtle">
           {t.inventoryDocuments.issueNoCost}
         </p>
       ) : null}
       {kind === 'transfer' ? (
-        <p className="self-end text-xs text-slate-500">
+        <p className="self-end text-xs text-ink-subtle">
           {t.inventoryDocuments.transferNoCost}
         </p>
       ) : null}

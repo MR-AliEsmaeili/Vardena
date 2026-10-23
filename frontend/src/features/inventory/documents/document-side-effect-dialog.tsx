@@ -63,7 +63,7 @@ export function DocumentSideEffectDialog({
       }}
     >
       <fieldset className="space-y-2" data-testid="repricing-choice">
-        <legend className="text-sm font-medium text-slate-800">
+        <legend className="text-sm font-medium text-ink">
           {t.inventoryDocuments.repricingTitle}
         </legend>
         <label className="flex items-center gap-2 text-sm">

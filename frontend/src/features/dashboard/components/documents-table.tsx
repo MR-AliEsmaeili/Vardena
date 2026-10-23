@@ -54,7 +54,7 @@ export function buildDocumentColumns(
       cell: ({ row }) =>
         canOpenDocument ? (
           <Link
-            className="code font-semibold text-indigo-700 hover:underline"
+            className="code font-semibold text-brand hover:underline"
             to={`/app/accounting/documents/${encodeURIComponent(row.original.id)}`}
             title={row.original.documentNumber ?? undefined}
           >
@@ -114,7 +114,7 @@ export function buildDocumentColumns(
       header: t.dashboard.colOrigin,
       enableSorting: false,
       cell: ({ row }) => (
-        <span className="text-xs text-slate-600">
+        <span className="text-xs text-ink-muted">
           {row.original.origin === 'system'
             ? t.dashboard.originSystem
             : t.dashboard.originManual}
@@ -177,7 +177,7 @@ export function DocumentsTable({
         </div>
       </CardHeader>
       {!isPermitted ? (
-        <p className="m-4 rounded-lg border border-dashed border-slate-300 bg-white px-6 py-6 text-center text-xs text-slate-500">
+        <p className="m-4 rounded-card border border-dashed border-line-strong bg-surface px-6 py-6 text-center text-xs text-ink-subtle">
           {t.dashboard.noPermission}
         </p>
       ) : (

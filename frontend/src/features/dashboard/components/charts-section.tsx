@@ -78,7 +78,7 @@ export function ChartsSection({
   if (!isPermitted || scopeMissing) {
     return (
       <div
-        className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-6 text-center text-xs text-slate-500"
+        className="rounded-lg border border-dashed border-line-strong bg-surface px-6 py-6 text-center text-xs text-ink-subtle"
         aria-label={t.dashboard.chartsSectionLabel}
       >
         {scopeMissing ? t.dashboard.scopeMissing : t.dashboard.noPermission}
@@ -162,7 +162,7 @@ export function ChartsSection({
           >
             <Suspense fallback={<ChartSkeleton />}>
               {empty ? (
-                <p className="py-8 text-center text-xs text-slate-500">
+                <p className="py-8 text-center text-xs text-ink-subtle">
                   {t.dashboard.chartEmpty}
                 </p>
               ) : (
@@ -194,7 +194,7 @@ export function ChartsSection({
         >
           <Suspense fallback={<ChartSkeleton />}>
             {empty ? (
-              <p className="py-8 text-center text-xs text-slate-500">
+              <p className="py-8 text-center text-xs text-ink-subtle">
                 {t.dashboard.chartEmpty}
               </p>
             ) : (
@@ -216,7 +216,7 @@ export function ChartsSection({
         >
           <Suspense fallback={<ChartSkeleton />}>
             {empty ? (
-              <p className="py-8 text-center text-xs text-slate-500">
+              <p className="py-8 text-center text-xs text-ink-subtle">
                 {t.dashboard.chartEmpty}
               </p>
             ) : (

@@ -49,7 +49,7 @@ export function buildAccountStatementColumns(
       cell: ({ row }) =>
         canOpenDocument ? (
           <Link
-            className="code font-semibold text-indigo-700 hover:underline"
+            className="code font-semibold text-brand hover:underline"
             to={`/app/accounting/documents/${encodeURIComponent(
               row.original.voucherId,
             )}`}

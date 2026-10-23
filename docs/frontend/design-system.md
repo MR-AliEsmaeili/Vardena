@@ -1,204 +1,157 @@
-# Design System فرانت‌اند Vardena
+# استاندارد طراحی و Design System فرانت‌اند Vardena
 
-**وضعیت:** ACTIVE — مرجع اجرایی لایۀ بصری
-**نسخه:** ۱.۰
-**وابستگی:** `docs/frontend/standards.md` (مرجع حقیقت قواعد) — این سند جزئیات اجرایی همان قواعد را ثبت می‌کند و در تعارض، `standards.md` و سپس ADR مقدم است.
+**وضعیت:** ACTIVE — مرجع اجرایی لایۀ بصری و سیستم طراحی
+**نسخه:** ۲.۰
+**تاریخ به‌روزرسانی:** ۲۰۲۶-۱۰-۲۳
+**وابستگی:** [standards.md](./standards.md) · [ADR-0002](../adr/0002-technology-stack.md) · [ADR-0051](../adr/0051-global-request-loading-system.md) · [ADR-0052](../adr/0052-frontend-modernization-shell-theme-operational-forms.md)
 
-این سند سه چیز را ثابت می‌کند:
-
-1. **کجا** رنگ/فاصله/سایه/تایپوگرافی تعریف می‌شود (فقط `src/styles/index.css`).
-2. **کدام** کامپوننت مشترک برای هر الگوی تکرارشوندۀ محصول وجود دارد (تا صفحۀ جدید فقط ترکیب الگو باشد).
-3. **چگونه** قاعده به‌صورت ماشینی گرفته می‌شود (`scripts/check-frontend-design-tokens.mjs` + CI).
-
----
-
-## ۱) لایۀ توکن — `src/styles/index.css`
-
-تمام تصمیم‌های رنگ در بلوک `@theme` تعریف می‌شوند. هیچ کامپوننتی (نه feature و نه shared) مقدار hex/rgb ندارد؛ گارد CI این را می‌گیرد.
-
-### سطوح (Surfaces)
-
-| توکن                  | مقدار     | کاربرد                                        |
-| --------------------- | --------- | --------------------------------------------- |
-| `--color-canvas`      | `#f6f7f9` | پس‌زمینۀ کل صفحه (بدنۀ اپلیکیشن)              |
-| `--color-surface`     | `#ffffff` | کارت، جدول، هدر، سایدبار                      |
-| `--color-sunken`      | `#f8fafc` | ناحیۀ فرورفته: هدر جدول، hover خنثی، chip کاربر |
-| `--color-line`        | `#e2e8f0` | خط جداکننده و کادر پیش‌فرض                     |
-| `--color-line-strong` | `#cbd5e1` | کادر پرکنتراست (outline button، empty dashed) |
-
-### متن (Ink)
-
-| توکن                | مقدار     | کاربرد                                      |
-| ------------------- | --------- | ------------------------------------------- |
-| `--color-ink`       | `#0f172a` | عنوان و متن اصلی                            |
-| `--color-ink-muted` | `#475569` | متن توضیحی، سلول جدول، برچسب ثانویه         |
-| `--color-ink-subtle`| `#64748b` | متادیتا، placeholder، ستون راهنما           |
-
-### برند
-
-| توکن                | مقدار     | کاربرد                                     |
-| ------------------- | --------- | ------------------------------------------ |
-| `--color-brand`     | `#4f46e5` | دکمۀ اصلی، حالت فعال منو، حلقهٔ فوکوس       |
-| `--color-brand-strong` | `#4338ca` | hover/active دکمۀ اصلی                  |
-| `--color-brand-soft`| `#eef2ff` | پس‌زمینۀ آیتم فعال منو                     |
-| `--color-brand-ink` | `#3730a3` | متن روی `brand-soft`                       |
-
-### وضعیت (Status) — همیشه سه‌گانه
-
-هر وضعیت یک «سطح نرم + خط + متن خوانا» دارد. رنگ تنها حامل معنا نیست؛ متن/آیکون/برچسب هم هست (WCAG 1.4.1).
-
-| معنا     | نرم               | خط                 | متن                |
-| -------- | ----------------- | ------------------- | ------------------ |
-| موفق     | `ok-soft`         | `ok-line`           | `ok-ink`           |
-| هشدار    | `warn-soft`       | `warn-line`         | `warn-ink`         |
-| خطر/خطا  | `danger-soft`     | `danger-line`       | `danger-ink`       |
-| اطلاع    | `info-soft`       | `info-line`         | `info-ink`         |
-| خطر پُر  | `danger`          | `danger-strong`     | — (پس‌زمینه دکمه)  |
-
-`Badge`، `Alert`، `Toast` و نواری‌های وضعیت لایسنس فقط از همین جفت‌ها استفاده می‌کنند؛ بنابراین یک «هشدار» در همۀ محصول یک شکل است.
-
-### شکل و ارتفاع
-
-| توکن               | مقدار    | قاعده                                              |
-| ------------------ | -------- | -------------------------------------------------- |
-| `--radius-control` | `0.5rem` | دکمه، input، select، آیتم منو                      |
-| `--radius-card`    | `0.875rem` | کارت، جدول، نوار فیلتر، بلوک empty                |
-| `--shadow-card`    | سایه ۱–۲px | تنها ارتفاع مجاز برای سطح‌های عادی                |
-| `--shadow-raised`  | سایه ۱۲px  | فقط کارت شناور (لاگین) و اعلان شناور؛ نه هر کارت  |
-
-دو سطح سایه بیشتر نداریم: عمق بصری از **کادر و سطح** می‌آید، نه از سایه‌های تزئینی (اصل ۱: چگالی بر تزئین).
+مستندات مرتبط:
+- [استاندارد Layout و Navigation](./layout-and-navigation.md)
+- [استاندارد فرم‌های عملیاتی](./operational-forms.md)
+- [استاندارد جدول‌ها و فهرست‌ها](./tables-and-lists.md)
+- [استاندارد تاریخ و زمان فرانت‌اند](./date-standard.md)
+- [راهنمای توسعه‌دهندگان فرانت‌اند](./developer-guide.md)
 
 ---
 
-## ۲) تایپوگرافی
+## ۱) اصول بصری و قواعد Design System
 
-- فونت: **Vazirmatn** نسخۀ ۳۳٫۰۰۳، self-host در `public/fonts/` (چهار وزن ۴۰۰/۵۰۰/۶۰۰/۷۰۰). هیچ CDN فونتی در زمان اجرا فراخوانی نمی‌شود (استاندارد §۱۴). مجوز: `frontend/THIRD_PARTY_NOTICES.md`.
-- `line-height` پایه بدنه **۱٫۷۵** است: خط فارسی در ارتفاع لاتین خفه می‌شود و ۱٫۵ برای جدول‌های ۳۰–۴۰ ردیفی خوانا نیست.
-- عنوان‌ها (`h1`–`h3`) `line-height: 1.4` با `text-wrap: balance`.
-- مقیاس واقعی محصول:
-
-| نقش                | کلاس‌ها                                    | نمونه                          |
-| ------------------ | ------------------------------------------ | ------------------------------ |
-| عنوان صفحه         | `text-lg font-semibold` (`PageHeader`)     | «اسناد حسابداری»               |
-| عنوان کارت/بخش     | `text-sm font-semibold`                    | «خلاصه»                        |
-| متن بدنه/جدول      | `text-sm`                                  | سلول‌ها                        |
-| برچسب فیلد/متادیتا | `text-xs font-medium text-ink-muted`       | «انبار»                        |
-| ریزترین متادیتا    | `text-[11px]`                              | عنوان گروه در سایدبار          |
-
-- اعداد: کلاس `.num` (tabular-nums، جهت LTR، تراز انتها) و `.code` برای شناسه‌ها. هیچ عددی با `toLocaleString` محلی فرمت نمی‌شود؛ فرمتر مرکزی `@/lib/format` تنها مسیر است.
-- تاریخ: فقط `@/lib/datetime` و `ui/patterns/date-input.tsx`؛ این لایه در این سند بازتعریف نمی‌شود (ADR-0042، `docs/datetime.md`).
+1. **چگالی بر تزئین (Density over Decoration):** رابط کاربری یک ERP مالی و عملیاتی است؛ فضای صفحه صرف نمایش داده، فرم و جدول می‌شود، نه کارت‌های تزئینی، سایه‌های سنگین یا حاشیه‌های پهن بی‌مورد.
+2. **یک منبع حقیقت برای رنگ و توکن:** تمام تصمیم‌های رنگ، شعاع گوشه، سایه و ابعاد پوسته در `frontend/src/styles/index.css` تعریف می‌شوند. استفاده از مقادیر خام `#hex`، `rgb()` یا `hsl()` در فایل‌های `.ts`/`.tsx` ممنوع است و توسط گارد `scripts/check-frontend-design-tokens.mjs` مسدود می‌شود.
+3. **الگوی واحد برای هر رفتار تکرارشونده:** صفحه‌ها فقط از ترکیب Primitives (`src/ui/*`) و Patterns (`src/ui/patterns/*`) ساخته می‌شوند؛ ایجاد سیستم طراحی موازی یا کامپوننت تکراری در داخل `features/` ممنوع است.
+4. **فارسی و راست‌به‌چپ بومی (Native RTL):** ریشه سند `<html lang="fa" dir="rtl">` است و تمام چیدمان‌ها فقط با ویژگی‌های منطقی CSS/Tailwind (`ms-*`, `me-*`, `ps-*`, `pe-*`, `start-*`, `end-*`, `text-start`, `text-end`, `border-s`, `border-e`) نوشته می‌شوند.
 
 ---
 
-## ۳) کامپوننت‌های پایه — `src/ui/*`
+## ۲) رنگ‌ها و Design Tokenها (تم روشن و تاریک)
 
-| کامپوننت | گونه‌ها (variants) | نکته |
-| -------- | ------------------ | ---- |
-| `Button` | `default` · `outline` · `ghost` · `subtle` · `danger`؛ اندازۀ `sm`/`md`/`icon` | `loading` دکمه را disabled و `aria-busy` می‌کند (ضد ارسال دوباره)؛ `asChild` برای لینک |
-| `Input` | — | `aria-invalid` را از `FormField` می‌گیرد؛ ارتفاع ۹ |
-| `Select` | — | همان قرارداد Input |
-| `Label` | — | متن کوچک، غیرقابل انتخاب |
-| `Card` / `CardHeader` / `CardTitle` / `CardDescription` / `CardContent` | — | سطح `surface` + `border-line` + `radius-card` |
-| `Table` / `TableWrapper` / `TableHeaderCell` / `TableCell` … | — | `TableWrapper` پیمایش افقی و `.scroll-thin` |
-| `Alert` / `AlertTitle` / `AlertBody` | `info` · `success` · `warning` · `danger` · `neutral` | پیام پایدار درون‌صفحه |
-| `Badge` | `neutral` · `info` · `success` · `warning` · `danger` | همیشه با متن، هرگز فقط رنگ |
-| `Skeleton` | — | `aria-hidden`، شکل محتوا را نگه می‌دارد |
+تم فعال روی ریشه سند با صفت `data-theme="light"` یا `data-theme="dark"` و `style.colorScheme` تنظیم می‌شود. کامپوننت‌ها هرگز شرط `isDark ? ... : ...` برای رنگ ندارند؛ فقط توکن معنایی می‌خوانند.
+
+### ۲.۱ سطوح (Surfaces) و خطوط
+
+| توکن | تم روشن (`light`) | تم تاریک (`dark`) | کاربرد |
+| --- | --- | --- | --- |
+| `--color-canvas` | `#f6f7f9` | `#0b1120` | پس‌زمینۀ اصلی محیط کاری |
+| `--color-surface` | `#ffffff` | `#131c31` | کارت، جدول، هدر، سایدبار، دیالوگ |
+| `--color-sunken` | `#f8fafc` | `#1b2640` | هدر جدول، پس‌زمینۀ فیلتر/جست‌وجو، حالت hover خنثی |
+| `--color-line` | `#e2e8f0` | `#293654` | خط جداکننده و کادر پیش‌فرض |
+| `--color-line-strong` | `#cbd5e1` | `#3d4f75` | کادر کنترل‌ها، دکمۀ `outline`، کادر نقطه‌چین Empty |
+
+### ۲.۲ متن (Ink) و برند (Brand)
+
+| توکن | تم روشن (`light`) | تم تاریک (`dark`) | کاربرد |
+| --- | --- | --- | --- |
+| `--color-ink` | `#0f172a` | `#f1f5f9` | عنوان‌ها، اعداد اصلی و متن اولیه |
+| `--color-ink-muted` | `#475569` | `#cbd5e1` | متن توضیحی، سلول‌های جدول و برچسب فیلدها |
+| `--color-ink-subtle` | `#64748b` | `#94a3b8` | متادیتا، راهنما (`hint`) و آیکون‌های خنثی |
+| `--color-brand` | `#4f46e5` | `#6366f1` | دکمۀ اصلی، نوار آیتم فعال، حلقۀ فوکوس |
+| `--color-brand-strong` | `#4338ca` | `#818cf8` | حالت hover/active دکمۀ اصلی |
+| `--color-brand-soft` | `#eef2ff` | `#1e1b4b` | پس‌زمینۀ آیتم فعال منو و ردیف انتخاب‌شده |
+| `--color-brand-ink` | `#3730a3` | `#c7d2fe` | متن خوانا روی `brand-soft` |
+
+### ۲.۳ رنگ‌های وضعیت (Status Triads)
+
+هر وضعیت سه توکن هماهنگ (`soft` پس‌زمینه، `line` کادر، `ink` متن) دارد و هرگز بدون متن یا آیکون همراه به کار نمی‌رود (انطباق با WCAG 1.4.1):
+
+| وضعیت | پس‌زمینه | کادر | متن |
+| --- | --- | --- | --- |
+| موفقیت (`ok`) | `--color-ok-soft` | `--color-ok-line` | `--color-ok-ink` |
+| هشدار (`warn`) | `--color-warn-soft` | `--color-warn-line` | `--color-warn-ink` |
+| خطا / خطر (`danger`) | `--color-danger-soft` | `--color-danger-line` | `--color-danger-ink` (+ `--color-danger` و `--color-danger-strong` برای دکمۀ مخرب) |
+| اطلاع (`info`) | `--color-info-soft` | `--color-info-line` | `--color-info-ink` |
 
 ---
 
-## ۴) الگوها — `src/ui/patterns/*`
+## ۳) تایپوگرافی فارسی و سه سطح اندازه فونت
 
-هر الگو دقیقاً یک مسئولیت دارد و صفحۀ جدید فقط این‌ها را ترکیب می‌کند (اصل ۲).
+- **فونت:** خانوادۀ **Vazirmatn** به‌صورت کاملاً محلی (Self-hosted در `frontend/public/fonts/` در وزن‌های `400`, `500`, `600`, `700` با `font-display: swap`) سرو می‌شود؛ هیچ وابستگی شبکه‌ای به CDN خارجی وجود ندارد.
+- **ارتفاع خط:** بدنه دارای `line-height: 1.75` برای خوانایی حروف فارسی در جدول‌های متراکم و عنوان‌ها دارای `line-height: 1.4` با `text-wrap: balance` هستند.
+- **اعداد و شناسه‌ها:**
+  - `.num`: اعداد مالی و مقداری (`tabular-nums`, `direction: ltr`, `unicode-bidi: isolate`, `text-align: end`).
+  - `.code`: کد حساب، شماره سند، کد کالا و شناسه‌ها (`tabular-nums`, `direction: ltr`, `unicode-bidi: isolate`, `text-align: start`).
+
+### سه سطح اندازه فونت (`data-font-scale`)
+
+اندازه پایه روی `<html>` تنظیم می‌شود و تمام کامپوننت‌ها، فاصله‌ها و کنترل‌ها از واحد نسبی `rem` پیروی می‌کنند تا در هیچ سطحی شکستگی چیدمان یا بیرون‌زدگی متن در فرم‌ها و جدول‌های متراکم رخ ندهد:
+
+| کلید (`FontScale`) | عنوان فارسی | اندازه پایه (`html`) | کاربرد پیشنهادی |
+| --- | --- | --- | --- |
+| `compact` | فشرده | `14.5px` | نمایشگرهای لپ‌تاپ یا اپراتورهایی که بیشترین تعداد ستون و ردیف را می‌خواهند |
+| `default` | معمولی | `16px` | پیش‌فرض استاندارد سامانه (`1rem = 16px`) |
+| `comfortable` | راحت | `17.5px` | نمایشگرهای بزرگ یا افزایش خوانایی در کار طولانی‌مدت |
+
+مدیریت تم و اندازه فونت در `src/lib/appearance.ts` و `AppearanceProvider` انجام می‌شود و در `localStorage` زیر کلید نسخه‌دار `vardena:appearance:v1` ذخیره می‌گردد. اسکریپت اولیۀ درون `index.html` پیش از نخستین رنگ‌آمیزی مرورگر صفت‌های `data-theme` و `data-font-scale` را اعمال می‌کند تا پرش نوری (FOUC) رخ ندهد.
+
+---
+
+## ۴) فاصله‌گذاری، ابعاد کنترل‌ها و Responsive Layout
+
+- **ابعاد کنترل‌ها:**
+  - ارتفاع هدر سراسری: `--spacing-app-header` (`3.5rem` / `h-14`).
+  - عرض سایدبار باز: `--spacing-app-sidebar` (`16rem`).
+  - عرض سایدبار جمع‌شده: `--spacing-app-sidebar-collapsed` (`3.75rem`).
+  - ارتفاع استاندارد کنترل‌های فرم (`Input`, `Select`, `Button md`): `h-9` (`2.25rem`).
+  - ارتفاع کنترل‌های فشرده نوار ابزار و هدر (`Button sm`, فیلترهای سریع): `h-8` (`2rem`).
+  - شعاع گوشه: `--radius-control` (`0.5rem`) برای کنترل‌ها و `--radius-card` (`0.875rem`) برای کارت‌ها و جدول‌ها.
+- **حذف Max-width مصنوعی:** پوسته اصلی (`AppShell`) و میزکار (`DashboardPage`) از تمام عرض Viewport استفاده می‌کنند تا جدول‌های عریض حسابداری و انبار دچار فشردگی مصنوعی نشوند. محدودیت عرض فقط برای صفحات تک‌ستونی تمرکزی مانند فرم ورود (`max-w-md`) مجاز است.
+- **واکنش‌گرایی (Responsive):**
+  - در دسکتاپ (`lg` به بالا): سایدبار چسبان قابل جمع‌شدن به حالت آیکون‌محور، هدر کامل.
+  - در تبلت و موبایل (`< lg`): سایدبار به Drawer کشویی با پس‌زمینۀ نیمه‌شفاف تبدیل می‌شود؛ جست‌وجوی سراسری به‌صورت نوار بازشونده زیر هدر عمل می‌کند؛ جدول‌ها درون `TableWrapper` اسکرول افقی نرم (`.scroll-thin`) دارند.
+
+---
+
+## ۵) کاتالوگ کامپوننت‌های پایه (`src/ui/*`) و الگوها (`src/ui/patterns/*`)
+
+### ۵.۱ Primitives (`src/ui/*`)
+
+| کامپوننت | فایل | توضیح و حالت‌های تعاملی |
+| --- | --- | --- |
+| `Button` | `button.tsx` | گونه‌های `default`, `outline`, `ghost`, `subtle`, `danger`؛ اندازه‌های `sm`, `md`, `icon`؛ پشتیبانی از `loading` (نمایش Thinking Orb + جلوگیری از ارسال مجدد) |
+| `Input` / `Select` / `Label` | `input.tsx`, `select.tsx`, `label.tsx` | کنترل‌های یکپارچه فرم با پشتیبانی از `aria-invalid`, `disabled`, و حلقۀ فوکوس استاندارد |
+| `Dialog` | `dialog.tsx` | دیالوگ مودال دسترس‌پذیر (`<dialog open>`) با حبس فوکوس (Focus Trap)، بستن با `Escape`، قفل اسکرول بدنه و بازگردانی فوکوس |
+| `DropdownMenu` / `DropdownMenuItem` | `dropdown-menu.tsx` | منوی بازشونده با ناوبری کیبورد (`ArrowUp`/`ArrowDown`/`Home`/`End`/`Escape`) و تراز منطقی RTL |
+| `Tooltip` | `tooltip.tsx` | راهنمای شناور در hover و focus کیبورد با پشتیبانی از `side="top" \| "bottom" \| "end"` |
+| `Card` | `card.tsx` | ظرف سطح `surface` با کادر `border-line` و سایۀ ملایم `shadow-card` |
+| `Alert` / `Badge` | `alert.tsx`, `badge.tsx` | نمایش پیام‌ها و برچسب‌های وضعیت با سه‌گانۀ توکن‌های وضعیت |
+| `Table` / `TableWrapper` | `table.tsx` | زیرساخت جدول معنایی با اسکرول افقی و هدر متمایز |
+| `Skeleton` / `ThinkingOrbIndicator` | `skeleton.tsx`, `thinking-orb.tsx` | اسکلت هم‌شکل محتوا و نشانگر فعالیت شبکه |
+
+### ۵.۲ Patterns (`src/ui/patterns/*`)
 
 | الگو | فایل | مسئولیت |
-| ---- | ---- | ------- |
-| `PageHeader` | `page-header.tsx` | تنها `h1` صفحه + `description` + `meta` (کد/وضعیت) + `actions` |
-| `FilterBar` / `FilterField` | `filter-bar.tsx` | نوار فیلتر واحد: گرید ۲–۵ ستونه، ردیف عملیات (اعمال/پاک‌کردن)، `aria-label` روی `form`/`section` |
-| `DataTable` | `data-table.tsx` | گرید سرور-محور با چهار حالت، `aria-sort`, آیکون مرتب‌سازی، `emptyAction` |
-| `Pagination` | `pagination.tsx` | صفحه/اندازه صفحه، وضعیت `fetching` |
-| `FormField` | `form-field.tsx` | اتصال label/کنترل/خطا/راهنما + `aria-required` + ستارۀ الزامی بیرون از متن label |
-| `DefinitionList` / `Definition` | `definition-list.tsx` | خلاصۀ کلید/مقدار صفحه‌های جزئیات (`dl`/`dt`/`dd`) |
-| `LoadingState` / `FullPageLoading` | `states.tsx` | اسکلت هم‌شکل محتوا + Thinking Orb؛ `FullPageLoading` فقط برای bootstrap نشست |
-| `EmptyState` | `states.tsx` | «چیزی برای نمایش نیست» + مسیر بازیابی (`action`) |
-| `ErrorState` | `states.tsx` | خطای پایانی با نقش `alert` و دکمۀ تلاش دوباره |
-| `ApiErrorAlert` | `api-error-alert.tsx` | خطای API: پیام فارسی + `correlationId` + retry |
-| `ConfirmDialog` | `confirm-dialog.tsx` | تأیید عملیات مخرب/برگشت‌ناپذیر با focus trap |
-| `Toast` / `useToast` | `toast.tsx` | بازخورد گذرا با variant وضعیت |
-| `DateInput` | `date-input.tsx` | ورود BusinessDate (Jalali-first، ورودی فارسی/عربی/لاتین) |
-| `request-activity` | `request-activity.tsx` | نشانگرهای فعالیت پس‌زمینه/محلی، بدون overlay |
-
-قاعدۀ انتخاب: اگر همان چیدمان در **دو** feature تکرار شد، به `patterns/` منتقل می‌شود (colocation → shared). در این دور `FilterBar` و `DefinitionList` دقیقاً از همین قاعده زاده شدند.
+| --- | --- | --- |
+| `PageHeader` | `page-header.tsx` | عنوان یکتای `h1` صفحه، توضیح و دکمه‌های عملیات صفحه |
+| `WorkspaceCardGrid` | `workspace-cards.tsx` | کارت‌های حوزه‌ای مینیمال (آیکون بالا، عنوان پایین) با دسته‌بندی مشخص |
+| `DataTable` / `Pagination` | `data-table.tsx`, `pagination.tsx` | جدول سرور-محور با مرتب‌سازی، صفحه‌بندی، انتخاب ردیف و مجازی‌سازی خودکار |
+| `FilterBar` / `FormField` | `filter-bar.tsx`, `form-field.tsx` | نوار فیلتر استاندارد و اتصال برچسب/ستاره الزامی/خطا/راهنما به کنترل |
+| `DateInput` / `JalaliDateInputField` | `date-input.tsx`, `jalali-date-input-field.tsx` | ورودی و تقویم تعاملی شمسی متصل به لایۀ مرکزی تاریخ |
+| `OperationalFormShell` | `operational-form/operational-form-shell.tsx` | پوسته استاندارد فرم عملیاتی: Toolbar، CollapsibleHeader، Detail، Summary و Footer |
+| `DetailGrid` | `operational-form/detail-grid.tsx` | گرید ورود ردیف‌های عملیاتی با ناوبری کیبورد، مجازی‌سازی و Context Menu |
+| `DocumentListToolbar` | `operational-form/document-list-toolbar.tsx` | نوار ابزار فهرست اسناد و ردیف‌ها (جست‌وجو، فیلتر، چاپ، اکسل، بازکردن سند) |
+| `ConfirmDialog` / `Toast` | `confirm-dialog.tsx`, `toast.tsx` | تأیید عملیات حساس و اعلان‌های گذرا |
 
 ---
 
-## ۵) پوسته و ناوبری — `src/app/layouts/app-shell.tsx`
+## ۶) حالت‌های تعاملی و چهار حالت صفحه
 
-- یک پوسته برای همه: هدر چسبان ۳٫۵rem، سایدبار ۱۶rem در دسکتاپ، دراور تمام‌قد در موبایل (بدون صفحۀ موبایل دوم).
-- دراور یک سطح کیبوردی واقعی است: بسته = `invisible` (خارج از layout/focus/a11y tree)، باز = `visible` + قفل اسکرول بدنه + حلقۀ Tab + بستن با `Escape` + بازگشت فوکوس به دکمۀ بازکننده + بستن هنگام کلیک روی لینک.
-- آیتم فعال منو: `bg-brand-soft` + نوار عمودی `brand` + `aria-current="page"`.
-- لینک «رفتن به محتوای اصلی» اولین عنصر قابل فوکوس است و به `#main-content` اشاره می‌کند.
-- حذف عمدی: فیلد جست‌وجوی سراسری وجود ندارد، چون API قرارداد جست‌وجوی سراسری ندارد و کنترلِ بدون عملکرد = قابلیت جعلی.
-
----
-
-## ۶) دسترس‌پذیری — خط پایه (WCAG 2.2 AA تلاش)
-
-| موضوع | پیاده‌سازی |
-| ----- | ---------- |
-| فوکوس | `:focus-visible` سراسری با `outline 2px` توکن `brand` و `offset 2px`؛ هیچ کامپوننتی `outline: none` بدون جانشین ندارد |
-| برچسب | هر کنترل از `FormField` یا `FilterField`؛ آیکون‌ها `aria-hidden` |
-| خطا | پیام زیر همان فیلد، `role="alert"`، `aria-describedby` هینت+خطا، `aria-invalid` |
-| جدول | `aria-sort` (شامل `none`)، هدر مرتب‌سازی دکمه است، `caption` اختیاری برای جدول‌های بدون عنوان |
-| حرکت | بلوک `prefers-reduced-motion: reduce` همۀ انیمیشن/ترنزیشن‌ها را عملاً متوقف می‌کند |
-| مقیاس‌پذیری | ارتفاع‌ها با `rem`، بدون متن داخل تصویر، تراز منطقی (`ms/me/ps/pe/start/end`) |
-| وضعیت | هیچ وضعیتی فقط با رنگ بیان نمی‌شود (برچسب متنی + آیکون) |
-
-پوشش تست: `form-field.test.tsx` (اتصال label، `aria-required`, `aria-describedby`)، `filter-bar.test.tsx` (نام دسترس‌پذیر نوار، disabled‌ها)، `data-table.test.tsx` (`aria-sort`/آیکون/empty)، `app-shell.test.tsx` (Escape، حلقۀ Tab، بازگشت فوکوس، قفل اسکرول).
+1. **Focus / Hover / Active / Disabled:**
+   - `:focus-visible` سراسری با `outline: 2px solid var(--color-brand)` و `outline-offset: 2px` فعال است؛ حذف حلقه فوکوس بدون جایگزین ممنوع است.
+   - کنترل‌های غیرفعال (`disabled` / `aria-disabled`) با کاهش شفافیت کنترل‌شده نمایش داده می‌شوند؛ در عملیات وابسته به مجوز در صفحه جزئیات سند، دلیل عدم دسترسی از طریق `title` و `aria-describedby` توضیح داده می‌شود.
+2. **Loading / Empty / Error / Success:**
+   - **Loading:** اسکلت هم‌شکل محتوا (`LoadingState`) + نشانگر فعالیت شبکه (`ADR-0051`)؛ اسپینر تمام‌صفحه برای بارگذاری بخش‌ها ممنوع است.
+   - **Empty:** تفکیک صریح میان «اولین رکورد هنوز ثبت نشده است» و «نتیجه‌ای مطابق فیلترها یافت نشد».
+   - **Error:** نمایش `ApiErrorAlert` یا `ErrorState` با پیام فارسی نگاشت‌شده از کد خطا (هرگز متن خام انگلیسی سرور)، نمایش `correlationId` و دکمۀ تلاش دوباره.
+   - **Success:** نمایش داده واقعی دریافت‌شده از سرور + اعلان `Toast` پس از تکمیل موفق Mutation.
+3. **کاهش حرکت (`prefers-reduced-motion`):** در صورت فعال‌بودن تنظیم کاهش حرکت سیستم‌عامل، تمام انیمیشن‌ها و ترنزیشن‌ها متوقف می‌شوند.
 
 ---
 
-## ۷) گارد ماشینی
+## ۷) گارد ماشینی CI
+
+فرمان زیر در گام `Frontend design-token guard` از Workflow رسمی CI اجرا می‌شود:
 
 ```bash
 node scripts/check-frontend-design-tokens.mjs
 ```
 
-سه قاعده را می‌گیرد:
-
-1. هیچ hex/rgb/hsl در `src/**/*.ts(x)` نباشد.
-2. لایۀ مشترک (`src/ui/**` و `src/app/**`) فقط توکن معنایی استفاده کند؛ کلاس پالت خام (`text-slate-600`, `bg-rose-50`, …) رد می‌شود.
-3. قرارداد توکن در `src/styles/index.css` کامل باشد (توکن ارجاع‌شده ولی تعریف‌نشده = خطا).
-
-در CI، گام «Frontend design-token guard» پیش از `npm ci` اجرا می‌شود (بدون وابستگی، فقط خواندن).
-
----
-
-## ۸) مسیر مهاجرت باقی‌ماندۀ feature pages
-
-لایۀ مشترک اکنون صد‌درصد توکنی است. صفحه‌های feature هنوز در چند جا از کلاس پالت خام استفاده می‌کنند. مهاجرت **فقط با نگاشت معادل دقیق** مجاز است، چون تغییر مقدار = تغییر کنتراست:
-
-| کلاس فعلی | معادل دقیق | توکن |
-| --------- | ---------- | ---- |
-| `bg-white` | `#ffffff` | `bg-surface` |
-| `bg-slate-50` | `#f8fafc` | `bg-sunken` |
-| `border-slate-200` | `#e2e8f0` | `border-line` |
-| `border-slate-300` | `#cbd5e1` | `border-line-strong` |
-| `text-slate-900` | `#0f172a` | `text-ink` |
-| `text-slate-600` | `#475569` | `text-ink-muted` |
-| `text-slate-500` | `#64748b` | `text-ink-subtle` |
-| `text-indigo-600` | `#4f46e5` | `text-brand` |
-
-نگاشت‌نشدنی‌ها (`text-slate-400`, `text-slate-700`, `indigo-500`, …) **عمداً** تبدیل نشده‌اند؛ برای آن‌ها یا توکن جدید با تصمیم مالک لازم است یا مقدار فعلی حفظ می‌شود. تبدیل کورکورانه، کنتراست را بی‌سروصدا تغییر می‌دهد و مجاز نیست.
-
----
-
-## ۹) چک‌لیست صفحۀ جدید
-
-- [ ] `PageHeader` با عنوان `h1` و `actions` مجاز‌سنجی‌شده
-- [ ] `FilterBar` برای فیلترها؛ وضعیت فیلتر در URL (استاندارد §۵)
-- [ ] `DataTable` با `emptyTitle`/`emptyDescription`/`emptyAction` متناسب با دسترسی
-- [ ] چهار حالت: `LoadingState`، `EmptyState`، `ApiErrorAlert`/`ErrorState`، محتوای موفق
-- [ ] `FormField` برای هر کنترل فرم؛ ستارۀ الزامی + `aria-required`
-- [ ] همۀ متن‌ها از `@/lib/i18n`؛ عدد/تاریخ از `@/lib/format` و `@/lib/datetime`
-- [ ] فقط توکن معنایی (گارد باید سبز باشد)
-- [ ] گیت مجوز (`RequirePermission`) هم‌راستا با مجوز دقیق endpoint
+این گارد عدم وجود مقادیر رنگ خام در کل `src/`، توکنی‌بودن کامل لایۀ مشترک (`src/ui/**` و `src/app/**`) و حضور تمام توکن‌های الزامی در `src/styles/index.css` را تضمین می‌کند.

@@ -23,7 +23,7 @@ const columns: ColumnDef<Branch, unknown>[] = [
     header: t.orgAdmin.code,
     cell: ({ row }) => (
       <Link
-        className="code font-medium text-indigo-700 hover:underline"
+        className="code font-medium text-brand hover:underline"
         to={`/app/organization/branches/${encodeURIComponent(row.original.id)}`}
       >
         {row.original.code}

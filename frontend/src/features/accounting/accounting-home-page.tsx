@@ -1,105 +1,147 @@
-import { ArrowLeft } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { PermissionGate } from '@/features/permissions/permission-gate';
+import {
+  BookOpenCheck,
+  CalendarDays,
+  FolderKanban,
+  List,
+  ListTree,
+  Receipt,
+  Scale,
+  ScrollText,
+  TableProperties,
+  type LucideIcon,
+} from 'lucide-react';
+import { useMemo } from 'react';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
+import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
-import { Button } from '@/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { PageHeader } from '@/ui/patterns/page-header';
+import {
+  WorkspaceCardGrid,
+  type WorkspaceCardGroup,
+} from '@/ui/patterns/workspace-cards';
 
-interface Surface {
+interface AccountingSurface {
   to: string;
-  title: string;
+  label: string;
   description: string;
+  icon: LucideIcon;
   permission: string;
 }
 
-const surfaces: readonly Surface[] = [
+const OPERATIONS_SURFACES: readonly AccountingSurface[] = [
   {
     to: '/app/accounting/documents',
-    title: t.nav.documents,
+    label: t.nav.documents,
     description: t.accounting.documentsDescription,
+    icon: Receipt,
     permission: PERMISSIONS.accounting.documentView,
   },
   {
-    to: '/app/accounting/financial-areas',
-    title: t.masterData.financialAreas,
-    description: t.masterData.financialAreasDescription,
-    permission: PERMISSIONS.accounting.financialAreaView,
+    to: '/app/accounting/document-lines',
+    label: t.nav.accountingDocumentLines,
+    description: t.documentLines.accountingSubtitle,
+    icon: TableProperties,
+    permission: PERMISSIONS.accounting.documentView,
   },
-  {
-    to: '/app/accounting/fiscal-years',
-    title: t.masterData.fiscalYears,
-    description: t.masterData.fiscalYearsDescription,
-    permission: PERMISSIONS.accounting.fiscalYearView,
-  },
-  {
-    to: '/app/accounting/periods',
-    title: t.masterData.periods,
-    description: t.masterData.periodsDescription,
-    permission: PERMISSIONS.accounting.accountingPeriodView,
-  },
-  {
-    to: '/app/accounting/chart',
-    title: t.nav.chartTree,
-    description: t.accounting.chartTreeDescription,
-    permission: PERMISSIONS.accounting.accountView,
-  },
-  {
-    to: '/app/accounting/accounts',
-    title: t.masterData.accounts,
-    description: t.masterData.accountsDescription,
-    permission: PERMISSIONS.accounting.accountView,
-  },
+];
+
+const REPORT_SURFACES: readonly AccountingSurface[] = [
   {
     to: '/app/accounting/account-statements',
-    title: t.nav.accountStatements,
+    label: t.nav.accountStatements,
     description: t.accounting.accountStatementsDescription,
+    icon: ScrollText,
     permission: PERMISSIONS.accounting.accountStatementView,
   },
   {
     to: '/app/accounting/general-ledger',
-    title: t.nav.generalLedger,
+    label: t.nav.generalLedger,
     description: t.accounting.generalLedgerDescription,
+    icon: BookOpenCheck,
     permission: PERMISSIONS.accounting.generalLedgerView,
   },
   {
     to: '/app/accounting/trial-balance',
-    title: t.nav.trialBalance,
+    label: t.nav.trialBalance,
     description: t.accounting.trialBalanceDescription,
+    icon: Scale,
     permission: PERMISSIONS.accounting.trialBalanceView,
   },
 ];
 
-/** Accounting landing page: the read surfaces this session can open. */
+const MASTER_SURFACES: readonly AccountingSurface[] = [
+  {
+    to: '/app/accounting/chart',
+    label: t.nav.chartTree,
+    description: t.accounting.chartTreeDescription,
+    icon: ListTree,
+    permission: PERMISSIONS.accounting.accountView,
+  },
+  {
+    to: '/app/accounting/accounts',
+    label: t.masterData.accounts,
+    description: t.masterData.accountsDescription,
+    icon: List,
+    permission: PERMISSIONS.accounting.accountView,
+  },
+  {
+    to: '/app/accounting/financial-areas',
+    label: t.masterData.financialAreas,
+    description: t.masterData.financialAreasDescription,
+    icon: FolderKanban,
+    permission: PERMISSIONS.accounting.financialAreaView,
+  },
+  {
+    to: '/app/accounting/fiscal-years',
+    label: t.masterData.fiscalYears,
+    description: t.masterData.fiscalYearsDescription,
+    icon: CalendarDays,
+    permission: PERMISSIONS.accounting.fiscalYearView,
+  },
+  {
+    to: '/app/accounting/periods',
+    label: t.masterData.periods,
+    description: t.masterData.periodsDescription,
+    icon: CalendarDays,
+    permission: PERMISSIONS.accounting.accountingPeriodView,
+  },
+];
+
+/** Accounting landing hub: categorized minimal cards gated by exact permissions. */
 export function AccountingHomePage() {
+  const permissions = usePermissions();
+
+  const groups = useMemo<WorkspaceCardGroup[]>(() => {
+    if (!permissions.loaded) return [];
+    const filterPermitted = (list: readonly AccountingSurface[]) =>
+      list.filter((item) => permissions.has(item.permission));
+
+    return [
+      {
+        id: 'operations',
+        label: t.workspace.accountingOperationsGroup,
+        items: filterPermitted(OPERATIONS_SURFACES),
+      },
+      {
+        id: 'reports',
+        label: t.workspace.accountingReportsGroup,
+        items: filterPermitted(REPORT_SURFACES),
+      },
+      {
+        id: 'master',
+        label: t.masterData.title,
+        items: filterPermitted(MASTER_SURFACES),
+      },
+    ].filter((group) => group.items.length > 0);
+  }, [permissions]);
+
   return (
     <div className="space-y-5">
       <PageHeader
         title={t.accounting.title}
         description={t.accounting.subtitle}
       />
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {surfaces.map((surface) => (
-          <PermissionGate key={surface.to} permission={surface.permission}>
-            <Card>
-              <CardHeader>
-                <CardTitle>{surface.title}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-slate-600">{surface.description}</p>
-                <Button asChild variant="outline" size="sm">
-                  <Link to={surface.to}>
-                    {t.home.openSection}
-                    <ArrowLeft className="h-4 w-4" aria-hidden />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          </PermissionGate>
-        ))}
-      </div>
+      <WorkspaceCardGrid groups={groups} />
     </div>
   );
 }

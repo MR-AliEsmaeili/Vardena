@@ -147,7 +147,7 @@ export function WarehouseDetailPage() {
         </Definition>
       </DefinitionList>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ink-subtle">
         {t.inventoryMaster.lifecycle.disableBody}
       </p>
     </div>

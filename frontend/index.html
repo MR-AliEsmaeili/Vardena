@@ -1,10 +1,34 @@
 <!doctype html>
-<html lang="fa" dir="rtl" data-theme="light">
+<html lang="fa" dir="rtl" data-theme="light" data-font-scale="default">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
     <title>وردنا | سامانه یکپارچه</title>
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('vardena:appearance:v1');
+          if (!raw) return;
+          var p = JSON.parse(raw);
+          if (p && (p.theme === 'light' || p.theme === 'dark')) {
+            document.documentElement.setAttribute('data-theme', p.theme);
+            document.documentElement.style.colorScheme = p.theme;
+          }
+          if (
+            p &&
+            (p.fontScale === 'compact' ||
+              p.fontScale === 'default' ||
+              p.fontScale === 'comfortable')
+          ) {
+            document.documentElement.setAttribute(
+              'data-font-scale',
+              p.fontScale,
+            );
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

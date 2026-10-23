@@ -50,7 +50,7 @@ export function ChartTreeNodeRow({
     <li>
       <div
         className={cn(
-          'flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-slate-50',
+          'flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-sunken',
           !node.isActive && 'opacity-60',
         )}
         style={{ paddingInlineStart: `${depth * 1.25 + 0.5}rem` }}
@@ -58,7 +58,7 @@ export function ChartTreeNodeRow({
         {hasChildren ? (
           <button
             type="button"
-            className="flex h-6 w-6 items-center justify-center rounded text-slate-500 hover:bg-slate-200"
+            className="flex h-6 w-6 items-center justify-center rounded text-ink-subtle hover:bg-slate-200"
             aria-expanded={isExpanded}
             aria-label={
               isExpanded ? t.chartTree.collapseAll : t.chartTree.expandAll
@@ -75,12 +75,10 @@ export function ChartTreeNodeRow({
           <span className="h-6 w-6" aria-hidden />
         )}
 
-        <span className="code w-32 shrink-0 font-medium text-slate-700">
+        <span className="code w-32 shrink-0 font-medium text-ink-muted">
           {node.code}
         </span>
-        <span className="min-w-0 flex-1 truncate text-slate-900">
-          {node.title}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-ink">{node.title}</span>
 
         <span className="hidden shrink-0 items-center gap-1.5 sm:flex">
           <Badge variant="neutral">

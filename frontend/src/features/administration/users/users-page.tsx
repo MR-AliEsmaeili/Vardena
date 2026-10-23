@@ -23,7 +23,7 @@ const columns: ColumnDef<AdminUser, unknown>[] = [
     header: t.usersAdmin.username,
     cell: ({ row }) => (
       <Link
-        className="code font-medium text-indigo-700 hover:underline"
+        className="code font-medium text-brand hover:underline"
         to={`/app/admin/users/${encodeURIComponent(row.original.id)}`}
       >
         <span dir="ltr">{row.original.username}</span>
@@ -49,7 +49,7 @@ const columns: ColumnDef<AdminUser, unknown>[] = [
       row.original.mustChangePassword ? (
         <Badge variant="warning">{t.usersAdmin.mustChangePasswordYes}</Badge>
       ) : (
-        <span className="text-slate-400">
+        <span className="text-ink-subtle">
           {t.usersAdmin.mustChangePasswordNo}
         </span>
       ),

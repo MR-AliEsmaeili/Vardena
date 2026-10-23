@@ -147,7 +147,7 @@ function buildValuationColumns(
             {t.inventory.staleNoticeRecalculate}
           </Button>
         ) : (
-          <span className="text-slate-400">{t.inventory.noValue}</span>
+          <span className="text-ink-subtle">{t.inventory.noValue}</span>
         ),
     });
   }
@@ -393,7 +393,7 @@ function ValuationStateStatusBadge({
     <span className="inline-flex items-center gap-1">
       <Badge variant={variant}>{valuationStateStatusLabel(state.status)}</Badge>
       {state.status === 'stale' && state.staleSince !== null && (
-        <span className="text-xs text-slate-500" title={state.staleSince}>
+        <span className="text-xs text-ink-subtle" title={state.staleSince}>
           {t.inventory.staleSince} {formatDateTimeWithZone(state.staleSince)}
         </span>
       )}
