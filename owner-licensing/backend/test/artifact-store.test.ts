@@ -135,6 +135,20 @@ describe("write-once semantics", () => {
     expect(await readFile(target, "utf8")).toBe("pre-existing");
   });
 
+  it("fails closed without overwriting a configured root that is a regular file", async () => {
+    const fileRoot = path.join(root, "not-a-directory");
+    await writeFile(fileRoot, "sentinel");
+    const invalidStore = new LicenseArtifactStore(fileRoot);
+    const key = licenseArtifactStoreKey("licenses", ulid());
+
+    await expect(
+      invalidStore.writeOnce(key, Buffer.from("signed-artifact", "utf8")),
+    ).rejects.toThrow();
+    expect(await readFile(fileRoot, "utf8")).toBe("sentinel");
+    expect(await invalidStore.exists(key)).toBe(false);
+    expect(await invalidStore.listKeys()).toEqual([]);
+  });
+
   it("reports a missing artifact instead of inventing one", async () => {
     const key = licenseArtifactStoreKey("licenses", ulid());
     await expect(store.read(key)).rejects.toThrow(/ENOENT/);

@@ -186,6 +186,70 @@ describe("Owner deny-by-default policy and input boundary", () => {
   });
 });
 
+describe("signed-artifact storage configuration (OD-LIC-10)", () => {
+  const baseEnv = {
+    OWNER_DATABASE_URL: "postgresql://owner",
+    OWNER_PUBLIC_ORIGIN: "http://owner",
+  };
+  const filesystemRoot = path.parse(process.cwd()).root;
+  const artifactDir = path.join(
+    filesystemRoot,
+    "var",
+    "lib",
+    "vardena-owner",
+    "license-artifacts",
+  );
+  const auditDir = path.join(
+    filesystemRoot,
+    "var",
+    "lib",
+    "vardena-owner",
+    "audit-archive",
+  );
+
+  it("leaves storage unavailable only when the exact setting is omitted or blank", () => {
+    // The HTTP 503/no-write behavior for this state is pinned by the CI-only
+    // lifecycle suite; this fast test pins the environment-to-config boundary.
+    expect(config(baseEnv).artifactDir).toBeUndefined();
+    expect(
+      config({ ...baseEnv, OWNER_LICENSE_ARTIFACT_DIR: "   " }).artifactDir,
+    ).toBeUndefined();
+  });
+
+  it("accepts and normalizes a dedicated absolute artifact directory", () => {
+    const configured = config({
+      ...baseEnv,
+      OWNER_LICENSE_ARTIFACT_DIR: `  ${artifactDir}  `,
+      OWNER_AUDIT_ARCHIVE_DIR: auditDir,
+    });
+    expect(configured.artifactDir).toBe(artifactDir);
+    expect(configured.archiveDir).toBe(auditDir);
+  });
+
+  it("rejects relative, NUL-containing and filesystem-root paths", () => {
+    for (const value of ["relative/artifacts", `${artifactDir}\0child`]) {
+      expect(() =>
+        config({ ...baseEnv, OWNER_LICENSE_ARTIFACT_DIR: value }),
+      ).toThrow(/OWNER_LICENSE_ARTIFACT_DIR must be an absolute path/);
+    }
+    expect(() =>
+      config({ ...baseEnv, OWNER_LICENSE_ARTIFACT_DIR: filesystemRoot }),
+    ).toThrow(/OWNER_LICENSE_ARTIFACT_DIR must not be the filesystem root/);
+  });
+
+  it("refuses to combine signed artifacts with the audit archive root", () => {
+    expect(() =>
+      config({
+        ...baseEnv,
+        OWNER_LICENSE_ARTIFACT_DIR: auditDir,
+        OWNER_AUDIT_ARCHIVE_DIR: auditDir,
+      }),
+    ).toThrow(
+      /OWNER_LICENSE_ARTIFACT_DIR must not share the audit archive root/,
+    );
+  });
+});
+
 describe("Customer field allowlist for the two-role model", () => {
   it("returns only allowlisted customer fields for Owner Admin and License Operator and denies unknown/superseded roles", () => {
     const row = {
