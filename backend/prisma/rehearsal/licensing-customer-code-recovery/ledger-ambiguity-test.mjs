@@ -104,9 +104,9 @@ async function testMultipleFailedRows() {
       const now = new Date();
       await client.query(
         `
-        INSERT INTO public._prisma_migrations 
+        INSERT INTO public._prisma_migrations
         (id, migration_name, checksum, finished_at, rolled_back_at, applied_steps_count, logs, started_at)
-        VALUES 
+        VALUES
         ('ledger1', '20261020000000_licensing_customer_code', 'd6759751a460f067f87f0c38c2b09a24ae1046e99ff55b9ecf33243f889981ae', null, null, 0, 'first failure', $1),
         ('ledger2', '20261020000000_licensing_customer_code', 'd6759751a460f067f87f0c38c2b09a24ae1046e99ff55b9ecf33243f889981ae', null, null, 0, 'second failure', $2)
       `,
@@ -155,9 +155,9 @@ async function testMultipleAppliedRows() {
       const now = new Date();
       await client.query(
         `
-        INSERT INTO public._prisma_migrations 
+        INSERT INTO public._prisma_migrations
         (id, migration_name, checksum, finished_at, rolled_back_at, applied_steps_count, logs, started_at)
-        VALUES 
+        VALUES
         ('ledger1', '20261020000000_licensing_customer_code', 'd6759751a460f067f87f0c38c2b09a24ae1046e99ff55b9ecf33243f889981ae', $1, null, 1, 'first applied', $2),
         ('ledger2', '20261020000000_licensing_customer_code', 'd6759751a460f067f87f0c38c2b09a24ae1046e99ff55b9ecf33243f889981ae', $3, null, 1, 'second applied', $4)
       `,
@@ -210,9 +210,9 @@ async function testMixedStates() {
       const now = new Date();
       await client.query(
         `
-        INSERT INTO public._prisma_migrations 
+        INSERT INTO public._prisma_migrations
         (id, migration_name, checksum, finished_at, rolled_back_at, applied_steps_count, logs, started_at)
-        VALUES 
+        VALUES
         ('ledger1', '20261020000000_licensing_customer_code', 'd6759751a460f067f87f0c38c2b09a24ae1046e99ff55b9ecf33243f889981ae', $1, null, 1, 'applied', $2),
         ('ledger2', '20261020000000_licensing_customer_code', 'd6759751a460f067f87f0c38c2b09a24ae1046e99ff55b9ecf33243f889981ae', null, $3, 0, 'rolled back', $4)
       `,
@@ -238,6 +238,60 @@ async function testMixedStates() {
       const message = String(error);
       assert.match(message, /Ambiguous ledger history/);
       log('  ✅ Correctly rejected mixed applied and rolled-back rows');
+    }
+
+    await dropDatabase(name);
+    log('  ✅ Test passed');
+  } catch (error) {
+    await dropDatabase(name).catch(() => {});
+    log(`  ❌ Test failed: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Test: Single row with both finished_at and rolled_back_at set (inconsistent state)
+ * Expected: REJECTED (inconsistent timestamps indicate corruption)
+ */
+async function testInconsistentTimestamps() {
+  const name = `vardena_l06_inconsistent_timestamps_${SUFFIX}`;
+  log('\n=== Test: Single row with inconsistent timestamps ===');
+
+  try {
+    await createDatabase(name);
+    await withClient(name, async (client) => {
+      await setupSchema(client);
+
+      const now = new Date();
+      // Insert a row with BOTH finished_at and rolled_back_at set - this is inconsistent
+      await client.query(
+        `
+        INSERT INTO public._prisma_migrations
+        (id, migration_name, checksum, finished_at, rolled_back_at, applied_steps_count, logs, started_at)
+        VALUES
+        ('ledger1', '20261020000000_licensing_customer_code', 'd6759751a460f067f87f0c38c2b09a24ae1046e99ff55b9ecf33243f889981ae', $1, $2, 1, 'inconsistent state', $3)
+      `,
+        [
+          now.toISOString(),
+          new Date(now.getTime() - 1000).toISOString(),
+          new Date(now.getTime() - 2000).toISOString(),
+        ],
+      );
+
+      await client.query(`
+        INSERT INTO licensing.customers (id, customer_code, display_name)
+        VALUES ('01TESTCUST0000000000007', null, 'Test Customer')
+      `);
+    });
+
+    const databaseUrl = buildDatabaseUrl(name);
+    try {
+      await runCustomerCodeRecovery({ databaseUrl });
+      assert.fail('Should have rejected inconsistent timestamps');
+    } catch (error) {
+      const message = String(error);
+      assert.match(message, /Inconsistent ledger row/);
+      log('  ✅ Correctly rejected inconsistent timestamps');
     }
 
     await dropDatabase(name);
@@ -293,9 +347,9 @@ async function testSingleFailedRow() {
       await setupSchema(client);
 
       await client.query(`
-        INSERT INTO public._prisma_migrations 
+        INSERT INTO public._prisma_migrations
         (id, migration_name, checksum, finished_at, rolled_back_at, applied_steps_count, logs, started_at)
-        VALUES 
+        VALUES
         ('ledger1', '20261020000000_licensing_customer_code', 'd6759751a460f067f87f0c38c2b09a24ae1046e99ff55b9ecf33243f889981ae', null, null, 0, 'validation failed', CURRENT_TIMESTAMP)
       `);
 
@@ -334,9 +388,9 @@ async function testSingleAppliedRow() {
       await setupSchema(client);
 
       await client.query(`
-        INSERT INTO public._prisma_migrations 
+        INSERT INTO public._prisma_migrations
         (id, migration_name, checksum, finished_at, rolled_back_at, applied_steps_count, logs, started_at)
-        VALUES 
+        VALUES
         ('ledger1', '20261020000000_licensing_customer_code', 'd6759751a460f067f87f0c38c2b09a24ae1046e99ff55b9ecf33243f889981ae', CURRENT_TIMESTAMP, null, 1, 'applied', CURRENT_TIMESTAMP)
       `);
 
@@ -375,9 +429,9 @@ async function testSingleRolledBackRow() {
       await setupSchema(client);
 
       await client.query(`
-        INSERT INTO public._prisma_migrations 
+        INSERT INTO public._prisma_migrations
         (id, migration_name, checksum, finished_at, rolled_back_at, applied_steps_count, logs, started_at)
-        VALUES 
+        VALUES
         ('ledger1', '20261020000000_licensing_customer_code', 'd6759751a460f067f87f0c38c2b09a24ae1046e99ff55b9ecf33243f889981ae', null, CURRENT_TIMESTAMP, 0, 'rolled back', CURRENT_TIMESTAMP)
       `);
 
@@ -409,6 +463,7 @@ async function main() {
     await testMultipleFailedRows();
     await testMultipleAppliedRows();
     await testMixedStates();
+    await testInconsistentTimestamps();
     await testZeroRows();
     await testSingleFailedRow();
     await testSingleAppliedRow();

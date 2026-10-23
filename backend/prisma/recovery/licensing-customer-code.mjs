@@ -161,6 +161,13 @@ async function readLedger(client, forUpdate = false) {
 
 function ledgerState(row) {
   if (row === null) return 'pending';
+  // Fail closed: both finished_at and rolled_back_at set is inconsistent
+  if (row.finished_at !== null && row.rolled_back_at !== null) {
+    throw new RecoveryError(
+      `Inconsistent ledger row for ${MIGRATION_NAME}: both finished_at and rolled_back_at are set. ` +
+        'This indicates manual corruption; stop and inspect the migration ledger.',
+    );
+  }
   if (row.finished_at !== null) return 'applied';
   if (row.rolled_back_at !== null) return 'rolled-back';
   return 'failed';
