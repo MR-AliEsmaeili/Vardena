@@ -102,8 +102,7 @@ describe("offline signer key utility CLIs", () => {
         privatePath,
         privateKey
           .export({ format: "der", type: "pkcs8" })
-          .toString("base64") + "
-",
+          .toString("base64") + "\n",
         { mode: 0o600 },
       );
       chmodSync(privatePath, 0o600);
