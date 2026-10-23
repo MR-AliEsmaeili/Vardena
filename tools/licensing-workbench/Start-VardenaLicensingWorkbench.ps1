@@ -12,6 +12,7 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $backend = Join-Path $repoRoot 'owner-licensing\backend'
 $signerCli = Join-Path $backend 'dist-signer\signer\cli.js'
 $keygenCli = Join-Path $backend 'dist-signer\signer\keygen.js'
+$keyInfoCli = Join-Path $backend 'dist-signer\signer\key-info.js'
 $nl = [Environment]::NewLine
 
 function Show-Info([string]$Message) {
@@ -115,11 +116,12 @@ $keyId = New-Object System.Windows.Forms.TextBox; $keyId.Dock = 'Fill'
 $btnBrowse = New-Object System.Windows.Forms.Button; $btnBrowse.Text = 'انتخاب پوشه'; $btnBrowse.Dock = 'Fill'
 $btnBuild = New-Object System.Windows.Forms.Button; $btnBuild.Text = 'ساخت ابزار امضا'; $btnBuild.Dock = 'Fill'
 $btnGenerate = New-Object System.Windows.Forms.Button; $btnGenerate.Text = 'ساخت کلید جدید'; $btnGenerate.Dock = 'Fill'
+$btnInspect = New-Object System.Windows.Forms.Button; $btnInspect.Text = 'شناسایی کلید موجود'; $btnInspect.Dock = 'Fill'
 $sg.Controls.Add($keyDir,0,0); $sg.Controls.Add($btnBrowse,1,0)
 $sg.Controls.Add((New-Object System.Windows.Forms.Label -Property @{Text='مسیر پوشه کلید'; Dock='Fill'; TextAlign='MiddleRight'}),2,0)
 $sg.Controls.Add($keyId,0,1)
 $sg.Controls.Add((New-Object System.Windows.Forms.Label -Property @{Text='شناسه کلید (Key ID)'; Dock='Fill'; TextAlign='MiddleRight'}),2,1)
-$sg.Controls.Add($btnBuild,0,2); $sg.Controls.Add($btnGenerate,1,2)
+$sg.Controls.Add($btnBuild,0,2); $sg.Controls.Add($btnGenerate,1,2); $sg.Controls.Add($btnInspect,2,2)
 
 $sign = New-Object System.Windows.Forms.GroupBox
 $sign.Text = '۲) امضای درخواست مجوز یا ابطال'; $sign.Dock = 'Fill'; $sign.Padding = New-Object System.Windows.Forms.Padding(8)
@@ -167,6 +169,17 @@ $btnBuild.Add_Click({
       if ($code -ne 0) { throw ('ساخت ابزار شکست خورد: ' + $code) }
     } finally { Pop-Location }
     Show-Info 'ساخت ابزار امضا موفق بود.'
+  } catch { Show-Error $_.Exception.Message }
+})
+$btnInspect.Add_Click({
+  try {
+    $keyPath = Join-Path $keyDir.Text 'key.pkcs8'
+    if (-not (Test-Path -LiteralPath $keyPath -PathType Leaf)) { throw 'در پوشه انتخاب‌شده فایل key.pkcs8 وجود ندارد.' }
+    $resultText = Invoke-Node $keyInfoCli @('--key', $keyPath)
+    $result = $resultText | ConvertFrom-Json
+    $keyId.Text = $result.keyId
+    $outputBox.AppendText('شناسه کلید از کلید خصوصی استخراج شد؛ محتوای کلید نمایش داده نشد.' + $nl)
+    Show-Info ('شناسه کلید: ' + $result.keyId + $nl + 'برای استفاده در صدور، بررسی کن همین شناسه در Owner ثبت و کلید عمومی آن در runtime مشتری مورد اعتماد باشد.')
   } catch { Show-Error $_.Exception.Message }
 })
 $btnGenerate.Add_Click({
