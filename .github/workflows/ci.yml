@@ -220,6 +220,12 @@ jobs:
           BOOTSTRAP_SYSTEM_ADMIN_PASSWORD: vardena_ci_bootstrap_password
         run: npm run bootstrap:system-admin
 
+      # Reuse the production image already built above and the migrated CI DB.
+      # Only test-owned containers/networks are removed; no DB volume cleanup.
+      - name: Production Compose API and worker health regression
+        working-directory: backend
+        run: npm run test:worker-health:docker -- --postgres-container '${{ job.services.postgres.id }}'
+
       - name: Required Owner-to-customer dual-PostgreSQL acceptance
         env:
           OWNER_ACCEPTANCE_DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_owner_acceptance
