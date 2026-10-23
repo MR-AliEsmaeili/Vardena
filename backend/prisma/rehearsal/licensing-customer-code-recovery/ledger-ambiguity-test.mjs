@@ -11,15 +11,12 @@
 
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { mkdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { runCustomerCodeRecovery } from '../../recovery/licensing-customer-code.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const BACKEND = join(HERE, '..', '..', '..');
 const ADMIN_URL =
   process.env.VARDENA_REHEARSAL_ADMIN_URL ??
   'postgresql://vardena:vardena_test_password@127.0.0.1:5432/postgres';
@@ -28,9 +25,6 @@ if (!['localhost', '127.0.0.1', '::1'].includes(ADMIN_HOST)) {
   throw new Error('Ledger ambiguity tests are local-only.');
 }
 const SUFFIX = `${process.pid}_${randomBytes(5).toString('hex')}`;
-const KEEP = process.env.KEEP === '1';
-
-let temporaryDirectory;
 
 function log(message) {
   process.stdout.write(`${message}\n`);
