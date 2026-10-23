@@ -163,7 +163,19 @@ export function IssuanceCard({ issuance }: { issuance: Issuance }) {
           ) : null}
         </div>
       ) : issuance.status === 'REQUEST_PREPARED' ? (
-        <p className="text-sm text-secondary">{o.licenses.waitingSignature}</p>
+        <div className="space-y-2">
+          <p className="text-sm text-secondary">
+            {o.licenses.waitingSignature}
+          </p>
+          <PreparedPanel
+            targetId={issuance.id}
+            operationId={issuance.operationId}
+            digests={{
+              payload: issuance.requestPayloadSha256,
+              binding: issuance.requestBindingSha256,
+            }}
+          />
+        </div>
       ) : null}
     </li>
   );

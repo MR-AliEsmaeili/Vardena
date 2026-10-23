@@ -527,4 +527,262 @@ describe('Owner license issuance page', () => {
       signingKeyId: key.id,
     });
   });
+
+  it('shows the prepared panel with digests, download and import for an existing REQUEST_PREPARED issuance', async () => {
+    vi.mocked(identity.getEffectivePermissions).mockResolvedValue({
+      permissions: ['licenses.view', 'licenses.import', 'licenses.download'],
+    });
+    vi.mocked(lic.issuances).mockResolvedValue({
+      items: [prepared],
+      page: 1,
+      pageSize: 50,
+    });
+    mount();
+    expect(
+      await screen.findByText(o.licenses.waitingSignature),
+    ).toBeInTheDocument();
+    expect(screen.getByText(o.licenses.preparedTitle)).toBeInTheDocument();
+    expect(screen.getByText(payloadDigest)).toBeInTheDocument();
+    expect(screen.getByText(bindingDigest)).toBeInTheDocument();
+    expect(screen.getByText(o.licenses.digestWarning)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: o.licenses.downloadRequest }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(o.licenses.importLabel)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(new RegExp(prepared.operationId)).length,
+    ).toBeGreaterThanOrEqual(1);
+    // The existing operation is reused: no new issuance preparation is triggered.
+    expect(lic.prepareIssuance).not.toHaveBeenCalled();
+  });
+
+  it('imports the signed artifact for the existing operation and shows success without creating a new operation', async () => {
+    vi.mocked(identity.getEffectivePermissions).mockResolvedValue({
+      permissions: ['licenses.view', 'licenses.import', 'licenses.download'],
+    });
+    vi.mocked(lic.issuances).mockResolvedValue({
+      items: [prepared],
+      page: 1,
+      pageSize: 50,
+    });
+    vi.mocked(lic.importIssuanceArtifact).mockResolvedValue({
+      issuance: { ...prepared, status: 'SIGNED_RECORDED' } as never,
+      replayed: false,
+      historicalResult: false,
+    });
+    mount();
+    await screen.findByText(o.licenses.preparedTitle);
+    const input = screen.getByLabelText(o.licenses.importLabel);
+    const fileContent = JSON.stringify({
+      format: 'vardena-license',
+      document: 'VLIC2.test.sig',
+    });
+    fireEvent.change(input, {
+      target: {
+        files: [
+          new File(
+            [fileContent],
+            'vardena-license-01M5R3EQ8VSABVK18YEVGSEYBC.json',
+            {
+              type: 'application/json',
+            },
+          ),
+        ],
+      },
+    });
+    expect(
+      await screen.findByText(o.licenses.importSuccess),
+    ).toBeInTheDocument();
+    expect(lic.importIssuanceArtifact).toHaveBeenCalledWith(
+      prepared.id,
+      fileContent,
+    );
+    expect(lic.importIssuanceArtifact).toHaveBeenCalledTimes(1);
+    expect(lic.prepareIssuance).not.toHaveBeenCalled();
+    // Download remains available for the original request, not a new one.
+    vi.mocked(lic.issuanceRequest).mockResolvedValue({
+      fileName: 'vardena-license-signing-request.json',
+      fileContent: '{"format":"vardena-license-request"}',
+      requestPayloadSha256: payloadDigest,
+      requestBindingSha256: bindingDigest,
+    });
+    await userEvent.click(
+      screen.getByRole('button', { name: o.licenses.downloadRequest }),
+    );
+    await waitFor(() =>
+      expect(lic.issuanceRequest).toHaveBeenCalledWith(prepared.id),
+    );
+    expect(lic.saveBlob).toHaveBeenCalled();
+  });
+
+  it('shows server validation and binding errors on import and does not claim success on file selection', async () => {
+    vi.mocked(identity.getEffectivePermissions).mockResolvedValue({
+      permissions: ['licenses.view', 'licenses.import'],
+    });
+    vi.mocked(lic.issuances).mockResolvedValue({
+      items: [prepared],
+      page: 1,
+      pageSize: 50,
+    });
+    const { ApiError } = await import('@/api/errors');
+    vi.mocked(lic.importIssuanceArtifact).mockRejectedValue(
+      new ApiError({
+        code: 'ArtifactBindingMismatch',
+        message: 'Artifact binding mismatch',
+        status: 409,
+      }),
+    );
+    mount();
+    await screen.findByText(o.licenses.preparedTitle);
+    const input = screen.getByLabelText(o.licenses.importLabel);
+    fireEvent.change(input, {
+      target: {
+        files: [
+          new File(
+            ['{"format":"vardena-license","document":"VLIC2.bad"}'],
+            'bad.json',
+            {
+              type: 'application/json',
+            },
+          ),
+        ],
+      },
+    });
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBeTruthy();
+    expect(
+      screen.queryByText(o.licenses.importSuccess),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(o.licenses.importReplayed),
+    ).not.toBeInTheDocument();
+    // A single file selection never creates a new operation.
+    expect(lic.prepareIssuance).not.toHaveBeenCalled();
+
+    // A second distinct server error (invalid signature) is also surfaced verbatim.
+    vi.mocked(lic.importIssuanceArtifact).mockRejectedValue(
+      new ApiError({
+        code: 'BusinessRuleViolation',
+        message: 'Invalid signature',
+        status: 400,
+      }),
+    );
+    fireEvent.change(input, {
+      target: {
+        files: [
+          new File(
+            ['{"format":"vardena-license","document":"VLIC2.invalid"}'],
+            'invalid.json',
+            {
+              type: 'application/json',
+            },
+          ),
+        ],
+      },
+    });
+    const secondAlert = await screen.findByRole('alert');
+    expect(secondAlert.textContent).toBeTruthy();
+    expect(
+      screen.queryByText(o.licenses.importSuccess),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the replayed message for a duplicate import and does not write a second fact', async () => {
+    vi.mocked(identity.getEffectivePermissions).mockResolvedValue({
+      permissions: ['licenses.view', 'licenses.import'],
+    });
+    vi.mocked(lic.issuances).mockResolvedValue({
+      items: [prepared],
+      page: 1,
+      pageSize: 50,
+    });
+    vi.mocked(lic.importIssuanceArtifact).mockResolvedValue({
+      issuance: { ...prepared, status: 'SIGNED_RECORDED' } as never,
+      replayed: true,
+      historicalResult: true,
+    });
+    mount();
+    await screen.findByText(o.licenses.preparedTitle);
+    const input = screen.getByLabelText(o.licenses.importLabel);
+    fireEvent.change(input, {
+      target: {
+        files: [
+          new File(
+            ['{"format":"vardena-license","document":"VLIC2.test.sig"}'],
+            'vardena-license-01M5R3EQ8VSABVK18YEVGSEYBC.json',
+            {
+              type: 'application/json',
+            },
+          ),
+        ],
+      },
+    });
+    expect(
+      await screen.findByText(o.licenses.importReplayed),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(o.licenses.importSuccess),
+    ).not.toBeInTheDocument();
+    expect(lic.importIssuanceArtifact).toHaveBeenCalledWith(
+      prepared.id,
+      expect.any(String),
+    );
+  });
+
+  it('refetches and shows SIGNED_RECORDED after a successful import of the existing operation', async () => {
+    vi.mocked(identity.getEffectivePermissions).mockResolvedValue({
+      permissions: ['licenses.view', 'licenses.import', 'licenses.download'],
+    });
+    const signed = {
+      ...prepared,
+      status: 'SIGNED_RECORDED' as const,
+      signedAt: '2026-10-20T10:05:00.000Z',
+      importedAt: '2026-10-20T10:06:00.000Z',
+      artifactSha256: 'c'.repeat(64),
+      artifactAvailable: true,
+      signedArtifactProduced: true,
+    };
+    let callCount = 0;
+    vi.mocked(lic.issuances).mockImplementation(async () => {
+      callCount += 1;
+      if (callCount === 1) return { items: [prepared], page: 1, pageSize: 50 };
+      return { items: [signed], page: 1, pageSize: 50 };
+    });
+    vi.mocked(lic.importIssuanceArtifact).mockResolvedValue({
+      issuance: signed as never,
+      replayed: false,
+      historicalResult: false,
+    });
+    mount();
+    await screen.findByText(o.licenses.preparedTitle);
+    const input = screen.getByLabelText(o.licenses.importLabel);
+    fireEvent.change(input, {
+      target: {
+        files: [
+          new File(
+            ['{"format":"vardena-license","document":"VLIC2.test.sig"}'],
+            'signed.json',
+            {
+              type: 'application/json',
+            },
+          ),
+        ],
+      },
+    });
+    // The import triggers invalidation; the re-fetched issuance is shown as signed.
+    // The success message is transient because the panel unmounts on status change,
+    // so we assert the final server-confirmed state directly.
+    await waitFor(() =>
+      expect(lic.importIssuanceArtifact).toHaveBeenCalledTimes(1),
+    );
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(2));
+    expect(
+      await screen.findByText(o.licenses.downloadSigned),
+    ).toBeInTheDocument();
+    expect(screen.getByText(o.licenses.statusSigned)).toBeInTheDocument();
+    expect(
+      screen.queryByText(o.licenses.waitingSignature),
+    ).not.toBeInTheDocument();
+    expect(lic.prepareIssuance).not.toHaveBeenCalled();
+  });
 });
