@@ -1,7 +1,9 @@
 import {
   chmod,
+  link as fsLink,
   mkdir,
   mkdtemp,
+  open as fsOpen,
   readFile,
   readdir,
   rm,
@@ -30,6 +32,12 @@ import {
 
 let root: string;
 let store: LicenseArtifactStore;
+
+function errno(code: string): NodeJS.ErrnoException {
+  return Object.assign(new Error(`${code}: injected filesystem failure`), {
+    code,
+  });
+}
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), "vardena-owner-artifacts-"));
@@ -91,15 +99,18 @@ describe("artifact store configuration", () => {
 });
 
 describe("write-once semantics", () => {
-  it("stores the exact bytes readable at 0444 with no temporary file left behind", async () => {
+  it("stores exact bytes at a nested key with no temporary file left behind", async () => {
     const bytes = Buffer.from('{"document":"VLIC2.x.y"}', "utf8");
     const key = licenseArtifactStoreKey("licenses", ulid());
     const target = await store.writeOnce(key, bytes);
 
     expect(await readFile(target)).toEqual(bytes);
-    expect((await stat(target)).mode & 0o777).toBe(0o444);
     const directory = path.dirname(target);
-    expect((await stat(directory)).mode & 0o777).toBe(0o700);
+    if (process.platform !== "win32") {
+      // Windows uses ACLs plus a read-only attribute, not POSIX mode semantics.
+      expect((await stat(target)).mode & 0o777).toBe(0o444);
+      expect((await stat(directory)).mode & 0o777).toBe(0o700);
+    }
     expect(await readdir(directory)).toEqual([path.basename(target)]);
     expect(await store.exists(key)).toBe(true);
   });
@@ -120,6 +131,9 @@ describe("write-once semantics", () => {
     expect((await store.read(key)).toString("utf8")).toBe(
       bytes.toString("utf8"),
     );
+    expect(await readdir(path.dirname(path.join(root, key)))).toEqual([
+      path.basename(key),
+    ]);
   });
 
   it("fails closed when a foreign object already occupies the key", async () => {
@@ -168,6 +182,247 @@ describe("write-once semantics", () => {
     await chmod(target, 0o644);
     await writeFile(target, "tampered");
     expect(sha256Bytes(await store.read(key))).not.toBe(recorded);
+  });
+});
+
+describe("platform directory synchronization and failure cleanup", () => {
+  it("tolerates Windows directory-sync EPERM only after file sync and atomic publication", async () => {
+    const events: string[] = [];
+    let directorySyncCalls = 0;
+    const windowsStore = new LicenseArtifactStore(
+      root,
+      {
+        chmod: (async (
+          targetPath: Parameters<typeof chmod>[0],
+          mode: Parameters<typeof chmod>[1],
+        ) => {
+          expect(mode).toBe(0o444);
+          events.push("chmod");
+          return chmod(targetPath, mode);
+        }) as typeof chmod,
+        open: (async (
+          targetPath: Parameters<typeof fsOpen>[0],
+          flags: any,
+          mode?: any,
+        ) => {
+          const handle = await fsOpen(targetPath, flags, mode);
+          const sync = handle.sync.bind(handle);
+          handle.sync = async () => {
+            if (flags === "r") {
+              directorySyncCalls += 1;
+              events.push("directory-sync");
+              throw errno("EPERM");
+            }
+            events.push("file-sync");
+            return sync();
+          };
+          return handle;
+        }) as typeof fsOpen,
+        link: (async (
+          existingPath: Parameters<typeof fsLink>[0],
+          newPath: Parameters<typeof fsLink>[1],
+        ) => {
+          // Publication must never move ahead of regular-file synchronization.
+          expect(events).toEqual(["file-sync"]);
+          events.push("publish");
+          return fsLink(existingPath, newPath);
+        }) as typeof fsLink,
+      },
+      "win32",
+    );
+    const key = licenseArtifactStoreKey("licenses", ulid());
+    const bytes = Buffer.from("windows-directory-eperm", "utf8");
+
+    const target = await windowsStore.writeOnce(key, bytes);
+
+    expect(directorySyncCalls).toBe(1);
+    expect(events).toEqual(["file-sync", "publish", "chmod", "directory-sync"]);
+    expect(await windowsStore.read(key)).toEqual(bytes);
+    expect(await readdir(path.dirname(target))).toEqual([
+      path.basename(target),
+    ]);
+  });
+
+  it("does not swallow unrelated Windows directory synchronization errors", async () => {
+    for (const code of ["EIO", "EACCES", "EBADF"]) {
+      let fileSyncCalls = 0;
+      const windowsStore = new LicenseArtifactStore(
+        root,
+        {
+          open: (async (
+            targetPath: Parameters<typeof fsOpen>[0],
+            flags: any,
+            mode?: any,
+          ) => {
+            const handle = await fsOpen(targetPath, flags, mode);
+            if (flags === "r") {
+              handle.sync = async () => {
+                throw errno(code);
+              };
+            } else {
+              const sync = handle.sync.bind(handle);
+              handle.sync = async () => {
+                fileSyncCalls += 1;
+                return sync();
+              };
+            }
+            return handle;
+          }) as typeof fsOpen,
+        },
+        "win32",
+      );
+      const key = licenseArtifactStoreKey("licenses", ulid());
+
+      await expect(
+        windowsStore.writeOnce(key, Buffer.from(code, "utf8")),
+      ).rejects.toMatchObject({ code });
+      expect(fileSyncCalls).toBe(1);
+      const directory = path.dirname(path.join(root, key));
+      expect(
+        (await readdir(directory)).filter((file) => file.startsWith(".tmp-")),
+      ).toEqual([]);
+    }
+  });
+
+  it("does not apply the Windows exception to directory open or regular-file sync", async () => {
+    const openFailureStore = new LicenseArtifactStore(
+      root,
+      {
+        open: (async (
+          targetPath: Parameters<typeof fsOpen>[0],
+          flags: any,
+          mode?: any,
+        ) => {
+          if (flags === "r") throw errno("EPERM");
+          return fsOpen(targetPath, flags, mode);
+        }) as typeof fsOpen,
+      },
+      "win32",
+    );
+    const openFailureKey = licenseArtifactStoreKey("licenses", ulid());
+    await expect(
+      openFailureStore.writeOnce(openFailureKey, Buffer.from("open-failure")),
+    ).rejects.toMatchObject({ code: "EPERM" });
+
+    let directoryOpenCalls = 0;
+    let closeCalls = 0;
+    const fileFailureStore = new LicenseArtifactStore(
+      root,
+      {
+        open: (async (
+          targetPath: Parameters<typeof fsOpen>[0],
+          flags: any,
+          mode?: any,
+        ) => {
+          const handle = await fsOpen(targetPath, flags, mode);
+          const close = handle.close.bind(handle);
+          handle.close = async () => {
+            closeCalls += 1;
+            return close();
+          };
+          if (flags === "r") {
+            directoryOpenCalls += 1;
+          } else {
+            handle.sync = async () => {
+              throw errno("EPERM");
+            };
+          }
+          return handle;
+        }) as typeof fsOpen,
+      },
+      "win32",
+    );
+    const fileFailureKey = licenseArtifactStoreKey("revocations", ulid());
+    await expect(
+      fileFailureStore.writeOnce(fileFailureKey, Buffer.from("file-failure")),
+    ).rejects.toMatchObject({ code: "EPERM" });
+
+    expect(directoryOpenCalls).toBe(0);
+    expect(closeCalls).toBe(1);
+    expect(await fileFailureStore.exists(fileFailureKey)).toBe(false);
+    expect(
+      await readdir(path.dirname(path.join(root, fileFailureKey))),
+    ).toEqual([]);
+  });
+
+  it("retains POSIX directory sync and propagates unexpected failures", async () => {
+    for (const code of ["EIO", "EPERM", "EACCES"]) {
+      let fileSyncCalls = 0;
+      let directorySyncCalls = 0;
+      const posixStore = new LicenseArtifactStore(
+        root,
+        {
+          open: (async (
+            targetPath: Parameters<typeof fsOpen>[0],
+            flags: any,
+            mode?: any,
+          ) => {
+            const handle = await fsOpen(targetPath, flags, mode);
+            const sync = handle.sync.bind(handle);
+            handle.sync = async () => {
+              if (flags === "r") {
+                directorySyncCalls += 1;
+                throw errno(code);
+              }
+              fileSyncCalls += 1;
+              return sync();
+            };
+            return handle;
+          }) as typeof fsOpen,
+        },
+        "linux",
+      );
+      const key = licenseArtifactStoreKey("revocations", ulid());
+
+      await expect(
+        posixStore.writeOnce(key, Buffer.from(code, "utf8")),
+      ).rejects.toMatchObject({ code });
+      expect(fileSyncCalls).toBe(1);
+      expect(directorySyncCalls).toBe(1);
+      const directory = path.dirname(path.join(root, key));
+      expect(
+        (await readdir(directory)).filter((file) => file.startsWith(".tmp-")),
+      ).toEqual([]);
+    }
+  });
+
+  it("fails read-back verification without leaking handles or temporary files", async () => {
+    const key = licenseArtifactStoreKey("licenses", ulid());
+    const target = path.join(root, key);
+    const bytes = Buffer.from("bytes-that-must-be-verified", "utf8");
+    let closeCalls = 0;
+    const verifyingStore = new LicenseArtifactStore(root, {
+      open: (async (
+        targetPath: Parameters<typeof fsOpen>[0],
+        flags: any,
+        mode?: any,
+      ) => {
+        const handle = await fsOpen(targetPath, flags, mode);
+        const close = handle.close.bind(handle);
+        handle.close = async () => {
+          closeCalls += 1;
+          return close();
+        };
+        return handle;
+      }) as typeof fsOpen,
+      readFile: (async (targetPath: Parameters<typeof readFile>[0]) => {
+        if (targetPath === target) return Buffer.from("different-read-back");
+        return readFile(targetPath);
+      }) as typeof readFile,
+    });
+
+    await expect(verifyingStore.writeOnce(key, bytes)).rejects.toThrow(
+      /Artifact read-back verification failed/,
+    );
+
+    // The published write-once file is not overwritten or silently accepted;
+    // reconciliation can classify it after the failed registration. Both the
+    // regular-file and directory handles are closed and the temporary name is gone.
+    expect(await readFile(target)).toEqual(bytes);
+    expect(closeCalls).toBe(2);
+    expect(await readdir(path.dirname(target))).toEqual([
+      path.basename(target),
+    ]);
   });
 });
 

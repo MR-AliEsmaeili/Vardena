@@ -22,7 +22,9 @@ import { createHash } from "node:crypto";
  * It is deliberately NOT claimed to be transactional with PostgreSQL. Callers
  * stage a row, write and fsync the file, verify it by reading it back, and only
  * then commit the settled state; `reconcile()` reports and repairs the states a
- * crash can leave behind.
+ * crash can leave behind. POSIX directory entries are synchronized where the
+ * filesystem supports it. Windows directory synchronization has the narrower
+ * guarantee documented in `syncDirectory`; it is not claimed to be equivalent.
  */
 
 const STORE_KEY_PATTERN =
@@ -42,10 +44,39 @@ export function sha256Bytes(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+/** Filesystem seam used by the platform and failure-path regression tests. */
+export interface FilesystemArtifactStoreOps {
+  chmod: typeof chmod;
+  link: typeof link;
+  mkdir: typeof mkdir;
+  open: typeof open;
+  readFile: typeof readFile;
+  readdir: typeof readdir;
+  stat: typeof stat;
+  unlink: typeof unlink;
+}
+
+const defaultFilesystemArtifactStoreOps: FilesystemArtifactStoreOps = {
+  chmod,
+  link,
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  stat,
+  unlink,
+};
+
 export class LicenseArtifactStore {
   readonly rootDir: string;
+  private readonly fs: FilesystemArtifactStoreOps;
+  private readonly platform: NodeJS.Platform;
 
-  constructor(rootDir: string) {
+  constructor(
+    rootDir: string,
+    fsOps: Partial<FilesystemArtifactStoreOps> = {},
+    platform: NodeJS.Platform = process.platform,
+  ) {
     if (
       typeof rootDir !== "string" ||
       rootDir.trim().length === 0 ||
@@ -63,6 +94,8 @@ export class LicenseArtifactStore {
       );
     }
     this.rootDir = resolved;
+    this.fs = { ...defaultFilesystemArtifactStoreOps, ...fsOps };
+    this.platform = platform;
   }
 
   private resolveKey(storeKey: string): string {
@@ -77,6 +110,33 @@ export class LicenseArtifactStore {
     return target;
   }
 
+  private async syncDirectory(dir: string): Promise<void> {
+    const directory = await this.fs.open(dir, "r");
+    try {
+      await directory.sync();
+    } catch (error) {
+      const code = (error as { code?: unknown } | null)?.code;
+      // Node.js on Windows can open a directory but rejects fsync on that
+      // handle with EPERM. Tolerate exactly that operation/platform/code: the
+      // regular file is still fsynced, publication is still atomic and
+      // read-back is still mandatory. This does NOT claim POSIX-equivalent
+      // directory-entry crash durability on Windows. Directory open errors,
+      // regular-file sync errors, and every other directory error propagate.
+      const unsupportedOnWindows =
+        this.platform === "win32" && code === "EPERM";
+      // Preserve the existing handling for filesystems which explicitly report
+      // that directory-descriptor synchronization is unsupported.
+      const unsupported =
+        code === "EINVAL" ||
+        code === "ENOTSUP" ||
+        code === "EISDIR" ||
+        unsupportedOnWindows;
+      if (!unsupported) throw error;
+    } finally {
+      await directory.close();
+    }
+  }
+
   /**
    * Write the exact bytes once. An existing file is accepted only when its
    * bytes are identical; a different payload under the same key fails closed.
@@ -84,57 +144,59 @@ export class LicenseArtifactStore {
   async writeOnce(storeKey: string, bytes: Buffer): Promise<string> {
     const target = this.resolveKey(storeKey);
     const dir = path.dirname(target);
-    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await this.fs.mkdir(dir, { recursive: true, mode: 0o700 });
     const temporary = path.join(
       dir,
       `.tmp-${path.basename(target)}-${process.pid}-${Date.now()}`,
     );
     let handle: Awaited<ReturnType<typeof open>> | undefined;
+    let temporaryRemoved = false;
     try {
-      handle = await open(temporary, "wx", 0o600);
+      handle = await this.fs.open(temporary, "wx", 0o600);
       await handle.writeFile(bytes);
+      // Regular-file synchronization is mandatory on every platform. In
+      // particular, Windows directory EPERM handling never reaches this call.
       await handle.sync();
       await handle.close();
       handle = undefined;
       try {
-        await link(temporary, target);
+        // A hard link publishes the already-synced bytes atomically and never
+        // overwrites an existing target on supported Windows or POSIX filesystems.
+        await this.fs.link(temporary, target);
       } catch (error) {
         if ((error as { code?: string }).code !== "EEXIST") throw error;
-        const existing = await readFile(target);
+        const existing = await this.fs.readFile(target);
         if (!existing.equals(bytes)) {
           throw new Error(
             "A different artifact already occupies this store key.",
           );
         }
       }
-      await chmod(target, 0o444);
-      const directory = await open(dir, "r");
-      try {
-        await directory.sync();
-      } catch (error) {
-        // Some filesystems refuse directory fsync; the file itself is synced.
-        const code = (error as { code?: string }).code;
-        if (code !== "EINVAL" && code !== "ENOTSUP" && code !== "EISDIR") {
-          throw error;
-        }
-      } finally {
-        await directory.close();
-      }
+      // Remove the temporary name before making the shared file read-only.
+      // Windows refuses to delete a read-only hard link; POSIX directory sync
+      // below still covers both the publication and this name removal.
+      await this.fs.unlink(temporary);
+      temporaryRemoved = true;
+      await this.fs.chmod(target, 0o444);
+      await this.syncDirectory(dir);
     } finally {
       if (handle) {
         try {
           await handle.close();
         } catch {
-          // ignore
+          // Preserve the original write/sync failure.
         }
       }
-      try {
-        await unlink(temporary);
-      } catch {
-        // already linked or never created
+      if (!temporaryRemoved) {
+        try {
+          await this.fs.unlink(temporary);
+        } catch {
+          // Already unlinked, never created, or cleanup failed while another
+          // error is propagating. Temporary names are never listed as artifacts.
+        }
       }
     }
-    const stored = await readFile(target);
+    const stored = await this.fs.readFile(target);
     if (!stored.equals(bytes)) {
       throw new Error("Artifact read-back verification failed.");
     }
@@ -142,12 +204,12 @@ export class LicenseArtifactStore {
   }
 
   async read(storeKey: string): Promise<Buffer> {
-    return readFile(this.resolveKey(storeKey));
+    return this.fs.readFile(this.resolveKey(storeKey));
   }
 
   async exists(storeKey: string): Promise<boolean> {
     try {
-      const info = await stat(this.resolveKey(storeKey));
+      const info = await this.fs.stat(this.resolveKey(storeKey));
       return info.isFile();
     } catch {
       return false;
@@ -157,7 +219,7 @@ export class LicenseArtifactStore {
   /** Test/recovery helper: delete a file that no database row references. */
   async remove(storeKey: string): Promise<void> {
     try {
-      await unlink(this.resolveKey(storeKey));
+      await this.fs.unlink(this.resolveKey(storeKey));
     } catch (error) {
       if ((error as { code?: string }).code !== "ENOENT") throw error;
     }
@@ -170,7 +232,7 @@ export class LicenseArtifactStore {
       const kindDir = path.join(this.rootDir, kind);
       let prefixes: string[];
       try {
-        prefixes = await readdir(kindDir);
+        prefixes = await this.fs.readdir(kindDir);
       } catch {
         continue;
       }
@@ -178,9 +240,9 @@ export class LicenseArtifactStore {
         const prefixDir = path.join(kindDir, prefix);
         let files: string[];
         try {
-          const info = await stat(prefixDir);
+          const info = await this.fs.stat(prefixDir);
           if (!info.isDirectory()) continue;
-          files = await readdir(prefixDir);
+          files = await this.fs.readdir(prefixDir);
         } catch {
           continue;
         }

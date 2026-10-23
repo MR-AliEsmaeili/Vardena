@@ -46,9 +46,20 @@ PostgreSQL and the filesystem archive are **two stores, not one transaction**.
 Registration is deliberately staged (`archiveArtifact`):
 
 1. insert `owner.license_artifacts` as `PENDING`,
-2. write the exact bytes once, fsync the file and the directory, read them back,
+2. write the exact bytes once and fsync the regular file, publish them with an
+   atomic write-once hard link, synchronize the directory where supported, and
+   read the final bytes back,
 3. settle the row `DURABLE` (or `QUARANTINED` on a later integrity failure),
 4. commit the issuance state and the audit event in the same transaction as step 3.
+
+Directory synchronization remains part of the POSIX write path. On Windows,
+Node.js can report `EPERM` specifically for directory-handle `fsync`; only that
+case is tolerated, while regular-file `fsync`, hard-link publication, cleanup
+and read-back remain mandatory. Windows therefore has no claim of
+POSIX-equivalent directory-entry crash durability. Other directory errors and
+all regular-file synchronization errors still fail registration. This platform
+limitation does not relax the backup requirement or allow a restore to skip
+byte-size and SHA-256 verification.
 
 Therefore:
 

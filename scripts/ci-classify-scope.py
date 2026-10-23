@@ -54,7 +54,7 @@ GENERATED_CLIENT_SCRIPT = "scripts/check-generated-api-client.sh"
 FRONTEND_API_PREFIX = "frontend/src/api/"
 CLASSIFIER_PATH = "scripts/ci-classify-scope.py"
 
-JOB_ORDER = ("docs", "backend", "frontend", "generated")
+JOB_ORDER = ("docs", "backend", "frontend", "generated", "owner")
 
 
 @dataclass
@@ -65,6 +65,7 @@ class Decision:
     backend: bool = False
     frontend: bool = False
     generated: bool = False
+    owner: bool = False
     #: True when at least one path could not be classified confidently.
     broad: bool = False
     unclassified: list[str] = field(default_factory=list)
@@ -77,6 +78,7 @@ class Decision:
             "backend": _bool(self.backend),
             "frontend": _bool(self.frontend),
             "generated": _bool(self.generated),
+            "owner": _bool(self.owner),
             "broad": _bool(self.broad),
         }
 
@@ -86,7 +88,7 @@ class Decision:
 
     def run_everything(self) -> "Decision":
         self.broad = True
-        self.docs = self.backend = self.frontend = self.generated = True
+        self.docs = self.backend = self.frontend = self.generated = self.owner = True
         return self
 
 
@@ -122,6 +124,12 @@ def classify_path(path: str) -> set[str]:
     if path.startswith("owner-licensing/"):
         # Owner API/UI contracts and isolation checks travel together.
         families.update(("backend", "frontend"))
+    if path.startswith("owner-licensing/backend/") and not path.endswith(
+        DOCS_SUFFIXES
+    ):
+        # The Windows-focused store regression is additional, not a replacement
+        # for the existing Linux Owner static/unit/PostgreSQL verification.
+        families.add("owner")
     if path.startswith(BACKEND_PREFIX) and not path.endswith(DOCS_SUFFIXES):
         families.add("generated")
 

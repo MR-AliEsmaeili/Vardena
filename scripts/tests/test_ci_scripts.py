@@ -84,7 +84,7 @@ def git(repo: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
-ALL_JOBS = ["backend", "docs", "frontend", "generated"]
+ALL_JOBS = ["backend", "docs", "frontend", "generated", "owner"]
 
 
 # --------------------------------------------------------------------------- #
@@ -150,6 +150,20 @@ class ClassifyPathsTest(unittest.TestCase):
     def test_frontend_markdown_keeps_frontend_format_check(self):
         self.assert_jobs(self.decide("frontend/README.md"), ["docs", "frontend"])
 
+    def test_owner_backend_changes_add_focused_windows_verification(self):
+        self.assert_jobs(
+            self.decide("owner-licensing/backend/src/artifact-store.ts"),
+            ["backend", "frontend", "owner"],
+        )
+        self.assert_jobs(
+            self.decide("owner-licensing/backend/README.md"),
+            ["docs", "backend", "frontend"],
+        )
+        self.assert_jobs(
+            self.decide("owner-licensing/frontend/src/main.tsx"),
+            ["backend", "frontend"],
+        )
+
     def test_generated_client_script_runs_client_check(self):
         self.assert_jobs(self.decide("scripts/check-generated-api-client.sh"), ["generated"])
 
@@ -197,6 +211,7 @@ class ClassifyPathsTest(unittest.TestCase):
                 "backend": "false",
                 "frontend": "false",
                 "generated": "false",
+                "owner": "false",
                 "broad": "false",
             },
         )
@@ -319,6 +334,7 @@ class ClassifyGitIntegrationTest(unittest.TestCase):
                 "backend": "false",
                 "frontend": "false",
                 "generated": "false",
+                "owner": "false",
                 "broad": "false",
             },
         )
@@ -496,7 +512,7 @@ class SelfWeakeningGuardTest(unittest.TestCase):
         added = scope.union(
             decision, {"docs": "true", "backend": "true", "broad": "true"}
         )
-        self.assertEqual(sorted(added), ["backend", "frontend", "generated"])
+        self.assertEqual(sorted(added), ["backend", "frontend", "generated", "owner"])
         self.assertEqual(sorted(decision.jobs), ALL_JOBS)
 
         narrower = scope.classify_paths(["backend/src/a.ts"])
@@ -536,6 +552,7 @@ def needs_context(**jobs) -> dict:
                 "backend": "false",
                 "frontend": "false",
                 "generated": "false",
+                "owner": "false",
                 "broad": "false",
             },
         },
@@ -543,6 +560,7 @@ def needs_context(**jobs) -> dict:
         "backend": {"result": "skipped"},
         "frontend": {"result": "skipped"},
         "generated-api-client": {"result": "skipped"},
+        "owner-artifact-store-windows": {"result": "skipped"},
     }
     for job, value in jobs.items():
         context[job.replace("_", "-")] = {"result": value}
@@ -670,6 +688,7 @@ class SimulatedPipelineTest(unittest.TestCase):
         "backend": "backend",
         "frontend": "frontend",
         "generated-api-client": "generated",
+        "owner-artifact-store-windows": "owner",
     }
     CATEGORIES = {
         "documentation-only": (["STATE.md", "docs/adr/0001-a.md"], ["docs"]),
@@ -677,6 +696,10 @@ class SimulatedPipelineTest(unittest.TestCase):
         "backend-only": (["backend/src/worker.ts"], ["backend", "generated"]),
         "schema-migration": (["backend/prisma/schema/licensing.prisma"], ["backend", "generated"]),
         "generated-client": (["frontend/src/api/generated/vardena-api.d.ts"], ["frontend", "generated"]),
+        "owner-backend": (
+            ["owner-licensing/backend/src/artifact-store.ts"],
+            ["backend", "frontend", "owner"],
+        ),
         "workflow-change": ([".github/workflows/ci.yml"], ALL_JOBS),
         "docs+backend": (["docs/a.md", "backend/src/worker.ts"], ["docs", "backend", "generated"]),
     }
@@ -770,6 +793,7 @@ class WorkflowContractTest(unittest.TestCase):
             ("backend", "backend"),
             ("frontend", "frontend"),
             ("generated-api-client", "generated"),
+            ("owner-artifact-store-windows", "owner"),
         ):
             with self.subTest(job=job):
                 block = self.job_block(job)
@@ -804,7 +828,10 @@ class WorkflowContractTest(unittest.TestCase):
 
     def test_classifier_outputs_match_what_the_script_emits(self):
         declared = re.findall(r"(?m)^      ([a-z_]+): \$\{\{ steps\.scope\.outputs\.", self.text)
-        self.assertEqual(sorted(declared), ["backend", "broad", "docs", "frontend", "generated"])
+        self.assertEqual(
+            sorted(declared),
+            ["backend", "broad", "docs", "frontend", "generated", "owner"],
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Path(tmp) / "paths.txt"
@@ -819,7 +846,10 @@ class WorkflowContractTest(unittest.TestCase):
                 line.split("=", 1)[0]
                 for line in output.read_text(encoding="utf-8").splitlines()
             }
-        self.assertEqual(sorted(emitted), ["backend", "broad", "docs", "frontend", "generated"])
+        self.assertEqual(
+            sorted(emitted),
+            ["backend", "broad", "docs", "frontend", "generated", "owner"],
+        )
         self.assertEqual(sorted(declared), sorted(emitted))
 
     def test_substantive_jobs_keep_their_database_steps(self):

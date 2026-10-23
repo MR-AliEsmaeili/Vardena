@@ -127,3 +127,8 @@ credential-concurrency/rollback and customer/audit persistence). Full Owner Reac
 flow tests, customer Docker/image/artifact checks and existing protocol suites
 are CI-only for this task. Owner SQL migrations are independent of the customer
 Prisma chain. See [the execution matrix](../tasks/licensing-owner-side-phase-1.md).
+
+The artifact-store filesystem suite is a bounded FAST-LOCAL check and also runs
+on Node.js 24 `windows-latest` for applicable Owner backend changes. Its
+injected platform/error cases supplement, rather than replace, real temporary
+directory writes on the host and the CI-only PostgreSQL signed-import path.

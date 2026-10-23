@@ -206,6 +206,35 @@ unrecorded, so after correcting and restarting the API, retry the **same signed
 file against the same existing operation**; do not re-sign it or create a new
 operation.
 
+#### Artifact durability on POSIX and Windows
+
+Every artifact is written to a temporary regular file and that **file handle is
+synchronized before publication**. Publication uses an atomic hard link, which
+never overwrites an occupied store key. An identical retry is accepted only
+after comparing the existing bytes; different bytes fail closed. The temporary
+name is removed, the final file is made read-only (`0o444` where POSIX modes
+apply), and the final bytes must still pass read-back verification before the
+API can settle the database row as `DURABLE`. The artifact volume must support
+hard links; an unsupported filesystem fails closed rather than falling back to
+an unsafe overwrite.
+
+On POSIX, the parent directory handle is also synchronized so the directory
+entry receives the durability guarantee supported by that filesystem. The
+existing explicit unsupported-directory-sync results (`EINVAL`, `ENOTSUP` and
+`EISDIR`) remain limited to that call; unexpected failures propagate and the
+import retains its `503 ArtifactStorageUnavailable` handling.
+
+On Windows, Node.js can reject **directory-handle** `fsync` with `EPERM`. The
+store tolerates exactly that platform/operation/error combination. It does not
+tolerate `EPERM` from regular-file synchronization or directory opening, and it
+does not swallow `EIO`, `EACCES`, or unrelated filesystem failures. This
+Windows path retains file synchronization, atomic write-once publication,
+read-only permissions, cleanup, and byte-for-byte verification, but **does not
+claim POSIX-equivalent directory-entry crash durability**. Windows ACLs and
+volume configuration remain deployment controls; POSIX mode bits are not a
+substitute for them. Independent, verified backups remain required on both
+platforms.
+
 ## Production/deployment
 
 Build API: `cd backend && npm ci --ignore-scripts && npm run build`.
