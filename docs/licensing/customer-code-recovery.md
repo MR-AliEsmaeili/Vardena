@@ -29,7 +29,22 @@ recovery design. Installations where the original migration already succeeded
 keep their existing checksum and history. Fresh installations still enforce
 the constraints immediately because they have no legacy customer rows.
 
-## 2. Required owner decision: the local customer is not the synthetic provider
+## 2. Owner decision for the local development customer
+
+**PRODUCT OWNER DECISION (2026-10-23):**
+
+For the persisted customer identified in this installation:
+
+- **Customer ID:** `01M41HY2B6WCY41SW8JG8Q6XVX`
+- **Display Name:** `Vardena Local Development`
+- **Approved Customer Code:** `VARDENA-LOCAL-001`
+
+> **Important:** This decision applies **only** to the above customer ID. It is
+> **not** a general license to assign arbitrary codes to other customers. Every
+> other customer without a code still requires an explicit owner-approved
+> mapping. Do not derive, generate, or fabricate codes for other persisted rows.
+
+### Why this decision is required
 
 Repository and merged PR #150 evidence establishes the following:
 
@@ -45,15 +60,14 @@ Repository and merged PR #150 evidence establishes the following:
   code only to that provider contract. It neither reads nor writes the
   persisted installation/customer identity.
 
-Therefore `CUST-LOCAL-DEV` is **not** authoritative evidence for persisted
-customer `01M41HY2B6WCY41SW8JG8Q6XVX`. The commercial/Product Owner must
-explicitly approve the business code for that exact persisted ID (and for every
-other row reported by the status command). If the owner approves
-`CUST-LOCAL-DEV`, enter it as that explicit decision; otherwise enter the other
-owner-assigned code. Never substitute the ID, derive a value from the display
-name, or copy the provider code merely to make startup pass.
+**Critical distinction:** `CUST-LOCAL-DEV` is **exclusively** associated with the
+synthetic customer `01JLOCALCUSTOMER0000000000` in the
+`LocalDevelopmentLicenseProvider`. It must **not** be assigned to the persisted
+customer `01M41HY2B6WCY41SW8JG8Q6XVX` or any other persisted customer row.
 
-The task remains owner-blocked until that mapping decision is supplied.
+Therefore, a separate, explicit business code is required for the persisted
+customer. The Product Owner has approved `VARDENA-LOCAL-001` for this specific
+customer ID.
 
 ## 3. State compatibility and required action
 
@@ -83,7 +97,7 @@ and enforcement shape. It never prints or changes signed license material.
    those are not substitutes for change control.
 3. Use a migration-capable database role through `DATABASE_URL`. Do not put a
    password in command arguments or in the mapping file.
-4. Obtain an exact owner code for every reported ID. Each code must match
+4. Obtain an exact owner code for **every** reported customer ID. Each code must match
    `^[A-Za-z0-9][A-Za-z0-9._:-]{1,63}$`, differ from its `customerId`, and be
    unique across customers.
 
@@ -94,13 +108,28 @@ The JSON file is an array with exactly two fields per entry:
 ```json
 [
   {
-    "customerId": "01K7CUSTOMERAAAAAAAAAAAAAA",
-    "customerCode": "CUST-OWNER-APPROVED-001"
+    "customerId": "01M41HY2B6WCY41SW8JG8Q6XVX",
+    "customerCode": "VARDENA-LOCAL-001"
   }
 ]
 ```
 
-The example code is illustrative and is not a value to copy. The utility:
+### Complete example for local development installation
+
+For a local development installation with the known customer, use this
+owner-approved mapping:
+
+```json
+[
+  {
+    "customerId": "01M41HY2B6WCY41SW8JG8Q6XVX",
+    "customerCode": "VARDENA-LOCAL-001"
+  }
+]
+```
+
+**Important:** The example above uses the **explicitly owner-approved** code for
+the specific customer ID. The utility:
 
 - rejects malformed JSON, unknown fields, malformed/duplicate/ID-equal codes,
   duplicate IDs, unknown customer IDs, and missing assignments;
@@ -109,6 +138,11 @@ The example code is illustrative and is not a value to copy. The utility:
 - never overwrites a nonblank existing code, even if the mapping differs;
 - updates no display name, timestamp, installation, license, version,
   entitlement, audit event, authorization record, or signed artifact.
+
+If the status command reports **additional customer IDs** without codes, you
+**must** obtain explicit owner-approved codes for each of them and add
+corresponding entries to the mapping array. Do not proceed with incomplete
+mappings.
 
 Keep the approved mapping and command output with the change record according
 to the installation's retention policy. They are the backfill audit evidence.
@@ -184,15 +218,14 @@ docker compose up -d postgres
 docker compose stop api worker
 docker compose build migrate
 
-# Prompt for an explicit owner decision; no code is hardcoded by this runbook.
-$CustomerId = '01M41HY2B6WCY41SW8JG8Q6XVX'
-$OwnerCode = Read-Host "Enter the owner-approved customerCode for $CustomerId"
-$Assignments = @(
-  @{ customerId = $CustomerId; customerCode = $OwnerCode }
+# For the local development installation, use the owner-approved mapping.
+# If status reports additional customers without codes, STOP and add their
+# owner-approved mappings to this array before proceeding.
+$Mapping = @(
+  @{ customerId = '01M41HY2B6WCY41SW8JG8Q6XVX'; customerCode = 'VARDENA-LOCAL-001' }
 )
 $MappingPath = Join-Path $env:TEMP 'vardena-l06-customer-code-map.json'
-ConvertTo-Json -InputObject $Assignments |
-  Set-Content -LiteralPath $MappingPath -Encoding utf8
+$Mapping | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $MappingPath -Encoding utf8
 
 # Read-only inspection. If this lists additional customer IDs, stop and add an
 # explicit owner-approved mapping object for each one before continuing.
@@ -246,9 +279,109 @@ npm run test:licensing-customer-code-rehearsal
 Do not point the rehearsal at a real installation. It creates uniquely named
 local databases and refuses non-local database hosts.
 
-The following are not recovery procedures: `prisma migrate reset`, `prisma db
-push`, deleting/recreating the PostgreSQL volume, deleting a customer,
-fabricating or deriving codes, editing a signed artifact, reissuing a license,
-recreating the system administrator, manually changing production records
-outside this controlled change, or marking the failed migration applied/rolled
-back without performing and verifying its real work.
+### Preservation guarantees
+
+The recovery utility and migration preserve the following by design:
+
+- **All customer records** (no deletions, no overwrites of existing non-blank codes)
+- **All installation records** and their customer bindings
+- **All license records** and their customer/installation bindings
+- **All license version records** with their complete history
+- **All entitlement records**
+- **All audit event records**
+- **All signed artifact hashes** (never stored, only their SHA-256 digests)
+- **Migration ledger history** (original failure logs preserved)
+- **Database constraints** (NOT NULL, CHECK, UNIQUE all enforced)
+
+### Prohibited actions
+
+The following are **not** recovery procedures and will corrupt data:
+
+- `prisma migrate reset`
+- `prisma db push`
+- deleting/recreating the PostgreSQL volume
+- deleting a customer
+- fabricating or deriving codes
+- editing a signed artifact
+- reissuing a license
+- recreating the system administrator
+- manually changing production records outside this controlled change
+- marking the failed migration applied/rolled back without performing and
+  verifying its real work
+- using `CUST-LOCAL-DEV` for any persisted customer (it belongs exclusively to
+  the synthetic provider customer `01JLOCALCUSTOMER0000000000`)
+
+## 9. Customer creation and prevention of recurrence
+
+### Current state (L-06 enforced)
+
+After the L-06 migration is successfully applied, the following invariants hold:
+
+1. **Database level:** The `licensing.customers.customer_code` column is `NOT NULL`
+   with a `CHECK` constraint ensuring valid format and uniqueness.
+
+2. **Application level:** All customer creation paths require explicit
+   `customerId`, `customerCode`, and `displayName`:
+   - `LicensesRepository.createCustomer()` validates all three fields
+   - `LicensesRepository.importVersion()` creates customers with explicit codes
+   - Domain validation (`domain/customer.ts`) rejects invalid codes
+
+3. **No implicit creation:** There is no path that creates a customer without
+   an explicit, validated `customerCode`.
+
+### How the problem occurred
+
+Before L-06, the `licensing.customers` table did not have a `customer_code`
+column. Customers were created through the license import path which used `upsert`
+and only set `id` and `display_name`. When L-06 added the `customer_code` column
+with `NOT NULL` constraint in a single transaction, any existing customer without
+a code caused the entire migration to fail and roll back.
+
+### Prevention for the future
+
+The L-06 migration remains unchanged. The recovery utility provides the
+controlled backfill path. To prevent recurrence:
+
+1. **Never** add a `NOT NULL` column to a populated table without a backfill
+   strategy in the same transaction.
+2. **Always** use the recovery utility for databases that failed the original
+   migration.
+3. **Always** provide complete owner-approved mappings for all customers without
+   codes.
+4. The application code already enforces that new customers always have valid
+   codes, so this problem cannot occur for new installations or new customers.
+
+## 10. General policy for historical customers without codes
+
+### For customers with no valid code
+
+1. **First**, check if the customer has a legacy stable identifier that can be
+   mapped to a business code through authoritative records.
+
+2. **If a legacy code exists** and is validated against product contracts:
+   - Create a deterministic, auditable mapping
+   - Document the evidence and approval
+   - Include in the recovery mapping
+
+3. **If no legacy code exists**:
+   - **STOP** — Do not generate, derive, or fabricate a code
+   - Obtain explicit owner-approved business code
+   - Document the decision
+   - Include in the recovery mapping
+
+4. **Never** use `display_name` as a basis for generating a code.
+
+5. **Never** assign `CUST-LOCAL-DEV` to any persisted customer — it is
+   exclusively reserved for the synthetic provider customer
+   `01JLOCALCUSTOMER0000000000`.
+
+### Current known mapping
+
+| Customer ID | Display Name | Approved Customer Code | Status |
+|-------------|--------------|----------------------|--------|
+| `01M41HY2B6WCY41SW8JG8Q6XVX` | Vardena Local Development | `VARDENA-LOCAL-001` | ✅ Owner-approved |
+| `01JLOCALCUSTOMER0000000000` | (synthetic) | `CUST-LOCAL-DEV` | ⚠️ Synthetic only, not persisted |
+
+**Note:** If your installation has additional customers without codes, you
+**must** add them to your mapping file with their explicit owner-approved codes.
+Do not proceed with recovery until all customers have approved codes.
