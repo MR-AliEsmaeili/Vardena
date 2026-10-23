@@ -113,7 +113,8 @@ No production connection string or usable bootstrap password is supplied.
 1. In `backend/`, copy `.env.example` to `.env`; configure `OWNER_DATABASE_URL`,
    `OWNER_PUBLIC_ORIGIN`, `OWNER_AUDIT_ARCHIVE_DIR` (an absolute path on a
    storage volume independent of the PostgreSQL data directory),
-   `OWNER_BOOTSTRAP_USERNAME`, `OWNER_BOOTSTRAP_PASSWORD`.
+   `OWNER_LICENSE_ARTIFACT_DIR` (the separate signed-artifact directory described
+   below), `OWNER_BOOTSTRAP_USERNAME`, `OWNER_BOOTSTRAP_PASSWORD`.
    Use a unique initial password (8–128 nonblank characters).
 2. Run `npm ci --ignore-scripts --no-audit --no-fund` in both package directories.
 3. In `backend/`, run `npm run migrate`, then `npm run bootstrap`.
@@ -154,6 +155,56 @@ No production connection string or usable bootstrap password is supplied.
    a newly created `License Operator` starts with no effective permission and the
    Owner Admin grants each one individually in `/app/users`; `Owner Admin` is
    outside the grant model and unaffected.
+
+### Local signed-artifact archive configuration
+
+`OWNER_LICENSE_ARTIFACT_DIR` configures the Owner API's durable archive for the
+exact bytes of signed license and revocation files. Signed-artifact import,
+download, backup/verification and reconciliation need it; if it is absent or
+blank, an eligible import fails closed with `503 ArtifactStorageUnavailable`
+instead of recording a license. It is a **backend-only** setting: do not put it in
+the frontend environment or rename it as a `VITE_*` variable. It is not the path
+of the request file or of the signed JSON being imported, and it is different
+from `OWNER_AUDIT_ARCHIVE_DIR`.
+
+The value must be an **absolute directory path**. Relative paths are rejected at
+API startup rather than resolved against the repository, package directory or
+another base directory. The filesystem root and the audit archive root are also
+rejected. Choose a dedicated directory outside the PostgreSQL data directory,
+`frontend/public`, frontend/backend build output, and every static/public web
+root. HTTP input never selects this root; stored keys are derived from
+server-side ULIDs. The API creates missing directories on the first verified
+write with restricted directory/file permissions, so the directory does not need
+to be created manually. Do not copy an incoming signed file into this directory
+yourself: the API archives it only after signature, request-binding, signing-key
+and replay checks.
+
+For a local Windows installation, add this to
+`owner-licensing/backend/.env` (forward slashes are intentional and work in
+Windows Node.js):
+
+```dotenv
+OWNER_LICENSE_ARTIFACT_DIR=D:/Work_Tools/Vardena_owner_data/license-artifacts
+```
+
+Alternatively, for the current Git Bash session only, start the backend from the
+repository checkout like this:
+
+```bash
+cd /d/Work_Tools/Vardena/owner-licensing/backend
+export OWNER_LICENSE_ARTIFACT_DIR='D:/Work_Tools/Vardena_owner_data/license-artifacts'
+npm run dev
+```
+
+`src/main.ts` loads `backend/.env` through `dotenv/config` when the API process
+starts. After editing `.env`, stop the existing Owner API with Ctrl+C and run
+`npm run dev` again from `owner-licensing/backend`; a watch process cannot apply
+a newly introduced environment value reliably without that restart. The Vite
+frontend on port 5174 does not consume this setting and does not need a restart.
+A refusal caused only by missing artifact storage leaves the prepared request
+unrecorded, so after correcting and restarting the API, retry the **same signed
+file against the same existing operation**; do not re-sign it or create a new
+operation.
 
 ## Production/deployment
 
