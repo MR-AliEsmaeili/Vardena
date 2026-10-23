@@ -143,7 +143,7 @@ function rolePermissionsColumns({
       accessorKey: 'code',
       header: t.rolesAdmin.permissionCode,
       cell: ({ row }) => (
-        <span className="code text-xs font-medium text-slate-900" dir="ltr">
+        <span className="code text-xs font-medium text-ink" dir="ltr">
           {row.original.code}
         </span>
       ),
@@ -287,7 +287,7 @@ function RolePermissionsCard({
         </PermissionGate>
 
         {removeError !== null && removingCode === null && (
-          <p role="alert" className="text-sm text-rose-700">
+          <p role="alert" className="text-sm text-danger-ink">
             {removeError}
           </p>
         )}
@@ -316,7 +316,7 @@ function RolePermissionsCard({
           <div className="space-y-1.5">
             <label
               htmlFor="assign-permission-code"
-              className="block text-sm font-medium text-slate-700"
+              className="block text-sm font-medium text-ink-muted"
             >
               {t.rolesAdmin.permissionCode}
             </label>
@@ -334,10 +334,10 @@ function RolePermissionsCard({
               ))}
             </Select>
             {registry.isPending && (
-              <p className="text-xs text-slate-500">{t.app.loading}</p>
+              <p className="text-xs text-ink-subtle">{t.app.loading}</p>
             )}
             {registry.isError && (
-              <p role="alert" className="text-xs text-rose-700">
+              <p role="alert" className="text-xs text-danger-ink">
                 {t.rolesAdmin.registryLoadFailed}
               </p>
             )}
@@ -408,7 +408,7 @@ function UserSelectionFields({
       <div className="space-y-2">
         <label
           htmlFor="role-user-select"
-          className="block text-sm font-medium text-slate-700"
+          className="block text-sm font-medium text-ink-muted"
         >
           {t.usersAdmin.username}
         </label>
@@ -427,13 +427,13 @@ function UserSelectionFields({
           ))}
         </Select>
         {users.isPending && (
-          <p className="text-xs text-slate-500">{t.app.loading}</p>
+          <p className="text-xs text-ink-subtle">{t.app.loading}</p>
         )}
         {truncated && (
           <div className="space-y-1.5">
             <label
               htmlFor="role-user-manual"
-              className="block text-sm font-medium text-slate-700"
+              className="block text-sm font-medium text-ink-muted"
             >
               {t.rolesAdmin.usersPickerUnavailable}
             </label>
@@ -456,7 +456,7 @@ function UserSelectionFields({
     <div className="space-y-1.5">
       <label
         htmlFor="role-user-manual"
-        className="block text-sm font-medium text-slate-700"
+        className="block text-sm font-medium text-ink-muted"
       >
         {t.rolesAdmin.usersPickerUnavailable}
       </label>
@@ -617,7 +617,7 @@ function RoleUsersCard({ roleId }: { roleId: string }): ReactElement {
               onManualChange={setManualId}
             />
             {fieldError !== null && (
-              <p role="alert" className="text-xs text-rose-700">
+              <p role="alert" className="text-xs text-danger-ink">
                 {fieldError}
               </p>
             )}

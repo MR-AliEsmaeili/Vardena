@@ -7,7 +7,11 @@ import { Select } from '@/ui/select';
  * Selecting a different area clears the dependent fiscal-year selection in
  * the provider before its new child list can be queried.
  */
-export function FinancialContextSwitcher() {
+export function FinancialContextSwitcher({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
   const {
     financialArea,
     financialAreas,
@@ -21,8 +25,14 @@ export function FinancialContextSwitcher() {
 
   if (financialAreaStatus !== 'ready' || financialArea === null) return null;
 
+  // In header-compact mode the switcher is hidden on very narrow screens;
+  // in page context it always shows.
+  const wrapperClass = compact
+    ? 'hidden items-center gap-1.5 xl:flex'
+    : 'flex items-center gap-2';
+
   return (
-    <div className="hidden items-center gap-2 xl:flex">
+    <div className={wrapperClass}>
       {financialAreas.length > 1 ? (
         <Select
           aria-label={t.financialContext.areaSwitcher}
@@ -37,7 +47,7 @@ export function FinancialContextSwitcher() {
           ))}
         </Select>
       ) : (
-        <span className="max-w-40 truncate text-xs text-slate-600">
+        <span className="max-w-40 truncate text-xs text-ink-muted">
           {financialArea.title}
         </span>
       )}
@@ -58,7 +68,7 @@ export function FinancialContextSwitcher() {
             ))}
           </Select>
         ) : (
-          <span className="max-w-40 truncate text-xs text-slate-600">
+          <span className="max-w-40 truncate text-xs text-ink-muted">
             {fiscalYear.title}
           </span>
         ))}

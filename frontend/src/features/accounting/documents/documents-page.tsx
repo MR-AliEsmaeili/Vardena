@@ -1,6 +1,8 @@
-import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import { Plus, RefreshCw } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Plus, RefreshCw, TableProperties } from 'lucide-react';
+import { exportRowsToExcelCsv, printCurrentSurface } from '@/lib/export-table';
+import { formatDateOnly } from '@/lib/format';
 import { sortingToParam } from '@/lib/sort-param';
 import { t } from '@/lib/i18n';
 import { useOrganizationId } from '@/features/organization/use-organization';
@@ -8,8 +10,14 @@ import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { PermissionGate } from '@/features/permissions/permission-gate';
 import { Button } from '@/ui/button';
 import { DataTable } from '@/ui/patterns/data-table';
+import { DocumentListToolbar } from '@/ui/patterns/operational-form';
 import { PageHeader } from '@/ui/patterns/page-header';
 import { useFinancialAreas } from '../shared/use-accounting-references';
+import {
+  documentOriginLabel,
+  documentStatePresentation,
+  parseDocumentState,
+} from './document-lifecycle';
 import { buildDocumentsColumns } from './documents-columns';
 import {
   DocumentsFilterBar,
@@ -25,24 +33,19 @@ import {
 } from './use-documents-list';
 
 /**
- * Documents workspace (FE-UX-08): the real, server-owned list of the
- * organization's accounting documents.
- *
- * Every filter, the page, the page size and the sort live in the URL
- * (`?page=&pageSize=&search=&state=&origin=&financialAreaId=&fiscalYearId=
- * &accountingPeriodId=&documentNumber=&dateFrom=&dateTo=&sort=`) — exactly
- * the parameters the endpoint declares, so Back/Forward/Refresh/deep-link
- * reproduce the same server query. The «ثبت سند» action exists only when the
- * session holds `Accounting.Document.Create` (the backend enforces it again
- * on POST).
+ * Documents workspace (FE-UX-08): the real, server-owned read-only list of the
+ * organization's accounting documents with filter, sort, pagination, row
+ * selection, open-document action, print, and Excel CSV export.
  */
 export function DocumentsPage() {
   const organizationId = useOrganizationId();
+  const navigate = useNavigate();
   const { state, update, clearFilters } = useDocumentsUrlState();
   const query = useDocumentsList(organizationId, state);
 
-  // Financial-area reference for the area column (a permission-gated read;
-  // without it the column honestly shows «—» instead of a guessed label).
+  const [filtersVisible, setFiltersVisible] = useState(true);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+
   const areasQuery = useFinancialAreas(organizationId);
   const areas = useMemo(() => areasQuery.data?.items ?? [], [areasQuery.data]);
 
@@ -52,6 +55,58 @@ export function DocumentsPage() {
   const synchronizationKey = JSON.stringify(filterValues);
   const hasFilter =
     hasActiveDocumentFilters(state) || !isEmptyDocumentsFilter(filterValues);
+
+  const items = useMemo(() => query.data?.items ?? [], [query.data]);
+  const firstSelectedId = useMemo(() => {
+    for (const row of items) {
+      if (selectedIds.has(row.id)) return row.id;
+    }
+    return null;
+  }, [items, selectedIds]);
+
+  const handleExportExcel = () => {
+    exportRowsToExcelCsv(
+      'accounting-documents',
+      [
+        {
+          header: t.documents.colNumber,
+          value: (row) => row.documentNumber ?? '',
+        },
+        {
+          header: t.documents.colDate,
+          value: (row) => formatDateOnly(row.documentDate),
+        },
+        {
+          header: t.documents.colDescription,
+          value: (row) => row.description,
+        },
+        {
+          header: t.documents.colArea,
+          value: (row) =>
+            areas.find((a) => a.id === row.financialAreaId)?.title ??
+            row.financialAreaId,
+        },
+        {
+          header: t.documents.colTotal,
+          value: (row) => row.totalDebit,
+        },
+        {
+          header: t.documents.colState,
+          value: (row) => {
+            const parsed = parseDocumentState(row.state);
+            return parsed !== null
+              ? documentStatePresentation[parsed].label
+              : row.state;
+          },
+        },
+        {
+          header: t.documents.colOrigin,
+          value: (row) => documentOriginLabel(row.origin),
+        },
+      ],
+      items,
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -70,6 +125,12 @@ export function DocumentsPage() {
               <RefreshCw aria-hidden className="h-4 w-4" />
               {t.documents.refresh}
             </Button>
+            <Button type="button" variant="outline" size="sm" asChild>
+              <Link to="/app/accounting/document-lines">
+                <TableProperties aria-hidden className="h-4 w-4" />
+                {t.operationalForm.viewDocumentLines}
+              </Link>
+            </Button>
             <PermissionGate permission={PERMISSIONS.accounting.documentCreate}>
               <Button type="button" size="sm" asChild>
                 <Link to="/app/accounting/documents/new">
@@ -82,31 +143,49 @@ export function DocumentsPage() {
         }
       />
 
-      <DocumentsFilterBar
-        organizationId={organizationId}
-        values={filterValues}
-        synchronizationKey={synchronizationKey}
-        isFetching={query.isFetching}
-        onApply={(values) =>
-          update({
-            search: values.search,
-            state: values.state,
-            origin: values.origin,
-            financialAreaId: values.financialAreaId,
-            fiscalYearId: values.fiscalYearId,
-            accountingPeriodId: values.accountingPeriodId,
-            documentNumber: values.documentNumber,
-            dateFrom: values.dateFrom,
-            dateTo: values.dateTo,
-            page: null,
-          })
+      <DocumentListToolbar
+        onFilterToggle={() => setFiltersVisible((prev) => !prev)}
+        filterActive={hasFilter}
+        onPrint={printCurrentSurface}
+        onExportExcel={handleExportExcel}
+        exportDisabled={items.length === 0}
+        onOpenSelected={
+          firstSelectedId !== null
+            ? () =>
+                navigate(
+                  `/app/accounting/documents/${encodeURIComponent(firstSelectedId)}`,
+                )
+            : undefined
         }
-        onClear={clearFilters}
       />
+
+      {filtersVisible && (
+        <DocumentsFilterBar
+          organizationId={organizationId}
+          values={filterValues}
+          synchronizationKey={synchronizationKey}
+          isFetching={query.isFetching}
+          onApply={(values) =>
+            update({
+              search: values.search,
+              state: values.state,
+              origin: values.origin,
+              financialAreaId: values.financialAreaId,
+              fiscalYearId: values.fiscalYearId,
+              accountingPeriodId: values.accountingPeriodId,
+              documentNumber: values.documentNumber,
+              dateFrom: values.dateFrom,
+              dateTo: values.dateTo,
+              page: null,
+            })
+          }
+          onClear={clearFilters}
+        />
+      )}
 
       <DataTable
         columns={columns}
-        data={query.data?.items ?? []}
+        data={items}
         getRowId={(row) => row.id}
         caption={t.documents.title}
         isLoading={query.isPending}
@@ -119,6 +198,12 @@ export function DocumentsPage() {
         }
         emptyDescription={
           hasFilter ? t.documents.emptyFilteredBody : t.documents.emptyBody
+        }
+        selectable
+        selectedRowIds={selectedIds}
+        onSelectedRowIdsChange={setSelectedIds}
+        onRowActivate={(row) =>
+          navigate(`/app/accounting/documents/${encodeURIComponent(row.id)}`)
         }
         sorting={documentsSortingState(state.sort)}
         onSortingChange={(sorting) =>

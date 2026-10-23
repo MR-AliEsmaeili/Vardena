@@ -1,98 +1,171 @@
-import { ArrowLeft } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { PermissionGate } from '@/features/permissions/permission-gate';
+import {
+  ArrowDownToLine,
+  ArrowLeftRight,
+  ArrowUpFromLine,
+  Boxes,
+  FileSpreadsheet,
+  FileStack,
+  FolderTree,
+  Package,
+  Receipt,
+  Ruler,
+  Scale,
+  ScrollText,
+  Warehouse,
+  type LucideIcon,
+} from 'lucide-react';
+import { useMemo } from 'react';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
+import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
-import { Button } from '@/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { PageHeader } from '@/ui/patterns/page-header';
+import {
+  WorkspaceCardGrid,
+  type WorkspaceCardGroup,
+} from '@/ui/patterns/workspace-cards';
 
-interface Surface {
+interface InventorySurface {
   to: string;
-  title: string;
+  label: string;
   description: string;
+  icon: LucideIcon;
   permission: string;
 }
 
-/**
- * Inventory landing page: the warehouse operations this session can open.
- *
- * Each card is gated by the exact backend permission of its target surface
- * (UX only, AR-21) — which is also how module licensing surfaces here: an
- * installation whose license does not include the `inventory` module gets
- * every `Inventory.*` code filtered out of its effective permission set
- * server-side (`LicensingService.filterLicensedPermissions`), so nothing on
- * this page appears and the routes stay blocked without any separate
- * license check in the frontend.
- */
-const surfaces: readonly Surface[] = [
+const OPERATIONS_SURFACES: readonly InventorySurface[] = [
   {
     to: '/app/inventory/movements/new?type=receipt',
-    title: t.inventory.newReceipt,
+    label: t.inventory.newReceipt,
     description: t.inventory.newReceiptDescription,
+    icon: ArrowDownToLine,
     permission: PERMISSIONS.inventory.movementCreate,
   },
   {
     to: '/app/inventory/movements/new?type=issue',
-    title: t.inventory.newIssue,
+    label: t.inventory.newIssue,
     description: t.inventory.newIssueDescription,
+    icon: ArrowUpFromLine,
     permission: PERMISSIONS.inventory.movementCreate,
   },
   {
     to: '/app/inventory/transfers/new',
-    title: t.inventory.newTransfer,
+    label: t.inventory.newTransfer,
     description: t.inventory.newTransferDescription,
+    icon: ArrowLeftRight,
     permission: PERMISSIONS.inventory.transferCreate,
   },
   {
+    to: '/app/inventory/documents',
+    label: t.nav.inventoryDocuments,
+    description: t.inventoryDocuments.subtitle,
+    icon: FileStack,
+    permission: PERMISSIONS.inventory.documentView,
+  },
+  {
+    to: '/app/inventory/document-lines',
+    label: t.nav.inventoryDocumentLines,
+    description: t.documentLines.inventorySubtitle,
+    icon: FileSpreadsheet,
+    permission: PERMISSIONS.inventory.documentView,
+  },
+  {
     to: '/app/inventory/movements',
-    title: t.inventory.movementsTitle,
+    label: t.inventory.movementsTitle,
     description: t.inventory.movementsDescription,
+    icon: Receipt,
     permission: PERMISSIONS.inventory.movementView,
   },
   {
     to: '/app/inventory/kardex',
-    title: t.inventory.kardexTitle,
+    label: t.inventory.kardexTitle,
     description: t.inventory.kardexDescription,
+    icon: ScrollText,
     permission: PERMISSIONS.inventory.movementView,
   },
   {
     to: '/app/inventory/valuation',
-    title: t.inventory.valuationTitle,
+    label: t.inventory.valuationTitle,
     description: t.inventory.valuationDescription,
+    icon: Scale,
     permission: PERMISSIONS.inventory.valuationView,
   },
 ];
 
-/** Inventory landing page: the operations and reads this session can open. */
+const MASTER_SURFACES: readonly InventorySurface[] = [
+  {
+    to: '/app/inventory/balances',
+    label: t.inventoryMaster.balances,
+    description: t.inventoryMaster.balancesDescription,
+    icon: Boxes,
+    permission: PERMISSIONS.inventory.balanceView,
+  },
+  {
+    to: '/app/inventory/items',
+    label: t.inventoryMaster.items,
+    description: t.inventoryMaster.itemsDescription,
+    icon: Package,
+    permission: PERMISSIONS.inventory.itemView,
+  },
+  {
+    to: '/app/inventory/item-groups',
+    label: t.inventoryMaster.itemGroups,
+    description: t.inventoryMaster.itemGroupsDescription,
+    icon: FolderTree,
+    permission: PERMISSIONS.inventory.itemGroupView,
+  },
+  {
+    to: '/app/inventory/units',
+    label: t.inventoryMaster.units,
+    description: t.inventoryMaster.unitsDescription,
+    icon: Ruler,
+    permission: PERMISSIONS.inventory.unitView,
+  },
+  {
+    to: '/app/inventory/warehouses',
+    label: t.inventoryMaster.warehouses,
+    description: t.inventoryMaster.warehousesDescription,
+    icon: Warehouse,
+    permission: PERMISSIONS.inventory.warehouseView,
+  },
+  {
+    to: '/app/inventory/unit-conversions',
+    label: t.inventoryMaster.unitConversions,
+    description: t.inventoryMaster.unitConversionsDescription,
+    icon: ArrowLeftRight,
+    permission: PERMISSIONS.inventory.unitConversionView,
+  },
+];
+
+/** Inventory landing hub: categorized minimal cards gated by exact permissions. */
 export function InventoryHomePage() {
+  const permissions = usePermissions();
+
+  const groups = useMemo<WorkspaceCardGroup[]>(() => {
+    if (!permissions.loaded) return [];
+    const filterPermitted = (list: readonly InventorySurface[]) =>
+      list.filter((item) => permissions.has(item.permission));
+
+    return [
+      {
+        id: 'operations',
+        label: t.workspace.inventoryOperationsGroup,
+        items: filterPermitted(OPERATIONS_SURFACES),
+      },
+      {
+        id: 'master',
+        label: t.workspace.inventoryMasterGroup,
+        items: filterPermitted(MASTER_SURFACES),
+      },
+    ].filter((group) => group.items.length > 0);
+  }, [permissions]);
+
   return (
     <div className="space-y-5">
       <PageHeader
         title={t.inventory.title}
         description={t.inventory.subtitle}
       />
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {surfaces.map((surface) => (
-          <PermissionGate key={surface.to} permission={surface.permission}>
-            <Card>
-              <CardHeader>
-                <CardTitle>{surface.title}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-slate-600">{surface.description}</p>
-                <Button asChild variant="outline" size="sm">
-                  <Link to={surface.to}>
-                    {t.home.openSection}
-                    <ArrowLeft className="h-4 w-4" aria-hidden />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          </PermissionGate>
-        ))}
-      </div>
+      <WorkspaceCardGrid groups={groups} />
     </div>
   );
 }

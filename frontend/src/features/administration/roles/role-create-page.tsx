@@ -163,21 +163,21 @@ function InitialPermissionsPicker({
 
   return (
     <section
-      className="rounded-lg border border-slate-200 bg-white p-4"
+      className="rounded-lg border border-line bg-surface p-4"
       aria-label={t.rolesAdmin.initialPermissions}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold text-slate-900">
+        <h3 className="text-sm font-semibold text-ink">
           {t.rolesAdmin.initialPermissions}
         </h3>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-subtle">
           {t.rolesAdmin.selectedCount.replace(
             '{count}',
             formatCount(selectedCount),
           )}
         </p>
       </div>
-      <p className="mt-1 text-xs text-slate-500">
+      <p className="mt-1 text-xs text-ink-subtle">
         {t.rolesAdmin.initialPermissionsHint}
       </p>
 
@@ -192,37 +192,37 @@ function InitialPermissionsPicker({
           />
 
           {registry.isPending && (
-            <p className="text-xs text-slate-500">{t.app.loading}</p>
+            <p className="text-xs text-ink-subtle">{t.app.loading}</p>
           )}
           {registry.isError && (
-            <p role="alert" className="text-xs text-rose-700">
+            <p role="alert" className="text-xs text-danger-ink">
               {t.rolesAdmin.registryLoadFailed}
             </p>
           )}
 
           {filtered.length > 0 && (
-            <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border border-slate-100 p-2">
+            <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border border-line p-2">
               {filtered.map((permission) => (
                 <label
                   key={permission.code}
-                  className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50"
+                  className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-sunken"
                 >
                   <input
                     type="checkbox"
-                    className="mt-1 h-4 w-4 rounded border-slate-300"
+                    className="mt-1 h-4 w-4 rounded border-line-strong"
                     value={permission.code}
                     disabled={disabled}
                     {...registration}
                   />
                   <span className="min-w-0">
                     <span
-                      className="code block text-xs font-medium text-slate-900"
+                      className="code block text-xs font-medium text-ink"
                       dir="ltr"
                     >
                       {permission.code}
                     </span>
                     {permission.description !== '' && (
-                      <span className="block text-xs text-slate-500">
+                      <span className="block text-xs text-ink-subtle">
                         {permission.description}
                       </span>
                     )}
@@ -234,7 +234,7 @@ function InitialPermissionsPicker({
           {!registry.isPending &&
             !registry.isError &&
             filtered.length === 0 && (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-subtle">
                 {t.rolesAdmin.permissionsEmpty}
               </p>
             )}

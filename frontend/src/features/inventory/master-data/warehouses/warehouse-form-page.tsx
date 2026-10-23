@@ -294,30 +294,30 @@ function WarehouseForm({
       </FormField>
 
       <fieldset className="sm:col-span-2 space-y-1.5">
-        <legend className="text-sm font-medium text-slate-800">
+        <legend className="text-sm font-medium text-ink">
           {t.inventoryMaster.warehousePolicies}
         </legend>
         <div className="flex flex-wrap gap-4">
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-ink-muted">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300"
+              className="h-4 w-4 rounded border-line-strong"
               disabled={submitting}
               {...form.register('allowNegativeStock')}
             />
             {t.inventoryMaster.allowNegativeStockPolicy}
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-ink-muted">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300"
+              className="h-4 w-4 rounded border-line-strong"
               disabled={submitting}
               {...form.register('reservationsReduceAvailable')}
             />
             {t.inventoryMaster.reservationsReduceAvailable}
           </label>
         </div>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-subtle">
           {t.inventoryMaster.reservationsReduceAvailableHint}
         </p>
       </fieldset>

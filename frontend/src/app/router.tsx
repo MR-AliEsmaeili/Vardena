@@ -7,6 +7,7 @@ import {
   DocumentCreatePage,
   DocumentEditPage,
 } from '@/features/accounting/documents/document-form-page';
+import { AccountingDocumentLinesPage } from '@/features/accounting/documents/document-lines-page';
 import { DocumentsPage } from '@/features/accounting/documents/documents-page';
 import { GeneralLedgerPage } from '@/features/accounting/general-ledger/general-ledger-page';
 import { AccountDetailPage } from '@/features/accounting/master-data/account-detail-page';
@@ -17,8 +18,10 @@ import { FiscalYearsPage } from '@/features/accounting/master-data/fiscal-years-
 import { TrialBalancePage } from '@/features/accounting/trial-balance/trial-balance-page';
 import { ChangePasswordPage } from '@/features/auth/change-password-page';
 import { LoginPage } from '@/features/auth/login-page';
+import { ProfilePage } from '@/features/auth/profile-page';
 import { InventoryDocumentDetailPage } from '@/features/inventory/documents/inventory-document-detail-page';
 import { InventoryDocumentFormPage } from '@/features/inventory/documents/inventory-document-form-page';
+import { InventoryDocumentLinesPage } from '@/features/inventory/documents/inventory-document-lines-page';
 import { InventoryDocumentsPage } from '@/features/inventory/documents/inventory-documents-page';
 import { InventoryHomePage } from '@/features/inventory/inventory-home-page';
 import { BalancesPage } from '@/features/inventory/master-data/balances/balances-page';
@@ -112,15 +115,8 @@ export function AppRoutes() {
 
       <Route element={<RequireAuth />}>
         <Route path="/app" element={<AppShell />}>
-          <Route
-            element={
-              <RequirePermission
-                permissions={[PERMISSIONS.accounting.documentView]}
-              />
-            }
-          >
-            <Route index element={<DashboardRoute />} />
-          </Route>
+          <Route index element={<DashboardRoute />} />
+          <Route path="profile" element={<ProfilePage />} />
 
           <Route path="accounting">
             <Route index element={<AccountingHomePage />} />
@@ -133,6 +129,10 @@ export function AppRoutes() {
               }
             >
               <Route path="documents" element={<DocumentsPage />} />
+              <Route
+                path="document-lines"
+                element={<AccountingDocumentLinesPage />}
+              />
               <Route
                 path="documents/:documentId"
                 element={<DocumentDetailPage />}
@@ -494,6 +494,10 @@ export function AppRoutes() {
               }
             >
               <Route path="documents" element={<InventoryDocumentsPage />} />
+              <Route
+                path="document-lines"
+                element={<InventoryDocumentLinesPage />}
+              />
               <Route
                 path="documents/:documentId"
                 element={<InventoryDocumentDetailPage />}

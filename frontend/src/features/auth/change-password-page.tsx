@@ -175,22 +175,22 @@ export function ChangePasswordPage() {
   const isBusy = session.isChangingPassword || session.isLoggingOut;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-sunken px-4 py-10">
       <div className="w-full max-w-md space-y-4">
         <div className="text-center">
-          <p className="text-2xl font-bold text-indigo-700">{t.app.name}</p>
-          <p className="mt-1 text-sm text-slate-600">{t.app.tagline}</p>
+          <p className="text-2xl font-bold text-brand">{t.app.name}</p>
+          <p className="mt-1 text-sm text-ink-muted">{t.app.tagline}</p>
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle>{t.auth.changePasswordTitle}</CardTitle>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-ink-muted">
               {t.auth.changePasswordSubtitle}
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ink-subtle">
               {t.auth.signedInAs}:{' '}
-              <span className="font-medium text-slate-700">
+              <span className="font-medium text-ink-muted">
                 {session.user.username}
               </span>
             </p>

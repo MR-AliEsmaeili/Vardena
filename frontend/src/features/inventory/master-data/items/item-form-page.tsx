@@ -411,14 +411,14 @@ function ItemForm({
             {...fieldProps}
             rows={3}
             disabled={submitting}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
             {...form.register('description')}
           />
         )}
       </FormField>
 
       <fieldset className="sm:col-span-2 space-y-1.5">
-        <legend className="text-sm font-medium text-slate-800">
+        <legend className="text-sm font-medium text-ink">
           {t.inventoryMaster.capabilities}
         </legend>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -435,11 +435,11 @@ function ItemForm({
           ).map(([name, label]) => (
             <label
               key={name}
-              className="flex items-center gap-2 text-sm text-slate-700"
+              className="flex items-center gap-2 text-sm text-ink-muted"
             >
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-slate-300"
+                className="h-4 w-4 rounded border-line-strong"
                 disabled={
                   submitting ||
                   (!isStockable &&
@@ -454,12 +454,12 @@ function ItemForm({
           ))}
         </div>
         {form.formState.errors.isValued?.message !== undefined && (
-          <p role="alert" className="text-xs text-rose-700">
+          <p role="alert" className="text-xs text-danger-ink">
             {form.formState.errors.isValued.message}
           </p>
         )}
         {form.formState.errors.requiresLot?.message !== undefined && (
-          <p role="alert" className="text-xs text-rose-700">
+          <p role="alert" className="text-xs text-danger-ink">
             {form.formState.errors.requiresLot.message}
           </p>
         )}

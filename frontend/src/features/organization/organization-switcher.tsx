@@ -11,24 +11,28 @@ import { useOrganization } from './use-organization';
  * otherwise it shows the single effective organization as plain text instead
  * of inventing a tenant selector (ADR-0025).
  */
-export function OrganizationSwitcher() {
+export function OrganizationSwitcher({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
   const { organizations, organization, canSwitch, selectOrganization, status } =
     useOrganization();
 
   if (status === 'loading') {
     return (
-      <span className="text-xs text-slate-500">{t.organization.loading}</span>
+      <span className="text-xs text-ink-subtle">{t.organization.loading}</span>
     );
   }
 
   if (organization === null) return null;
 
   return (
-    <div className="flex items-center gap-2">
-      <Building2 className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+    <div className="flex items-center gap-1.5">
+      <Building2 className="h-3.5 w-3.5 shrink-0 text-ink-subtle" aria-hidden />
       {canSwitch ? (
         <Select
-          className="h-9 w-56"
+          className={compact ? 'h-8 max-w-44 text-xs' : 'h-9 w-56'}
           aria-label={t.organization.switcher}
           value={organization.id}
           onChange={(event) => selectOrganization(event.target.value)}
@@ -41,7 +45,11 @@ export function OrganizationSwitcher() {
         </Select>
       ) : (
         <span
-          className="text-sm font-medium text-slate-700"
+          className={
+            compact
+              ? 'max-w-32 truncate text-xs font-medium text-ink-muted'
+              : 'text-sm font-medium text-ink-muted'
+          }
           title={`${t.organization.label}: ${organization.name}`}
         >
           {organization.name}

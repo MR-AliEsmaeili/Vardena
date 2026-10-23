@@ -1,25 +1,42 @@
-import { useEffect, useState } from 'react';
-import type { ReactElement } from 'react';
+import { ArrowRight, FileSpreadsheet, Plus, Printer } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import {
   Link,
   useNavigate,
   useParams,
   useSearchParams,
 } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
+import { useQuery } from '@tanstack/react-query';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowRight } from 'lucide-react';
+import * as inventoryApi from '@/api/inventory.api';
+import { queryKeys } from '@/api/query-keys';
 import type {
   CreateInventoryDocumentInput,
   InventoryDocument,
   UpdateInventoryDocumentInput,
 } from '@/api/contracts';
 import { useOrganizationId } from '@/features/organization/use-organization';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
+import { usePermissions } from '@/features/permissions/use-permissions';
+import { isBusinessDay, toBusinessDateInput } from '@/lib/datetime';
+import { sumExactDecimals } from '@/lib/decimal';
+import { exportRowsToExcelCsv, printCurrentSurface } from '@/lib/export-table';
+import { formatCount, formatDateOnly, formatQuantity } from '@/lib/format';
 import { t } from '@/lib/i18n';
-import { toBusinessDateInput } from '@/lib/datetime';
 import { Button } from '@/ui/button';
-import { Card } from '@/ui/card';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
+import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
+import {
+  CollapsibleHeader,
+  DocumentPaginationControl,
+  OperationalFooter,
+  OperationalFormShell,
+  OperationalSummary,
+  OperationalToolbar,
+  type HeaderSummaryChip,
+  type SummaryRow,
+} from '@/ui/patterns/operational-form';
 import { LoadingState } from '@/ui/patterns/states';
 import { PageHeader } from '@/ui/patterns/page-header';
 import { useToast } from '@/ui/patterns/toast';
@@ -111,6 +128,7 @@ export function InventoryDocumentFormPage(): ReactElement {
 
   return (
     <DocumentForm
+      key={document?.id ?? `new-${kind}`}
       organizationId={organizationId}
       references={references}
       kind={document?.kind ?? kind}
@@ -122,7 +140,6 @@ export function InventoryDocumentFormPage(): ReactElement {
 function toFormValues(document: EditableInventoryDocument): DocumentFormValues {
   return {
     kind: document.kind,
-    // OQ-73: the API returns the business DAY itself (canonical Gregorian).
     businessDate: document.businessDate,
     warehouseId: document.warehouseId ?? '',
     sourceWarehouseId: document.sourceWarehouseId ?? '',
@@ -138,12 +155,6 @@ function toFormValues(document: EditableInventoryDocument): DocumentFormValues {
   };
 }
 
-/**
- * ADR-0044: the fixed Jalali-first UI emits a declared Jalali day when it is
- * renderable; an existing historical Gregorian day outside that range remains
- * a canonical Gregorian string. Both resolve to the same canonical BusinessDate
- * at the API boundary, without changing the stored day.
- */
 function businessDateBody(
   businessDate: string,
 ): Pick<CreateInventoryDocumentInput, 'businessDate'> {
@@ -187,8 +198,6 @@ function toUpdateBody(
           destinationWarehouseId: values.destinationWarehouseId,
         }
       : { warehouseId: values.warehouseId }),
-    // An empty string CLEARS an assigned receipt cost (contract), so it is
-    // sent deliberately rather than omitted.
     ...(values.kind === 'receipt' ? { cost: values.cost } : {}),
     description: values.description,
     reference: values.reference,
@@ -208,6 +217,7 @@ function DocumentForm({
   document?: EditableInventoryDocument;
 }): ReactElement {
   const navigate = useNavigate();
+  const permissions = usePermissions();
   const { showToast } = useToast();
   const isEdit = document !== undefined;
 
@@ -218,8 +228,6 @@ function DocumentForm({
       document === undefined ? emptyDocumentForm(kind) : toFormValues(document),
   });
 
-  // Re-seed from the server response whenever the authoritative document
-  // changes (after a save, or when the detail query refetches).
   useEffect(() => {
     if (document !== undefined) form.reset(toFormValues(document));
   }, [document, form]);
@@ -230,6 +238,63 @@ function DocumentForm({
 
   const [sideEffectOpen, setSideEffectOpen] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [pendingNavTarget, setPendingNavTarget] = useState<string | null>(null);
+
+  const isDirty = form.formState.isDirty;
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  const canListDocuments =
+    isEdit &&
+    permissions.loaded &&
+    permissions.has(PERMISSIONS.inventory.documentView) &&
+    'listInventoryDocuments' in inventoryApi &&
+    typeof inventoryApi.listInventoryDocuments === 'function';
+
+  const neighborsQuery = useQuery({
+    queryKey: queryKeys.inventory.documents(organizationId, {
+      page: 1,
+      pageSize: 100,
+    }),
+    queryFn: async ({ signal }) =>
+      (await inventoryApi.listInventoryDocuments(
+        {
+          organizationId,
+          page: 1,
+          pageSize: 100,
+        },
+        signal,
+      )) ?? null,
+    enabled: canListDocuments,
+    staleTime: 30_000,
+  });
+
+  const editableNeighbors = useMemo(
+    () =>
+      (neighborsQuery.data?.items ?? []).filter(
+        (item) => item.canEdit && isDocumentFormKind(item.kind),
+      ),
+    [neighborsQuery.data],
+  );
+  const currentNeighborIndex =
+    document !== undefined
+      ? editableNeighbors.findIndex((item) => item.id === document.id)
+      : -1;
+
+  const navigateWithDirtyGuard = (target: string) => {
+    if (isDirty) {
+      setPendingNavTarget(target);
+    } else {
+      navigate(target);
+    }
+  };
 
   const submit = form.handleSubmit(async (values) => {
     setFailure(null);
@@ -247,8 +312,6 @@ function DocumentForm({
       showToast({ kind: 'success', message: t.inventoryDocuments.updated });
       navigate(`/app/inventory/documents/${document.id}`);
     } catch (error) {
-      // A material edit is REFUSED until the operator answers explicitly;
-      // nothing was applied, so the dialog continues the same intent.
       if (isSideEffectRefusal(error)) {
         setSideEffectOpen(true);
         return;
@@ -258,6 +321,21 @@ function DocumentForm({
       );
     }
   });
+
+  const submitRef = useRef(submit);
+  useEffect(() => {
+    submitRef.current = submit;
+  }, [submit]);
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        void submitRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const confirmSideEffects = async (decision: SideEffectDecision) => {
     if (document === undefined) return;
@@ -274,6 +352,114 @@ function DocumentForm({
       setFailure(documentErrorMessage('update', error).message);
     }
   };
+
+  const watchedLines = useWatch({ control: form.control, name: 'lines' });
+  const watchedDate = form.watch('businessDate');
+  const watchedWarehouseId = form.watch('warehouseId');
+  const watchedSourceWarehouseId = form.watch('sourceWarehouseId');
+  const watchedDestinationWarehouseId = form.watch('destinationWarehouseId');
+
+  const headerCanCollapse = useMemo(() => {
+    const dateValid = watchedDate === '' || isBusinessDay(watchedDate);
+    if (!dateValid) return false;
+    if (kind === 'transfer') {
+      return (
+        watchedSourceWarehouseId !== '' &&
+        watchedDestinationWarehouseId !== '' &&
+        watchedSourceWarehouseId !== watchedDestinationWarehouseId
+      );
+    }
+    return watchedWarehouseId !== '';
+  }, [
+    kind,
+    watchedDate,
+    watchedDestinationWarehouseId,
+    watchedSourceWarehouseId,
+    watchedWarehouseId,
+  ]);
+
+  const hasHeaderErrors =
+    !headerCanCollapse &&
+    (form.formState.errors.businessDate !== undefined ||
+      form.formState.errors.warehouseId !== undefined ||
+      form.formState.errors.sourceWarehouseId !== undefined ||
+      form.formState.errors.destinationWarehouseId !== undefined ||
+      form.formState.errors.cost !== undefined);
+
+  const summaryChips = useMemo<HeaderSummaryChip[]>(() => {
+    const chips: HeaderSummaryChip[] = [
+      {
+        label: t.inventoryDocuments.columnNumber,
+        value: document?.number ?? t.inventoryDocuments.numberNotAllocated,
+      },
+      {
+        label: t.inventoryDocuments.columnDate,
+        value: watchedDate ? formatDateOnly(watchedDate) : t.app.none,
+      },
+      {
+        label: t.inventoryDocuments.columnKind,
+        value: documentKindLabel(kind),
+      },
+    ];
+    if (kind !== 'transfer' && watchedWarehouseId !== '') {
+      const wh = references.warehouseById(watchedWarehouseId);
+      if (wh !== undefined) {
+        chips.push({
+          label: t.inventoryDocuments.warehouse,
+          value: wh.name,
+        });
+      }
+    }
+    return chips;
+  }, [document?.number, kind, references, watchedDate, watchedWarehouseId]);
+
+  const summaryRows = useMemo<SummaryRow[]>(() => {
+    const quantities = (watchedLines ?? []).map((line) => line.quantity);
+    const totalQty = sumExactDecimals(quantities, 0);
+    return [
+      {
+        label: t.operationalForm.totalQuantity,
+        value: formatQuantity(totalQty),
+        emphasize: true,
+      },
+      {
+        label: t.operationalForm.lineCount,
+        value: formatCount((watchedLines ?? []).length),
+      },
+    ];
+  }, [watchedLines]);
+
+  const handleExportExcel = () => {
+    exportRowsToExcelCsv(
+      `inventory-document-${document?.number ?? kind}`,
+      [
+        {
+          header: t.inventoryDocuments.lineNumber,
+          value: (row) => row.lineNo,
+        },
+        {
+          header: t.inventoryDocuments.lineItem,
+          value: (row) => references.itemById(row.itemId)?.name ?? row.itemId,
+        },
+        {
+          header: t.inventoryDocuments.lineQuantity,
+          value: (row) => row.quantity,
+        },
+        {
+          header: t.inventoryDocuments.lineUnit,
+          value: (row) => references.unitById(row.unitId)?.name ?? row.unitId,
+        },
+      ],
+      (watchedLines ?? []).map((line, idx) => ({
+        lineNo: idx + 1,
+        ...line,
+      })),
+    );
+  };
+
+  const cancelTarget = isEdit
+    ? `/app/inventory/documents/${document.id}`
+    : '/app/inventory/documents';
 
   return (
     <div className="space-y-4">
@@ -295,44 +481,155 @@ function DocumentForm({
       />
 
       <form onSubmit={(event) => void submit(event)} noValidate>
-        <Card className="space-y-6 p-4">
-          <DocumentHeaderFields
-            form={form}
-            references={references}
-            kind={kind}
-            disabled={pending}
-          />
-          <DocumentLinesEditor
-            form={form}
-            references={references}
-            disabled={pending}
-          />
-
+        <OperationalFormShell
+          toolbar={
+            <OperationalToolbar>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={printCurrentSurface}
+                data-testid="form-toolbar-print"
+              >
+                <Printer className="h-4 w-4" aria-hidden />
+                <span>{t.operationalForm.print}</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleExportExcel}
+                data-testid="form-toolbar-excel"
+              >
+                <FileSpreadsheet className="h-4 w-4" aria-hidden />
+                <span>{t.operationalForm.exportExcel}</span>
+              </Button>
+            </OperationalToolbar>
+          }
+          header={
+            <CollapsibleHeader
+              title={t.documents.headerSection}
+              summaryChips={summaryChips}
+              canCollapse={headerCanCollapse}
+              hasRequiredErrors={hasHeaderErrors}
+              onCollapseBlocked={() => {
+                void form.trigger(
+                  kind === 'transfer'
+                    ? [
+                        'businessDate',
+                        'sourceWarehouseId',
+                        'destinationWarehouseId',
+                      ]
+                    : ['businessDate', 'warehouseId'],
+                );
+              }}
+            >
+              <DocumentHeaderFields
+                form={form}
+                references={references}
+                kind={kind}
+                disabled={pending}
+              />
+            </CollapsibleHeader>
+          }
+          detail={
+            <DocumentLinesEditor
+              form={form}
+              references={references}
+              disabled={pending}
+            />
+          }
+          summary={<OperationalSummary rows={summaryRows} />}
+          footer={
+            <OperationalFooter
+              start={
+                isEdit &&
+                permissions.loaded &&
+                permissions.has(PERMISSIONS.inventory.documentCreate) ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() =>
+                      navigateWithDirtyGuard(
+                        `/app/inventory/documents/new?kind=${kind}`,
+                      )
+                    }
+                  >
+                    <Plus className="h-4 w-4" aria-hidden />
+                    {t.operationalForm.newDocument}
+                  </Button>
+                ) : undefined
+              }
+              center={
+                isEdit && currentNeighborIndex >= 0 ? (
+                  <DocumentPaginationControl
+                    currentIndex={currentNeighborIndex}
+                    totalCount={editableNeighbors.length}
+                    hasPrev={currentNeighborIndex > 0}
+                    hasNext={
+                      currentNeighborIndex < editableNeighbors.length - 1
+                    }
+                    disabled={pending}
+                    onPrev={() => {
+                      const prevDoc =
+                        editableNeighbors[currentNeighborIndex - 1];
+                      if (prevDoc !== undefined) {
+                        navigateWithDirtyGuard(
+                          `/app/inventory/documents/${prevDoc.id}/edit`,
+                        );
+                      }
+                    }}
+                    onNext={() => {
+                      const nextDoc =
+                        editableNeighbors[currentNeighborIndex + 1];
+                      if (nextDoc !== undefined) {
+                        navigateWithDirtyGuard(
+                          `/app/inventory/documents/${nextDoc.id}/edit`,
+                        );
+                      }
+                    }}
+                  />
+                ) : undefined
+              }
+              end={
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() => navigateWithDirtyGuard(cancelTarget)}
+                  >
+                    {t.app.cancel}
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={pending}
+                    loading={pending}
+                    data-testid="submit-document"
+                  >
+                    {pending
+                      ? t.inventoryDocuments.saving
+                      : isEdit
+                        ? t.inventoryDocuments.saveChanges
+                        : t.inventoryDocuments.save}
+                  </Button>
+                </>
+              }
+            />
+          }
+        >
           {failure !== null ? (
             <p
               role="alert"
-              className="text-sm text-rose-700"
+              className="text-sm text-danger-ink"
               data-testid="document-form-error"
             >
               {failure}
             </p>
           ) : null}
-
-          <div className="flex gap-2">
-            <Button
-              type="submit"
-              disabled={pending}
-              loading={pending}
-              data-testid="submit-document"
-            >
-              {pending
-                ? t.inventoryDocuments.saving
-                : isEdit
-                  ? t.inventoryDocuments.saveChanges
-                  : t.inventoryDocuments.save}
-            </Button>
-          </div>
-        </Card>
+        </OperationalFormShell>
       </form>
 
       <DocumentSideEffectDialog
@@ -341,6 +638,20 @@ function DocumentForm({
         {...(failure !== null && sideEffectOpen ? { error: failure } : {})}
         onConfirm={(decision) => void confirmSideEffects(decision)}
         onCancel={() => setSideEffectOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={pendingNavTarget !== null}
+        title={t.operationalForm.unsavedNavigationTitle}
+        description={<p>{t.operationalForm.unsavedNavigationBody}</p>}
+        confirmLabel={t.operationalForm.unsavedNavigationConfirm}
+        loading={false}
+        onConfirm={() => {
+          const target = pendingNavTarget ?? cancelTarget;
+          setPendingNavTarget(null);
+          navigate(target);
+        }}
+        onCancel={() => setPendingNavTarget(null)}
       />
     </div>
   );

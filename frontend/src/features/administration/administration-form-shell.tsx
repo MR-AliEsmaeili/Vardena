@@ -104,7 +104,7 @@ export function AdministrationFormShell({
           >
             <div className="grid gap-4 sm:grid-cols-2">{children}</div>
 
-            <div className="flex items-center gap-2 border-t border-slate-100 pt-4">
+            <div className="flex items-center gap-2 border-t border-line pt-4">
               <Button
                 type="submit"
                 disabled={submitting}

@@ -18,6 +18,14 @@ configure({ asyncUtilTimeout: 3000 });
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  try {
+    localStorage.removeItem('vardena:appearance:v1');
+    localStorage.removeItem('vardena:sidebar:v1');
+  } catch {
+    // ignore storage-less environments
+  }
+  document.documentElement.setAttribute('data-theme', 'light');
+  document.documentElement.setAttribute('data-font-scale', 'default');
 });
 
 // jsdom does not implement `matchMedia`, which Tailwind-driven components may

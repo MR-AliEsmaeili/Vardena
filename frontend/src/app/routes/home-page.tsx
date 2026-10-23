@@ -1,41 +1,40 @@
-import { ArrowLeft } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useMemo } from 'react';
 import { useSession } from '@/features/auth/use-session';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
-import { Button } from '@/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/ui/card';
 import { PageHeader } from '@/ui/patterns/page-header';
-import { navigationSections } from '../navigation';
+import {
+  WorkspaceCardGrid,
+  type WorkspaceCardGroup,
+} from '@/ui/patterns/workspace-cards';
+import { isNavigationItemVisible, navigationSections } from '../navigation';
 
 /**
- * Authenticated landing page.
+ * Authenticated domain directory (`میزکار`).
  *
- * Deliberately carries NO figures: the backend exposes no dashboard/KPI
- * surface, and inventing numbers in the UI is forbidden. It only routes the
- * user to the sections their session can actually open.
+ * Groups permitted navigation destinations by domain with minimal cards
+ * (icon on top, title below) and zero duplicate hub links.
  */
 export function HomePage() {
   const session = useSession();
   const permissions = usePermissions();
 
-  const sections = navigationSections
-    .filter((section) => section.id !== 'workspace')
-    .map((section) => ({
-      ...section,
-      items: section.items.filter(
-        (item) =>
-          item.permissions === undefined ||
-          (permissions.loaded && permissions.hasAll(item.permissions)),
-      ),
-    }))
-    .filter((section) => section.items.length > 0);
+  const groups = useMemo<WorkspaceCardGroup[]>(() => {
+    return navigationSections
+      .filter((section) => section.id !== 'workspace')
+      .map((section) => ({
+        id: section.id,
+        label: section.label,
+        items: section.items
+          .filter((item) => isNavigationItemVisible(item, permissions))
+          .map((item) => ({
+            to: item.to,
+            label: item.label,
+            icon: item.icon,
+          })),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [permissions]);
 
   return (
     <div className="space-y-5">
@@ -52,29 +51,7 @@ export function HomePage() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {sections.flatMap((section) =>
-          section.items.map((item) => (
-            <Card key={item.to}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <item.icon className="h-4 w-4 text-brand" aria-hidden />
-                  {item.label}
-                </CardTitle>
-                <CardDescription>{section.label}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button asChild variant="outline" size="sm">
-                  <Link to={item.to}>
-                    {t.home.openSection}
-                    <ArrowLeft className="h-4 w-4" aria-hidden />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )),
-        )}
-      </div>
+      <WorkspaceCardGrid groups={groups} />
     </div>
   );
 }

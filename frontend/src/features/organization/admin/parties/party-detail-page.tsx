@@ -100,7 +100,7 @@ export function PartyDetailPage() {
         </Definition>
         <Definition label={t.orgAdmin.legalName}>
           {party.legalName ?? (
-            <span className="text-slate-500">{t.orgAdmin.notAssigned}</span>
+            <span className="text-ink-subtle">{t.orgAdmin.notAssigned}</span>
           )}
         </Definition>
         <Definition label={t.orgAdmin.partyType}>
@@ -121,7 +121,7 @@ export function PartyDetailPage() {
         </Definition>
         <Definition label={t.orgAdmin.email}>
           {party.email === null ? (
-            <span className="text-slate-500">{t.orgAdmin.notAssigned}</span>
+            <span className="text-ink-subtle">{t.orgAdmin.notAssigned}</span>
           ) : (
             <span className="code" dir="ltr">
               {party.email}
@@ -130,7 +130,7 @@ export function PartyDetailPage() {
         </Definition>
         <Definition label={t.orgAdmin.phone}>
           {party.phone === null ? (
-            <span className="text-slate-500">{t.orgAdmin.notAssigned}</span>
+            <span className="text-ink-subtle">{t.orgAdmin.notAssigned}</span>
           ) : (
             <span className="code" dir="ltr">
               {party.phone}
@@ -144,7 +144,7 @@ export function PartyDetailPage() {
         </Definition>
       </DefinitionList>
 
-      <p className="text-xs text-slate-500">{t.orgAdmin.noDeleteHint}</p>
+      <p className="text-xs text-ink-subtle">{t.orgAdmin.noDeleteHint}</p>
     </div>
   );
 }

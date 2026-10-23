@@ -163,7 +163,7 @@ export function ItemDetailPage() {
             t.app.loading
           ) : baseUnit.data !== undefined ? (
             <Link
-              className="text-indigo-700 hover:underline"
+              className="text-brand hover:underline"
               to={`/app/inventory/units/${encodeURIComponent(item.baseUnitId)}`}
             >
               {baseUnit.data.code} — {baseUnit.data.name}
@@ -179,7 +179,7 @@ export function ItemDetailPage() {
             t.app.loading
           ) : group.data !== undefined ? (
             <Link
-              className="text-indigo-700 hover:underline"
+              className="text-brand hover:underline"
               to={`/app/inventory/item-groups/${encodeURIComponent(item.itemGroupId)}`}
             >
               {group.data.code} — {group.data.name}
@@ -207,7 +207,7 @@ export function ItemDetailPage() {
       </DefinitionList>
 
       <section className="space-y-2">
-        <h3 className="text-sm font-medium text-slate-800">
+        <h3 className="text-sm font-medium text-ink">
           {t.inventoryMaster.flags}
         </h3>
         <div className="flex flex-wrap gap-2">
@@ -240,7 +240,7 @@ export function ItemDetailPage() {
         </Definition>
       </DefinitionList>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ink-subtle">
         {t.inventoryMaster.lifecycle.disableBody}
       </p>
     </div>

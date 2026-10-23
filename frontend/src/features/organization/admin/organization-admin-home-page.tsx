@@ -1,79 +1,100 @@
-import { ArrowLeft } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { PermissionGate } from '@/features/permissions/permission-gate';
+import {
+  Building2,
+  Contact,
+  Handshake,
+  Network,
+  UserCheck,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
+import { useMemo } from 'react';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
+import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
-import { Button } from '@/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { PageHeader } from '@/ui/patterns/page-header';
+import {
+  WorkspaceCardGrid,
+  type WorkspaceCardGroup,
+} from '@/ui/patterns/workspace-cards';
 
-interface Surface {
+interface OrgSurface {
   to: string;
-  title: string;
+  label: string;
   description: string;
+  icon: LucideIcon;
   permission: string;
 }
 
-const surfaces: readonly Surface[] = [
+const SURFACES: readonly OrgSurface[] = [
   {
     to: '/app/organization/profile',
-    title: t.orgAdmin.profile,
+    label: t.orgAdmin.profile,
     description: t.orgAdmin.profileDescription,
+    icon: Building2,
     permission: PERMISSIONS.organization.view,
   },
   {
     to: '/app/organization/branches',
-    title: t.orgAdmin.branches,
+    label: t.orgAdmin.branches,
     description: t.orgAdmin.branchesDescription,
+    icon: Network,
     permission: PERMISSIONS.organization.branchView,
   },
   {
     to: '/app/organization/departments',
-    title: t.orgAdmin.departments,
+    label: t.orgAdmin.departments,
     description: t.orgAdmin.departmentsDescription,
+    icon: Contact,
     permission: PERMISSIONS.organization.departmentView,
   },
   {
     to: '/app/organization/employees',
-    title: t.orgAdmin.employees,
+    label: t.orgAdmin.employees,
     description: t.orgAdmin.employeesDescription,
+    icon: Users,
     permission: PERMISSIONS.organization.employeeView,
   },
   {
     to: '/app/organization/parties',
-    title: t.orgAdmin.parties,
+    label: t.orgAdmin.parties,
     description: t.orgAdmin.partiesDescription,
+    icon: Handshake,
     permission: PERMISSIONS.organization.partyView,
+  },
+  {
+    to: '/app/organization/members',
+    label: t.orgAdmin.members,
+    description: t.orgAdmin.membersDescription,
+    icon: UserCheck,
+    permission: PERMISSIONS.organization.membershipView,
   },
 ];
 
-/** Landing page of the organization area: the surfaces this session can open. */
+/** Landing page of the organization area: minimal cards gated by exact permissions. */
 export function OrganizationAdminHomePage() {
+  const permissions = usePermissions();
+
+  const groups = useMemo<WorkspaceCardGroup[]>(() => {
+    if (!permissions.loaded) return [];
+    const permitted = SURFACES.filter((surface) =>
+      permissions.has(surface.permission),
+    );
+    if (permitted.length === 0) return [];
+    return [
+      {
+        id: 'organization',
+        label: t.workspace.organizationGroup,
+        items: permitted,
+      },
+    ];
+  }, [permissions]);
+
   return (
     <div className="space-y-5" data-testid="organization-admin-home">
       <PageHeader title={t.orgAdmin.title} description={t.orgAdmin.subtitle} />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {surfaces.map((surface) => (
-          <PermissionGate key={surface.to} permission={surface.permission}>
-            <Card>
-              <CardHeader>
-                <CardTitle>{surface.title}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-slate-600">{surface.description}</p>
-                <Button asChild variant="outline" size="sm">
-                  <Link to={surface.to}>
-                    {t.home.openSection}
-                    <ArrowLeft className="h-4 w-4" aria-hidden />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          </PermissionGate>
-        ))}
-      </div>
+      <WorkspaceCardGrid groups={groups} />
 
       <Alert variant="neutral" role="note">
         <AlertTitle>{t.orgAdmin.deferredTitle}</AlertTitle>

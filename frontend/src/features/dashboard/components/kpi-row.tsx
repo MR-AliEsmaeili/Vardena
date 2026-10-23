@@ -7,12 +7,12 @@ import { SparkLine } from './charts/spark-line';
 import { aggregateKpis, presentKpis } from '../lib/kpis';
 
 /**
- * KPI row (reference visual: four compact cards).
+ * KPI row (four compact cards).
  *
  * Values are the backend-derived period aggregates of the dashboard scope:
  * total debit/credit turnover, net turnover and the count of accounting-period
- * buckets represented by the projection. Formatting goes only
- * through the central formatters; negative net renders red (FR-7).
+ * buckets represented by the projection. Formatting goes only through the
+ * central formatters; negative net renders danger-ink (FR-7).
  */
 export function KpiRow({
   balances,
@@ -28,7 +28,7 @@ export function KpiRow({
   if (!isPermitted || scopeMissing) {
     return (
       <section aria-label={t.dashboard.kpiSectionLabel}>
-        <p className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-6 text-center text-xs text-slate-500">
+        <p className="rounded-card border border-dashed border-line-strong bg-surface px-6 py-6 text-center text-xs text-ink-subtle">
           {scopeMissing ? t.dashboard.scopeMissing : t.dashboard.noPermission}
         </p>
       </section>
@@ -68,28 +68,28 @@ export function KpiRow({
       value: present.debit,
       negative: false,
       sub: t.dashboard.kpiPeriodScope,
-      sparkClass: 'text-indigo-500',
+      sparkClass: 'text-brand',
     },
     {
       label: t.dashboard.kpiTotalCredit,
       value: present.credit,
       negative: false,
       sub: t.dashboard.kpiPeriodScope,
-      sparkClass: 'text-emerald-500',
+      sparkClass: 'text-ok-ink',
     },
     {
       label: t.dashboard.kpiTotalNet,
       value: present.net,
       negative: present.netNegative,
       sub: t.dashboard.kpiPeriodScope,
-      sparkClass: present.netNegative ? 'text-rose-500' : 'text-sky-500',
+      sparkClass: present.netNegative ? 'text-danger' : 'text-info-ink',
     },
     {
       label: t.dashboard.kpiPeriodsWithTurnover,
       value: formatCount(periodsWithTurnover),
       negative: false,
       sub: t.dashboard.kpiPeriodsScope,
-      sparkClass: 'text-slate-400',
+      sparkClass: 'text-ink-subtle',
     },
   ];
 
@@ -98,26 +98,28 @@ export function KpiRow({
       <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <Card key={card.label} className="px-4 py-4">
-            <p className="mb-1.5 text-xs font-semibold text-slate-600">
+            <p className="mb-1.5 text-xs font-semibold text-ink-muted">
               {card.label}
             </p>
             <p className="flex items-baseline gap-1.5">
               <span
                 className={`num text-xl font-extrabold ${
-                  card.negative ? 'text-rose-700' : 'text-slate-900'
+                  card.negative ? 'text-danger-ink' : 'text-ink'
                 }`}
                 title={card.value}
               >
                 {card.value}
               </span>
               {card.label !== t.dashboard.kpiPeriodsWithTurnover && (
-                <span className="text-[11px] font-medium text-slate-400">
+                <span className="text-[0.6875rem] font-medium text-ink-subtle">
                   {t.dashboard.kpiUnit}
                 </span>
               )}
             </p>
             <div className="mt-2 flex items-end justify-between gap-2">
-              <span className="text-[11px] text-slate-400">{card.sub}</span>
+              <span className="text-[0.6875rem] text-ink-subtle">
+                {card.sub}
+              </span>
               <SparkLine points={spark} className={card.sparkClass} />
             </div>
           </Card>

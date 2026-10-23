@@ -38,7 +38,7 @@ export function FiscalYearSelection({ invalid }: { invalid: boolean }) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <CalendarDays className="h-5 w-5 text-indigo-600" aria-hidden />
+            <CalendarDays className="h-5 w-5 text-brand" aria-hidden />
             {t.financialContext.fiscalYearTitle}
           </CardTitle>
           <CardDescription>{t.financialContext.fiscalYearBody}</CardDescription>
@@ -57,8 +57,8 @@ export function FiscalYearSelection({ invalid }: { invalid: boolean }) {
                   className={cn(
                     'flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors',
                     validChosenId === year.id
-                      ? 'border-indigo-500 bg-indigo-50'
-                      : 'border-slate-200 bg-white hover:bg-slate-50',
+                      ? 'border-brand bg-brand-soft'
+                      : 'border-line bg-surface hover:bg-sunken',
                   )}
                 >
                   <input
@@ -69,11 +69,11 @@ export function FiscalYearSelection({ invalid }: { invalid: boolean }) {
                     onChange={() => setChosenId(year.id)}
                   />
                   <span className="min-w-0">
-                    <span className="block font-medium text-slate-900">
+                    <span className="block font-medium text-ink">
                       {year.title}
                     </span>
                     <span
-                      className="code block text-xs text-slate-500"
+                      className="code block text-xs text-ink-subtle"
                       title={`${formatDateOnlyCanonical(year.startDate)} — ${formatDateOnlyCanonical(year.endDate)}`}
                     >
                       {year.code} · {formatDateOnly(year.startDate)} —{' '}

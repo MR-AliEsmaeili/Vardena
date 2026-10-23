@@ -287,23 +287,23 @@ function PartyForm({
       </FormField>
 
       <fieldset className="sm:col-span-2 space-y-1.5">
-        <legend className="text-sm font-medium text-slate-800">
+        <legend className="text-sm font-medium text-ink">
           {t.orgAdmin.capabilities}
         </legend>
         <div className="flex flex-wrap gap-4">
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-ink-muted">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300"
+              className="h-4 w-4 rounded border-line-strong"
               disabled={submitting}
               {...form.register('isCustomer')}
             />
             {t.orgAdmin.customerCapability}
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-ink-muted">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300"
+              className="h-4 w-4 rounded border-line-strong"
               disabled={submitting}
               {...form.register('isSupplier')}
             />
@@ -311,7 +311,7 @@ function PartyForm({
           </label>
         </div>
         {form.formState.errors.isCustomer?.message !== undefined && (
-          <p role="alert" className="text-xs text-rose-700">
+          <p role="alert" className="text-xs text-danger-ink">
             {form.formState.errors.isCustomer.message}
           </p>
         )}

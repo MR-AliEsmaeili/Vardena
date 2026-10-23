@@ -36,19 +36,19 @@ export function AccountStatementSummary({
     <div className="space-y-3">
       <Card>
         <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-          <span className="text-slate-500">{t.statement.scope}:</span>
+          <span className="text-ink-subtle">{t.statement.scope}:</span>
           <span>
-            <span className="text-slate-500">{t.filters.account}: </span>
+            <span className="text-ink-subtle">{t.filters.account}: </span>
             <span className="code">{scope.account.code}</span> —{' '}
             {scope.account.title}
           </span>
           <span>
-            <span className="text-slate-500">{t.filters.financialArea}: </span>
+            <span className="text-ink-subtle">{t.filters.financialArea}: </span>
             <span className="code">{scope.financialArea.code}</span> —{' '}
             {scope.financialArea.title}
           </span>
           <span>
-            <span className="text-slate-500">{t.filters.fiscalYear}: </span>
+            <span className="text-ink-subtle">{t.filters.fiscalYear}: </span>
             <span className="code">{scope.fiscalYear.code}</span> (
             <span
               className="code"
@@ -66,7 +66,7 @@ export function AccountStatementSummary({
             )
           </span>
           <span>
-            <span className="text-slate-500">
+            <span className="text-ink-subtle">
               {t.filters.accountingPeriod}:{' '}
             </span>
             {scope.accountingPeriod === null
@@ -80,7 +80,7 @@ export function AccountStatementSummary({
         {figures.map((figure) => (
           <Card key={figure.label}>
             <CardContent className="space-y-1 p-3">
-              <p className="text-xs text-slate-500">{figure.label}</p>
+              <p className="text-xs text-ink-subtle">{figure.label}</p>
               <AmountCell
                 value={figure.value}
                 className={
@@ -94,7 +94,7 @@ export function AccountStatementSummary({
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-ink-subtle">
         <Badge variant="neutral">
           {t.statement.signConvention}:{' '}
           <span className="code ms-1">{statement.signConvention}</span>

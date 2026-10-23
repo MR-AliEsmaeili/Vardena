@@ -33,12 +33,12 @@ export function inventoryDocumentsColumns(
       header: t.inventoryDocuments.columnNumber,
       cell: ({ row }) => (
         <Link
-          className="font-medium text-indigo-700 underline-offset-4 hover:underline"
+          className="font-medium text-brand underline-offset-4 hover:underline"
           to={`/app/inventory/documents/${row.original.id}`}
           data-testid={`document-link-${row.original.id}`}
         >
           {row.original.number === null ? (
-            <span className="text-slate-500">
+            <span className="text-ink-subtle">
               {t.inventoryDocuments.numberNotAllocated}
             </span>
           ) : (

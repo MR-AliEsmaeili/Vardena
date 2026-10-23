@@ -70,7 +70,7 @@ export function AccountPicker({
         aria-label={`${label} — ${t.app.search}`}
         onChange={(event) => setSearch(event.target.value)}
       />
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ink-subtle">
         {t.filters.postableOnly}
         {hasMore ? ` · ${t.app.search}` : ''}
       </p>

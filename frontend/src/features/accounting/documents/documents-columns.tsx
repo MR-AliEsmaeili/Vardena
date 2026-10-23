@@ -33,7 +33,7 @@ export function buildDocumentsColumns(
       enableSorting: true,
       cell: ({ row }) => (
         <Link
-          className="code font-semibold text-indigo-700 hover:underline"
+          className="code font-semibold text-brand hover:underline"
           to={`/app/accounting/documents/${encodeURIComponent(row.original.id)}`}
         >
           {row.original.documentNumber ?? t.app.none}
@@ -76,9 +76,9 @@ export function buildDocumentsColumns(
       cell: ({ row }) => {
         const area = areaById.get(row.original.financialAreaId);
         return area === undefined ? (
-          <span className="text-slate-400">{t.app.none}</span>
+          <span className="text-ink-subtle">{t.app.none}</span>
         ) : (
-          <span className="text-xs text-slate-600">
+          <span className="text-xs text-ink-muted">
             {area.code} — {area.title}
           </span>
         );
@@ -101,7 +101,7 @@ export function buildDocumentsColumns(
         const state = parseDocumentState(row.original.state);
         if (state === null) {
           return (
-            <span className="code text-xs text-slate-500">
+            <span className="code text-xs text-ink-subtle">
               {row.original.state}
             </span>
           );
@@ -118,7 +118,7 @@ export function buildDocumentsColumns(
       header: t.documents.colOrigin,
       enableSorting: false,
       cell: ({ row }) => (
-        <span className="text-xs text-slate-600">
+        <span className="text-xs text-ink-muted">
           {documentOriginLabel(row.original.origin)}
         </span>
       ),
@@ -129,7 +129,7 @@ export function buildDocumentsColumns(
       enableSorting: false,
       cell: ({ row }) => (
         <Link
-          className="text-sm font-medium text-indigo-700 hover:underline"
+          className="text-sm font-medium text-brand hover:underline"
           to={`/app/accounting/documents/${encodeURIComponent(row.original.id)}`}
         >
           {t.documents.view}

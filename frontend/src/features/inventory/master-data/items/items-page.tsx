@@ -25,7 +25,7 @@ const columns: ColumnDef<InventoryItem, unknown>[] = [
     header: t.inventoryMaster.code,
     cell: ({ row }) => (
       <Link
-        className="code font-medium text-indigo-700 hover:underline"
+        className="code font-medium text-brand hover:underline"
         to={`/app/inventory/items/${encodeURIComponent(row.original.id)}`}
       >
         {row.original.code}
@@ -112,7 +112,7 @@ export function ItemsPage() {
         }
         onClear={list.clear}
       >
-        <label className="min-w-44 text-xs text-slate-600">
+        <label className="min-w-44 text-xs text-ink-muted">
           <span>{t.inventoryMaster.itemKind}</span>
           <Select
             className="mt-1"
@@ -127,7 +127,7 @@ export function ItemsPage() {
             ))}
           </Select>
         </label>
-        <label className="min-w-44 text-xs text-slate-600">
+        <label className="min-w-44 text-xs text-ink-muted">
           <span>{t.inventoryMaster.itemGroupFilter}</span>
           <Select
             className="mt-1"

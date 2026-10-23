@@ -1059,9 +1059,9 @@ export function ClientDevicesPage() {
 
 function QuotaStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-slate-100 bg-slate-50 px-3 py-3">
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
+    <div className="rounded-md border border-line bg-sunken px-3 py-3">
+      <p className="text-xs text-ink-subtle">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-ink">{value}</p>
     </div>
   );
 }
@@ -1097,8 +1097,8 @@ function ArtifactPanel({
   onDownload: () => void;
 }) {
   return (
-    <section className="mt-4 space-y-2 rounded-md border border-indigo-200 bg-indigo-50/40 p-3">
-      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+    <section className="mt-4 space-y-2 rounded-md border border-brand/30 bg-indigo-50/40 p-3">
+      <h3 className="text-sm font-semibold text-ink">{title}</h3>
       <Label htmlFor="device-artifact-text">{label}</Label>
       <textarea
         id="device-artifact-text"
@@ -1106,9 +1106,9 @@ function ArtifactPanel({
         value={text}
         dir="ltr"
         spellCheck={false}
-        className="min-h-28 w-full rounded-md border border-slate-300 bg-white p-3 font-mono text-xs text-slate-800"
+        className="min-h-28 w-full rounded-md border border-line-strong bg-surface p-3 font-mono text-xs text-ink"
       />
-      <p className="text-xs leading-5 text-slate-600">{hint}</p>
+      <p className="text-xs leading-5 text-ink-muted">{hint}</p>
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onCopy}>
           <Clipboard className="h-4 w-4" aria-hidden />
@@ -1120,7 +1120,7 @@ function ArtifactPanel({
         </Button>
       </div>
       {copyMessage !== null && (
-        <output className="text-xs text-slate-600">{copyMessage}</output>
+        <output className="text-xs text-ink-muted">{copyMessage}</output>
       )}
     </section>
   );
@@ -1189,7 +1189,7 @@ function EnrollmentPanel({
               />
               <p
                 id="enrollment-public-key-hint"
-                className="text-xs text-slate-500"
+                className="text-xs text-ink-subtle"
               >
                 {t.deviceLicensing.publicKeyHint}
               </p>
@@ -1204,13 +1204,13 @@ function EnrollmentPanel({
         ) : (
           <>
             <div className="space-y-1.5">
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-ink-muted">
                 {t.deviceLicensing.challengeExpires}:{' '}
                 <span className="num" dir="ltr">
                   {formatDateTime(challenge.expiresAt)}
                 </span>
               </p>
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-ink-muted">
                 {t.deviceLicensing.keyFingerprint}:{' '}
                 <span className="code" dir="ltr">
                   {challenge.keyFingerprint}
@@ -1225,7 +1225,7 @@ function EnrollmentPanel({
                 value={challenge.canonicalPayload}
                 dir="ltr"
                 spellCheck={false}
-                className="min-h-36 w-full rounded-md border border-slate-300 bg-slate-50 p-3 font-mono text-xs"
+                className="min-h-36 w-full rounded-md border border-line-strong bg-sunken p-3 font-mono text-xs"
               />
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1249,7 +1249,7 @@ function EnrollmentPanel({
               </Button>
             </div>
             {copyMessage !== null && (
-              <output className="text-xs text-slate-600">{copyMessage}</output>
+              <output className="text-xs text-ink-muted">{copyMessage}</output>
             )}
             <form className="space-y-3" onSubmit={onActivate}>
               <div className="space-y-1.5">
@@ -1270,7 +1270,7 @@ function EnrollmentPanel({
                 />
                 <p
                   id="enrollment-signature-hint"
-                  className="text-xs text-slate-500"
+                  className="text-xs text-ink-subtle"
                 >
                   {t.deviceLicensing.signatureHint}
                 </p>
@@ -1353,7 +1353,7 @@ function ReplacementPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-xs text-slate-600">
+        <p className="text-xs text-ink-muted">
           {t.deviceLicensing.deviceId}:{' '}
           <span className="code" dir="ltr">
             {deviceId}
@@ -1376,7 +1376,7 @@ function ReplacementPanel({
                 required
                 pattern="[A-Za-z0-9_-]{1,256}"
               />
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-subtle">
                 {t.deviceLicensing.publicKeyHint}
               </p>
             </div>
@@ -1390,13 +1390,13 @@ function ReplacementPanel({
         ) : challenge !== null ? (
           <>
             <div className="space-y-2">
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-ink-muted">
                 {t.deviceLicensing.replacementChallengeExpires}:{' '}
                 <span className="num" dir="ltr">
                   {formatDateTime(challenge.challengeExpiresAt)}
                 </span>
               </p>
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-ink-muted">
                 {t.deviceLicensing.keyFingerprint}:{' '}
                 <span className="code" dir="ltr">
                   {challenge.keyFingerprint}
@@ -1411,7 +1411,7 @@ function ReplacementPanel({
                 value={challenge.canonicalPayload}
                 dir="ltr"
                 spellCheck={false}
-                className="min-h-36 w-full rounded-md border border-slate-300 bg-slate-50 p-3 font-mono text-xs"
+                className="min-h-36 w-full rounded-md border border-line-strong bg-sunken p-3 font-mono text-xs"
               />
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1435,7 +1435,7 @@ function ReplacementPanel({
               </Button>
             </div>
             {copyMessage !== null && (
-              <output className="text-xs text-slate-600">{copyMessage}</output>
+              <output className="text-xs text-ink-muted">{copyMessage}</output>
             )}
             <form className="space-y-3" onSubmit={onProve}>
               <div className="space-y-1.5">
@@ -1453,7 +1453,7 @@ function ReplacementPanel({
                   required
                   pattern="[A-Za-z0-9_-]{1,256}"
                 />
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-ink-subtle">
                   {t.deviceLicensing.signatureHint}
                 </p>
               </div>
@@ -1527,7 +1527,7 @@ function ResponseImportPanel({
               }}
             />
             {fileName !== '' && (
-              <p className="text-xs text-slate-500" dir="ltr">
+              <p className="text-xs text-ink-subtle" dir="ltr">
                 {fileName}
               </p>
             )}
@@ -1543,7 +1543,7 @@ function ResponseImportPanel({
               maxLength={DEVICE_RESPONSE_MAX_LENGTH}
               dir="ltr"
               spellCheck={false}
-              className="min-h-36 w-full rounded-md border border-slate-300 bg-white p-3 font-mono text-xs"
+              className="min-h-36 w-full rounded-md border border-line-strong bg-surface p-3 font-mono text-xs"
             />
           </div>
           {inputError !== null && inputError !== undefined && (

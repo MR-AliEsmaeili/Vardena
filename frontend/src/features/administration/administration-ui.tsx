@@ -10,7 +10,7 @@ import type { ReactNode } from 'react';
 
 export function DefinitionList({ children }: { children: ReactNode }) {
   return (
-    <dl className="grid gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 sm:grid-cols-2">
+    <dl className="grid gap-px overflow-hidden rounded-lg border border-line bg-slate-200 sm:grid-cols-2">
       {children}
     </dl>
   );
@@ -24,9 +24,9 @@ export function Definition({
   children: ReactNode;
 }) {
   return (
-    <div className="bg-white p-4">
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className="mt-1 text-sm font-medium text-slate-900">{children}</dd>
+    <div className="bg-surface p-4">
+      <dt className="text-xs text-ink-subtle">{label}</dt>
+      <dd className="mt-1 text-sm font-medium text-ink">{children}</dd>
     </div>
   );
 }

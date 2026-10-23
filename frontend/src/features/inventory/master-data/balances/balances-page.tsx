@@ -94,7 +94,7 @@ function balanceColumns({
       header: t.inventoryMaster.lastMovementDate,
       cell: ({ row }) =>
         row.original.lastMovementDate === null ? (
-          <span className="text-slate-400">—</span>
+          <span className="text-ink-subtle">—</span>
         ) : (
           <span className="num">
             {formatBusinessDay(row.original.lastMovementDate)}
@@ -160,7 +160,7 @@ export function BalancesPage() {
         onApply={() => undefined}
         onClear={list.clear}
       >
-        <label className="min-w-44 text-xs text-slate-600">
+        <label className="min-w-44 text-xs text-ink-muted">
           <span>{t.inventoryMaster.warehouseFilter}</span>
           <Select
             className="mt-1"
@@ -178,7 +178,7 @@ export function BalancesPage() {
             ))}
           </Select>
         </label>
-        <label className="min-w-44 text-xs text-slate-600">
+        <label className="min-w-44 text-xs text-ink-muted">
           <span>{t.inventoryMaster.itemFilter}</span>
           <Select
             className="mt-1"

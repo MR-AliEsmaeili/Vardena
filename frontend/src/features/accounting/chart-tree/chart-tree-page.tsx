@@ -84,8 +84,8 @@ export function ChartTreePage() {
               <AlertBody>{t.chartTree.truncatedNotice}</AlertBody>
             </Alert>
           )}
-          <div className="rounded-lg border border-slate-200 bg-white p-2">
-            <p className="px-2 pb-2 text-xs text-slate-500">
+          <div className="rounded-lg border border-line bg-surface p-2">
+            <p className="px-2 pb-2 text-xs text-ink-subtle">
               <span className="num">{formatCount(nodes.length)}</span>{' '}
               {t.chartTree.nodesLoaded}
               {chartTreeQuery.data.total > nodes.length && (

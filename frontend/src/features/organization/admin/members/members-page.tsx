@@ -215,12 +215,12 @@ function memberColumns({
       cell: ({ row }) => {
         const username = usernameById?.get(row.original.userId);
         return username !== undefined ? (
-          <span className="font-medium text-slate-900" dir="ltr">
+          <span className="font-medium text-ink" dir="ltr">
             {username}
           </span>
         ) : (
           <span
-            className="code text-xs text-slate-500"
+            className="code text-xs text-ink-subtle"
             title={t.orgAdmin.membersUserUnavailable}
             dir="ltr"
           >
@@ -346,7 +346,7 @@ function GrantMemberButton({
           onManualChange={setManualId}
         />
         {fieldError !== null && (
-          <p role="alert" className="mt-2 text-xs text-rose-700">
+          <p role="alert" className="mt-2 text-xs text-danger-ink">
             {fieldError}
           </p>
         )}
@@ -428,7 +428,7 @@ function RevokeMemberButton({
         onCancel={close}
       >
         {username !== null && (
-          <p className="text-sm text-slate-700">
+          <p className="text-sm text-ink-muted">
             {t.orgAdmin.memberUser}:{' '}
             <span dir="ltr" className="font-medium">
               {username}
@@ -438,7 +438,7 @@ function RevokeMemberButton({
         {isSelf && (
           <p
             role="alert"
-            className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900"
+            className="rounded-md border border-warn-line bg-warn-soft p-2 text-xs text-warn-ink"
           >
             {t.orgAdmin.revokeSelfWarning}
           </p>
@@ -503,7 +503,7 @@ function MemberUserSelection({
       <div className="space-y-1.5">
         <label
           htmlFor="member-user-select"
-          className="block text-sm font-medium text-slate-700"
+          className="block text-sm font-medium text-ink-muted"
         >
           {t.orgAdmin.memberUser}
         </label>
@@ -522,7 +522,7 @@ function MemberUserSelection({
           ))}
         </Select>
         {users.isPending && (
-          <p className="text-xs text-slate-500">{t.app.loading}</p>
+          <p className="text-xs text-ink-subtle">{t.app.loading}</p>
         )}
       </div>
     );
@@ -532,7 +532,7 @@ function MemberUserSelection({
     <div className="space-y-1.5">
       <label
         htmlFor="member-user-manual"
-        className="block text-sm font-medium text-slate-700"
+        className="block text-sm font-medium text-ink-muted"
       >
         {t.orgAdmin.grantPickerUnavailable}
       </label>

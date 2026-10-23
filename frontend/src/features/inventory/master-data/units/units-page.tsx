@@ -22,7 +22,7 @@ const columns: ColumnDef<InventoryUnit, unknown>[] = [
     header: t.inventoryMaster.code,
     cell: ({ row }) => (
       <Link
-        className="code font-medium text-indigo-700 hover:underline"
+        className="code font-medium text-brand hover:underline"
         to={`/app/inventory/units/${encodeURIComponent(row.original.id)}`}
       >
         {row.original.code}

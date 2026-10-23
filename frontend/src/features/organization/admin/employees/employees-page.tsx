@@ -27,7 +27,7 @@ const columns: ColumnDef<Employee, unknown>[] = [
     header: t.orgAdmin.employeeCode,
     cell: ({ row }) => (
       <Link
-        className="code font-medium text-indigo-700 hover:underline"
+        className="code font-medium text-brand hover:underline"
         to={`/app/organization/employees/${encodeURIComponent(row.original.id)}`}
       >
         {row.original.employeeCode}
@@ -101,7 +101,7 @@ export function EmployeesPage() {
         }
         onClear={list.clear}
       >
-        <label className="min-w-44 text-xs text-slate-600">
+        <label className="min-w-44 text-xs text-ink-muted">
           <span>{t.orgAdmin.department}</span>
           <Select
             className="mt-1"
@@ -119,7 +119,7 @@ export function EmployeesPage() {
             ))}
           </Select>
         </label>
-        <label className="min-w-44 text-xs text-slate-600">
+        <label className="min-w-44 text-xs text-ink-muted">
           <span>{t.orgAdmin.branch}</span>
           <Select
             className="mt-1"

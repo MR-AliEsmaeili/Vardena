@@ -28,7 +28,7 @@ const columns: ColumnDef<InventoryItemGroup, unknown>[] = [
     header: t.inventoryMaster.code,
     cell: ({ row }) => (
       <Link
-        className="code font-medium text-indigo-700 hover:underline"
+        className="code font-medium text-brand hover:underline"
         to={`/app/inventory/item-groups/${encodeURIComponent(row.original.id)}`}
       >
         {row.original.code}
@@ -106,7 +106,7 @@ export function ItemGroupsPage() {
         }
         onClear={list.clear}
       >
-        <label className="min-w-44 text-xs text-slate-600">
+        <label className="min-w-44 text-xs text-ink-muted">
           <span>{t.inventoryMaster.parentGroup}</span>
           <Select
             className="mt-1"

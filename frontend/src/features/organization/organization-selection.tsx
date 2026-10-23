@@ -57,7 +57,7 @@ export function OrganizationSelection({ invalid }: { invalid: boolean }) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-indigo-600" aria-hidden />
+            <Building2 className="h-5 w-5 text-brand" aria-hidden />
             {t.organization.selectingTitle}
           </CardTitle>
           <CardDescription>{t.organization.selectingSubtitle}</CardDescription>
@@ -76,8 +76,8 @@ export function OrganizationSelection({ invalid }: { invalid: boolean }) {
                     className={cn(
                       'flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors',
                       checked
-                        ? 'border-indigo-400 bg-indigo-50'
-                        : 'border-slate-200 bg-white hover:bg-slate-50',
+                        ? 'border-brand bg-brand-soft'
+                        : 'border-line bg-surface hover:bg-sunken',
                     )}
                   >
                     <input
@@ -88,10 +88,10 @@ export function OrganizationSelection({ invalid }: { invalid: boolean }) {
                       onChange={() => setChosenId(item.id)}
                       className="h-4 w-4 accent-indigo-600"
                     />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
                       {item.name}
                     </span>
-                    <span className="code text-xs text-slate-500" dir="ltr">
+                    <span className="code text-xs text-ink-subtle" dir="ltr">
                       {item.code}
                     </span>
                   </label>

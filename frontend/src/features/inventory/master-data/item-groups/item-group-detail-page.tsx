@@ -142,7 +142,7 @@ export function ItemGroupDetailPage() {
             t.app.loading
           ) : parent.data !== undefined ? (
             <Link
-              className="text-indigo-700 hover:underline"
+              className="text-brand hover:underline"
               to={`/app/inventory/item-groups/${encodeURIComponent(group.parentId)}`}
             >
               {parent.data.code} — {parent.data.name}
@@ -166,7 +166,7 @@ export function ItemGroupDetailPage() {
         </Definition>
       </DefinitionList>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ink-subtle">
         {t.inventoryMaster.lifecycle.disableBody}
       </p>
     </div>

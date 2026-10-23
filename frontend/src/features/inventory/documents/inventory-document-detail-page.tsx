@@ -128,8 +128,8 @@ function Fact({
 }) {
   return (
     <div className="space-y-1">
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className="text-sm text-slate-900">{value}</dd>
+      <dt className="text-xs text-ink-subtle">{label}</dt>
+      <dd className="text-sm text-ink">{value}</dd>
     </div>
   );
 }

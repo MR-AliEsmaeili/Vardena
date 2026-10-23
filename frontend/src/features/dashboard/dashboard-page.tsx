@@ -1,6 +1,19 @@
-import { useEffect, type ReactElement } from 'react';
+import { useEffect, useMemo, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { SortingState } from '@tanstack/react-table';
+import {
+  BookOpenCheck,
+  Boxes,
+  Building2,
+  FileSpreadsheet,
+  FileStack,
+  Handshake,
+  Plus,
+  Receipt,
+  ShieldCheck,
+  TableProperties,
+  UserCog,
+} from 'lucide-react';
 import { LicenseStatusCard } from '@/features/licensing/license-status-card';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { usePermissions } from '@/features/permissions/use-permissions';
@@ -12,6 +25,10 @@ import { todayBusinessDay, useTimeZone } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import { sortingFromParam, sortingToParam } from '@/lib/sort-param';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
+import {
+  WorkspaceCardGrid,
+  type WorkspaceCardGroup,
+} from '@/ui/patterns/workspace-cards';
 import { ChartsSection } from './components/charts-section';
 import { DocumentsTable } from './components/documents-table';
 import { KpiRow } from './components/kpi-row';
@@ -32,18 +49,14 @@ import {
 } from './api/use-dashboard-data';
 import { useDashboardScope } from './api/use-dashboard-scope';
 
-/**
- * The Vardena Dashboard (Task 32) — native implementation of the
- * `simpledashboard.html` visual contract on real backend read models.
- *
- * Every section renders its own loading/empty/error/success state; URL state
- * (page/pageSize/sort of the documents table) lives in the router search
- * params, server state in TanStack Query, and only ephemeral view state
- * (banner dismissal) is `useState`.
- */
 const DEFAULT_PAGE_SIZE = 9;
 const PAGE_SIZE_OPTIONS = [9, 25, 50];
 
+/**
+ * The Vardena Workspace (`میزکار`) — combines categorized minimal domain cards
+ * (icon on top, title below, permission-filtered) with real-time financial &
+ * operational KPIs, charts, recent documents, and status widgets.
+ */
 export function DashboardPage(): ReactElement {
   const organizationId = useOrganizationId();
   const timeZone = useTimeZone();
@@ -62,8 +75,6 @@ export function DashboardPage(): ReactElement {
     ? Number(searchParams.get('pageSize') ?? `${DEFAULT_PAGE_SIZE}`)
     : DEFAULT_PAGE_SIZE;
   const sortParam = searchParams.get('sort') ?? undefined;
-  // URL parameters are untrusted: only the backend's allow-listed sort fields
-  // of the documents contract are ever forwarded.
   const sorting: SortingState = sortingFromParam(sortParam, [
     'documentDate',
     'documentNumber',
@@ -137,9 +148,6 @@ export function DashboardPage(): ReactElement {
       (period) => today >= period.startDate && today <= period.endDate,
     ) ?? periods[0];
 
-  // The reference's Alt+D / Alt+N concept lands on real routes: Alt+D goes to
-  // the dashboard (its own page), Alt+N is intentionally NOT bound because no
-  // document-creation surface exists yet (fake action forbidden).
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.altKey && (event.key === 'd' || event.key === 'D')) {
@@ -150,21 +158,162 @@ export function DashboardPage(): ReactElement {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  const quickAccessGroups = useMemo<WorkspaceCardGroup[]>(() => {
+    if (!permissions.loaded) return [];
+    const accountingItems = [
+      permissions.hasAny([
+        PERMISSIONS.accounting.documentView,
+        PERMISSIONS.accounting.accountView,
+        PERMISSIONS.accounting.generalLedgerView,
+        PERMISSIONS.accounting.trialBalanceView,
+      ])
+        ? {
+            to: '/app/accounting',
+            label: t.accounting.title,
+            icon: BookOpenCheck,
+          }
+        : null,
+      permissions.has(PERMISSIONS.accounting.documentCreate)
+        ? {
+            to: '/app/accounting/documents/new',
+            label: t.documents.create,
+            icon: Plus,
+          }
+        : null,
+      permissions.has(PERMISSIONS.accounting.documentView)
+        ? {
+            to: '/app/accounting/documents',
+            label: t.nav.documents,
+            icon: Receipt,
+          }
+        : null,
+      permissions.has(PERMISSIONS.accounting.documentView)
+        ? {
+            to: '/app/accounting/document-lines',
+            label: t.nav.accountingDocumentLines,
+            icon: TableProperties,
+          }
+        : null,
+    ].filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+    const inventoryItems = [
+      permissions.hasAny([
+        PERMISSIONS.inventory.movementCreate,
+        PERMISSIONS.inventory.transferCreate,
+        PERMISSIONS.inventory.movementView,
+        PERMISSIONS.inventory.documentView,
+      ])
+        ? {
+            to: '/app/inventory',
+            label: t.inventory.title,
+            icon: Boxes,
+          }
+        : null,
+      permissions.has(PERMISSIONS.inventory.documentCreate)
+        ? {
+            to: '/app/inventory/documents/new?kind=receipt',
+            label: t.inventoryDocuments.newReceipt,
+            icon: Plus,
+          }
+        : null,
+      permissions.has(PERMISSIONS.inventory.documentView)
+        ? {
+            to: '/app/inventory/documents',
+            label: t.nav.inventoryDocuments,
+            icon: FileStack,
+          }
+        : null,
+      permissions.has(PERMISSIONS.inventory.documentView)
+        ? {
+            to: '/app/inventory/document-lines',
+            label: t.nav.inventoryDocumentLines,
+            icon: FileSpreadsheet,
+          }
+        : null,
+    ].filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+    const orgAdminItems = [
+      permissions.hasAny([
+        PERMISSIONS.organization.view,
+        PERMISSIONS.organization.branchView,
+        PERMISSIONS.organization.departmentView,
+        PERMISSIONS.organization.employeeView,
+        PERMISSIONS.organization.partyView,
+      ])
+        ? {
+            to: '/app/organization',
+            label: t.orgAdmin.title,
+            icon: Building2,
+          }
+        : null,
+      permissions.has(PERMISSIONS.organization.partyView)
+        ? {
+            to: '/app/organization/parties',
+            label: t.orgAdmin.parties,
+            icon: Handshake,
+          }
+        : null,
+      permissions.has(PERMISSIONS.users.view)
+        ? {
+            to: '/app/admin/users',
+            label: t.nav.users,
+            icon: UserCog,
+          }
+        : null,
+      permissions.has(PERMISSIONS.rbac.roleView)
+        ? {
+            to: '/app/admin/roles',
+            label: t.nav.roles,
+            icon: ShieldCheck,
+          }
+        : null,
+    ].filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+    return [
+      {
+        id: 'accounting',
+        label: t.nav.accounting,
+        items: accountingItems,
+      },
+      {
+        id: 'inventory',
+        label: t.nav.inventory,
+        items: inventoryItems,
+      },
+      {
+        id: 'organization',
+        label: t.workspace.organizationGroup,
+        items: orgAdminItems,
+      },
+    ].filter((group) => group.items.length > 0);
+  }, [permissions]);
+
   const documentTotal = documentsQuery.data?.total ?? 0;
   const canOpenTrialBalance = permissions.has(
     PERMISSIONS.accounting.trialBalanceView,
   );
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-4">
+    <div className="w-full space-y-5">
       <header className="flex flex-wrap items-center gap-3">
         <div>
-          <h1 className="text-[19px] font-extrabold text-slate-900">
+          <h1 className="text-lg font-extrabold text-ink">
             {t.dashboard.title}
           </h1>
-          <span className="text-xs text-slate-400">{t.dashboard.subtitle}</span>
+          <span className="text-xs text-ink-subtle">
+            {t.dashboard.subtitle}
+          </span>
         </div>
       </header>
+
+      {quickAccessGroups.length > 0 && (
+        <section
+          aria-label={t.workspace.quickAccessTitle}
+          className="space-y-3"
+        >
+          <WorkspaceCardGrid groups={quickAccessGroups} compact />
+        </section>
+      )}
 
       <PeriodStatusBanner
         visiblePeriods={periods.map((period) => ({
@@ -254,15 +403,6 @@ export function DashboardPage(): ReactElement {
             onRetry={() => void periodsQuery.refetch()}
           />
           <ReconciliationEmptyCard canOpenTrialBalance={canOpenTrialBalance} />
-          {/*
-            License status + renewal (L-03). Self-gated on
-            `Licensing.License.Activate`: the card renders nothing for a
-            session that may not import, so the dashboard layout is unchanged
-            for everyone else. It reads the same single license query the
-            bootstrap gate uses, and it is the only place an ALREADY ACTIVE
-            installation can import its next (possibly future-dated) signed
-            version before the current window ends.
-          */}
           <LicenseStatusCard />
         </div>
       </div>

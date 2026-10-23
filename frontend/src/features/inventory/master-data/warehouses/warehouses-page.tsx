@@ -32,7 +32,7 @@ const columns: ColumnDef<InventoryWarehouse, unknown>[] = [
     header: t.inventoryMaster.code,
     cell: ({ row }) => (
       <Link
-        className="code font-medium text-indigo-700 hover:underline"
+        className="code font-medium text-brand hover:underline"
         to={`/app/inventory/warehouses/${encodeURIComponent(row.original.id)}`}
       >
         {row.original.code}
@@ -125,7 +125,7 @@ export function WarehousesPage() {
         }
         onClear={list.clear}
       >
-        <label className="min-w-44 text-xs text-slate-600">
+        <label className="min-w-44 text-xs text-ink-muted">
           <span>{t.inventoryMaster.branchFilter}</span>
           <Select
             className="mt-1"

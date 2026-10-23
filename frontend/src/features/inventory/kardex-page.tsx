@@ -57,7 +57,7 @@ function buildKardexColumns(): ColumnDef<InventoryKardexRow, unknown>[] {
         <span
           className={
             row.original.signedQuantity.startsWith('-')
-              ? 'num text-rose-700'
+              ? 'num text-danger-ink'
               : 'num text-emerald-700'
           }
         >
@@ -301,14 +301,14 @@ export function KardexPage() {
       )}
 
       {response !== undefined && (
-        <div className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 text-sm sm:grid-cols-2">
+        <div className="grid gap-2 rounded-lg border border-line bg-surface p-3 text-sm sm:grid-cols-2">
           <p>
             {t.inventory.kardexOpening}:{' '}
             <span className="num font-medium">
               {formatQuantity(response.opening)}
             </span>
             {displayUnit !== undefined && (
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-ink-subtle">
                 {' '}
                 {displayUnit.code}
               </span>
@@ -320,7 +320,7 @@ export function KardexPage() {
               {formatQuantity(response.closing)}
             </span>
             {displayUnit !== undefined && (
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-ink-subtle">
                 {' '}
                 {displayUnit.code}
               </span>

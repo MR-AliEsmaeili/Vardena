@@ -26,7 +26,7 @@ const columns: ColumnDef<Account, unknown>[] = [
     header: t.masterData.code,
     cell: ({ row }) => (
       <Link
-        className="code font-medium text-indigo-700 hover:underline"
+        className="code font-medium text-brand hover:underline"
         to={`/app/accounting/accounts/${encodeURIComponent(row.original.id)}`}
       >
         {row.original.code}
@@ -123,7 +123,7 @@ export function AccountsPage() {
           })
         }
       >
-        <label className="min-w-28 text-xs text-slate-600">
+        <label className="min-w-28 text-xs text-ink-muted">
           <span>{t.masterData.level}</span>
           <Input
             name="level"
@@ -133,7 +133,7 @@ export function AccountsPage() {
             className="mt-1"
           />
         </label>
-        <label className="min-w-36 text-xs text-slate-600">
+        <label className="min-w-36 text-xs text-ink-muted">
           <span>{t.masterData.postability}</span>
           <Select
             name="postable"

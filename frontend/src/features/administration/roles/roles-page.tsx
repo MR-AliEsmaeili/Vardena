@@ -20,7 +20,7 @@ const columns: ColumnDef<AdminRole, unknown>[] = [
     header: t.rolesAdmin.roleName,
     cell: ({ row }) => (
       <Link
-        className="font-medium text-indigo-700 hover:underline"
+        className="font-medium text-brand hover:underline"
         to={`/app/admin/roles/${encodeURIComponent(row.original.id)}`}
       >
         {row.original.name}
@@ -33,7 +33,7 @@ const columns: ColumnDef<AdminRole, unknown>[] = [
     enableSorting: false,
     cell: ({ row }) =>
       row.original.description === null || row.original.description === '' ? (
-        <span className="text-slate-400">{t.rolesAdmin.noDescription}</span>
+        <span className="text-ink-subtle">{t.rolesAdmin.noDescription}</span>
       ) : (
         row.original.description
       ),

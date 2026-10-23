@@ -148,12 +148,12 @@ function EmployeeDetailView({
         </Definition>
         <Definition label={t.orgAdmin.department}>
           {employee.departmentId === null ? (
-            <span className="text-slate-500">
+            <span className="text-ink-subtle">
               {t.orgAdmin.noDepartmentAssigned}
             </span>
           ) : departmentQuery.data !== undefined ? (
             <Link
-              className="text-indigo-700 hover:underline"
+              className="text-brand hover:underline"
               to={`/app/organization/departments/${encodeURIComponent(employee.departmentId)}`}
             >
               {departmentQuery.data.code} — {departmentQuery.data.name}
@@ -164,12 +164,12 @@ function EmployeeDetailView({
         </Definition>
         <Definition label={t.orgAdmin.branch}>
           {employee.branchId === null ? (
-            <span className="text-slate-500">
+            <span className="text-ink-subtle">
               {t.orgAdmin.noBranchAssigned}
             </span>
           ) : branchQuery.data !== undefined ? (
             <Link
-              className="text-indigo-700 hover:underline"
+              className="text-brand hover:underline"
               to={`/app/organization/branches/${encodeURIComponent(employee.branchId)}`}
             >
               {branchQuery.data.code} — {branchQuery.data.name}
@@ -188,7 +188,7 @@ function EmployeeDetailView({
         </Definition>
       </DefinitionList>
 
-      <p className="text-xs text-slate-500">{t.orgAdmin.noDeleteHint}</p>
+      <p className="text-xs text-ink-subtle">{t.orgAdmin.noDeleteHint}</p>
     </div>
   );
 }
