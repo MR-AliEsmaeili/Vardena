@@ -59,9 +59,6 @@ main().catch((error: unknown) => {
     );
     process.exit(error.exitCode);
   }
-  process.stderr.write(
-    "refused\tsigner-failure\tKey inspection failed.
-",
-  );
+  process.stderr.write("refused\tsigner-failure\tKey inspection failed.\n");
   process.exit(2);
 });

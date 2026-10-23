@@ -145,9 +145,6 @@ main().catch((error: unknown) => {
     );
     process.exit(error.exitCode);
   }
-  process.stderr.write(
-    "refused\tsigner-failure\tKey generation failed.
-",
-  );
+  process.stderr.write("refused\tsigner-failure\tKey generation failed.\n");
   process.exit(2);
 });
