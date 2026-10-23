@@ -406,7 +406,14 @@ was granted):
 `license-issuances` GET (`licenses.view`) / POST (`licenses.issue.time_limited`,
 or `licenses.issue.perpetual` for `validUntil: null`); `license-issuances/:id`
 GET; `:id/request` GET (the unsigned `VLSR1` file and both digests);
-`:id/import` POST (`licenses.import`) verifies and archives the signed artifact;
+`:id/import` POST (`licenses.import`) verifies and archives the signed artifact —
+the Owner UI renders the same `PreparedPanel` (request download + signed-file
+import via `POST /license-issuances/:id/import`) for every existing issuance
+with status `REQUEST_PREPARED`, reusing the existing import path and operation
+binding instead of creating a new request, and refetches the list/detail to show
+the server-confirmed `SIGNED_RECORDED` state; only server verification counts as
+success and all import refusals (validation, operation mismatch, invalid
+signature, replay) are surfaced verbatim;
 `:id/abandon` POST; `:id/artifact` GET (`licenses.download`) re-verifies the
 archived bytes before sending them.
 `license-issuances/:id/revocations` POST, `license-revocations` GET,
