@@ -11,12 +11,9 @@
 
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { runCustomerCodeRecovery } from '../../recovery/licensing-customer-code.mjs';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
 const ADMIN_URL =
   process.env.VARDENA_REHEARSAL_ADMIN_URL ??
   'postgresql://vardena:vardena_test_password@127.0.0.1:5432/postgres';
@@ -30,7 +27,7 @@ function log(message) {
   process.stdout.write(`${message}\n`);
 }
 
-function databaseUrl(name) {
+function buildDatabaseUrl(name) {
   const url = new URL(ADMIN_URL);
   url.pathname = `/${name}`;
   return url.toString();
@@ -122,7 +119,7 @@ async function testMultipleFailedRows() {
       `);
     });
 
-    const databaseUrl = `postgresql://vardena:vardena_test_password@127.0.0.1:5432/${name}`;
+    const databaseUrl = buildDatabaseUrl(name);
     try {
       await runCustomerCodeRecovery({ databaseUrl });
       assert.fail('Should have rejected multiple failed rows');
@@ -178,7 +175,7 @@ async function testMultipleAppliedRows() {
       `);
     });
 
-    const databaseUrl = `postgresql://vardena:vardena_test_password@127.0.0.1:5432/${name}`;
+    const databaseUrl = buildDatabaseUrl(name);
     try {
       await runCustomerCodeRecovery({ databaseUrl });
       assert.fail('Should have rejected multiple applied rows');
@@ -233,7 +230,7 @@ async function testMixedStates() {
       `);
     });
 
-    const databaseUrl = `postgresql://vardena:vardena_test_password@127.0.0.1:5432/${name}`;
+    const databaseUrl = buildDatabaseUrl(name);
     try {
       await runCustomerCodeRecovery({ databaseUrl });
       assert.fail('Should have rejected mixed states');
@@ -267,7 +264,7 @@ async function testZeroRows() {
       // No ledger rows - fresh database
     });
 
-    const databaseUrl = `postgresql://vardena:vardena_test_password@127.0.0.1:5432/${name}`;
+    const databaseUrl = buildDatabaseUrl(name);
     const result = await runCustomerCodeRecovery({ databaseUrl });
     assert.ok(result);
     assert.equal(result.state, 'pending');
@@ -308,7 +305,7 @@ async function testSingleFailedRow() {
       `);
     });
 
-    const databaseUrl = `postgresql://vardena:vardena_test_password@127.0.0.1:5432/${name}`;
+    const databaseUrl = buildDatabaseUrl(name);
     const result = await runCustomerCodeRecovery({ databaseUrl });
     assert.ok(result);
     assert.equal(result.state, 'failed');
@@ -349,7 +346,7 @@ async function testSingleAppliedRow() {
       `);
     });
 
-    const databaseUrl = `postgresql://vardena:vardena_test_password@127.0.0.1:5432/${name}`;
+    const databaseUrl = buildDatabaseUrl(name);
     const result = await runCustomerCodeRecovery({ databaseUrl });
     assert.ok(result);
     assert.equal(result.state, 'applied');
@@ -390,7 +387,7 @@ async function testSingleRolledBackRow() {
       `);
     });
 
-    const databaseUrl = `postgresql://vardena:vardena_test_password@127.0.0.1:5432/${name}`;
+    const databaseUrl = buildDatabaseUrl(name);
     const result = await runCustomerCodeRecovery({ databaseUrl });
     assert.ok(result);
     assert.equal(result.state, 'rolled-back');
