@@ -281,13 +281,14 @@ jobs:
           VARDENA_REHEARSAL_ADMIN_URL: postgresql://vardena:vardena_test_password@localhost:5432/postgres
         run: npm run test:business-date-validity-rehearsal
 
-      # The licensing fixture carries populated retained-version history through
+      # The licensing fixtures carry populated retained-version history through
       # the actual licensing migration chain. In addition to the version-model,
-      # supersession, audit-detail and customer-code assertions, it snapshots the
-      # schema immediately before 20261022000000 with a pre-device-entitlement
-      # VLIC2 row, then proves OQ-83 preserves every old field and document hash,
-      # backfills UNSPECIFIED (never unlimited), and installs the expected
-      # lifecycle constraints/indexes. PostgreSQL rehearsal is CI-only.
+      # supersession, audit-detail and customer-code assertions, the rehearsal
+      # snapshots the schema immediately before 20261022000000, then runs the
+      # real Prisma CLI through fresh L-06 deploy, explicit populated backfill,
+      # P3018/P3009 failure recovery and interruption/retry. It proves customer
+      # and relationship preservation, truthful ledger completion and all final
+      # customer-code constraints. PostgreSQL rehearsal is CI-only.
       - name: Migration rehearsal (Licensing populated chain through OQ-83)
         working-directory: backend
         env:

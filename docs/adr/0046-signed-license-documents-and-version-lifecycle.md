@@ -247,6 +247,11 @@ protection and migration before any code changes (G-10, AR-29).
   customer's stored `display_name`; and `evaluateImportConflicts` /
   `LicensesRepository.importVersion` reject any mismatch between `(customerId,
   customerCode)` and persisted customer records as `customer-code-mismatch`
-  (HTTP 409, nothing written).
+  (HTTP 409, nothing written). The 2026-10-23
+  [operational recovery runbook](../licensing/customer-code-recovery.md) preserves
+  those decisions for populated/failed upgrades: owner-assigned backfill is a
+  controlled prerequisite, the unchanged migration still validates and enforces
+  every invariant, and failed-history recovery performs the real migration
+  before atomically completing its ledger entry rather than bypassing it.
 - *Addendum (2026-10-15, OQ-83 / OD-LIC-04, [PDR-15](../decisions/product/PDR-15-client-device-licensing-and-replacement.md)):* The customer-side client-device lifecycle is implemented as a vertical slice inside the existing Licensing module, reusing the persistent installation identity, the signed effective LicenseVersion, the existing trusted Ed25519 licensing public keys, and typed licensing audit. A device presents proof from its own client-held private key; offline replacement response verification uses the same trusted authority key set and strict request/customer/installation/version correlation. The versioned VLIC2 canonicalizer retains a legacy branch for already-issued payloads that omit the new signed device-limit field; absence remains **UNSPECIFIED**, not unlimited, and blocks new device registration until an explicit signed entitlement is imported. This addendum does not alter ADR-0046's accepted decisions, promote the ADR, close OQ-83, or decide OQ-84/general receipts, OQ-78, OQ-82 or OQ-85. The customer-server slice was merged in PR #154 and its merge SHA passed CI; OQ-83 remains OPEN for independent review and operational device-client/Owner-issuer evidence.
 

@@ -86,19 +86,31 @@ licensing lifecycle:
 
 ### 3.2 Migration and existing-row safety (`20261020000000_licensing_customer_code`)
 
-- The migration adds `customer_code VARCHAR(64)` to `licensing.customers` if
-  not already present, then runs a fail-closed preflight check before enforcing
-  `NOT NULL`, `CHECK`, and `UNIQUE`:
+- The unchanged migration adds `customer_code VARCHAR(64)` to
+  `licensing.customers` if not already present, then runs a fail-closed
+  preflight check before enforcing `NOT NULL`, `CHECK`, and `UNIQUE`:
   - If `licensing.customers` is empty (fresh installation or newly deployed test
     database), the constraints are applied immediately.
   - If `licensing.customers` contains existing rows, the migration verifies
     that every row already carries a non-null, valid `customer_code` distinct
-    from `id` and unique across `licensing.customers` (supporting a staged,
-    owner-supplied backfill prior to constraint enforcement).
+    from `id` and unique across `licensing.customers`.
   - If any existing row in `licensing.customers` has a `NULL`, blank, invalid,
     `customer_code = id`, or duplicate `customer_code`, the migration aborts the
     transaction with a descriptive error (`RAISE EXCEPTION`) rather than
     fabricating or guessing business codes from `id` or `display_name`.
+- **Operational correction (2026-10-23):** the failed transaction also rolls
+  back its nullable expansion, and Prisma blocks subsequent deploys on the
+  recorded failure. The staged-backfill objective is therefore implemented by
+  the controlled state-specific workflow in
+  [the L-06 recovery runbook](../../licensing/customer-code-recovery.md), not by
+  simply rerunning Prisma or by adding a later migration that its history gate
+  would never reach. Pending populated databases commit expansion and explicit
+  owner backfill before normal Prisma enforcement; a recorded-failed database
+  executes and verifies the real migration before completing its existing
+  ledger row in the same transaction. The original migration SQL/checksum and
+  all identity constraints remain unchanged, including for environments where
+  it already succeeded. There is no ledger-only bypass or generated/default
+  code.
 
 ### 3.3 Signed license artifact contract (`VLIC2` and `VLIC1`)
 
@@ -192,7 +204,8 @@ and `LicensesRepository.importVersion` (`backend/src/modules/licensing/data/lice
 
 | Element | Reference |
 |---|---|
-| Prisma schema & migration | `backend/prisma/schema/licensing.prisma`, `backend/prisma/migrations/20261020000000_licensing_customer_code/migration.sql`, `backend/prisma/rehearsal/licensing-version-model/rehearse.mjs` |
+| Prisma schema, migration & recovery | `backend/prisma/schema/licensing.prisma`, `backend/prisma/migrations/20261020000000_licensing_customer_code/migration.sql`, `backend/prisma/recovery/licensing-customer-code.mjs`, [recovery runbook](../../licensing/customer-code-recovery.md) |
+| Migration rehearsals | `backend/prisma/rehearsal/licensing-version-model/rehearse.mjs`, `backend/prisma/rehearsal/licensing-customer-code-recovery/rehearse.mjs` |
 | Customer domain rules | `backend/src/modules/licensing/domain/customer.ts` |
 | Signed document (`VLIC2`) & legacy code (`VLIC1`) | `backend/src/modules/licensing/domain/license-document.ts`, `backend/src/modules/licensing/domain/license-code.ts` |
 | Version conflict authority | `backend/src/modules/licensing/domain/license-version.ts` (`evaluateImportConflicts`, ` customer-code-mismatch`) |

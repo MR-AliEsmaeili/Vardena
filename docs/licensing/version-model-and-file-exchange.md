@@ -1007,126 +1007,55 @@ schema/constraint assertions, the no-backfill proof and a window-for-window
 comparison of every retained row before and after) plus the live PostgreSQL
 suite.
 
-### 11.1 L-06 `customer_code`: owner-assigned backfill before upgrading
+### 11.1 L-06 `customer_code`: controlled backfill and failed-history recovery
 
 `20261020000000_licensing_customer_code` adds
-`licensing.customers.customer_code` and then enforces `NOT NULL`,
-`customers_customer_code_check` and `uq_customers_customer_code`. It is
-**fail-closed and never derives a code**: if any existing row is missing a
-`customer_code`, or carries a blank, malformed, `customer_code = id`, or
-duplicate value, the migration aborts with a descriptive `RAISE EXCEPTION`
-rather than guessing a business code from `id` or `display_name`
-([PDR-14](../decisions/product/PDR-14-licensing-customer-code.md) §3.2). A
-`customerCode` is an owner-assigned business identifier, so only the Product
-Owner / commercial owner can supply it — no tool in this repository invents one.
+`licensing.customers.customer_code`, validates every existing row, and enforces
+`NOT NULL`, `customers_customer_code_check`, and
+`uq_customers_customer_code`. It remains **fail-closed and never derives a
+code** ([PDR-14](../decisions/product/PDR-14-licensing-customer-code.md) §3.2).
+A `customerCode` is an owner-assigned business identifier independent of `id`
+and mutable `display_name`; no repository tool invents one.
 
-An installation whose `licensing.customers` is **empty** (a fresh deployment, or
-a test database) needs nothing: the constraints apply immediately. An
-installation that already has customer rows must complete the backfill **before**
-`prisma migrate deploy` reaches this migration.
+The original deployment note incorrectly implied that a failed Prisma run could
+simply be rerun after adding values. In fact, its transaction rolls back the
+nullable `ADD COLUMN` together with the failed validation, and Prisma then
+blocks later deploys on the recorded failed migration. Adding a later migration
+does not bypass that history gate, and editing the original would create
+compatibility/checksum risk where it already succeeded.
 
-**Prerequisites**
+Use the state-specific
+[L-06 customer-code recovery runbook](customer-code-recovery.md) instead:
 
-1. A current backup (`docs/operations/backup-and-restore.md`). The backfill is a
-   data change to `licensing.customers` and must be reversible.
-2. The owner-assigned business code for **every** existing customer row, each
-   matching `^[A-Za-z0-9][A-Za-z0-9._:-]{1,63}$`, distinct from that row's `id`,
-   and unique across `licensing.customers`.
-3. Application writes to the licensing schema stopped, or the upgrade performed
-   in the normal maintenance window (`prisma migrate deploy` before app start —
-   `docs/database-strategy.md` §14).
+- **Fresh or already applied:** normal Prisma deploy/no action; the unchanged
+  migration is compatible with both states.
+- **Populated, pending, or truthfully rolled back:** the controlled utility
+  commits the nullable expansion separately, applies only explicit owner
+  ID/code assignments in an auditable retryable step, and then leaves all
+  validation and constraint enforcement to normal `prisma migrate deploy`.
+- **Recorded failed migration:** after explicit owner mapping and backup, the
+  recovery utility executes and verifies the complete original migration and
+  completes the same ledger row in the **same transaction**. It preserves the
+  original failure log. Any interruption before commit rolls everything back;
+  after commit, a rerun is a validating no-op. Normal Prisma deploy then
+  continues the later migration chain.
 
-**Execution order**
+There is no ledger-only resolution, `migrate resolve`, generated/default code,
+nonblank-code overwrite, signed-artifact rewrite, or destructive database
+shortcut. The runbook includes the exact PowerShell local resume commands and
+explains why the synthetic local provider's `CUST-LOCAL-DEV` is not an
+authoritative mapping for an unrelated persisted customer ID.
 
-1. Inspect the population and produce the owner's assignment list:
-
-   ```sql
-   SELECT "id", "display_name"
-   FROM "licensing"."customers"
-   ORDER BY "id";
-   ```
-
-2. Add the column if it is not there yet. This is the same idempotent statement
-   the migration itself begins with, so running it early is safe and is what
-   makes the backfill possible before the constraints exist:
-
-   ```sql
-   ALTER TABLE "licensing"."customers"
-     ADD COLUMN IF NOT EXISTS "customer_code" VARCHAR(64);
-   ```
-
-3. Write the owner-assigned codes — one explicit row per customer, never a
-   generated expression:
-
-   ```sql
-   UPDATE "licensing"."customers" SET "customer_code" = 'CUST-ACME-001'
-    WHERE "id" = '01K7CUSTOMERAAAAAAAAAAAAAA';
-   ```
-
-4. Validate before deploying. Every one of these must return zero rows:
-
-   ```sql
-   SELECT "id" FROM "licensing"."customers"
-    WHERE "customer_code" IS NULL OR BTRIM("customer_code") = '';
-   SELECT "id" FROM "licensing"."customers"
-    WHERE "customer_code" !~ '^[A-Za-z0-9][A-Za-z0-9._:-]{1,63}$';
-   SELECT "id" FROM "licensing"."customers" WHERE "customer_code" = "id";
-   SELECT "customer_code" FROM "licensing"."customers"
-    GROUP BY "customer_code" HAVING COUNT(*) > 1;
-   ```
-
-5. Run `prisma migrate deploy`. The migration's own preflight re-checks the same
-   four conditions inside its transaction and aborts if any row is still wrong,
-   so a missed customer is refused rather than silently coded.
-
-**Recovery after a failure**
-
-Do not assume how much of a failed run survived — inspect, then re-run:
-
-1. Read what Prisma recorded:
-
-   ```sql
-   SELECT "migration_name", "finished_at", "rolled_back_at", "logs"
-   FROM "_prisma_migrations"
-   WHERE "migration_name" LIKE '%licensing_customer_code%';
-   ```
-
-2. Read what the schema actually holds — whether `customer_code` exists, and
-   whether the constraint and index were applied:
-
-   ```sql
-   SELECT "column_name", "is_nullable" FROM "information_schema"."columns"
-    WHERE "table_schema" = 'licensing' AND "table_name" = 'customers'
-      AND "column_name" = 'customer_code';
-   SELECT "indexname" FROM "pg_indexes"
-    WHERE "schemaname" = 'licensing' AND "tablename" = 'customers';
-   ```
-
-3. Fix the data the failure named (the exception message quotes the offending
-   `id` or `customer_code`), then re-run `prisma migrate deploy`. The migration
-   is **safe to re-run from any partial state**: every statement in it is
-   idempotent — `ADD COLUMN IF NOT EXISTS`, a pure check block, `SET NOT NULL`,
-   `DROP CONSTRAINT IF EXISTS` before `ADD CONSTRAINT`, `CREATE UNIQUE INDEX IF
-   NOT EXISTS`, and `COMMENT ON`. It contains no destructive DDL and no down
-   migration (F-13).
-4. If the failure was not data — for example the deploy was interrupted — the
-   same re-run applies. If a row in `_prisma_migrations` was left without
-   `finished_at` while the DDL did apply, that is a Prisma bookkeeping state to
-   resolve with `prisma migrate resolve` against the recorded migration name,
-   after step 2 has confirmed what the schema actually contains; never resolve
-   it as applied without that confirmation.
-
-**Rehearsal evidence.** `backend/prisma/rehearsal/licensing-version-model/rehearse.mjs`
-(`assertCustomerCodeMigration`) exercises exactly this sequence against a
-disposable populated database: the migration is refused with the
-`without an explicit customer_code` message and writes nothing; the staged
-owner-assigned codes are then applied and the migration succeeds and enforces
-`NOT NULL`, `CHECK` and `UNIQUE`; and duplicate, empty, whitespace-only and
-`customer_code = id` values are each refused. Run it with
-`npm run test:licensing-version-rehearsal` (backend). It covers the SQL and the
-populated-database case including a successful continuation; it does not exercise
-Prisma's own `_prisma_migrations` bookkeeping after an interrupted deploy, which
-is why step 1–2 above are inspection steps rather than assumptions.
+**Rehearsal evidence.** The original SQL-level coverage remains in
+`backend/prisma/rehearsal/licensing-version-model/rehearse.mjs`. The focused
+`backend/prisma/rehearsal/licensing-customer-code-recovery/rehearse.mjs` uses
+the real Prisma CLI against disposable databases to cover fresh deploy,
+populated two-phase backfill, missing/malformed/duplicate/ID-equal inputs,
+P3018/P3009 failed history, atomic recovery, interruption/retry, idempotence,
+later-migration continuation, and field-by-field preservation of customer and
+licensing relationship data. Run the combined suite with
+`npm run test:licensing-migration-rehearsal` (backend); it requires the
+CI/disposable PostgreSQL service and is not a production-data proof.
 
 ### 11.2 Pre-L-06 `VLIC1` codes: the compatibility boundary
 
