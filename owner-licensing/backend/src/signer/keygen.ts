@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { generateKeyPairSync } from "node:crypto";
-import { mkdir, stat, writeFile, unlink } from "node:fs/promises";
+import { open, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { deriveKeyId } from "../protocol.js";
 import { assertKeyFilePrivate, assertSignerEnvironment, SignerError } from "./signer.js";
@@ -44,31 +44,60 @@ async function main(): Promise<void> {
   const publicPath = path.join(outDir, "public-key.txt");
   const infoPath = path.join(outDir, "key-info.json");
 
-  // Exclusive creation prevents accidental replacement of an existing authority.
-  await writeFile(privatePath, `${privateMaterial}\n`, {
-    encoding: "utf8",
-    flag: "wx",
-    mode: 0o600,
-  });
+  // Preflight every destination before writing. Never overwrite or delete
+  // artifacts that may belong to a previous key operation.
+  for (const destination of [privatePath, publicPath, infoPath]) {
+    const existing = await stat(destination).catch(() => null);
+    if (existing !== null) {
+      throw new SignerError(
+        "key-unavailable",
+        "Refusing to overwrite an existing key artifact: " + path.basename(destination) + ".",
+      );
+    }
+  }
 
+  let privateCreated = false;
+  let publicCreated = false;
+  let infoCreated = false;
   try {
+    // Exclusive open prevents races from replacing an existing artifact.
+    const privateHandle = await open(privatePath, "wx", 0o600);
+    privateCreated = true;
+    try {
+      await privateHandle.writeFile(privateMaterial + "\n", "utf8");
+      await privateHandle.sync();
+    } finally {
+      await privateHandle.close();
+    }
+
     // Verify the newly-created key file before writing any public metadata.
     await assertKeyFilePrivate(privatePath);
-    await writeFile(publicPath, `${publicMaterial}\n`, {
-      encoding: "utf8",
-      flag: "wx",
-      mode: 0o600,
-    });
-    await writeFile(
-      infoPath,
-      `${JSON.stringify({ keyId, publicKeySpkiBase64: publicMaterial }, null, 2)}\n`,
-      { encoding: "utf8", flag: "wx", mode: 0o600 },
-    );
+
+    const publicHandle = await open(publicPath, "wx", 0o600);
+    publicCreated = true;
+    try {
+      await publicHandle.writeFile(publicMaterial + "\n", "utf8");
+      await publicHandle.sync();
+    } finally {
+      await publicHandle.close();
+    }
+
+    const infoHandle = await open(infoPath, "wx", 0o600);
+    infoCreated = true;
+    try {
+      await infoHandle.writeFile(
+        JSON.stringify({ keyId, publicKeySpkiBase64: publicMaterial }, null, 2) + "\n",
+        "utf8",
+      );
+      await infoHandle.sync();
+    } finally {
+      await infoHandle.close();
+    }
   } catch (error) {
-    // Never leave a private key behind if its access policy cannot be verified.
-    await unlink(privatePath).catch(() => undefined);
-    await unlink(publicPath).catch(() => undefined);
-    await unlink(infoPath).catch(() => undefined);
+    // Remove only files this invocation actually created.
+    if (privateCreated) await unlink(privatePath).catch(() => undefined);
+    if (publicCreated) await unlink(publicPath).catch(() => undefined);
+    if (infoCreated) await unlink(infoPath).catch(() => undefined);
     throw error;
   }
 
