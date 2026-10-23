@@ -61,6 +61,25 @@ function Pick-Folder([string]$Title) {
   if ($d.ShowDialog() -eq 'OK') { return $d.SelectedPath }
   return $null
 }
+function Get-TextInput([string]$Title, [string]$Prompt) {
+  $dialog = New-Object System.Windows.Forms.Form
+  $dialog.Text = $Title; $dialog.StartPosition = 'CenterParent'
+  $dialog.Size = New-Object System.Drawing.Size(620, 170)
+  $dialog.RightToLeft = 'Yes'; $dialog.RightToLeftLayout = $true
+  $label = New-Object System.Windows.Forms.Label
+  $label.Text = $Prompt; $label.Dock = 'Top'; $label.Height = 35; $label.TextAlign = 'MiddleRight'
+  $entry = New-Object System.Windows.Forms.TextBox
+  $entry.Dock = 'Top'; $entry.Font = New-Object System.Drawing.Font('Consolas', 10)
+  $buttons = New-Object System.Windows.Forms.FlowLayoutPanel
+  $buttons.Dock = 'Bottom'; $buttons.Height = 42; $buttons.FlowDirection = 'RightToLeft'
+  $ok = New-Object System.Windows.Forms.Button; $ok.Text = 'ثبت'; $ok.DialogResult = 'OK'
+  $cancel = New-Object System.Windows.Forms.Button; $cancel.Text = 'لغو'; $cancel.DialogResult = 'Cancel'
+  $buttons.Controls.Add($ok); $buttons.Controls.Add($cancel)
+  $dialog.Controls.Add($entry); $dialog.Controls.Add($label); $dialog.Controls.Add($buttons)
+  $dialog.AcceptButton = $ok; $dialog.CancelButton = $cancel
+  if ($dialog.ShowDialog($form) -eq 'OK') { return $entry.Text.Trim() }
+  return $null
+}
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Vardena — ابزار محلی امضای لایسنس'
@@ -115,7 +134,7 @@ $requestPath = New-Object System.Windows.Forms.TextBox; $requestPath.Dock = 'Fil
 $digestPath = New-Object System.Windows.Forms.TextBox; $digestPath.Dock = 'Fill'
 $statePath = New-Object System.Windows.Forms.TextBox; $statePath.Dock = 'Fill'; $statePath.Text = Join-Path $keyDir.Text 'signer-state.log'
 $btnRequest = New-Object System.Windows.Forms.Button; $btnRequest.Text = 'انتخاب درخواست'; $btnRequest.Dock = 'Fill'
-$btnDigest = New-Object System.Windows.Forms.Button; $btnDigest.Text = 'انتخاب فایل هش'; $btnDigest.Dock = 'Fill'
+$btnDigest = New-Object System.Windows.Forms.Button; $btnDigest.Text = 'ثبت هش از Owner'; $btnDigest.Dock = 'Fill'
 $btnLicense = New-Object System.Windows.Forms.Button; $btnLicense.Text = 'امضای مجوز'; $btnLicense.Dock = 'Fill'
 $btnRevoke = New-Object System.Windows.Forms.Button; $btnRevoke.Text = 'امضای ابطال'; $btnRevoke.Dock = 'Fill'
 $tg.Controls.Add($requestPath,0,0); $tg.Controls.Add($btnRequest,1,0)
@@ -170,8 +189,43 @@ $btnRequest.Add_Click({
   if ($p) { $requestPath.Text = $p }
 })
 $btnDigest.Add_Click({
-  $p = Pick-File 'فایل حاوی request_payload_sha256 را انتخاب کن' 'Text files (*.txt)|*.txt|All files (*.*)|*.*'
-  if ($p) { $digestPath.Text = $p }
+  try {
+    $digest = Get-TextInput 'هش درخواست' 'مقدار request_payload_sha256 را از Owner کپی و اینجا وارد کن (۶۴ رقم هگز کوچک):'
+    if ($null -eq $digest) { return }
+    if ($digest -cnotmatch '^[0-9a-f]{64}
+function Invoke-Sign([string]$Command) {
+  try {
+    if (-not $keyId.Text.Trim()) { throw 'شناسه کلید را وارد کن یا یک کلید بساز.' }
+    if (-not (Test-Path -LiteralPath $requestPath.Text -PathType Leaf)) { throw 'فایل درخواست انتخاب نشده یا وجود ندارد.' }
+    if (-not (Test-Path -LiteralPath $digestPath.Text -PathType Leaf)) { throw 'فایل هش انتخاب نشده یا وجود ندارد.' }
+    if (-not (Test-Path -LiteralPath (Join-Path $keyDir.Text 'key.pkcs8') -PathType Leaf)) { throw 'فایل key.pkcs8 پیدا نشد.' }
+    $defaultName = if ($Command -eq 'sign-license') { 'vardena-license-signed.json' } else { 'vardena-revocation-signed.json' }
+    $out = Pick-SaveFile 'مسیر فایل امضاشده را انتخاب کن' $defaultName
+    if (-not $out) { return }
+    $args = @($Command, '--request', $requestPath.Text, '--key', (Join-Path $keyDir.Text 'key.pkcs8'), '--key-id', $keyId.Text.Trim(), '--out', $out, '--state', $statePath.Text, '--digest-file', $digestPath.Text)
+    [void](Invoke-Node $signerCli $args)
+    Show-Info ('امضا موفق بود.' + $nl + 'فایل: ' + $out + $nl + 'اکنون فایل را در Owner وارد کن و پس از موفقیت، جداگانه در برنامه مشتری وارد کن.')
+  } catch { Show-Error $_.Exception.Message }
+}
+$btnLicense.Add_Click({ Invoke-Sign 'sign-license' })
+$btnRevoke.Add_Click({ Invoke-Sign 'sign-revocation' })
+
+$links = New-Object System.Windows.Forms.FlowLayoutPanel
+$links.Dock = 'Bottom'; $links.Height = 38
+$btnOwner = New-Object System.Windows.Forms.Button; $btnOwner.Text = 'بازکردن Owner'; $btnOwner.AutoSize = $true
+$btnCustomer = New-Object System.Windows.Forms.Button; $btnCustomer.Text = 'بازکردن برنامه مشتری'; $btnCustomer.AutoSize = $true
+$btnOwner.Add_Click({ Start-Process 'http://localhost:5174/app/licenses' })
+$btnCustomer.Add_Click({ Start-Process 'http://localhost:5173' })
+$logGroup.Controls.Add($links); $links.Controls.Add($btnOwner); $links.Controls.Add($btnCustomer)
+[void]$form.ShowDialog()
+) { throw 'هش باید دقیقاً ۶۴ نویسه هگز کوچک باشد. از request_payload_sha256 استفاده کن، نه request_binding_sha256.' }
+    $folder = [System.IO.Path]::GetFullPath($keyDir.Text)
+    if (-not (Test-Path -LiteralPath $folder -PathType Container)) { throw 'پوشه کلید وجود ندارد.' }
+    $target = Join-Path $folder 'request-digest.txt'
+    [System.IO.File]::WriteAllText($target, $digest + [Environment]::NewLine, [System.Text.Encoding]::ASCII)
+    $digestPath.Text = $target
+    $outputBox.AppendText('فایل هش درخواست در پوشه محلی ساخته شد.' + $nl)
+  } catch { Show-Error $_.Exception.Message }
 })
 function Invoke-Sign([string]$Command) {
   try {
