@@ -295,6 +295,12 @@ jobs:
           VARDENA_REHEARSAL_ADMIN_URL: postgresql://vardena:vardena_test_password@localhost:5432/postgres
         run: npm run test:licensing-migration-rehearsal
 
+      - name: Ledger ambiguity tests (L-06 recovery)
+        working-directory: backend
+        env:
+          VARDENA_REHEARSAL_ADMIN_URL: postgresql://vardena:vardena_test_password@localhost:5432/postgres
+        run: npm run test:licensing-ledger-ambiguity
+
       - name: E2E tests (incl. live-DB suites)
         id: e2e-tests
         working-directory: backend

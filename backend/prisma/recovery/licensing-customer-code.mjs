@@ -139,12 +139,31 @@ async function readLedger(client, forUpdate = false) {
       ORDER BY started_at DESC, id DESC${forUpdate ? ' FOR UPDATE' : ''}`,
     [MIGRATION_NAME],
   );
-  requireCondition(
-    result.rows.length <= 1 ||
-      !result.rows.some((row) => row.finished_at !== null) ||
-      result.rows[0].finished_at !== null,
-    `Ambiguous ledger history for ${MIGRATION_NAME}; stop and inspect it rather than guessing.`,
-  );
+  // Fail closed on any ambiguous ledger history. We accept:
+  // - 0 rows (fresh database)
+  // - 1 row (any state)
+  // - Multiple rows where exactly one is finished and it is the most recent (rows[0])
+  //   due to ORDER BY started_at DESC, id DESC
+  if (result.rows.length > 1) {
+    const finishedRows = result.rows.filter((row) => row.finished_at !== null);
+    const rolledBackRows = result.rows.filter(
+      (row) => row.rolled_back_at !== null,
+    );
+    requireCondition(
+      finishedRows.length <= 1 && rolledBackRows.length <= 1,
+      `Ambiguous ledger history for ${MIGRATION_NAME}: found ${result.rows.length} rows ` +
+        `(finished: ${finishedRows.length}, rolled_back: ${rolledBackRows.length}). ` +
+        `Stop and inspect the migration ledger rather than guessing.`,
+    );
+    // If there is a finished row, it must be the most recent (rows[0] by our ORDER BY)
+    if (finishedRows.length === 1) {
+      requireCondition(
+        finishedRows[0].id === result.rows[0].id,
+        `Ambiguous ledger history for ${MIGRATION_NAME}: finished row is not the most recent. ` +
+          `Stop and inspect the migration ledger.`,
+      );
+    }
+  }
   return result.rows[0] ?? null;
 }
 
