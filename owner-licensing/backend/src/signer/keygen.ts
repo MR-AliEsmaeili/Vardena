@@ -106,8 +106,7 @@ async function main(): Promise<void> {
           { keyId, publicKeySpkiBase64: publicMaterial },
           null,
           2,
-        ) + "
-",
+        ) + "\n",
         "utf8",
       );
       await infoHandle.sync();
