@@ -177,6 +177,7 @@ jobs:
           npm run typecheck
           npm test
           npm run build
+          npm run build:signer
 
       - name: Owner fresh migrations and PostgreSQL API/security regressions
         working-directory: owner-licensing/backend
