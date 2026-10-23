@@ -80,10 +80,12 @@ describe("offline signer key utility CLIs", () => {
       );
       const retry = runCli("keygen.ts", ["--out-dir", directory]);
       expect(retry.status).not.toBe(0);
-      expect(retry.stderr).toContain("Refusing to overwrite an existing key artifact");
-      expect(
-        readFileSync(path.join(directory, "key-info.json"), "utf8"),
-      ).toBe(keyInfoBefore);
+      expect(retry.stderr).toContain(
+        "Refusing to overwrite an existing key artifact",
+      );
+      expect(readFileSync(path.join(directory, "key-info.json"), "utf8")).toBe(
+        keyInfoBefore,
+      );
       expect(readdirSync(directory).sort()).toEqual([
         "key-info.json",
         "key.pkcs8",
@@ -100,9 +102,8 @@ describe("offline signer key utility CLIs", () => {
       const privatePath = path.join(directory, "key.pkcs8");
       writeFileSync(
         privatePath,
-        privateKey
-          .export({ format: "der", type: "pkcs8" })
-          .toString("base64") + "\n",
+        privateKey.export({ format: "der", type: "pkcs8" }).toString("base64") +
+          "\n",
         { mode: 0o600 },
       );
       chmodSync(privatePath, 0o600);
@@ -115,16 +116,14 @@ describe("offline signer key utility CLIs", () => {
       };
       expect(metadata.keyId).toBe(deriveKeyId(publicKey));
       expect(metadata.publicKeySpkiBase64).toBe(
-        publicKey
-          .export({ format: "der", type: "spki" })
-          .toString("base64"),
+        publicKey.export({ format: "der", type: "spki" }).toString("base64"),
       );
       expect(result.stdout).not.toContain(
-        privateKey
-          .export({ format: "der", type: "pkcs8" })
-          .toString("base64"),
+        privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
       );
-      expect(parsePrivateKey(readFileSync(privatePath, "utf8")).type).toBe("private");
+      expect(parsePrivateKey(readFileSync(privatePath, "utf8")).type).toBe(
+        "private",
+      );
     },
   );
 });
