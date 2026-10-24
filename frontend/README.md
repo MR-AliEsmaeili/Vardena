@@ -45,16 +45,17 @@ repository root).
 
 ## Scripts
 
-| Script                            | What it does                                                                  |
-| --------------------------------- | ----------------------------------------------------------------------------- |
-| `npm run dev`                     | Vite dev server with the `/api` proxy                                         |
-| `npm run build`                   | `tsc --noEmit` then the production bundle in `dist/`                          |
-| `npm run preview`                 | Serve the built bundle locally                                                |
-| `npm run lint`                    | oxlint (config in `.oxlintrc.json`)                                           |
-| `npm run typecheck`               | TypeScript, strict (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) |
-| `npm run format` / `format:check` | Prettier                                                                      |
-| `npm test` / `test:watch`         | Vitest + Testing Library (jsdom)                                              |
-| `npm run api:types`               | Regenerate `src/api/generated/vardena-api.d.ts` from the OpenAPI document     |
+| Script                            | What it does                                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `npm run dev`                     | Vite dev server with the `/api` proxy                                                                  |
+| `npm run build`                   | `tsc --noEmit` then the production bundle in `dist/`                                                   |
+| `npm run preview`                 | Serve the built bundle locally                                                                         |
+| `npm run lint`                    | oxlint (config in `.oxlintrc.json`)                                                                    |
+| `npm run typecheck`               | TypeScript, strict (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`)                          |
+| `npm run format` / `format:check` | Prettier                                                                                               |
+| `npm test` / `test:watch`         | Vitest + Testing Library (jsdom)                                                                       |
+| `npm run test:e2e`                | Playwright (Chromium) against the real dev server; CI-only gate, see `../docs/frontend/e2e-testing.md` |
+| `npm run api:types`               | Regenerate `src/api/generated/vardena-api.d.ts` from the OpenAPI document                              |
 
 Regenerating the API types. Prefer dumping the OpenAPI document from the
 compiled backend (no listening server) so the output matches CI (F-7):
