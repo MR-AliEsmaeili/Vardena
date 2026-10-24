@@ -241,9 +241,23 @@ export function AccountCodeNameField({
       event.preventDefault();
       event.stopPropagation();
       const delta = event.key === 'ArrowDown' ? 1 : -1;
+      // Only a postable account can be committed, so the highlight never
+      // stops on an aggregate row: an arrow key must not park the operator on
+      // an option Enter would refuse.
+      const selectable = options
+        .map((account, index) => (account.isPostable ? index : -1))
+        .filter((index) => index >= 0);
+      if (selectable.length === 0) return;
       setActiveIndex((current) => {
-        if (options.length === 0) return -1;
-        return (current + delta + options.length) % options.length;
+        const currentPosition = selectable.indexOf(current);
+        if (currentPosition === -1) {
+          return delta > 0
+            ? (selectable[0] as number)
+            : (selectable[selectable.length - 1] as number);
+        }
+        return selectable[
+          (currentPosition + delta + selectable.length) % selectable.length
+        ] as number;
       });
       return;
     }

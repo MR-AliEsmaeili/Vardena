@@ -38,6 +38,9 @@ export default defineConfig({
       : 'list',
   use: {
     baseURL: process.env['E2E_BASE_URL'] ?? 'http://127.0.0.1:5173',
+    // An action that never becomes actionable must fail with the locator call
+    // log in hand instead of silently eating the whole test budget.
+    actionTimeout: 15_000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',

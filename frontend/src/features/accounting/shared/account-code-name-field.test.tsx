@@ -227,4 +227,33 @@ describe('AccountCodeNameField — linked code and name', () => {
       ).toBe('true'),
     );
   });
+
+  it('skips aggregate rows when moving through the suggestions with arrows', async () => {
+    // The aggregate account is FIRST in the list, which is what a real chart
+    // looks like when the operator types a parent code prefix.
+    vi.mocked(accountingApi.listActiveAccounts).mockResolvedValue(
+      paginated([aggregate, cash, payable]),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<Harness />, { withProviders: false });
+
+    await user.type(codeInput(), '9');
+    const list = await screen.findByTestId('account-suggestions');
+    const options = within(list).getAllByRole('option');
+    expect(options[0]).toHaveAttribute('data-postable', 'false');
+
+    await user.keyboard('{ArrowDown}');
+
+    // The highlight never parks on a row Enter would refuse.
+    expect(options[0]).toHaveAttribute('aria-selected', 'false');
+    expect(options[1]).toHaveAttribute('aria-selected', 'true');
+    expect(options[1]).toHaveAttribute('data-postable', 'true');
+
+    await user.keyboard('{Enter}');
+    await waitFor(() =>
+      expect(screen.queryByTestId('account-suggestions')).toBeNull(),
+    );
+    expect(codeInput()).toHaveValue('1010');
+    expect(titleInput()).toHaveValue('موجودی نقد');
+  });
 });

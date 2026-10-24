@@ -78,14 +78,19 @@ test.describe('document line — linked account code and name', () => {
 
     const suggestions = page.getByTestId('account-suggestions');
     await expect(suggestions).toBeVisible();
-    // Wait for the debounced server answer, not only for the popup shell.
-    await expect(suggestions.getByRole('option').first()).toBeVisible();
+    // Wait for the DEBOUNCED ANSWER of this term, not for the previous
+    // (empty-term) list: the fixture's `10` result has exactly two rows, the
+    // unfiltered one has four. Asserting on the unfiltered list would race the
+    // 300ms debounce and make the highlighted row depend on timing.
+    await expect
+      .poll(async () => suggestions.getByRole('option').count())
+      .toBe(2);
 
     await code.press('ArrowDown');
-    await expect(suggestions.getByRole('option').first()).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    const highlighted = suggestions.locator('[aria-selected="true"]');
+    await expect(highlighted).toHaveCount(1);
+    // Arrow navigation skips aggregate rows, so the highlight is committable.
+    await expect(highlighted).toHaveAttribute('data-postable', 'true');
 
     await code.press('Enter');
     await expect(suggestions).toHaveCount(0);

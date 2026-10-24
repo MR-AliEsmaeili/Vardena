@@ -173,6 +173,7 @@ export function ItemsPage() {
               <Select
                 className="h-8 w-44 text-xs"
                 aria-label={t.inventoryMaster.itemGroupFilter}
+                data-testid="item-group-filter"
                 value={itemGroupId}
                 disabled={groups.unavailable}
                 onChange={(event) => updateItemGroup(event.target.value)}

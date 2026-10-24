@@ -276,6 +276,31 @@ describe('Operational Form full user journey — Collapsible Header, Detail Grid
     );
   });
 
+  it('commits a highlighted suggestion with Enter inside the detail grid', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<DocumentCreatePage />, {
+      initialEntries: ['/app/accounting/documents/new'],
+    });
+
+    const row0 = await screen.findByTestId('detail-grid-row-0');
+    const code = within(row0).getByLabelText(t.documents.accountCode);
+    await user.type(code, '10');
+
+    await screen.findByTestId('account-suggestions');
+    await user.keyboard('{ArrowDown}');
+    await user.keyboard('{Enter}');
+
+    // Enter belongs to the suggestion list while it is open: it commits the
+    // highlighted account instead of advancing the grid row.
+    await waitFor(() =>
+      expect(screen.queryByTestId('account-suggestions')).toBeNull(),
+    );
+    expect(code).toHaveValue('1010');
+    expect(within(row0).getByLabelText(t.documents.accountName)).toHaveValue(
+      'بانک',
+    );
+  });
+
   it('guards unsaved changes before navigating between documents via Footer pagination', async () => {
     const doc1 = makeAccountingDoc({ id: 'doc-1', description: 'سند اول' });
     const doc2 = makeAccountingDoc({ id: 'doc-2', description: 'سند دوم' });
