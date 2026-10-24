@@ -5,22 +5,20 @@ import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { PermissionGate } from '@/features/permissions/permission-gate';
 import { formatDateTime } from '@/lib/format';
 import { t } from '@/lib/i18n';
-import {
-  ADMIN_PAGE_SIZE_OPTIONS,
-  useAdminListState,
-} from '@/lib/use-admin-list-state';
 import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
 import { DataTable } from '@/ui/patterns/data-table';
-import { FilterBar, FilterField } from '@/ui/patterns/filter-bar';
 import { PageHeader } from '@/ui/patterns/page-header';
-import { Select } from '@/ui/select';
-import { USER_DEFAULT_SORT, USER_SORT_FIELDS, useUserList } from './user-hooks';
+import { DataTableTruncationNotice } from '@/ui/patterns/data-table/truncation-notice';
+import { useAllUsers } from './user-hooks';
 
 const columns: ColumnDef<AdminUser, unknown>[] = [
   {
     accessorKey: 'username',
     header: t.usersAdmin.username,
+    meta: {
+      filter: { kind: 'text', label: t.usersAdmin.username },
+    },
     cell: ({ row }) => (
       <Link
         className="code font-medium text-brand hover:underline"
@@ -31,9 +29,21 @@ const columns: ColumnDef<AdminUser, unknown>[] = [
     ),
   },
   {
-    id: 'isActive',
+    accessorKey: 'isActive',
     header: t.usersAdmin.status,
     enableSorting: false,
+    meta: {
+      filter: {
+        kind: 'select',
+        label: t.usersAdmin.status,
+        options: [
+          { value: 'true', label: t.usersAdmin.active },
+          { value: 'false', label: t.usersAdmin.inactive },
+        ],
+        searchValue: (user) =>
+          user.isActive ? t.usersAdmin.active : t.usersAdmin.inactive,
+      },
+    },
     cell: ({ row }) =>
       row.original.isActive ? (
         <Badge variant="success">{t.usersAdmin.active}</Badge>
@@ -45,6 +55,20 @@ const columns: ColumnDef<AdminUser, unknown>[] = [
     accessorKey: 'mustChangePassword',
     header: t.usersAdmin.mustChangePassword,
     enableSorting: false,
+    meta: {
+      filter: {
+        kind: 'select',
+        label: t.usersAdmin.mustChangePassword,
+        options: [
+          { value: 'true', label: t.usersAdmin.mustChangePasswordYes },
+          { value: 'false', label: t.usersAdmin.mustChangePasswordNo },
+        ],
+        searchValue: (user) =>
+          user.mustChangePassword
+            ? t.usersAdmin.mustChangePasswordYes
+            : t.usersAdmin.mustChangePasswordNo,
+      },
+    },
     cell: ({ row }) =>
       row.original.mustChangePassword ? (
         <Badge variant="warning">{t.usersAdmin.mustChangePasswordYes}</Badge>
@@ -57,6 +81,7 @@ const columns: ColumnDef<AdminUser, unknown>[] = [
   {
     accessorKey: 'createdAt',
     header: t.usersAdmin.createdAt,
+    meta: { excludeFromGlobalSearch: true },
     cell: ({ row }) => (
       <span className="num">{formatDateTime(row.original.createdAt)}</span>
     ),
@@ -64,6 +89,7 @@ const columns: ColumnDef<AdminUser, unknown>[] = [
   {
     accessorKey: 'updatedAt',
     header: t.usersAdmin.updatedAt,
+    meta: { excludeFromGlobalSearch: true },
     cell: ({ row }) => (
       <span className="num">{formatDateTime(row.original.updatedAt)}</span>
     ),
@@ -72,7 +98,8 @@ const columns: ColumnDef<AdminUser, unknown>[] = [
     id: 'actions',
     header: t.usersAdmin.actions,
     enableSorting: false,
-    meta: { align: 'end' },
+    enableColumnFilter: false,
+    meta: { align: 'end', excludeFromGlobalSearch: true },
     cell: ({ row }) => (
       <Button asChild variant="ghost" size="sm">
         <Link to={`/app/admin/users/${encodeURIComponent(row.original.id)}`}>
@@ -84,19 +111,19 @@ const columns: ColumnDef<AdminUser, unknown>[] = [
 ];
 
 /**
- * User account list — server paginated and filtered by account state
- * (`GET /users`). The backend offers NO search parameter on this list, so
- * the search box is intentionally absent (FE-UX-02 §4: never render a
- * control the API cannot honor).
+ * User account list.
+ *
+ * The backend list offers no search parameter, so the grid uses the standard
+ * light client-side filtering over a bounded read (`GET /users?pageSize=500`):
+ * global search, account status and "must change password" are filtered in
+ * the browser (`docs/frontend/data-table.md`). If the installation holds more
+ * users than one bounded page, the truncation notice says so instead of
+ * pretending the filters cover rows that were never loaded.
  */
 export function UsersPage() {
-  const list = useAdminListState({
-    sortFields: USER_SORT_FIELDS,
-    defaultSort: USER_DEFAULT_SORT,
-  });
-  const query = useUserList(list.state);
-
-  const statusValue = list.state.status;
+  const query = useAllUsers();
+  const items = query.data?.items ?? [];
+  const total = query.data?.total ?? 0;
 
   return (
     <div className="space-y-4" data-testid="users-page">
@@ -112,27 +139,13 @@ export function UsersPage() {
         }
       />
 
-      <FilterBar
-        onClear={list.clear}
-        clearLabel={t.orgAdmin.clear}
-        columns={4}
-        aria-label={t.filters.title}
-      >
-        <FilterField label={t.usersAdmin.status}>
-          <Select
-            value={statusValue}
-            onChange={(event) => list.update({ status: event.target.value })}
-          >
-            <option value="">{t.usersAdmin.allStatuses}</option>
-            <option value="active">{t.usersAdmin.active}</option>
-            <option value="inactive">{t.usersAdmin.inactive}</option>
-          </Select>
-        </FilterField>
-      </FilterBar>
+      {total > items.length && (
+        <DataTableTruncationNotice loaded={items.length} />
+      )}
 
       <DataTable
         columns={columns}
-        data={query.data?.items ?? []}
+        data={items}
         getRowId={(row) => row.id}
         caption={t.usersAdmin.title}
         isLoading={query.isPending}
@@ -142,27 +155,16 @@ export function UsersPage() {
         onRetry={() => void query.refetch()}
         emptyTitle={t.usersAdmin.title}
         emptyDescription={t.usersAdmin.usersEmptyFirstUse}
-        // Only the "no users yet" empty state offers creation. With a status
-        // filter active the grid is empty because of the filter, and a create
-        // CTA would not be the recovery for what the user sees.
         emptyAction={
-          statusValue === '' ? (
-            <PermissionGate permission={PERMISSIONS.users.create}>
-              <Button asChild variant="outline" size="sm">
-                <Link to="/app/admin/users/new">{t.usersAdmin.newUser}</Link>
-              </Button>
-            </PermissionGate>
-          ) : undefined
+          <PermissionGate permission={PERMISSIONS.users.create}>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/app/admin/users/new">{t.usersAdmin.newUser}</Link>
+            </Button>
+          </PermissionGate>
         }
-        sorting={list.state.sorting}
-        onSortingChange={list.setSorting}
-        pagination={{
-          page: query.data?.page ?? list.state.page,
-          pageSize: query.data?.pageSize ?? list.state.pageSize,
-          total: query.data?.total ?? 0,
-          pageSizeOptions: [...ADMIN_PAGE_SIZE_OPTIONS],
-          onPageChange: (page) => list.update({ page }),
-          onPageSizeChange: (pageSize) => list.update({ pageSize }),
+        filtering={{
+          initialPageSize: 50,
+          pageSizeOptions: [25, 50, 100],
         }}
       />
     </div>

@@ -5,19 +5,17 @@ import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { PermissionGate } from '@/features/permissions/permission-gate';
 import { formatCount, formatDateTime } from '@/lib/format';
 import { t } from '@/lib/i18n';
-import {
-  ADMIN_PAGE_SIZE_OPTIONS,
-  useAdminListState,
-} from '@/lib/use-admin-list-state';
 import { Button } from '@/ui/button';
 import { DataTable } from '@/ui/patterns/data-table';
+import { DataTableTruncationNotice } from '@/ui/patterns/data-table/truncation-notice';
 import { PageHeader } from '@/ui/patterns/page-header';
-import { ROLE_DEFAULT_SORT, ROLE_SORT_FIELDS, useRoleList } from './role-hooks';
+import { useAllRoles } from './role-hooks';
 
 const columns: ColumnDef<AdminRole, unknown>[] = [
   {
     accessorKey: 'name',
     header: t.rolesAdmin.roleName,
+    meta: { filter: { kind: 'text', label: t.rolesAdmin.roleName } },
     cell: ({ row }) => (
       <Link
         className="font-medium text-brand hover:underline"
@@ -31,6 +29,7 @@ const columns: ColumnDef<AdminRole, unknown>[] = [
     accessorKey: 'description',
     header: t.rolesAdmin.description,
     enableSorting: false,
+    meta: { filter: { kind: 'text', label: t.rolesAdmin.description } },
     cell: ({ row }) =>
       row.original.description === null || row.original.description === '' ? (
         <span className="text-ink-subtle">{t.rolesAdmin.noDescription}</span>
@@ -64,7 +63,8 @@ const columns: ColumnDef<AdminRole, unknown>[] = [
     id: 'actions',
     header: t.rolesAdmin.actions,
     enableSorting: false,
-    meta: { align: 'end' },
+    enableColumnFilter: false,
+    meta: { align: 'end', excludeFromGlobalSearch: true },
     cell: ({ row }) => (
       <Button asChild variant="ghost" size="sm">
         <Link to={`/app/admin/roles/${encodeURIComponent(row.original.id)}`}>
@@ -76,15 +76,16 @@ const columns: ColumnDef<AdminRole, unknown>[] = [
 ];
 
 /**
- * Role list — server paginated and sorted (`GET /roles`). The endpoint has
- * no search and no state filter, so the filter bar is deliberately absent.
+ * Role list (`GET /roles`).
+ *
+ * The endpoint offers no search, so the shared grid's light client-side
+ * filtering searches the bounded role read by name and description
+ * (`docs/frontend/data-table.md`).
  */
 export function RolesPage() {
-  const list = useAdminListState({
-    sortFields: ROLE_SORT_FIELDS,
-    defaultSort: ROLE_DEFAULT_SORT,
-  });
-  const query = useRoleList(list.state);
+  const query = useAllRoles();
+  const items = query.data?.items ?? [];
+  const total = query.data?.total ?? 0;
 
   return (
     <div className="space-y-4" data-testid="roles-page">
@@ -100,9 +101,13 @@ export function RolesPage() {
         }
       />
 
+      {total > items.length && (
+        <DataTableTruncationNotice loaded={items.length} />
+      )}
+
       <DataTable
         columns={columns}
-        data={query.data?.items ?? []}
+        data={items}
         getRowId={(row) => row.id}
         caption={t.rolesAdmin.title}
         isLoading={query.isPending}
@@ -119,16 +124,7 @@ export function RolesPage() {
             </Button>
           </PermissionGate>
         }
-        sorting={list.state.sorting}
-        onSortingChange={list.setSorting}
-        pagination={{
-          page: query.data?.page ?? list.state.page,
-          pageSize: query.data?.pageSize ?? list.state.pageSize,
-          total: query.data?.total ?? 0,
-          pageSizeOptions: [...ADMIN_PAGE_SIZE_OPTIONS],
-          onPageChange: (page) => list.update({ page }),
-          onPageSizeChange: (pageSize) => list.update({ pageSize }),
-        }}
+        filtering={{ initialPageSize: 50, pageSizeOptions: [25, 50, 100] }}
       />
     </div>
   );

@@ -1,14 +1,21 @@
 import {
   flexRender,
   getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
   useReactTable,
   type ColumnDef,
+  type ColumnFiltersState,
+  type OnChangeFn,
+  type PaginationState,
   type SortingState,
 } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react';
-import { useRef, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { formatCount } from '@/lib/format';
 import { t } from '@/lib/i18n';
+import { useDebounce } from '@/lib/use-debounced-value';
 import { useVirtualWindow } from '@/lib/use-virtual-window';
 import { cn } from '@/lib/utils';
 import {
@@ -24,6 +31,16 @@ import { ApiErrorAlert } from './api-error-alert';
 import { LocalFetchingIndicator } from './request-activity';
 import { LoadingState } from './states';
 import { Pagination, type PaginationProps } from './pagination';
+import { DataTableToolbar } from './data-table/data-table-toolbar';
+import { FILTER_FN_BY_KIND, globalTextFilter } from './data-table/filter-fns';
+import type {
+  DataTableClientState,
+  DataTableFilteringOptions,
+} from './data-table/types';
+
+/** Page sizes offered when the grid owns its own pagination. */
+const DEFAULT_CLIENT_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const DEFAULT_CLIENT_PAGE_SIZE = 25;
 
 export interface DataTableProps<TRow> {
   columns: ColumnDef<TRow, unknown>[];
@@ -55,14 +72,25 @@ export interface DataTableProps<TRow> {
   onRowActivate?: (row: TRow) => void;
   /** Enable automatic windowing when row count reaches threshold (80+). */
   virtualize?: boolean;
+  /**
+   * Bounded client-side filtering (`docs/frontend/data-table.md`).
+   * Supplying it switches the grid to client pagination/sorting and renders
+   * the shared toolbar (global search + one control per `meta.filter`).
+   * Omit it for the unchanged server-owned mode.
+   */
+  filtering?: DataTableFilteringOptions;
 }
 
 /**
  * The application's unified data grid (TanStack Table, AR-F / ADR-0002).
  *
- * Sorting and pagination are MANUAL (server-owned). Supports optional row
- * selection with count indicator, double-click row activation, and windowed
- * virtualization for large row sets.
+ * Two modes, one component:
+ * - **server** (default): sorting/pagination are MANUAL and caller-owned;
+ * - **client** (`filtering` provided): a bounded dataset is searched,
+ *   filtered, sorted and paged in the browser, with the shared toolbar.
+ *
+ * Row selection, double-click activation and windowed virtualization are
+ * available in both modes.
  */
 export function DataTable<TRow>({
   columns,
@@ -85,27 +113,144 @@ export function DataTable<TRow>({
   onSelectedRowIdsChange,
   onRowActivate,
   virtualize = false,
+  filtering,
 }: DataTableProps<TRow>) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isClientFiltered = filtering !== undefined;
+  const debounceMs = filtering?.debounceMs ?? 300;
+  const initialPageSize =
+    filtering?.initialPageSize ?? DEFAULT_CLIENT_PAGE_SIZE;
+  const onStateChange = filtering?.onStateChange;
+
+  const [searchInput, setSearchInput] = useState(
+    () => filtering?.initialGlobalFilter ?? '',
+  );
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(
+    () => filtering?.initialColumnFilters ?? [],
+  );
+  const [clientSorting, setClientSorting] = useState<SortingState>([]);
+  const [paginationState, setPaginationState] = useState<PaginationState>(
+    () => ({ pageIndex: 0, pageSize: initialPageSize }),
+  );
+  const [resetToken, setResetToken] = useState(0);
+
+  // An empty box means "no search" immediately; only a non-empty term waits
+  // for the debounce. This keeps a reset instant instead of leaving a stale
+  // term applied for another 300ms.
+  const debouncedSearch = useDebounce(searchInput, debounceMs);
+  const appliedGlobalFilter = searchInput === '' ? '' : debouncedSearch;
+
+  useEffect(() => {
+    if (!isClientFiltered) return;
+    setPaginationState((previous) =>
+      previous.pageIndex === 0 ? previous : { ...previous, pageIndex: 0 },
+    );
+  }, [appliedGlobalFilter, isClientFiltered]);
+
+  /**
+   * Attach the standard `filterFn` for every declared filter kind (TanStack's
+   * column definition is the third-party boundary here, hence the cast).
+   */
+  const effectiveColumns = useMemo<ColumnDef<TRow, unknown>[]>(() => {
+    if (!isClientFiltered) return columns;
+    return columns.map((column) => {
+      const filter = column.meta?.filter;
+      if (filter === undefined) return column;
+      return {
+        ...column,
+        filterFn: column.filterFn ?? FILTER_FN_BY_KIND[filter.kind],
+        enableColumnFilter: true,
+      } as ColumnDef<TRow, unknown>;
+    });
+  }, [columns, isClientFiltered]);
+
+  const handleColumnFiltersChange: OnChangeFn<ColumnFiltersState> = (
+    updater,
+  ) => {
+    setColumnFilters((previous) =>
+      typeof updater === 'function' ? updater(previous) : updater,
+    );
+    setPaginationState((previous) =>
+      previous.pageIndex === 0 ? previous : { ...previous, pageIndex: 0 },
+    );
+  };
+
+  const handleSortingChange: OnChangeFn<SortingState> = (updater) => {
+    if (isClientFiltered) {
+      setClientSorting((previous) =>
+        typeof updater === 'function' ? updater(previous) : updater,
+      );
+      return;
+    }
+    if (onSortingChange === undefined) return;
+    const next =
+      typeof updater === 'function' ? updater(sorting ?? []) : updater;
+    onSortingChange(next);
+  };
+
+  const handlePaginationChange: OnChangeFn<PaginationState> = (updater) => {
+    setPaginationState((previous) =>
+      typeof updater === 'function' ? updater(previous) : updater,
+    );
+  };
 
   const table = useReactTable({
     data,
-    columns,
+    columns: effectiveColumns,
     getRowId,
     getCoreRowModel: getCoreRowModel(),
-    manualPagination: true,
-    manualSorting: true,
-    enableSorting: onSortingChange !== undefined,
-    state: sorting !== undefined ? { sorting } : {},
-    onSortingChange: (updater) => {
-      if (onSortingChange === undefined) return;
-      const next =
-        typeof updater === 'function' ? updater(sorting ?? []) : updater;
-      onSortingChange(next);
-    },
+    ...(isClientFiltered
+      ? {
+          getFilteredRowModel: getFilteredRowModel(),
+          getSortedRowModel: getSortedRowModel(),
+          getPaginationRowModel: getPaginationRowModel(),
+          globalFilterFn: globalTextFilter,
+        }
+      : {}),
+    manualPagination: !isClientFiltered,
+    manualSorting: !isClientFiltered,
+    manualFiltering: !isClientFiltered,
+    enableSorting: isClientFiltered || onSortingChange !== undefined,
+    state: isClientFiltered
+      ? {
+          sorting: clientSorting,
+          columnFilters,
+          globalFilter: appliedGlobalFilter,
+          pagination: paginationState,
+        }
+      : sorting !== undefined
+        ? { sorting }
+        : {},
+    onSortingChange: handleSortingChange,
+    onColumnFiltersChange: handleColumnFiltersChange,
+    onPaginationChange: handlePaginationChange,
   });
 
+  useEffect(() => {
+    if (!isClientFiltered || onStateChange === undefined) return;
+    const state: DataTableClientState = {
+      globalFilter: appliedGlobalFilter,
+      columnFilters,
+      sorting: clientSorting,
+      page: paginationState.pageIndex + 1,
+      pageSize: paginationState.pageSize,
+    };
+    onStateChange(state);
+  }, [
+    appliedGlobalFilter,
+    clientSorting,
+    columnFilters,
+    isClientFiltered,
+    onStateChange,
+    paginationState.pageIndex,
+    paginationState.pageSize,
+  ]);
+
   const rows = table.getRowModel().rows;
+  const filteredRowCount = isClientFiltered
+    ? table.getFilteredRowModel().rows.length
+    : data.length;
+
   const virtual = useVirtualWindow({
     totalCount: virtualize ? rows.length : 0,
     rowHeight: 29,
@@ -153,13 +298,72 @@ export function DataTable<TRow>({
     onSelectedRowIdsChange(next);
   };
 
+  const resetFilters = () => {
+    setSearchInput('');
+    setColumnFilters([]);
+    setPaginationState((previous) =>
+      previous.pageIndex === 0 ? previous : { ...previous, pageIndex: 0 },
+    );
+    setResetToken((token) => token + 1);
+  };
+
   const totalColSpan = columns.length + (selectable ? 1 : 0);
   const renderedRows = virtual.isVirtualized
     ? rows.slice(virtual.startIndex, virtual.endIndex)
     : rows;
 
+  /** Loaded data exists, but the search/filters exclude every row. */
+  const isNoMatch =
+    isClientFiltered && data.length > 0 && filteredRowCount === 0;
+  const resolvedEmptyTitle = isNoMatch
+    ? t.table.filters.noMatchTitle
+    : emptyTitle;
+  const resolvedEmptyDescription = isNoMatch
+    ? t.table.filters.noMatchBody
+    : emptyDescription;
+  const resolvedEmptyAction = isNoMatch ? (
+    <button
+      type="button"
+      className="text-xs font-medium text-brand-ink underline hover:no-underline"
+      onClick={resetFilters}
+      data-testid="data-table-clear-filters"
+    >
+      {t.table.filters.clearFilters}
+    </button>
+  ) : (
+    emptyAction
+  );
+
+  const clientPagination: Omit<PaginationProps, 'disabled'> | undefined =
+    isClientFiltered
+      ? {
+          page: paginationState.pageIndex + 1,
+          pageSize: paginationState.pageSize,
+          total: filteredRowCount,
+          pageSizeOptions: [
+            ...(filtering?.pageSizeOptions ?? DEFAULT_CLIENT_PAGE_SIZE_OPTIONS),
+          ],
+          onPageChange: (page) => table.setPageIndex(Math.max(0, page - 1)),
+          onPageSizeChange: (pageSize) => table.setPageSize(pageSize),
+        }
+      : undefined;
+  const effectivePagination = clientPagination ?? pagination;
+
   return (
     <div className="space-y-2" aria-busy={isFetching ? true : undefined}>
+      {isClientFiltered && (
+        <DataTableToolbar
+          table={table}
+          options={filtering}
+          filteredCount={filteredRowCount}
+          totalCount={data.length}
+          globalFilter={searchInput}
+          onGlobalFilterChange={setSearchInput}
+          resetToken={resetToken}
+          onReset={resetFilters}
+        />
+      )}
+
       {selectable && effectiveSelected.size > 0 && (
         <div
           className="flex items-center justify-between rounded-control border border-brand/30 bg-brand-soft px-3 py-1.5 text-xs text-brand-ink"
@@ -221,8 +425,7 @@ export function DataTable<TRow>({
                   {headerGroup.headers.map((header) => {
                     const canSort = header.column.getCanSort();
                     const sortDirection = header.column.getIsSorted();
-                    const meta = header.column.columnDef.meta as
-                      { align?: 'start' | 'end' } | undefined;
+                    const meta = header.column.columnDef.meta;
                     return (
                       <TableHeaderCell
                         key={header.id}
@@ -276,12 +479,12 @@ export function DataTable<TRow>({
                       data-testid="data-table-empty"
                     >
                       <p className="text-sm font-semibold text-ink">
-                        {emptyTitle}
+                        {resolvedEmptyTitle}
                       </p>
                       <p className="text-xs leading-6 text-ink-muted">
-                        {emptyDescription}
+                        {resolvedEmptyDescription}
                       </p>
-                      {emptyAction}
+                      {resolvedEmptyAction}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -325,8 +528,7 @@ export function DataTable<TRow>({
                           </TableCell>
                         )}
                         {row.getVisibleCells().map((cell) => {
-                          const meta = cell.column.columnDef.meta as
-                            { align?: 'start' | 'end' } | undefined;
+                          const meta = cell.column.columnDef.meta;
                           return (
                             <TableCell
                               key={cell.id}
@@ -361,9 +563,9 @@ export function DataTable<TRow>({
           </Table>
         </div>
 
-        {pagination !== undefined ? (
+        {effectivePagination !== undefined ? (
           <Pagination
-            {...pagination}
+            {...effectivePagination}
             disabled={isFetching}
             fetching={isFetching}
           />

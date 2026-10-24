@@ -98,6 +98,46 @@ export function useItemList(
   });
 }
 
+/**
+ * Bounded full item list for the grid's light client-side filtering
+ * (backend `MAX_PAGE_SIZE` = 500, `docs/frontend/data-table.md`).
+ *
+ * The server-side `itemGroupId` filter is kept because the item group is not
+ * part of the item row the grid renders; every other filter (code, name,
+ * kind, active state) is applied in the browser by the shared toolbar.
+ */
+export const ITEM_CLIENT_LIST_PAGE_SIZE = 500;
+
+export function useAllItems(
+  organizationId: string | null,
+  itemGroupId: string,
+) {
+  const query: InventoryItemListQuery = {
+    organizationId: organizationId ?? '',
+    page: 1,
+    pageSize: ITEM_CLIENT_LIST_PAGE_SIZE,
+    sort: ITEM_DEFAULT_SORT,
+    ...(itemGroupId !== '' ? { itemGroupId } : {}),
+  };
+
+  return useQuery({
+    queryKey: queryKeys.inventory.itemList(
+      organizationId ?? 'none',
+      query as unknown as Record<string, unknown>,
+    ),
+    queryFn: ({ signal }) => listItemsAdmin(query, signal),
+    enabled: organizationId !== null,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery !== undefined &&
+      !isOtherOrganizationScope(
+        previousQuery.queryKey,
+        organizationId ?? 'none',
+      )
+        ? previous
+        : undefined,
+  });
+}
+
 export function useItemDetail(
   organizationId: string | null,
   itemId: string | undefined,

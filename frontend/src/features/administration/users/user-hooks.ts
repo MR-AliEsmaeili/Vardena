@@ -62,6 +62,32 @@ export function useUserList(state: AdminListState) {
   });
 }
 
+/**
+ * Bounded full list for the grid's light client-side filtering.
+ *
+ * The Users controller exposes page/pageSize/sort + `isActive` only — no
+ * server search — and the shared grid standard allows client filtering for
+ * bounded datasets (`docs/frontend/data-table.md`). 500 is the backend's hard
+ * `MAX_PAGE_SIZE`; a directory with more users keeps the server contract and
+ * is reported through the grid's truncation notice instead of pretending the
+ * filters cover rows that were never loaded.
+ */
+export const USER_CLIENT_LIST_PAGE_SIZE = 500;
+
+export function useAllUsers() {
+  const query: AdminUserListQuery = {
+    page: 1,
+    pageSize: USER_CLIENT_LIST_PAGE_SIZE,
+    sort: USER_DEFAULT_SORT,
+  };
+
+  return useQuery({
+    queryKey: queryKeys.users.list(query as unknown as Record<string, unknown>),
+    queryFn: ({ signal }) => listUsers(query, signal),
+    placeholderData: (previous) => previous,
+  });
+}
+
 export function useUserDetail(userId: string | undefined) {
   return useQuery({
     queryKey: queryKeys.users.detail(userId ?? 'none'),

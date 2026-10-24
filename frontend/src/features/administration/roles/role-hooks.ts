@@ -66,6 +66,24 @@ export function useRoleList(state: AdminListState) {
   });
 }
 
+/** Bounded full list for client-side filtering (backend `MAX_PAGE_SIZE`). */
+export const ROLE_CLIENT_LIST_PAGE_SIZE = 500;
+
+export function useAllRoles() {
+  const query: AdminRoleListQuery = {
+    page: 1,
+    pageSize: ROLE_CLIENT_LIST_PAGE_SIZE,
+    sort: ROLE_DEFAULT_SORT,
+  };
+
+  return useQuery({
+    queryKey: queryKeys.rbac.roleList(
+      query as unknown as Record<string, unknown>,
+    ),
+    queryFn: ({ signal }) => listRoles(query, signal),
+  });
+}
+
 export function useRoleDetail(roleId: string | undefined) {
   return useQuery({
     queryKey: queryKeys.rbac.roleDetail(roleId ?? 'none'),
