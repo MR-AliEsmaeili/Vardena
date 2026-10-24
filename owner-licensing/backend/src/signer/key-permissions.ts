@@ -59,7 +59,9 @@ const WINDOWS_ACL_INSPECTION_SCRIPT = [
   "$ErrorActionPreference = 'Stop'",
   "$keyPath = $env:VARDENA_SIGNER_KEY_PATH",
   "if ([string]::IsNullOrEmpty($keyPath)) { throw 'key path missing' }",
-  "$acl = Get-Acl -LiteralPath $keyPath",
+  // .NET reads the same NTFS security descriptor without relying on PowerShell
+  // module autoload (observed to fail on the Windows CI runner).
+  "$acl = if ([System.IO.Directory]::Exists($keyPath)) { [System.IO.Directory]::GetAccessControl($keyPath) } else { [System.IO.File]::GetAccessControl($keyPath) }",
   "$ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value",
   "$userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
   "Write-Output ('OWNER' + [char]9 + $ownerSid)",
