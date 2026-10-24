@@ -1,6 +1,8 @@
 import { apiDelete, apiGet, apiPatch, apiPost, cleanParams } from './client';
+import { ApiError } from './errors';
 import type {
   Account,
+  AccountingConfiguration,
   AccountStatement,
   AccountStatementQuery,
   AccountListQuery,
@@ -12,7 +14,12 @@ import type {
   AccountingPeriodListQuery,
   ChartTreeNode,
   ChartTreeQuery,
+  CodingStructureVersion,
+  CreateAccountRequest,
+  CreateAccountingConfigurationRequest,
   CreateAccountingDocumentInput,
+  CreateAccountingPeriodRequest,
+  CreateCodingStructureRequest,
   CreateFinancialAreaRequest,
   CreateFiscalYearRequest,
   DocumentTransitionInput,
@@ -189,6 +196,94 @@ export function listAccounts(
     params: cleanParams({ ...query }),
     ...(signal ? { signal } : {}),
   });
+}
+
+export function createAccountingPeriod(
+  body: CreateAccountingPeriodRequest,
+): Promise<AccountingPeriod> {
+  return apiPost<AccountingPeriod, CreateAccountingPeriodRequest>(
+    '/accounting-periods',
+    body,
+  );
+}
+
+export function createAccount(body: CreateAccountRequest): Promise<Account> {
+  return apiPost<Account, CreateAccountRequest>('/accounts', body);
+}
+
+export function createCodingStructureVersion(
+  body: CreateCodingStructureRequest,
+): Promise<CodingStructureVersion> {
+  return apiPost<CodingStructureVersion, CreateCodingStructureRequest>(
+    '/coding-structures',
+    body,
+  );
+}
+
+export function publishCodingStructureVersion(
+  organizationId: string,
+  id: string,
+): Promise<CodingStructureVersion> {
+  return apiPost<CodingStructureVersion, Record<string, never>>(
+    `/coding-structures/${encodeURIComponent(id)}/publish`,
+    {},
+    { params: { organizationId } },
+  );
+}
+
+export function createAccountingConfiguration(
+  body: CreateAccountingConfigurationRequest,
+): Promise<AccountingConfiguration> {
+  return apiPost<AccountingConfiguration, CreateAccountingConfigurationRequest>(
+    '/accounting-configurations',
+    body,
+  );
+}
+
+export function publishAccountingConfiguration(
+  organizationId: string,
+  id: string,
+): Promise<AccountingConfiguration> {
+  return apiPost<AccountingConfiguration, Record<string, never>>(
+    `/accounting-configurations/${encodeURIComponent(id)}/publish`,
+    {},
+    { params: { organizationId } },
+  );
+}
+
+/** Active coding structure, or null when the organization has none (404). */
+export async function getActiveCodingStructure(
+  organizationId: string,
+  signal?: AbortSignal,
+): Promise<CodingStructureVersion | null> {
+  try {
+    return await apiGet<CodingStructureVersion>('/coding-structures/active', {
+      params: { organizationId },
+      ...(signal ? { signal } : {}),
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+/** Active accounting configuration, or null when none exists (404). */
+export async function getActiveAccountingConfiguration(
+  organizationId: string,
+  signal?: AbortSignal,
+): Promise<AccountingConfiguration | null> {
+  try {
+    return await apiGet<AccountingConfiguration>(
+      '/accounting-configurations/active',
+      {
+        params: { organizationId },
+        ...(signal ? { signal } : {}),
+      },
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
 }
 
 export function getAccount(

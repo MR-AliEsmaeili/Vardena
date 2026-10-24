@@ -15,6 +15,9 @@ import {
   useFiscalYears,
 } from '../shared/use-accounting-references';
 import { LifecycleBadge, MasterFilters } from './master-data-ui';
+import { PeriodCreateForm } from './period-create-form';
+import { PermissionGate } from '@/features/permissions/permission-gate';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { useAccountingPeriodList } from './master-data-hooks';
 import { useMasterDataQuery } from './use-master-data-query';
 
@@ -97,6 +100,16 @@ export function AccountingPeriodsPage() {
       <p className="text-xs font-medium text-ink-subtle">
         {t.masterData.contextHint}
       </p>
+      {organizationId !== null && (
+        <PermissionGate
+          permission={PERMISSIONS.accounting.accountingPeriodOpen}
+        >
+          <PeriodCreateForm
+            organizationId={organizationId}
+            fiscalYears={years.data?.items ?? []}
+          />
+        </PermissionGate>
+      )}
       <MasterFilters
         synchronizationKey={`${state.status}:${state.scopeId}`}
         status={state.status}

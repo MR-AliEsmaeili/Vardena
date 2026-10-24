@@ -579,6 +579,18 @@ export type AccountingPeriodListQuery =
   operations['AccountingPeriodsController_list_v1']['parameters']['query'];
 export type AccountListQuery =
   operations['AccountsController_list_v1']['parameters']['query'];
+export type CreateAccountRequest = OptionalNullableString<
+  Schemas['CreateAccountDto'],
+  'parentId' | 'detailGroupId'
+>;
+export type CodingStructureVersion =
+  Schemas['CodingStructureVersionResponseDto'];
+export type CreateCodingStructureRequest =
+  Schemas['CreateCodingStructureVersionDto'];
+export type AccountingConfiguration =
+  Schemas['AccountingConfigurationResponseDto'];
+export type CreateAccountingConfigurationRequest =
+  Schemas['CreateAccountingConfigurationDto'];
 
 // ---------------------------------------------------------------------------
 // Accounting — Chart Tree (Task 19, ODR-2)
