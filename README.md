@@ -17,7 +17,10 @@ today, cloud-ready.
 > application shell, organization context, permission-aware navigation, the
 > read-only Accounting surfaces (chart tree, account statement, general ledger,
 > trial balance), and the real-data Dashboard corrected by PR #86 — see
-> [frontend/README.md](frontend/README.md). It still has no Accounting write UI,
+> [frontend/README.md](frontend/README.md). Accounting write UI has since been
+> added (voucher lifecycle, plus period opening, chart-structure activation
+> and account creation for fresh organizations; see
+> `docs/accounting/operational-readiness-audit-2026-10-24.md`). It still has no
 > Inventory/Workflow administration UI, RBAC administration UI, or Treasury UI.
 > `backend/` is a NestJS modular monolith with the kernel plus nine registered
 > modules — `health` and the eight domain modules **identity, users, rbac,

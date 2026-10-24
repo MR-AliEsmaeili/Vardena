@@ -106,12 +106,11 @@ export function AccountsPage() {
         title={t.masterData.accounts}
         description={t.masterData.accountsDescription}
       />
+      {/* ChartSetupForm gates each step internally: completing setup needs
+          BOTH CodingStructure.Configure and AccountingConfiguration.Configure,
+          and partial steps must stay visible/explainable per permission. */}
       {organizationId !== null && (
-        <PermissionGate
-          permission={PERMISSIONS.accounting.accountingConfigurationConfigure}
-        >
-          <ChartSetupForm organizationId={organizationId} />
-        </PermissionGate>
+        <ChartSetupForm organizationId={organizationId} />
       )}
       {organizationId !== null && (
         <PermissionGate permission={PERMISSIONS.accounting.accountCreate}>

@@ -591,6 +591,10 @@ export type AccountingConfiguration =
   Schemas['AccountingConfigurationResponseDto'];
 export type CreateAccountingConfigurationRequest =
   Schemas['CreateAccountingConfigurationDto'];
+export type CodingStructureListQuery =
+  operations['CodingStructuresController_list_v1']['parameters']['query'];
+export type AccountingConfigurationListQuery =
+  operations['AccountingConfigurationsController_list_v1']['parameters']['query'];
 
 // ---------------------------------------------------------------------------
 // Accounting — Chart Tree (Task 19, ODR-2)

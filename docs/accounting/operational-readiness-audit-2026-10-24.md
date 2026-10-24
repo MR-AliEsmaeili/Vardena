@@ -104,3 +104,53 @@ ledger → general ledger / trial balance (all pre-existing UI).
 - Local: typecheck, lint, format check and the full frontend suite (see PR).
 - Heavier backend integration/E2E: unchanged backend; rely on GitHub Actions
   for this PR's SHA.
+
+## Corrective addendum (PR #205 review, 2026-10-24)
+
+Confirmed defects found on review of the first implementation and fixed:
+
+| # | Severity | Defect | Fix |
+|---|---|---|---|
+| 1 | High | Chart setup was gated on `AccountingConfiguration.Configure` only, while it also creates/publishes the coding structure (`CodingStructure.Configure`): a config-only user was offered a flow that must 403 mid-sequence, and a coding-only user never saw it. | Page gate removed; `ChartSetupForm` checks both codes, runs only authorized sides, and shows `setupMissingPermission` when a needed side is unauthorized. Server-side guards unchanged and authoritative. |
+| 2 | High | Multi-request sequence restarted blindly after partial failure, creating duplicate drafts, and re-derived levels from current form input even when one aggregate was already ACTIVE (could publish a divergent configuration that ODR-1 then rejects at root creation). | Authoritative state (actives + DRAFT lists) is classified by `chart-setup-state.ts`; retries reuse a committed matching draft or the active side's locked digit shape; mismatched drafts are never published over a locked shape. |
+| 3 | High | Both-active state was reported "ready" without checking ODR-1 compatibility. | Compatibility = equal level count and per-level digit lengths (`shapesCompatible`, mirroring `AccountsService.assertPinCoherence`); incompatible actives block with an explanatory alert and zero mutations — nothing is auto-deactivated or overwritten. |
+| 4 | Medium | A non-404 fetch failure (500/network/403) left `data` undefined and the form treated the organization as unconfigured, enabling creation against unknown state. | Loading → explicit loading text; error → `ApiErrorAlert` (permission-specific copy for 401/403) with retry refetch; creation is not rendered while state is unknown. Only HTTP 404 from the `/active` endpoints maps to "absent" (existing client behavior, now covered by tests). |
+| 5 | Medium | Cache refresh used one broad `queryKeys.accounting.all(org)` invalidation. | Dedicated keys `codingStructureActive/Drafts`, `accountingConfigurationActive/Drafts`; mutations invalidate exactly these keys on settle (success **and** partial failure), so retry planning is always from server truth and unrelated modules are not refetched. |
+| 6 | Low | Success feedback could render from mutation state before refetched actives confirmed compatibility. | Success is shown only by the `ready` classification of refetched state. |
+
+Failure-scenario coverage: coding publish failure + draft-reuse retry,
+fetch 500, fetch 403, incompatible actives, permission combinations
+(both / coding-only / config-only / neither), period reversed range,
+account 409 — in `master-data-write-forms.test.tsx`; the 9-state initial
+matrix is table-driven in `chart-setup-state.test.ts`. Timeout-after-commit
+and page-refresh recovery use the same path as the publish-failure test:
+on settle/refresh the drafts+actives are refetched and classification plans
+only the remaining steps. Concurrency: classification is recomputed from
+refetched state before every attempt; a concurrent activation turns the
+form `ready` and removes the action rather than overwriting it.
+
+## Fresh-organization manual acceptance checklist
+
+Prerequisites: a user whose role carries `Accounting.FinancialArea.Create`,
+`FiscalYear.Create`, `AccountingPeriod.Open`, `CodingStructure.Configure`,
+`AccountingConfiguration.Configure`, `Account.Create`, `Document.*` as needed;
+a second user without the Configure codes for step 11. Never use production
+accounting data for destructive tests.
+
+1. Log in, select/create the organization; create financial area + fiscal year in the gate.
+2. Accounting → Periods: open period 1 inside the year (Jalali dates); confirm it lists as «باز».
+3. Accounting → Accounts: in chart setup, enter your levels (e.g. 2-digit non-postable + 3-digit postable) and activate; confirm both steps show «انجام شده» and the ready message.
+4. Create a root account whose code matches level 1 width; create a postable leaf account under it (root parents must be non-postable — server enforces).
+5. (Optional resume check) repeat step 3 in a second organization but abandon after a forced failure (e.g. go offline mid-submit); return and confirm only the remaining step is offered and no duplicate structure was created.
+6. Accounting → Documents → new: confirm postable accounts and the open period are offered; create a balanced voucher (equal debit/credit).
+7. Issue and finalize the voucher from its detail page.
+8. Accounting → General Ledger: confirm the voucher's lines appear.
+9. Accounting → Trial Balance: confirm debits equal credits and the leaf balances roll up to the root.
+10. Close the period (API-only today) and confirm via API that finalizing a new voucher dated in it is refused.
+11. Log in as the unauthorized user: confirm chart setup explains the missing permissions and direct API calls return 403.
+
+API-only workflows remaining (not in UI): period close/reopen/seal, account
+edit/enable/disable, base-chart adoption, configuration/coding-structure
+version editing. Known limitation: no browser Playwright E2E exists in this
+repository; the checklist above is the human verification that automation
+cannot replace yet.

@@ -18,12 +18,45 @@ vi.mock('@/api/accounting.api', () => ({
   publishAccountingConfiguration: vi.fn(),
   getActiveCodingStructure: vi.fn(),
   getActiveAccountingConfiguration: vi.fn(),
+  listCodingStructureVersions: vi.fn(),
+  listAccountingConfigurations: vi.fn(),
 }));
+
+const mockPermissions = vi.hoisted(() => ({ codes: [] as string[] }));
+vi.mock('@/features/permissions/use-permissions', () => ({
+  usePermissions: () => ({
+    codes: mockPermissions.codes,
+    loaded: true,
+    has: (code: string) => mockPermissions.codes.includes(code),
+    hasAll: (codes: readonly string[]) =>
+      codes.every((c) => mockPermissions.codes.includes(c)),
+    hasAny: (codes: readonly string[]) =>
+      codes.some((c) => mockPermissions.codes.includes(c)),
+  }),
+}));
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
+const BOTH_CONFIGURE = [
+  PERMISSIONS.accounting.codingStructureConfigure,
+  PERMISSIONS.accounting.accountingConfigurationConfigure,
+];
 
 const api = await import('@/api/accounting.api');
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPermissions.codes = [...BOTH_CONFIGURE];
+  vi.mocked(api.listCodingStructureVersions).mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 100,
+  } as never);
+  vi.mocked(api.listAccountingConfigurations).mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 100,
+  } as never);
   resetDateTimeSettings();
   setDateTimeSettings({ timeZone: 'Asia/Tehran' });
 });
@@ -176,5 +209,257 @@ describe('AccountCreateForm', () => {
         isPostable: true,
       }),
     );
+  });
+});
+
+import { ApiError } from '@/api/errors';
+
+const LEVELS_RES = { items: [], total: 0, page: 1, pageSize: 100 };
+function mockEmptySetup() {
+  vi.mocked(api.getActiveCodingStructure).mockResolvedValue(null);
+  vi.mocked(api.getActiveAccountingConfiguration).mockResolvedValue(null);
+  vi.mocked(api.listCodingStructureVersions).mockResolvedValue(
+    LEVELS_RES as never,
+  );
+  vi.mocked(api.listAccountingConfigurations).mockResolvedValue(
+    LEVELS_RES as never,
+  );
+}
+async function fillChartForm(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(
+    await screen.findByLabelText(t.masterData.structureName),
+    'پیکربندی اصلی',
+  );
+  const titles = screen.getAllByLabelText(new RegExp(t.masterData.levelTitle));
+  await user.type(titles[0]!, 'گروه');
+  await user.type(titles[1]!, 'معین');
+}
+
+describe('ChartSetupForm permissions', () => {
+  it.each([
+    ['coding only', [PERMISSIONS.accounting.codingStructureConfigure]],
+    ['config only', [PERMISSIONS.accounting.accountingConfigurationConfigure]],
+    ['neither', [] as string[]],
+  ])(
+    'with %s permission: explains missing permission and never runs the unauthorized side',
+    async (_name, codes) => {
+      mockPermissions.codes = [...codes];
+      mockEmptySetup();
+      vi.mocked(api.createCodingStructureVersion).mockResolvedValue({
+        id: 'cs-1',
+      } as never);
+      vi.mocked(api.publishCodingStructureVersion).mockResolvedValue({
+        id: 'cs-1',
+      } as never);
+      vi.mocked(api.createAccountingConfiguration).mockResolvedValue({
+        id: 'cfg-1',
+      } as never);
+      vi.mocked(api.publishAccountingConfiguration).mockResolvedValue({
+        id: 'cfg-1',
+      } as never);
+      const user = userEvent.setup();
+      renderWithProviders(<ChartSetupForm organizationId="org-1" />, {
+        withProviders: false,
+      });
+      expect(
+        await screen.findByText(t.masterData.setupMissingPermission),
+      ).toBeInTheDocument();
+      await fillChartForm(user);
+      await user.click(
+        screen.getByRole('button', { name: t.masterData.activateChart }),
+      );
+      const codingExpected = codes.includes(
+        PERMISSIONS.accounting.codingStructureConfigure,
+      )
+        ? 1
+        : 0;
+      const configExpected = codes.includes(
+        PERMISSIONS.accounting.accountingConfigurationConfigure,
+      )
+        ? 1
+        : 0;
+      await waitFor(() => {
+        expect(api.createCodingStructureVersion).toHaveBeenCalledTimes(
+          codingExpected,
+        );
+        expect(api.createAccountingConfiguration).toHaveBeenCalledTimes(
+          configExpected,
+        );
+      });
+    },
+  );
+});
+
+describe('ChartSetupForm failure and recovery', () => {
+  it('coding publish fails → no success, state refetched, retry reuses the committed draft without recreating it', async () => {
+    mockEmptySetup();
+    vi.mocked(api.createCodingStructureVersion).mockResolvedValue({
+      id: 'cs-1',
+    } as never);
+    vi.mocked(api.publishCodingStructureVersion).mockRejectedValueOnce(
+      new ApiError({ code: 'InternalError', status: 500, message: 'boom' }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ChartSetupForm organizationId="org-1" />, {
+      withProviders: false,
+    });
+    await fillChartForm(user);
+    await user.click(
+      screen.getByRole('button', { name: t.masterData.activateChart }),
+    );
+    expect(
+      await screen.findByText(t.masterData.setupPartialFailure),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(t.masterData.chartReady)).not.toBeInTheDocument();
+    // Server truth on refetch: draft cs-1 committed, nothing active.
+    vi.mocked(api.listCodingStructureVersions).mockResolvedValue({
+      items: [
+        {
+          id: 'cs-1',
+          levels: [
+            {
+              levelIndex: 1,
+              title: 'گروه',
+              digitLength: 2,
+              defaultIsPostable: false,
+            },
+            {
+              levelIndex: 2,
+              title: 'معین',
+              digitLength: 3,
+              defaultIsPostable: true,
+            },
+          ],
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100,
+    } as never);
+    // Retry (the click after refetch publishes the reused draft, then config flows)
+    vi.mocked(api.publishCodingStructureVersion).mockResolvedValue({
+      id: 'cs-1',
+    } as never);
+    vi.mocked(api.createAccountingConfiguration).mockResolvedValue({
+      id: 'cfg-1',
+    } as never);
+    vi.mocked(api.publishAccountingConfiguration).mockResolvedValue({
+      id: 'cfg-1',
+    } as never);
+    await user.click(screen.getByRole('button', { name: t.app.retry }));
+    await waitFor(() =>
+      expect(
+        screen.getByText(t.masterData.setupPartial, { exact: false }),
+      ).toBeInTheDocument(),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t.masterData.activateChart }),
+    );
+    await waitFor(() =>
+      expect(api.publishAccountingConfiguration).toHaveBeenCalled(),
+    );
+    expect(api.createCodingStructureVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it('fetch 500 → explicit error, creation disabled; 403 → permission message', async () => {
+    vi.mocked(api.getActiveCodingStructure).mockRejectedValue(
+      new ApiError({ code: 'InternalError', status: 500, message: 'boom' }),
+    );
+    vi.mocked(api.getActiveAccountingConfiguration).mockResolvedValue(null);
+    renderWithProviders(<ChartSetupForm organizationId="org-1" />, {
+      withProviders: false,
+    });
+    expect(
+      await screen.findByText(t.masterData.setupStateFailed),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: t.masterData.activateChart }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('fetch 403 → permission-specific message, no creation offered', async () => {
+    vi.mocked(api.getActiveCodingStructure).mockRejectedValue(
+      new ApiError({ code: 'PermissionDenied', status: 403, message: 'no' }),
+    );
+    vi.mocked(api.getActiveAccountingConfiguration).mockResolvedValue(null);
+    renderWithProviders(<ChartSetupForm organizationId="org-1" />, {
+      withProviders: false,
+    });
+    expect(
+      await screen.findByText(t.masterData.setupForbidden),
+    ).toBeInTheDocument();
+  });
+
+  it('incompatible active aggregates block without any mutation', async () => {
+    vi.mocked(api.getActiveCodingStructure).mockResolvedValue({
+      id: 'c',
+      levels: [
+        { levelIndex: 1, title: 'a', digitLength: 2, defaultIsPostable: false },
+      ],
+    } as never);
+    vi.mocked(api.getActiveAccountingConfiguration).mockResolvedValue({
+      id: 'k',
+      levels: [
+        { levelIndex: 1, title: 'a', digitLength: 4, defaultIsPostable: false },
+      ],
+    } as never);
+    renderWithProviders(<ChartSetupForm organizationId="org-1" />, {
+      withProviders: false,
+    });
+    expect(
+      await screen.findByText(t.masterData.setupIncompatible),
+    ).toBeInTheDocument();
+    expect(api.createCodingStructureVersion).not.toHaveBeenCalled();
+    expect(api.createAccountingConfiguration).not.toHaveBeenCalled();
+  });
+});
+
+describe('PeriodCreateForm validation', () => {
+  it('reversed range is refused client-side and never calls the API', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <PeriodCreateForm
+        organizationId="org-1"
+        fiscalYears={[testFiscalYear]}
+      />,
+      { withProviders: false },
+    );
+    await user.selectOptions(
+      screen.getByLabelText(t.masterData.fiscalYear),
+      testFiscalYear.id,
+    );
+    await user.type(screen.getByLabelText(t.masterData.periodTitle), 'فروردین');
+    await user.type(
+      screen.getByLabelText(t.masterData.startDate),
+      '1405/02/01',
+    );
+    await user.type(screen.getByLabelText(t.masterData.endDate), '1405/01/01');
+    await user.click(
+      screen.getByRole('button', { name: t.masterData.openPeriod }),
+    );
+    expect(await screen.findByText(t.masterData.dateRange)).toBeInTheDocument();
+    expect(api.createAccountingPeriod).not.toHaveBeenCalled();
+  });
+});
+
+describe('AccountCreateForm backend errors', () => {
+  it('409 duplicate code shows an alert and no success', async () => {
+    vi.mocked(api.createAccount).mockRejectedValue(
+      new ApiError({ code: 'Conflict', status: 409, message: 'duplicate' }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(
+      <AccountCreateForm organizationId="org-1" accounts={[]} />,
+      { withProviders: false },
+    );
+    await user.type(screen.getByLabelText(t.masterData.accountCode), '10');
+    await user.type(screen.getByLabelText(t.masterData.accountTitle), 'نقد');
+    await user.click(
+      screen.getByRole('button', { name: t.masterData.createAccount }),
+    );
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(
+      screen.queryByText(t.masterData.accountCreated),
+    ).not.toBeInTheDocument();
   });
 });

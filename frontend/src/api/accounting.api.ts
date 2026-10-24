@@ -3,6 +3,7 @@ import { ApiError } from './errors';
 import type {
   Account,
   AccountingConfiguration,
+  AccountingConfigurationListQuery,
   AccountStatement,
   AccountStatementQuery,
   AccountListQuery,
@@ -14,6 +15,7 @@ import type {
   AccountingPeriodListQuery,
   ChartTreeNode,
   ChartTreeQuery,
+  CodingStructureListQuery,
   CodingStructureVersion,
   CreateAccountRequest,
   CreateAccountingConfigurationRequest,
@@ -248,6 +250,29 @@ export function publishAccountingConfiguration(
     `/accounting-configurations/${encodeURIComponent(id)}/publish`,
     {},
     { params: { organizationId } },
+  );
+}
+
+export function listCodingStructureVersions(
+  query: CodingStructureListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<CodingStructureVersion>> {
+  return apiGet<Paginated<CodingStructureVersion>>('/coding-structures', {
+    params: cleanParams({ ...query }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+export function listAccountingConfigurations(
+  query: AccountingConfigurationListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<AccountingConfiguration>> {
+  return apiGet<Paginated<AccountingConfiguration>>(
+    '/accounting-configurations',
+    {
+      params: cleanParams({ ...query }),
+      ...(signal ? { signal } : {}),
+    },
   );
 }
 
