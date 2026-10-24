@@ -123,4 +123,20 @@ describe('classifyChartSetup initial-state matrix', () => {
     expect(shapesCompatible([lvl(2)], [lvl(2), lvl(3, 1)])).toBe(false);
     expect(shapesCompatible([lvl(4)], [lvl(2)])).toBe(false);
   });
+
+  it('shapesCompatible matches planPinCoherence index semantics: an index gap is a mismatch even with equal positional digits', () => {
+    // coding indices {1,3}, configuration indices {1,2} — same count and the
+    // same sorted digit sequence, but the backend returns
+    // 'coding_level_count_mismatch' because index 2 is absent from coding.
+    const coding = [
+      { levelIndex: 1, title: 'a', digitLength: 2, defaultIsPostable: false },
+      { levelIndex: 3, title: 'b', digitLength: 3, defaultIsPostable: true },
+    ];
+    const config = [
+      { levelIndex: 1, title: 'a', digitLength: 2, defaultIsPostable: false },
+      { levelIndex: 2, title: 'b', digitLength: 3, defaultIsPostable: true },
+    ];
+    expect(shapesCompatible(coding, config)).toBe(false);
+    expect(shapesCompatible(config, coding)).toBe(false);
+  });
 });

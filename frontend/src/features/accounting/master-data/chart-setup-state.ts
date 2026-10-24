@@ -30,17 +30,24 @@ export function levelShapeOf(
     }));
 }
 
-/** ODR-1 coherence as the backend enforces it for root creation: same level count and same digit length per level. Titles/postable defaults are not part of the pin-coherence comparison (`AccountsService.assertPinCoherence`). */
+/**
+ * ODR-1 coherence EXACTLY as the backend enforces it in
+ * `domain/account.ts::planPinCoherence` (applied by AccountsService and
+ * re-applied in the repository's locked transaction): equal level counts,
+ * and for every configuration level the coding structure must have a level
+ * with the SAME `levelIndex` and the same `digitLength`. Index gaps are a
+ * count mismatch even when digit sequences coincide positionally. Titles,
+ * level kinds and postability defaults are deliberately NOT part of it.
+ */
 export function shapesCompatible(
   a: readonly AnyLevel[] | undefined,
   b: readonly AnyLevel[] | undefined,
 ): boolean {
-  const sa = levelShapeOf(a);
-  const sb = levelShapeOf(b);
-  return (
-    sa.length === sb.length &&
-    sa.every((l, i) => l.digitLength === sb[i]?.digitLength)
-  );
+  const sa = a ?? [];
+  const sb = b ?? [];
+  if (sa.length !== sb.length) return false;
+  const byIndex = new Map(sa.map((l) => [l.levelIndex, l.digitLength]));
+  return sb.every((l) => byIndex.get(l.levelIndex) === l.digitLength);
 }
 
 export type ChartSetupState =

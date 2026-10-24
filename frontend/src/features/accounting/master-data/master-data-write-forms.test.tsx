@@ -463,3 +463,215 @@ describe('AccountCreateForm backend errors', () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe('ChartSetupForm timeout-after-commit and reload recovery', () => {
+  const LEVELS = [
+    { levelIndex: 1, title: 'گروه', digitLength: 2, defaultIsPostable: false },
+    { levelIndex: 2, title: 'معین', digitLength: 3, defaultIsPostable: true },
+  ];
+  type Agg = { id: string; levels: typeof LEVELS } | null;
+
+  it('server commits coding publish but client times out → refetch shows partial state with no success, retry creates only the missing configuration, success only after both actives are confirmed compatible', async () => {
+    // Stateful fake server: mutations mutate this truth; reads read it.
+    const server: { codingActive: Agg; configActive: Agg } = {
+      codingActive: null,
+      configActive: null,
+    };
+    vi.mocked(api.getActiveCodingStructure).mockImplementation(
+      async () => server.codingActive as never,
+    );
+    vi.mocked(api.getActiveAccountingConfiguration).mockImplementation(
+      async () => server.configActive as never,
+    );
+    vi.mocked(api.listCodingStructureVersions).mockResolvedValue(
+      LEVELS_RES as never,
+    );
+    vi.mocked(api.listAccountingConfigurations).mockResolvedValue(
+      LEVELS_RES as never,
+    );
+    vi.mocked(api.createCodingStructureVersion).mockResolvedValue({
+      id: 'cs-1',
+    } as never);
+    // The publish COMMITS on the server, then the response is lost (timeout).
+    vi.mocked(api.publishCodingStructureVersion).mockImplementation(
+      async () => {
+        server.codingActive = { id: 'cs-1', levels: LEVELS };
+        throw new Error('request timed out');
+      },
+    );
+    vi.mocked(api.createAccountingConfiguration).mockImplementation(
+      async () => ({ id: 'cfg-1' }) as never,
+    );
+    vi.mocked(api.publishAccountingConfiguration).mockImplementation(
+      async () => {
+        server.configActive = { id: 'cfg-1', levels: LEVELS };
+        return server.configActive as never;
+      },
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<ChartSetupForm organizationId="org-1" />, {
+      withProviders: false,
+    });
+    await fillChartForm(user);
+    await user.click(
+      screen.getByRole('button', { name: t.masterData.activateChart }),
+    );
+
+    // Failure is reported, and the settle-refetch reveals the committed
+    // partial state (coding done, configuration pending) — never success.
+    expect(
+      await screen.findByText(t.masterData.setupPartialFailure),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(t.masterData.setupPartial),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        (_, el) =>
+          el?.tagName === 'LI' &&
+          (el.textContent?.includes(t.masterData.setupStepDone) ?? false),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(t.masterData.chartReady)).not.toBeInTheDocument();
+    expect(api.createCodingStructureVersion).toHaveBeenCalledTimes(1);
+
+    // Retry: only the missing configuration is created+published.
+    await user.click(
+      screen.getByRole('button', { name: t.masterData.activateChart }),
+    );
+    expect(
+      await screen.findByText(t.masterData.chartReady),
+    ).toBeInTheDocument();
+    expect(api.createCodingStructureVersion).toHaveBeenCalledTimes(1);
+    expect(api.publishCodingStructureVersion).toHaveBeenCalledTimes(1);
+    expect(api.createAccountingConfiguration).toHaveBeenCalledTimes(1);
+    expect(api.createAccountingConfiguration).toHaveBeenCalledWith({
+      organizationId: 'org-1',
+      code: 'DEFAULT',
+      name: 'پیکربندی اصلی',
+      levels: LEVELS,
+    });
+    expect(api.publishAccountingConfiguration).toHaveBeenCalledWith(
+      'org-1',
+      'cfg-1',
+    );
+  });
+
+  it('reload/remount after partial setup (coding active, configuration draft persisted) resumes by publishing the persisted draft — no creation, no republication of the active side', async () => {
+    const server: { configActive: Agg } = { configActive: null };
+    vi.mocked(api.getActiveCodingStructure).mockResolvedValue({
+      id: 'cs-1',
+      levels: LEVELS,
+    } as never);
+    vi.mocked(api.getActiveAccountingConfiguration).mockImplementation(
+      async () => server.configActive as never,
+    );
+    vi.mocked(api.listCodingStructureVersions).mockResolvedValue(
+      LEVELS_RES as never,
+    );
+    vi.mocked(api.listAccountingConfigurations).mockResolvedValue({
+      items: [{ id: 'cfg-draft', levels: LEVELS }],
+      total: 1,
+      page: 1,
+      pageSize: 100,
+    } as never);
+    vi.mocked(api.publishAccountingConfiguration).mockImplementation(
+      async () => {
+        server.configActive = { id: 'cfg-draft', levels: LEVELS };
+        return server.configActive as never;
+      },
+    );
+
+    const user = userEvent.setup();
+    // Fresh mount with a fresh QueryClient == page reload.
+    const first = renderWithProviders(
+      <ChartSetupForm organizationId="org-1" />,
+      { withProviders: false },
+    );
+    expect(
+      await screen.findByText(t.masterData.setupPartial),
+    ).toBeInTheDocument();
+    first.unmount();
+    const second = renderWithProviders(
+      <ChartSetupForm organizationId="org-1" />,
+      { withProviders: false },
+    );
+    expect(
+      await screen.findByText(t.masterData.setupPartial),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', { name: t.masterData.activateChart }),
+    );
+
+    expect(
+      await screen.findByText(t.masterData.chartReady),
+    ).toBeInTheDocument();
+    expect(api.publishAccountingConfiguration).toHaveBeenCalledWith(
+      'org-1',
+      'cfg-draft',
+    );
+    expect(api.createAccountingConfiguration).not.toHaveBeenCalled();
+    expect(api.createCodingStructureVersion).not.toHaveBeenCalled();
+    expect(api.publishCodingStructureVersion).not.toHaveBeenCalled();
+    second.unmount();
+  });
+
+  it('reload/remount with a persisted draft incompatible with the active coding structure never publishes that draft; it creates a configuration with the locked active shape instead', async () => {
+    vi.mocked(api.getActiveCodingStructure).mockResolvedValue({
+      id: 'cs-1',
+      levels: LEVELS,
+    } as never);
+    vi.mocked(api.getActiveAccountingConfiguration).mockResolvedValue(null);
+    vi.mocked(api.listCodingStructureVersions).mockResolvedValue(
+      LEVELS_RES as never,
+    );
+    vi.mocked(api.listAccountingConfigurations).mockResolvedValue({
+      items: [
+        {
+          id: 'cfg-bad',
+          levels: [
+            {
+              levelIndex: 1,
+              title: 'x',
+              digitLength: 9,
+              defaultIsPostable: true,
+            },
+          ],
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100,
+    } as never);
+    vi.mocked(api.createAccountingConfiguration).mockResolvedValue({
+      id: 'cfg-new',
+    } as never);
+    vi.mocked(api.publishAccountingConfiguration).mockResolvedValue({
+      id: 'cfg-new',
+    } as never);
+
+    const user = userEvent.setup();
+    renderWithProviders(<ChartSetupForm organizationId="org-1" />, {
+      withProviders: false,
+    });
+    await screen.findByText(t.masterData.setupPartial);
+    await user.click(
+      screen.getByRole('button', { name: t.masterData.activateChart }),
+    );
+
+    await waitFor(() =>
+      expect(api.publishAccountingConfiguration).toHaveBeenCalledWith(
+        'org-1',
+        'cfg-new',
+      ),
+    );
+    expect(api.publishAccountingConfiguration).not.toHaveBeenCalledWith(
+      'org-1',
+      'cfg-bad',
+    );
+    expect(api.createAccountingConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ levels: LEVELS }),
+    );
+  });
+});

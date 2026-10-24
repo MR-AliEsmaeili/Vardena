@@ -154,3 +154,14 @@ edit/enable/disable, base-chart adoption, configuration/coding-structure
 version editing. Known limitation: no browser Playwright E2E exists in this
 repository; the checklist above is the human verification that automation
 cannot replace yet.
+
+Final verification addendum: the frontend `shapesCompatible` was aligned
+character-for-character with the backend invariant
+`backend/src/modules/accounting/domain/account.ts::planPinCoherence`
+(equal level count; per-`levelIndex` digit-length equality via an index map;
+an index gap is a mismatch even with equal positional digit sequences;
+titles/kinds/postable defaults excluded), with a dedicated index-gap unit
+test. Timeout-after-commit (stateful fake server: publish commits, response
+lost) and reload/remount recovery (persisted draft reuse; incompatible
+persisted draft never published) are covered by named component tests in
+`master-data-write-forms.test.tsx`.
