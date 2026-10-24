@@ -27,7 +27,14 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter:
     process.env['CI'] === 'true'
-      ? [['list'], ['html', { open: 'never' }]]
+      ? [
+          ['list'],
+          // Machine-readable inventory: the CI failure step turns it into
+          // annotations, because the uploaded report artifact is not always
+          // reachable from a review surface.
+          ['json', { outputFile: 'test-results/results.json' }],
+          ['html', { open: 'never' }],
+        ]
       : 'list',
   use: {
     baseURL: process.env['E2E_BASE_URL'] ?? 'http://127.0.0.1:5173',

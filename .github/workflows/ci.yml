@@ -572,6 +572,71 @@ jobs:
           CI: "true"
         run: npm run test:e2e
 
+      # DIAGNOSTIC ONLY — changes no test, no assertion and no product code.
+      # GitHub exposes at most ten annotations per job and the uploaded report
+      # artifact is served from a host a review surface may not reach, so the
+      # failure inventory is published explicitly: one annotation per failing
+      # spec with the assertion message that decided it. Never gates the job.
+      - name: Publish browser-test failure inventory
+        if: failure()
+        working-directory: frontend
+        run: |
+          python3 - <<'PY' || true
+          import json
+          from pathlib import Path
+
+          path = Path('test-results/results.json')
+          try:
+              report = json.loads(path.read_text(encoding='utf-8'))
+          except (OSError, ValueError):
+              print('::error title=Playwright inventory::no JSON report was written')
+              raise SystemExit(0)
+
+          failures = []
+
+          def walk(node):
+              for spec in node.get('specs', []):
+                  for test in spec.get('tests', []):
+                      results = test.get('results', [])
+                      statuses = {result.get('status') for result in results}
+                      if not statuses & {'failed', 'timedOut', 'interrupted'}:
+                          continue
+                      last = results[-1] if results else {}
+                      error = (last.get('error') or {}).get('message', '')
+                      location = ' '.join(
+                          part for part in (
+                              spec.get('file'),
+                              str(spec.get('line')),
+                              spec.get('title'),
+                          ) if part
+                      )
+                      failures.append((location, error))
+              for child in node.get('suites', []):
+                  walk(child)
+
+          for suite in report.get('suites', []):
+              walk(suite)
+
+          if not failures:
+              print('::error title=Playwright inventory::job failed without a failed test (see logs)')
+              raise SystemExit(0)
+
+          def escape(text):
+              # GitHub workflow-command escaping for annotation data.
+              return (
+                  text.replace('%', '%25')
+                  .replace('\r', '%0D')
+                  .replace('\n', '%0A')
+              )
+
+          print(f'failed tests: {len(failures)}')
+          for location, error in failures[:9]:
+              body = ' | '.join(
+                  line.strip() for line in error.splitlines() if line.strip()
+              )[:1200]
+              print(f'::error title={escape(location)}::{escape(body)}')
+          PY
+
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
