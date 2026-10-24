@@ -54,6 +54,7 @@ vi.mock('@/api/accounting.api', async () => {
     listFinancialAreas: vi.fn(),
     getAccount: vi.fn(),
     listPostableAccounts: vi.fn(),
+    listActiveAccounts: vi.fn(),
     listPostableDetails: vi.fn(),
     getDetailRecord: vi.fn(),
     getAccountingDocument: vi.fn(),
@@ -184,6 +185,9 @@ beforeEach(() => {
   vi.mocked(accountingApi.listPostableAccounts).mockResolvedValue(
     paginated([account1, account2]),
   );
+  vi.mocked(accountingApi.listActiveAccounts).mockResolvedValue(
+    paginated([account1, account2]),
+  );
   vi.mocked(accountingApi.getAccount).mockImplementation((_org, accountId) =>
     Promise.resolve(accountId === 'acc-3' ? account2 : account1),
   );
@@ -202,10 +206,35 @@ async function selectFinancialArea(
 }
 
 function lineRows() {
-  const table = screen.getByRole('table');
-  return within(table)
-    .getAllByRole('row')
-    .filter((row) => row.querySelector('select') !== null);
+  return screen.getAllByTestId(/^detail-grid-row-/);
+}
+
+/** Code + title shown by the linked account cell for a fixture account. */
+const accountByFixtureId: Record<string, { code: string; title: string }> = {
+  'acc-2': { code: '1010', title: 'موجودی نقد' },
+  'acc-3': { code: '2010', title: 'حساب‌های پرداختنی' },
+};
+
+/**
+ * Fill the ONE linked account cell: typing the code resolves the real title
+ * and sets the account, exactly as an operator would (no hidden select).
+ */
+async function chooseAccount(
+  user: ReturnType<typeof userEvent.setup>,
+  row: HTMLElement,
+  accountId: string,
+) {
+  const expected = accountByFixtureId[accountId];
+  if (expected === undefined) throw new Error(`unknown fixture ${accountId}`);
+  await user.type(
+    within(row).getByLabelText(t.documents.accountCode),
+    expected.code,
+  );
+  await waitFor(() =>
+    expect(within(row).getByLabelText(t.documents.accountName)).toHaveValue(
+      expected.title,
+    ),
+  );
 }
 
 async function fillLine(
@@ -216,12 +245,12 @@ async function fillLine(
   amount: string,
 ) {
   const row = lineRows()[rowIndex] as HTMLElement;
-  const select = within(row).getByRole('combobox');
-  await user.selectOptions(select, accountId);
-  const textboxes = within(row).getAllByRole('textbox');
-  const input = side === 'debit' ? textboxes[0] : textboxes[1];
-  await user.clear(input as HTMLElement);
-  await user.type(input as HTMLElement, amount);
+  await chooseAccount(user, row, accountId);
+  const input = within(row).getByLabelText(
+    side === 'debit' ? t.documents.debit : t.documents.credit,
+  );
+  await user.clear(input);
+  await user.type(input, amount);
 }
 
 describe('Document create — validation', () => {
@@ -253,10 +282,9 @@ describe('Document create — validation', () => {
     );
 
     const row = lineRows()[0] as HTMLElement;
-    await user.selectOptions(within(row).getByRole('combobox'), 'acc-2');
-    const [debitInput, creditInput] = within(row).getAllByRole('textbox');
-    await user.type(debitInput as HTMLElement, '100');
-    await user.type(creditInput as HTMLElement, '50');
+    await chooseAccount(user, row, 'acc-2');
+    await user.type(within(row).getByLabelText(t.documents.debit), '100');
+    await user.type(within(row).getByLabelText(t.documents.credit), '50');
 
     await user.click(screen.getByRole('button', { name: t.documents.save }));
 

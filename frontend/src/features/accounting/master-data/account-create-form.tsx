@@ -25,7 +25,13 @@ const schema = z.object({
   parentId: z.string(),
   accountNature: z.enum(['DEBIT', 'CREDIT', 'DUAL']),
   accountType: z.enum(['BALANCE_SHEET', 'INCOME_STATEMENT', 'MEMORANDUM']),
-  isPostable: z.boolean(),
+  /**
+   * Tri-state on purpose: the API treats an OMITTED `isPostable` as "use the
+   * coding structure's default for this level", and the old forced `false`
+   * silently turned every account an operator created into an aggregate
+   * account — which then never appeared in the document-line picker.
+   */
+  postability: z.enum(['DEFAULT', 'YES', 'NO']),
 });
 type Values = z.infer<typeof schema>;
 
@@ -46,7 +52,7 @@ export function AccountCreateForm({
       parentId: '',
       accountNature: 'DUAL',
       accountType: 'BALANCE_SHEET',
-      isPostable: false,
+      postability: 'DEFAULT',
     },
     mode: 'onSubmit',
   });
@@ -59,7 +65,9 @@ export function AccountCreateForm({
         parentId: values.parentId === '' ? null : values.parentId,
         accountNature: values.accountNature,
         accountType: values.accountType,
-        isPostable: values.isPostable,
+        ...(values.postability === 'DEFAULT'
+          ? {}
+          : { isPostable: values.postability === 'YES' }),
       }),
     onSuccess: async () => {
       form.reset();
@@ -158,14 +166,25 @@ export function AccountCreateForm({
                 </Select>
               )}
             </FormField>
-            <label className="flex items-center gap-2 self-end pb-2 text-sm">
-              <input
-                type="checkbox"
-                {...form.register('isPostable')}
-                disabled={mutation.isPending}
-              />
-              {t.masterData.postableAccount}
-            </label>
+            <FormField
+              id="account-postability"
+              label={t.masterData.postableMode}
+              hint={t.masterData.postableHint}
+            >
+              {(p) => (
+                <Select
+                  {...p}
+                  {...form.register('postability')}
+                  disabled={mutation.isPending}
+                >
+                  <option value="DEFAULT">
+                    {t.masterData.postableDefault}
+                  </option>
+                  <option value="YES">{t.masterData.postableYes}</option>
+                  <option value="NO">{t.masterData.postableNo}</option>
+                </Select>
+              )}
+            </FormField>
           </div>
           {mutation.isError && <ApiErrorAlert error={mutation.error} />}
           {mutation.isSuccess && (

@@ -168,6 +168,9 @@ export const queryKeys = {
     postableAccounts: (organizationId: string, search: string) =>
       ['accounting', organizationId, 'accounts', 'postable', search] as const,
 
+    activeAccounts: (organizationId: string, search: string) =>
+      ['accounting', organizationId, 'accounts', 'active', search] as const,
+
     financialAreaList: (
       organizationId: string,
       filters: Record<string, unknown>,

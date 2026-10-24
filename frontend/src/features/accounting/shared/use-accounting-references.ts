@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
+import { getAccount } from '@/api/accounting.api';
 import {
   listAccountingPeriods,
+  listActiveAccounts,
   listFinancialAreas,
   listFiscalYears,
   listPostableAccounts,
@@ -30,6 +32,55 @@ export function useFinancialAreas(organizationId: string | null) {
       permissions.loaded &&
       permissions.has(PERMISSIONS.accounting.financialAreaView),
     staleTime: 5 * 60_000,
+  });
+}
+
+/** One account by id (code + title) for a linked code/name cell. */
+export function useAccountById(
+  organizationId: string | null,
+  accountId: string | undefined,
+) {
+  return useQuery({
+    queryKey: queryKeys.accounting.accountDetail(
+      organizationId ?? 'none',
+      accountId ?? 'none',
+    ),
+    queryFn: ({ signal }) =>
+      getAccount(organizationId as string, accountId as string, signal),
+    enabled: organizationId !== null && accountId !== undefined,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Active accounts (postable AND aggregate) for the linked code/name picker.
+ * Aggregate accounts are returned so an operator can actually find an account
+ * they created; the picker marks them as non-selectable for a document line.
+ */
+export function useActiveAccounts(
+  organizationId: string | null,
+  search: string,
+) {
+  const permissions = usePermissions();
+  const trimmed = search.trim();
+  return useQuery({
+    queryKey: queryKeys.accounting.activeAccounts(
+      organizationId ?? 'none',
+      trimmed,
+    ),
+    queryFn: ({ signal }) =>
+      listActiveAccounts(
+        {
+          organizationId: organizationId as string,
+          search: trimmed === '' ? undefined : trimmed,
+        },
+        signal,
+      ),
+    enabled:
+      organizationId !== null &&
+      permissions.loaded &&
+      permissions.has(PERMISSIONS.accounting.accountView),
+    staleTime: 60_000,
   });
 }
 
