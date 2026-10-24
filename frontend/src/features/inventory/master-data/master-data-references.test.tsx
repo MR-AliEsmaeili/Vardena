@@ -79,20 +79,8 @@ function renderProbe(use: () => ReferenceOptions<Option>) {
   return renderWithProviders(ui, { initialEntries: ['/app'] });
 }
 
-async function expectCodeOffered(
-  use: () => ReferenceOptions<Option>,
-  code: string,
-) {
-  renderProbe(use);
-  await waitFor(() => {
-    expect(JSON.parse(screen.getByTestId('probe').textContent ?? '{}')).toEqual(
-      {
-        codes: [code],
-        truncated: false,
-        unavailable: false,
-      },
-    );
-  });
+function readProbe() {
+  return JSON.parse(screen.getByTestId('probe').textContent ?? '{}');
 }
 
 beforeEach(() => {
@@ -135,37 +123,57 @@ describe('inventory reference pickers', () => {
    * succeeded.
    */
   it('offers the rows of the item group reference read', async () => {
-    await expectCodeOffered(
-      () => useActiveItemGroupOptions(ORGANIZATION_ID),
-      'PAPER',
-    );
+    renderProbe(() => useActiveItemGroupOptions(ORGANIZATION_ID));
+    await waitFor(() => {
+      expect(readProbe()).toEqual({
+        codes: ['PAPER'],
+        truncated: false,
+        unavailable: false,
+      });
+    });
   });
 
   it('offers the rows of the unit reference read', async () => {
-    await expectCodeOffered(
-      () => useActiveUnitOptions(ORGANIZATION_ID),
-      'UNIT',
-    );
+    renderProbe(() => useActiveUnitOptions(ORGANIZATION_ID));
+    await waitFor(() => {
+      expect(readProbe()).toEqual({
+        codes: ['UNIT'],
+        truncated: false,
+        unavailable: false,
+      });
+    });
   });
 
   it('offers the rows of the warehouse reference read', async () => {
-    await expectCodeOffered(
-      () => useActiveWarehouseOptions(ORGANIZATION_ID),
-      'WH',
-    );
+    renderProbe(() => useActiveWarehouseOptions(ORGANIZATION_ID));
+    await waitFor(() => {
+      expect(readProbe()).toEqual({
+        codes: ['WH'],
+        truncated: false,
+        unavailable: false,
+      });
+    });
   });
 
   it('offers the rows of the item reference read', async () => {
-    await expectCodeOffered(
-      () => useActiveItemOptions(ORGANIZATION_ID),
-      'ITEM',
-    );
+    renderProbe(() => useActiveItemOptions(ORGANIZATION_ID));
+    await waitFor(() => {
+      expect(readProbe()).toEqual({
+        codes: ['ITEM'],
+        truncated: false,
+        unavailable: false,
+      });
+    });
   });
 
   it('offers the rows of the branch reference read', async () => {
-    await expectCodeOffered(
-      () => useActiveBranchOptions(ORGANIZATION_ID),
-      'BRANCH',
-    );
+    renderProbe(() => useActiveBranchOptions(ORGANIZATION_ID));
+    await waitFor(() => {
+      expect(readProbe()).toEqual({
+        codes: ['BRANCH'],
+        truncated: false,
+        unavailable: false,
+      });
+    });
   });
 });
