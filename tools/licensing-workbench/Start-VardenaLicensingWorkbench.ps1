@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 Vardena Local Licensing Workbench
 Windows GUI wrapper around the existing offline signer. Local-only; never uploads key material.
