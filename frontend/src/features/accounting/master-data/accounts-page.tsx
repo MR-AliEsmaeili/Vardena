@@ -11,6 +11,10 @@ import { Select } from '@/ui/select';
 import { DataTable } from '@/ui/patterns/data-table';
 import { PageHeader } from '@/ui/patterns/page-header';
 import { MasterFilters } from './master-data-ui';
+import { AccountCreateForm } from './account-create-form';
+import { ChartSetupForm } from './chart-setup-form';
+import { PermissionGate } from '@/features/permissions/permission-gate';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { useAccountList } from './master-data-hooks';
 import { useMasterDataQuery } from './use-master-data-query';
 
@@ -102,6 +106,20 @@ export function AccountsPage() {
         title={t.masterData.accounts}
         description={t.masterData.accountsDescription}
       />
+      {/* ChartSetupForm gates each step internally: completing setup needs
+          BOTH CodingStructure.Configure and AccountingConfiguration.Configure,
+          and partial steps must stay visible/explainable per permission. */}
+      {organizationId !== null && (
+        <ChartSetupForm organizationId={organizationId} />
+      )}
+      {organizationId !== null && (
+        <PermissionGate permission={PERMISSIONS.accounting.accountCreate}>
+          <AccountCreateForm
+            organizationId={organizationId}
+            accounts={query.data?.items ?? []}
+          />
+        </PermissionGate>
+      )}
       <MasterFilters
         synchronizationKey={`${state.search}:${level ?? ''}:${postableParam ?? ''}`}
         search={state.search}

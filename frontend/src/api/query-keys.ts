@@ -204,6 +204,25 @@ export const queryKeys = {
     accountDetail: (organizationId: string, accountId: string) =>
       ['accounting', organizationId, 'accounts', 'detail', accountId] as const,
 
+    codingStructureActive: (organizationId: string) =>
+      ['accounting', organizationId, 'coding-structures', 'active'] as const,
+    codingStructureDrafts: (organizationId: string) =>
+      ['accounting', organizationId, 'coding-structures', 'drafts'] as const,
+    accountingConfigurationActive: (organizationId: string) =>
+      [
+        'accounting',
+        organizationId,
+        'accounting-configurations',
+        'active',
+      ] as const,
+    accountingConfigurationDrafts: (organizationId: string) =>
+      [
+        'accounting',
+        organizationId,
+        'accounting-configurations',
+        'drafts',
+      ] as const,
+
     chartTree: (organizationId: string) =>
       ['accounting', organizationId, 'chart-tree'] as const,
 

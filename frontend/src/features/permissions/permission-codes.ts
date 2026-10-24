@@ -115,6 +115,12 @@ export const PERMISSIONS = {
     fiscalYearView: 'Accounting.FiscalYear.View',
     fiscalYearCreate: 'Accounting.FiscalYear.Create',
     accountingPeriodView: 'Accounting.AccountingPeriod.View',
+    accountingPeriodOpen: 'Accounting.AccountingPeriod.Open',
+    accountCreate: 'Accounting.Account.Create',
+    codingStructureConfigure: 'Accounting.CodingStructure.Configure',
+    accountingConfigurationView: 'Accounting.AccountingConfiguration.View',
+    accountingConfigurationConfigure:
+      'Accounting.AccountingConfiguration.Configure',
     accountStatementView: 'Accounting.AccountStatement.View',
     generalLedgerView: 'Accounting.GeneralLedger.View',
     trialBalanceView: 'Accounting.TrialBalance.View',
