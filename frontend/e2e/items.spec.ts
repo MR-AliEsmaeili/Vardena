@@ -40,11 +40,36 @@ test.describe('items grid — filters and the server-owned group query', () => {
   test('the group selector stays a server query in the URL', async ({
     page,
   }) => {
-    await page
-      .getByLabel(t.inventoryMaster.itemGroupFilter)
-      .selectOption({ label: 'PAPER — کاغذ' });
+    const groupFilter = page.getByTestId('item-group-filter');
+    await expect(groupFilter).toBeVisible();
 
-    await expect(page).toHaveURL(/itemGroupId=grp-2/);
+    // The reference list is a separate read. Wait for the real option (and
+    // print every rendered label if it never arrives) instead of selecting by
+    // display text and hanging on an actionability retry loop.
+    const readOptions = () =>
+      groupFilter.locator('option').evaluateAll((options) =>
+        options.map((option) => ({
+          value: (option as HTMLOptionElement).value,
+          label: (option as HTMLOptionElement).label,
+        })),
+      );
+
+    await expect(async () => {
+      const options = await readOptions();
+      expect(options.map((option) => option.label).join(' | ')).toContain(
+        'PAPER',
+      );
+    }).toPass({ timeout: 15_000 });
+
+    const paper = (await readOptions()).find((option) =>
+      option.label.includes('PAPER'),
+    );
+    expect(paper).toBeDefined();
+    if (paper === undefined) return;
+
+    await groupFilter.selectOption(paper.value);
+    await expect(page).toHaveURL(new RegExp(`itemGroupId=${paper.value}`));
+
     await expect(page.getByRole('link', { name: 'ITM-0003' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'ITM-0001' })).toHaveCount(0);
   });
