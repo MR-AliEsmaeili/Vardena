@@ -559,6 +559,7 @@ def needs_context(**jobs) -> dict:
         "docs": {"result": "success"},
         "backend": {"result": "skipped"},
         "frontend": {"result": "skipped"},
+        "frontend-e2e": {"result": "skipped"},
         "generated-api-client": {"result": "skipped"},
         "owner-artifact-store-windows": {"result": "skipped"},
     }
@@ -687,6 +688,7 @@ class SimulatedPipelineTest(unittest.TestCase):
         "docs": "docs",
         "backend": "backend",
         "frontend": "frontend",
+        "frontend-e2e": "frontend",
         "generated-api-client": "generated",
         "owner-artifact-store-windows": "owner",
     }
@@ -704,7 +706,10 @@ class SimulatedPipelineTest(unittest.TestCase):
         "docs+backend": (["docs/a.md", "backend/src/worker.ts"], ["docs", "backend", "generated"]),
     }
 
-    JOB_OUTPUT_INVERSE = {key: job for job, key in JOB_OUTPUT.items()}
+    @classmethod
+    def jobs_for(cls, key: str) -> list[str]:
+        """Every workflow job that verifies one classifier output key."""
+        return [job for job, job_key in cls.JOB_OUTPUT.items() if job_key == key]
 
     def context_for(self, decision, overrides=None):
         overrides = overrides or {}
@@ -727,17 +732,19 @@ class SimulatedPipelineTest(unittest.TestCase):
     def test_a_required_job_that_is_skipped_or_fails_is_caught(self):
         for label, (paths, expected) in self.CATEGORIES.items():
             for job in expected:
-                workflow_job = self.JOB_OUTPUT_INVERSE[job]
-                for result in ("skipped", "failure"):
-                    with self.subTest(category=label, job=workflow_job, result=result):
-                        decision = scope.classify_paths(paths)
-                        report = gate.evaluate(
-                            self.context_for(decision, {workflow_job: result})
-                        )
-                        self.assertTrue(
-                            report.failures,
-                            msg=f"{label}/{workflow_job}={result} was not caught",
-                        )
+                for workflow_job in self.jobs_for(job):
+                    for result in ("skipped", "failure"):
+                        with self.subTest(
+                            category=label, job=workflow_job, result=result
+                        ):
+                            decision = scope.classify_paths(paths)
+                            report = gate.evaluate(
+                                self.context_for(decision, {workflow_job: result})
+                            )
+                            self.assertTrue(
+                                report.failures,
+                                msg=f"{label}/{workflow_job}={result} was not caught",
+                            )
 
     def test_gate_is_not_green_without_the_classifier(self):
         decision = scope.classify_paths(["docs/a.md"])
@@ -792,6 +799,7 @@ class WorkflowContractTest(unittest.TestCase):
             ("docs", "docs"),
             ("backend", "backend"),
             ("frontend", "frontend"),
+            ("frontend-e2e", "frontend"),
             ("generated-api-client", "generated"),
             ("owner-artifact-store-windows", "owner"),
         ):

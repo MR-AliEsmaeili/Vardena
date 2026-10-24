@@ -36,6 +36,9 @@ GATED_JOBS: dict[str, str] = {
     "docs": "docs",
     "backend": "backend",
     "frontend": "frontend",
+    # The browser suite shares the frontend scope: a change that needs the
+    # frontend job needs the rendered-layout verification too.
+    "frontend-e2e": "frontend",
     "generated-api-client": "generated",
     "owner-artifact-store-windows": "owner",
 }
