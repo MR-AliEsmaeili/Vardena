@@ -104,7 +104,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div
-        className="pointer-events-none fixed bottom-4 start-4 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2"
+        className="pointer-events-none fixed bottom-4 start-4 flex w-[min(24rem,calc(100vw_-_2rem))] flex-col gap-2"
         aria-label={t.toasts.regionLabel}
       >
         {toasts.map((toast) => (
@@ -191,7 +191,7 @@ function ToastCard({
     <div
       role={role}
       className={cn(
-        'pointer-events-auto flex items-start gap-2 rounded-md border p-3 text-sm shadow-sm',
+        'animate-rise-in pointer-events-auto flex items-start gap-2 rounded-md border p-3 text-sm shadow-card',
         KIND_STYLES[toast.kind],
       )}
     >
@@ -209,7 +209,7 @@ function ToastCard({
         {toast.action !== undefined && (
           <button
             type="button"
-            className="shrink-0 rounded px-2 py-0.5 text-xs font-semibold underline underline-offset-2"
+            className="action-press shrink-0 rounded px-2 py-0.5 text-xs font-semibold underline underline-offset-2"
             onClick={() => {
               toast.action?.onAction();
               onDismiss();
@@ -220,7 +220,7 @@ function ToastCard({
         )}
         <button
           type="button"
-          className="shrink-0 rounded px-1 py-0.5 text-xs font-semibold hover:bg-black/5"
+          className="action-press shrink-0 rounded px-1 py-0.5 text-xs font-semibold hover:bg-sunken"
           aria-label={t.toasts.dismiss}
           onClick={onDismiss}
         >

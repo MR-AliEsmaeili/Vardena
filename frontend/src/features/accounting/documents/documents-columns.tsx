@@ -61,7 +61,7 @@ export function buildDocumentsColumns(
       enableSorting: false,
       cell: ({ row }) => (
         <span
-          className="block max-w-[22rem] truncate"
+          className="block max-w-72 truncate"
           title={row.original.description}
         >
           {row.original.description}
@@ -75,11 +75,17 @@ export function buildDocumentsColumns(
       enableSorting: false,
       cell: ({ row }) => {
         const area = areaById.get(row.original.financialAreaId);
+        // One cell = one line of content. The area title is the value a user
+        // scans for; its code stays available as the hover title instead of
+        // splitting the cell into two visual halves.
         return area === undefined ? (
           <span className="text-ink-subtle">{t.app.none}</span>
         ) : (
-          <span className="text-xs text-ink-muted">
-            {area.code} — {area.title}
+          <span
+            className="block max-w-40 truncate text-ink-muted"
+            title={`${area.code} — ${area.title}`}
+          >
+            {area.title}
           </span>
         );
       },

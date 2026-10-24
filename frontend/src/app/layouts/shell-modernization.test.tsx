@@ -178,6 +178,106 @@ describe('Header RTL order, Appearance Settings, Collapsible Sidebar & Global Se
     expect(screen.getByRole('tooltip')).toHaveTextContent(t.nav.chartTree);
   });
 
+  it('keeps the collapse handle inside the sidebar — edge grip when open, above the workbench when folded', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+    await screen.findByRole('heading', { level: 1, name: t.dashboard.title });
+
+    const sidebar = await screen.findByTestId('app-sidebar');
+    const header = screen.getByTestId('app-header');
+
+    // The Header owns Search/Date/Context/Settings/Profile only.
+    expect(
+      within(header).queryByTestId('sidebar-toggle'),
+    ).not.toBeInTheDocument();
+    const handle = within(sidebar).getByTestId('sidebar-toggle');
+    expect(handle).toHaveAttribute('aria-expanded', 'true');
+
+    // Collapsed rail: the handle moves to the top row, above «میزکار», and the
+    // handle stays reachable.
+    await user.click(handle);
+    expect(sidebar).toHaveAttribute('data-collapsed', 'true');
+    expect(within(sidebar).getByTestId('sidebar-toggle')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+
+    // Category markers survive icon-only mode: every permitted domain keeps a
+    // labelled marker even though the rows themselves are icon-only.
+    const markers = within(sidebar).getAllByTestId(/^sidebar-group-/);
+    expect(markers.length).toBeGreaterThan(0);
+    for (const marker of markers) {
+      expect(marker).toHaveAttribute('aria-label');
+    }
+  });
+
+  it('expands the rail to a category when its collapsed marker is chosen', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+    await screen.findByRole('heading', { level: 1, name: t.dashboard.title });
+
+    const sidebar = await screen.findByTestId('app-sidebar');
+    await user.click(within(sidebar).getByTestId('sidebar-toggle'));
+    expect(sidebar).toHaveAttribute('data-collapsed', 'true');
+
+    // Collapse the accounting group first so the marker has something to reveal.
+    await user.click(within(sidebar).getByTestId('sidebar-toggle'));
+    await user.click(screen.getByTestId('sidebar-group-accounting'));
+    await user.click(within(sidebar).getByTestId('sidebar-toggle'));
+
+    await user.click(screen.getByTestId('sidebar-group-accounting'));
+
+    expect(sidebar).toHaveAttribute('data-collapsed', 'false');
+    expect(screen.getByTestId('sidebar-group-accounting')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(
+      within(sidebar).getByRole('link', { name: t.nav.chartTree }),
+    ).toBeInTheDocument();
+  });
+
+  it('folds the rail after a menu selection so the opened surface gets the full width', async () => {
+    const user = userEvent.setup();
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: (query: string) => ({
+        matches: true,
+        media: query,
+        onchange: null,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        dispatchEvent: () => false,
+      }),
+    });
+
+    try {
+      renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+      await screen.findByRole('heading', { level: 1, name: t.dashboard.title });
+      const sidebar = await screen.findByTestId('app-sidebar');
+      expect(sidebar).toHaveAttribute('data-collapsed', 'false');
+
+      await user.click(
+        within(sidebar).getByRole('link', { name: t.nav.chartTree }),
+      );
+
+      expect(sidebar).toHaveAttribute('data-collapsed', 'true');
+      expect(
+        JSON.parse(localStorage.getItem(SIDEBAR_STORAGE_KEY) ?? '{}'),
+      ).toMatchObject({ collapsed: true });
+    } finally {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        writable: true,
+        value: originalMatchMedia,
+      });
+    }
+  });
+
   it('focuses Global Search on Ctrl+K, filters strictly by permitted routes, and navigates on Enter', async () => {
     vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
       userId: testUser.id,

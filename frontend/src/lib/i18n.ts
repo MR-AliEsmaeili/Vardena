@@ -882,6 +882,8 @@ export const fa = {
     mainMenu: 'منوی اصلی',
     collapseSidebar: 'بستن نوار کناری',
     expandSidebar: 'باز کردن نوار کناری',
+    openGroup: 'باز کردن دستهٔ {group}',
+    sidebarLabel: 'منوی سامانه',
     globalSearch: 'جست‌وجوی سراسری',
     globalSearchPlaceholder: 'جست‌وجو در بخش‌ها و فرم‌ها (Ctrl+K)…',
     globalSearchEmpty: 'بخشی با این عبارت در دسترسی شما یافت نشد.',

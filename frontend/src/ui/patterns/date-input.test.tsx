@@ -128,4 +128,21 @@ describe('DateInput', () => {
     await user.click(screen.getByTestId('jalali-calendar-clear'));
     expect(onValueChange).toHaveBeenLastCalledWith('');
   });
+
+  it('reserves the same physical edge for the digits and the calendar trigger', () => {
+    render(
+      <DateInput id="day" value="2026-10-08" onValueChange={() => undefined} />,
+    );
+
+    const field = screen.getByRole('textbox');
+    const trigger = screen.getByTestId('jalali-calendar-trigger');
+
+    // The field is an intentional LTR island inside the RTL form, so its
+    // `pe-*` padding is the PHYSICAL right edge. The trigger must sit on that
+    // same edge (`start-*` of the RTL wrapper) — pairing `pe-9` with `end-*`
+    // put the Jalali digits underneath the icon.
+    expect(field.className).toContain('pe-9');
+    expect(trigger.className).toContain('start-1.5');
+    expect(trigger.className).not.toContain('end-1.5');
+  });
 });

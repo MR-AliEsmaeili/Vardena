@@ -179,6 +179,12 @@ export function JalaliDateInputField({
         autoComplete="off"
         placeholder={formatBusinessDay('2026-03-21', 'JALALI')}
         data-calendar="JALALI"
+        /*
+         * The field is an explicit LTR island inside the RTL form, so its own
+         * `pe-*` is the PHYSICAL right edge. The calendar trigger must sit on
+         * that same physical edge (`start-*` of the RTL wrapper), otherwise the
+         * Jalali digits start underneath the icon.
+         */
         className={cn('pe-9', className)}
         value={
           draft ?? (value === '' ? '' : formatBusinessDay(value, 'JALALI'))
@@ -205,7 +211,7 @@ export function JalaliDateInputField({
         aria-expanded={open}
         data-testid="jalali-calendar-trigger"
         onClick={toggleCalendar}
-        className="absolute end-1.5 inline-flex h-7 w-7 items-center justify-center rounded-control text-ink-subtle transition-colors hover:bg-sunken hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+        className="action-press absolute start-1.5 inline-flex h-7 w-7 items-center justify-center rounded-control text-ink-subtle hover:bg-sunken hover:text-ink disabled:pointer-events-none disabled:opacity-40"
       >
         <Calendar className="h-4 w-4" aria-hidden />
       </button>
@@ -214,7 +220,7 @@ export function JalaliDateInputField({
         <section
           aria-label={t.datePicker.dialogLabel}
           data-testid="jalali-calendar-popover"
-          className="absolute start-0 top-full z-40 mt-1.5 w-72 rounded-card border border-line bg-surface p-3 text-ink shadow-raised"
+          className="animate-rise-in absolute start-0 top-full z-40 mt-1.5 w-72 rounded-card border border-line bg-surface p-3 text-ink shadow-raised"
         >
           <div className="mb-2 flex items-center justify-between gap-1">
             <button

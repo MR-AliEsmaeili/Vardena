@@ -108,7 +108,7 @@ export function GlobalRequestIndicator() {
       className={cn(
         // Toasts own the bottom-start corner; the loading status sits below
         // the 3.5rem top bar on the opposite logical side, clear of both.
-        'pointer-events-none fixed top-16 end-4 z-40 max-w-[calc(100vw-2rem)] items-center gap-2 rounded-control border border-line bg-surface px-3 py-2 text-sm font-medium text-ink-muted shadow-raised',
+        'pointer-events-none fixed top-16 end-4 z-40 max-w-[calc(100vw_-_2rem)] items-center gap-2 rounded-control border border-line bg-surface px-3 py-2 text-sm font-medium text-ink-muted shadow-raised',
         visible ? 'flex' : 'sr-only',
       )}
     >

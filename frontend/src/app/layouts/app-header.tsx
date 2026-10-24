@@ -5,8 +5,6 @@ import {
   LogOut,
   Menu,
   Moon,
-  PanelLeftClose,
-  PanelLeftOpen,
   Search,
   Settings2,
   Sun,
@@ -41,8 +39,6 @@ import { isNavigationItemVisible, navigationSections } from '../navigation';
 
 export interface AppHeaderProps {
   navigationId: string;
-  sidebarCollapsed: boolean;
-  onToggleSidebar: () => void;
   mobileOpen: boolean;
   onToggleMobileMenu: () => void;
   mobileToggleRef: RefObject<HTMLButtonElement | null>;
@@ -62,8 +58,6 @@ export interface AppHeaderProps {
  */
 export function AppHeader({
   navigationId,
-  sidebarCollapsed,
-  onToggleSidebar,
   mobileOpen,
   onToggleMobileMenu,
   mobileToggleRef,
@@ -175,36 +169,12 @@ export function AppHeader({
       data-testid="app-header"
     >
       <div className="flex h-14 w-full items-center gap-2 px-3 sm:px-4">
-        {/* 1 — Logo + Sidebar controls (Right / inline-start in RTL) */}
+        {/* 1 — Logo + mobile menu (Right / inline-start in RTL). The desktop
+            collapse handle lives inside the sidebar itself. */}
         <div
           className="flex shrink-0 items-center gap-1.5"
           data-testid="header-slot-logo"
         >
-          {isWorkspaceReady && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="hidden shrink-0 lg:inline-flex"
-              aria-label={
-                sidebarCollapsed ? t.nav.expandSidebar : t.nav.collapseSidebar
-              }
-              aria-expanded={!sidebarCollapsed}
-              aria-controls={navigationId}
-              title={
-                sidebarCollapsed ? t.nav.expandSidebar : t.nav.collapseSidebar
-              }
-              onClick={onToggleSidebar}
-              data-testid="sidebar-toggle"
-            >
-              {sidebarCollapsed ? (
-                <PanelLeftOpen className="h-5 w-5" aria-hidden />
-              ) : (
-                <PanelLeftClose className="h-5 w-5" aria-hidden />
-              )}
-            </Button>
-          )}
-
           <Button
             ref={mobileToggleRef}
             type="button"
@@ -293,7 +263,7 @@ export function AppHeader({
             </div>
             {trimmedQuery !== '' && (
               <div
-                className="absolute start-0 top-9 z-40 max-h-72 w-full overflow-y-auto rounded-card border border-line bg-surface p-1 shadow-raised"
+                className="animate-rise-in absolute start-0 top-9 z-40 max-h-72 w-full overflow-y-auto rounded-card border border-line bg-surface p-1 shadow-raised"
                 data-testid="global-search-results"
               >
                 {filteredNav.length === 0 ? (
@@ -395,7 +365,7 @@ export function AppHeader({
             {settingsOpen && (
               <section
                 aria-label={t.app.settings}
-                className="absolute end-0 top-full z-40 mt-1.5 w-72 rounded-card border border-line bg-surface p-4 text-ink shadow-raised"
+                className="animate-rise-in absolute end-0 top-full z-40 mt-1.5 w-72 rounded-card border border-line bg-surface p-4 text-ink shadow-raised"
                 data-testid="settings-panel"
               >
                 <h2 className="mb-3 text-sm font-semibold text-ink">
