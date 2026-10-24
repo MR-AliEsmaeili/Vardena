@@ -220,3 +220,63 @@ describe('DataTable server-side sorting affordance', () => {
     expect(screen.queryByTestId('sort-icon-none')).toBeNull();
   });
 });
+
+describe('DataTable density and virtualization', () => {
+  /** The compact row height the grid must keep in sync with the spacer math. */
+  const COMPACT_ROW_HEIGHT = 29;
+
+  function longPage(count: number): Row[] {
+    return Array.from({ length: count }, (_, index) => ({
+      id: `row-${index}`,
+      name: `ردیف ${index}`,
+    }));
+  }
+
+  it('windows a long page and keeps both spacer heights on the compact row height', () => {
+    render(
+      <DataTable<Row>
+        columns={columns}
+        data={longPage(200)}
+        getRowId={(row) => row.id}
+        virtualize
+      />,
+    );
+
+    // First window: ceil(520 / 29) = 18 rendered rows + 8 overscan.
+    expect(screen.getByText('ردیف 0')).toBeInTheDocument();
+    expect(screen.getByText('ردیف 25')).toBeInTheDocument();
+    expect(screen.queryByText('ردیف 50')).toBeNull();
+
+    const spacers = document.querySelectorAll('tr[aria-hidden="true"]');
+    expect(spacers).toHaveLength(1);
+    expect(spacers[0]).toHaveStyle({
+      height: `${(200 - 26) * COMPACT_ROW_HEIGHT}px`,
+    });
+  });
+
+  it('renders every row when virtualization is not requested', () => {
+    render(
+      <DataTable<Row>
+        columns={columns}
+        data={longPage(90)}
+        getRowId={(row) => row.id}
+      />,
+    );
+
+    expect(screen.getByText('ردیف 89')).toBeInTheDocument();
+    expect(document.querySelectorAll('tr[aria-hidden="true"]')).toHaveLength(0);
+  });
+
+  it('pins the header row and lets the wrapper own horizontal scrolling', () => {
+    renderTable({});
+
+    const headerCell = screen.getByRole('columnheader');
+    expect(headerCell.className).toContain('sticky');
+    expect(headerCell.className).toContain('top-0');
+    expect(headerCell).toHaveAttribute('scope', 'col');
+
+    const table = screen.getByRole('table');
+    const scrollHost = table.parentElement?.closest('.overflow-x-auto');
+    expect(scrollHost).not.toBeNull();
+  });
+});

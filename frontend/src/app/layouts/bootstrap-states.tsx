@@ -27,7 +27,7 @@ export function BootstrapScreen({ children }: { children: ReactNode }) {
   return (
     <main
       id="main-content"
-      className="mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-lg items-center px-4 py-10"
+      className="mx-auto flex min-h-[calc(100vh_-_3.5rem)] w-full max-w-lg items-center px-4 py-10"
       dir="rtl"
     >
       <div className="w-full">{children}</div>

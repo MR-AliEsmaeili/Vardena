@@ -148,7 +148,17 @@ describe('Documents list — loading, rendering, empty and error states', () => 
     // The financial area column resolves from its own query
     // (`listFinancialAreas`) — `findByText` rather than `getByText` because
     // it is not guaranteed to land in the same microtask as the document row.
-    expect(await within(table).findByText(/FIN/)).toBeInTheDocument();
+    // One cell = one line: the area TITLE is the visible value and its code is
+    // carried by the hover title.
+    expect(
+      await within(table).findByText(testFinancialArea.title),
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByText(testFinancialArea.title).closest('span'),
+    ).toHaveAttribute(
+      'title',
+      `${testFinancialArea.code} — ${testFinancialArea.title}`,
+    );
   });
 
   it('shows the plain empty state when there is no filter and no data', async () => {

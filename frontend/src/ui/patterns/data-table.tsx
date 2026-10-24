@@ -108,7 +108,7 @@ export function DataTable<TRow>({
   const rows = table.getRowModel().rows;
   const virtual = useVirtualWindow({
     totalCount: virtualize ? rows.length : 0,
-    rowHeight: 42,
+    rowHeight: 29,
     viewportHeight: 520,
     threshold: 80,
   });

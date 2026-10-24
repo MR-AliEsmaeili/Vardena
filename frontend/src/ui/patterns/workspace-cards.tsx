@@ -64,9 +64,9 @@ export function WorkspaceCardGrid({
                   to={item.to}
                   aria-label={`${t.home.openSection}: ${item.label}`}
                   data-testid={`workspace-card-${group.id}-${item.to}`}
-                  className="group flex flex-col items-center justify-center gap-2.5 rounded-card border border-line bg-surface px-3 py-4 text-center shadow-card transition-colors hover:border-brand/50 hover:bg-sunken"
+                  className="action-press group flex flex-col items-center justify-center gap-2.5 rounded-card border border-line bg-surface px-3 py-4 text-center shadow-card transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-brand/50 hover:bg-sunken hover:shadow-raised"
                 >
-                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-soft text-brand transition-colors group-hover:bg-brand group-hover:text-white">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-soft text-brand transition-[background-color,color,transform] duration-200 group-hover:scale-105 group-hover:bg-brand group-hover:text-white">
                     <item.icon className="h-5 w-5" aria-hidden />
                   </span>
                   <span className="line-clamp-2 text-xs font-semibold text-ink">
@@ -77,7 +77,7 @@ export function WorkspaceCardGrid({
                 <div
                   key={item.to}
                   data-testid={`workspace-card-${group.id}-${item.to}`}
-                  className="group flex flex-col items-center gap-2.5 rounded-card border border-line bg-surface px-4 py-5 text-center shadow-card transition-colors hover:border-line-strong"
+                  className="action-press group flex flex-col items-center gap-2.5 rounded-card border border-line bg-surface px-4 py-5 text-center shadow-card transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-raised"
                 >
                   <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-soft text-brand transition-colors group-hover:bg-brand group-hover:text-white">
                     <item.icon className="h-5 w-5" aria-hidden />

@@ -103,7 +103,7 @@ export function DropdownMenu({
           data-testid={dataTestId}
           onKeyDown={onMenuKeyDown}
           className={cn(
-            'absolute top-full z-40 mt-1.5 min-w-52 rounded-card border border-line bg-surface p-1 text-ink shadow-raised',
+            'animate-pop-in absolute top-full z-40 mt-1.5 min-w-52 rounded-card border border-line bg-surface p-1 text-ink shadow-raised',
             align === 'end' ? 'end-0' : 'start-0',
             menuClassName,
           )}
@@ -140,7 +140,7 @@ export function DropdownMenuItem({
       data-testid={dataTestId}
       onClick={onSelect}
       className={cn(
-        'flex w-full items-center gap-2 rounded-control px-3 py-2 text-start text-sm transition-colors disabled:pointer-events-none disabled:opacity-50',
+        'action-press flex w-full items-center gap-2 rounded-control px-3 py-2 text-start text-sm disabled:pointer-events-none disabled:opacity-50',
         danger
           ? 'text-danger-ink hover:bg-danger-soft'
           : 'text-ink-muted hover:bg-sunken hover:text-ink',

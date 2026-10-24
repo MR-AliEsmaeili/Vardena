@@ -88,7 +88,7 @@ export function Dialog({
   return (
     <div
       role="presentation"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4"
+      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !disableClose) {
           onClose();
@@ -100,7 +100,7 @@ export function Dialog({
         aria-labelledby={titleId}
         aria-describedby={description !== undefined ? descriptionId : undefined}
         className={cn(
-          'm-0 w-full max-w-lg rounded-card border border-line bg-surface p-5 text-ink shadow-raised',
+          'animate-rise-in m-0 w-full max-w-lg rounded-card border border-line bg-surface p-5 text-ink shadow-raised',
           className,
         )}
       >

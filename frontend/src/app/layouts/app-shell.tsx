@@ -23,7 +23,9 @@ const NAVIGATION_ID = 'app-navigation';
  * - Sticky `AppHeader` (Logo → Global Search → Jalali Date → Organization →
  *   Settings → Profile)
  * - Collapsible `AppSidebar` (16rem expanded / 3.75rem icon-only with tooltips
- *   on desktop; accessible focus-trapped drawer on mobile)
+ *   on desktop; accessible focus-trapped drawer on mobile). The sidebar owns
+ *   its own collapse handle and folds itself after a menu selection so the
+ *   opened form gets the full width.
  * - Bootstrap pipeline:
  *   `session → LicenseGate → OrganizationGate → FinancialContextGate → workspace`
  */
@@ -43,6 +45,31 @@ export function AppShell() {
 
   const toggleSidebar = useCallback(() => {
     setSidebarState((prev) => ({ ...prev, collapsed: !prev.collapsed }));
+  }, []);
+
+  const collapseSidebar = useCallback(() => {
+    // The rail is a desktop affordance; on mobile it is already a drawer.
+    if (typeof window.matchMedia !== 'function') return;
+    if (!window.matchMedia('(min-width: 1024px)').matches) return;
+    setSidebarState((prev) =>
+      prev.collapsed ? prev : { ...prev, collapsed: true },
+    );
+  }, []);
+
+  /**
+   * Opening a menu entry hands the workspace back to the form: the rail folds
+   * itself so the document grid/editor gets the full width.
+   */
+  const handleSidebarNavigate = useCallback(() => {
+    collapseSidebar();
+  }, [collapseSidebar]);
+
+  const expandGroupFromRail = useCallback((groupId: string) => {
+    setSidebarState((prev) => ({
+      ...prev,
+      collapsed: false,
+      collapsedGroups: prev.collapsedGroups.filter((id) => id !== groupId),
+    }));
   }, []);
 
   const toggleGroup = useCallback((groupId: string) => {
@@ -119,8 +146,6 @@ export function AppShell() {
 
       <AppHeader
         navigationId={NAVIGATION_ID}
-        sidebarCollapsed={sidebarState.collapsed}
-        onToggleSidebar={toggleSidebar}
         mobileOpen={mobileOpen}
         onToggleMobileMenu={() =>
           mobileOpen ? closeMobile(false) : setMobileOpen(true)
@@ -140,8 +165,11 @@ export function AppShell() {
               collapsed={sidebarState.collapsed}
               collapsedGroups={sidebarState.collapsedGroups}
               onToggleGroup={toggleGroup}
+              onToggleCollapsed={toggleSidebar}
+              onExpandGroup={expandGroupFromRail}
               mobileOpen={mobileOpen}
               onCloseMobile={closeMobile}
+              onNavigate={handleSidebarNavigate}
             />
 
             <main

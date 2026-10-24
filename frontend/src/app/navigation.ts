@@ -31,6 +31,7 @@ import {
 import { t } from '@/lib/i18n';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import type { PermissionChecks } from '@/features/permissions/use-permissions';
+import type { NavTone } from '@/ui/nav-glyph';
 
 export interface NavigationItem {
   to: string;
@@ -53,6 +54,10 @@ export interface NavigationItem {
 export interface NavigationSection {
   id: string;
   label: string;
+  /** Domain glyph of the section; the sidebar shows it as the group marker. */
+  icon: LucideIcon;
+  /** Domain tint shared by the section marker and every glyph inside it. */
+  tone: NavTone;
   /** Top-level standalone section (rendered without a collapsible group header). */
   standalone?: boolean;
   items: readonly NavigationItem[];
@@ -74,6 +79,25 @@ export function isNavigationItemVisible(
 }
 
 /**
+ * The menu as this session may see it: entries are permission-filtered and a
+ * domain whose every entry is hidden disappears with its category header. The
+ * sidebar, global search and workspace cards all read the same structure, so a
+ * new gate cannot appear in one surface and be forgotten in another.
+ */
+export function visibleNavigationSections(
+  permissions: PermissionChecks,
+): readonly NavigationSection[] {
+  return navigationSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) =>
+        isNavigationItemVisible(item, permissions),
+      ),
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
+/**
  * The application menu.
  *
  * Categorized by ERP domain, deduplicated of redundant section-title links,
@@ -84,6 +108,8 @@ export const navigationSections: readonly NavigationSection[] = [
   {
     id: 'workspace',
     label: t.nav.dashboard,
+    icon: LayoutDashboard,
+    tone: 'workspace',
     standalone: true,
     items: [
       {
@@ -97,6 +123,8 @@ export const navigationSections: readonly NavigationSection[] = [
   {
     id: 'accounting',
     label: t.nav.accounting,
+    icon: BookOpenCheck,
+    tone: 'accounting',
     items: [
       {
         to: '/app/accounting',
@@ -170,6 +198,8 @@ export const navigationSections: readonly NavigationSection[] = [
   {
     id: 'inventory',
     label: t.nav.inventory,
+    icon: Warehouse,
+    tone: 'inventory',
     items: [
       {
         to: '/app/inventory',
@@ -254,6 +284,8 @@ export const navigationSections: readonly NavigationSection[] = [
   {
     id: 'organization',
     label: t.orgAdmin.title,
+    icon: Building2,
+    tone: 'organization',
     items: [
       {
         to: '/app/organization',
@@ -303,6 +335,8 @@ export const navigationSections: readonly NavigationSection[] = [
   {
     id: 'licensing',
     label: t.deviceLicensing.title,
+    icon: Smartphone,
+    tone: 'licensing',
     items: [
       {
         to: '/app/licensing/devices',
@@ -315,6 +349,8 @@ export const navigationSections: readonly NavigationSection[] = [
   {
     id: 'admin',
     label: t.nav.admin,
+    icon: ShieldCheck,
+    tone: 'admin',
     items: [
       {
         to: '/app/admin/users',

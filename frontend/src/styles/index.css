@@ -85,9 +85,41 @@
   --color-info-line: #bfdbfe;
   --color-info-ink: #1e40af;
 
+  /* Navigation domain tones (sidebar glyph tiles).
+   * Every domain owns one tint so the menu can be read by colour AND by
+   * icon+label; components only ever reference these tokens (no raw hex). */
+  --color-tone-workspace-soft: #eef2ff;
+  --color-tone-workspace-line: #c7d2fe;
+  --color-tone-workspace-ink: #4338ca;
+  --color-tone-accounting-soft: #eef2ff;
+  --color-tone-accounting-line: #c7d2fe;
+  --color-tone-accounting-ink: #4338ca;
+  --color-tone-inventory-soft: #ecfdf5;
+  --color-tone-inventory-line: #a7f3d0;
+  --color-tone-inventory-ink: #047857;
+  --color-tone-organization-soft: #fff7ed;
+  --color-tone-organization-line: #fed7aa;
+  --color-tone-organization-ink: #c2410c;
+  --color-tone-licensing-soft: #eff6ff;
+  --color-tone-licensing-line: #bfdbfe;
+  --color-tone-licensing-ink: #1d4ed8;
+  --color-tone-admin-soft: #fdf2f8;
+  --color-tone-admin-line: #fbcfe8;
+  --color-tone-admin-ink: #be185d;
+
+  /* Saturated tone used by the ACTIVE glyph and the active marker. It stays
+   * dark in both themes so the white glyph keeps AA contrast. */
+  --color-tone-workspace-strong: #4f46e5;
+  --color-tone-accounting-strong: #4f46e5;
+  --color-tone-inventory-strong: #059669;
+  --color-tone-organization-strong: #ea580c;
+  --color-tone-licensing-strong: #2563eb;
+  --color-tone-admin-strong: #db2777;
+
   /* Shape */
   --radius-control: 0.5rem;
   --radius-card: 0.875rem;
+  --radius-glyph: 0.5625rem;
 
   /* Elevation — two levels only; no decorative shadows */
   --shadow-card:
@@ -98,6 +130,7 @@
   --spacing-app-header: 3.5rem;
   --spacing-app-sidebar: 16rem;
   --spacing-app-sidebar-collapsed: 3.75rem;
+  --spacing-glyph: 1.5rem;
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -137,6 +170,33 @@
 
   --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.28), 0 1px 3px 0 rgb(0 0 0 / 0.36);
   --shadow-raised: 0 16px 36px -14px rgb(0 0 0 / 0.65);
+
+  /* Navigation domain tones — dark */
+  --color-tone-workspace-soft: #1e1b4b;
+  --color-tone-workspace-line: #3730a3;
+  --color-tone-workspace-ink: #c7d2fe;
+  --color-tone-accounting-soft: #1e1b4b;
+  --color-tone-accounting-line: #3730a3;
+  --color-tone-accounting-ink: #c7d2fe;
+  --color-tone-inventory-soft: #052e23;
+  --color-tone-inventory-line: #065f46;
+  --color-tone-inventory-ink: #6ee7b7;
+  --color-tone-organization-soft: #2e1a05;
+  --color-tone-organization-line: #7c2d12;
+  --color-tone-organization-ink: #fdba74;
+  --color-tone-licensing-soft: #0c1e3a;
+  --color-tone-licensing-line: #1e40af;
+  --color-tone-licensing-ink: #bfdbfe;
+  --color-tone-admin-soft: #2f0d18;
+  --color-tone-admin-line: #9d174d;
+  --color-tone-admin-ink: #fbcfe8;
+
+  --color-tone-workspace-strong: #6366f1;
+  --color-tone-accounting-strong: #6366f1;
+  --color-tone-inventory-strong: #10b981;
+  --color-tone-organization-strong: #f97316;
+  --color-tone-licensing-strong: #3b82f6;
+  --color-tone-admin-strong: #ec4899;
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -222,6 +282,144 @@
 
   .scroll-thin::-webkit-scrollbar-track {
     background-color: transparent;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────
+   Custom scroll surfaces
+   Sidebar and dense grids scroll inside their own box, never the page. The
+   thumb is a slim, fully rounded token-coloured pill that only strengthens on
+   hover/focus, so long menus don't read as a bright OS scrollbar.
+   ────────────────────────────────────────────────────────── */
+@layer utilities {
+  .scroll-elegant {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
+    transition: scrollbar-color 200ms ease;
+  }
+
+  .scroll-elegant:hover,
+  .scroll-elegant:focus-within {
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+
+  .scroll-elegant::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scroll-elegant::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  .scroll-elegant::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background-color: color-mix(
+      in oklab,
+      var(--color-line-strong) 55%,
+      transparent
+    );
+    transition: background-color 200ms ease;
+  }
+
+  .scroll-elegant:hover::-webkit-scrollbar-thumb,
+  .scroll-elegant:focus-within::-webkit-scrollbar-thumb {
+    background-color: var(--color-line-strong);
+  }
+
+  .scroll-elegant::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-ink-subtle);
+  }
+
+  /* ── Lightweight action motion (standards.md §13 reduced-motion honoured
+   * globally below) ─────────────────────────────────────────────────────── */
+  .action-press {
+    transition:
+      transform 140ms ease,
+      background-color 160ms ease,
+      border-color 160ms ease,
+      color 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .action-press:active:not(:disabled):not([aria-disabled='true']) {
+    transform: scale(0.97);
+  }
+
+  .animate-rise-in {
+    animation: rise-in 170ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .animate-pop-in {
+    animation: pop-in 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .animate-slide-in-start {
+    animation: slide-in-start 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .animate-fade-in {
+    animation: fade-in 180ms ease both;
+  }
+
+  /* Active-navigation marker: a soft pill that grows into place. */
+  .animate-marker-in {
+    animation: marker-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-in-start {
+  from {
+    opacity: 0;
+    transform: translateX(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes marker-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.35);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
   }
 }
 
