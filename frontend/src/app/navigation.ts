@@ -79,6 +79,25 @@ export function isNavigationItemVisible(
 }
 
 /**
+ * The menu as this session may see it: entries are permission-filtered and a
+ * domain whose every entry is hidden disappears with its category header. The
+ * sidebar, global search and workspace cards all read the same structure, so a
+ * new gate cannot appear in one surface and be forgotten in another.
+ */
+export function visibleNavigationSections(
+  permissions: PermissionChecks,
+): readonly NavigationSection[] {
+  return navigationSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) =>
+        isNavigationItemVisible(item, permissions),
+      ),
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
+/**
  * The application menu.
  *
  * Categorized by ERP domain, deduplicated of redundant section-title links,

@@ -6,7 +6,7 @@ import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { NavGlyph, NAV_TONE_TILE } from '@/ui/nav-glyph';
 import { Tooltip } from '@/ui/tooltip';
-import { isNavigationItemVisible, navigationSections } from '../navigation';
+import { visibleNavigationSections } from '../navigation';
 
 export interface AppSidebarProps {
   navigationId: string;
@@ -52,14 +52,7 @@ export function AppSidebar({
   const permissions = usePermissions();
   const isIconOnly = collapsed && !mobileOpen;
 
-  const visibleSections = navigationSections
-    .map((section) => ({
-      ...section,
-      items: section.items.filter((item) =>
-        isNavigationItemVisible(item, permissions),
-      ),
-    }))
-    .filter((section) => section.items.length > 0);
+  const visibleSections = visibleNavigationSections(permissions);
 
   const handleSelect = () => {
     onCloseMobile(false);
