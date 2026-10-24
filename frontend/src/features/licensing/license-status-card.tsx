@@ -78,7 +78,7 @@ export function LicenseStatusCard(): ReactElement | null {
     state?.scheduledVersion ?? null;
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-bold">
           {t.license.statusTitle}
@@ -111,7 +111,7 @@ export function LicenseStatusCard(): ReactElement | null {
             {state.installationId !== null && (
               <>
                 {t.license.installationIdLabel}:{' '}
-                <span className="code" dir="ltr">
+                <span className="code break-all" dir="ltr">
                   {state.installationId}
                 </span>
               </>
@@ -120,7 +120,7 @@ export function LicenseStatusCard(): ReactElement | null {
         )}
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      <CardContent className="min-w-0 space-y-4">
         {state === null || license.status === 'loading' ? (
           <p className="text-xs text-ink-subtle">{t.license.checking}</p>
         ) : (
@@ -163,7 +163,7 @@ export function LicenseStatusCard(): ReactElement | null {
               state.coverageEnd !== state.validUntil && (
                 <p className="text-xs text-ink-muted">
                   <span>{t.license.statusCoverageEnd}</span>:{' '}
-                  <span className="num" dir="ltr">
+                  <span className="num break-words" dir="ltr">
                     {formatDateTime(state.coverageEnd)}
                   </span>{' '}
                   <span className="text-ink-subtle">
@@ -181,7 +181,7 @@ export function LicenseStatusCard(): ReactElement | null {
                   signed issuance day here would claim the current term ends
                   earlier than it does.
                 */}
-                <p className="num" dir="ltr">
+                <p className="num break-words" dir="ltr">
                   {t.license.statusEffectiveFrom}:{' '}
                   {windowLabel(scheduled.effectiveFrom, scheduled.validUntil)}
                 </p>
@@ -210,7 +210,7 @@ export function LicenseStatusCard(): ReactElement | null {
                   {state.versions.map((version) => (
                     <li
                       key={version.versionId}
-                      className="flex flex-wrap items-center gap-x-2 gap-y-1"
+                      className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
                     >
                       <Badge
                         variant={
@@ -227,12 +227,12 @@ export function LicenseStatusCard(): ReactElement | null {
                             ? t.license.statusVersionRetired
                             : t.license.statusVersionScheduled}
                       </Badge>
-                      <span className="num" dir="ltr">
+                      <span className="num break-words" dir="ltr">
                         {windowLabel(version.effectiveFrom, version.validUntil)}
                       </span>
                       <span className="text-ink-subtle">
                         {t.license.statusOperationId}:{' '}
-                        <span className="code" dir="ltr">
+                        <span className="code break-all" dir="ltr">
                           {version.operationId}
                         </span>
                       </span>
