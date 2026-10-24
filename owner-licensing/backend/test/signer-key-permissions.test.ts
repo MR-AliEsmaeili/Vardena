@@ -480,7 +480,7 @@ windowsOnly("offline signer — real Windows NTFS ACLs", () => {
         "  $broad = [System.Security.Principal.SecurityIdentifier]::new($env:VARDENA_TEST_BROAD_SID)",
         "  $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($broad, [System.Security.AccessControl.FileSystemRights]::Read, [System.Security.AccessControl.AccessControlType]::Allow))",
         "}",
-        "Set-Acl -LiteralPath $env:VARDENA_TEST_PATH -AclObject $acl",
+        "[System.IO.File]::SetAccessControl($env:VARDENA_TEST_PATH, $acl)",
       ].join("\n"),
       {
         VARDENA_TEST_PATH: target,
@@ -506,7 +506,7 @@ windowsOnly("offline signer — real Windows NTFS ACLs", () => {
         "$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($owner, [System.Security.AccessControl.FileSystemRights]::FullControl, $inheritance, $propagation, [System.Security.AccessControl.AccessControlType]::Allow))",
         "$broad = [System.Security.Principal.SecurityIdentifier]::new($env:VARDENA_TEST_BROAD_SID)",
         "$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($broad, [System.Security.AccessControl.FileSystemRights]::Read, $inheritance, $propagation, [System.Security.AccessControl.AccessControlType]::Allow))",
-        "Set-Acl -LiteralPath $env:VARDENA_TEST_PATH -AclObject $acl",
+        "[System.IO.Directory]::SetAccessControl($env:VARDENA_TEST_PATH, $acl)",
       ].join("\n"),
       {
         VARDENA_TEST_PATH: target,
