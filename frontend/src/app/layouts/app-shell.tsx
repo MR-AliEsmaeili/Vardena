@@ -136,7 +136,15 @@ export function AppShell() {
       organization.financialContextStatus === 'ready');
 
   return (
-    <div className="min-h-screen bg-canvas text-ink">
+    /*
+     * `overflow-x-clip` (not `hidden`: `hidden` would create a scroll
+     * container and break the sticky header/sidebar) keeps ONE noisy widget
+     * from scrolling the whole RTL page sideways. Grids already scroll inside
+     * their own `TableWrapper`, so nothing loses reachable content, and the
+     * header/menu layout still has to fit on its own (see
+     * `e2e/responsive.spec.ts`).
+     */
+    <div className="min-h-screen overflow-x-clip bg-canvas text-ink">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:start-2 focus:z-50 focus:rounded-control focus:bg-surface focus:px-3 focus:py-2 focus:text-sm focus:shadow-raised"

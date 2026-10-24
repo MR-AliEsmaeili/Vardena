@@ -134,8 +134,10 @@ export function AccountCodeNameField({
   };
 
   const openList = (term: string) => {
+    // Re-focusing the same term (a blur that the browser restores, a click
+    // back into the cell) must not throw away the highlighted suggestion.
+    if (term !== search) setActiveIndex(-1);
     setSearch(term);
-    setActiveIndex(-1);
     measure();
     setOpen(true);
   };
@@ -245,9 +247,14 @@ export function AccountCodeNameField({
       });
       return;
     }
-    if (event.key === 'Enter' && open && activeIndex >= 0) {
-      const option = options[activeIndex];
-      if (option !== undefined) {
+    if (event.key === 'Enter' && open) {
+      // Enter commits the highlighted suggestion, or the first selectable one
+      // when nothing is highlighted yet — an open list must never swallow
+      // Enter silently while the operator is looking at a match.
+      const highlighted = activeIndex >= 0 ? options[activeIndex] : undefined;
+      const option =
+        highlighted ?? options.find((account) => account.isPostable);
+      if (option !== undefined && option.isPostable) {
         event.preventDefault();
         event.stopPropagation();
         selectAccount(option);

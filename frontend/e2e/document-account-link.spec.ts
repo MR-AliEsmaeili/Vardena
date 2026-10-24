@@ -53,9 +53,14 @@ test.describe('document line — linked account code and name', () => {
     await expect(aggregate).toHaveAttribute('data-postable', 'false');
     await expect(aggregate).toHaveAttribute('aria-disabled', 'true');
 
-    await aggregate.click();
+    // `aria-disabled` is what makes the row non-selectable for a real user
+    // (and for Playwright's actionability check), so the click is dispatched
+    // with `force` — the point is to prove the component itself refuses the
+    // selection, not that the browser blocks a pointer event.
+    await aggregate.click({ force: true });
     await expect(code).toHaveValue('1');
     await expect(title).toHaveValue('');
+    await expect(suggestions).toBeVisible();
 
     // A posting leaf of the same term stays selectable.
     const postable = suggestions.getByRole('option', { name: /موجودی نقد/ });
@@ -84,8 +89,11 @@ test.describe('document line — linked account code and name', () => {
 
     await code.press('Enter');
     await expect(suggestions).toHaveCount(0);
-    // The focused cell still holds a resolved pair, not a half-typed term.
+
+    // Enter committed the highlighted row: the cell holds a real resolved
+    // pair, not the half-typed term the operator left behind.
     const title = page.getByLabel(t.documents.accountName).first();
-    await expect(title).not.toHaveValue('');
+    await expect(code).toHaveValue('1010');
+    await expect(title).toHaveValue('موجودی نقد');
   });
 });

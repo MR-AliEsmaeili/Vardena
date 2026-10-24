@@ -29,6 +29,52 @@ async function expectNoPageOverflow(page: Page): Promise<void> {
   ).toBeLessThanOrEqual(overflow.innerWidth + 1);
 }
 
+/**
+ * The shell is allowed to CLIP (the root declares `overflow-x-clip`, so one
+ * wide widget can never scroll the page), which is why the header is measured
+ * on its own: a clipped header button is still a broken header.
+ */
+async function expectHeaderFits(page: Page): Promise<void> {
+  const header = page.getByTestId('app-header');
+  await expect(header).toBeVisible();
+
+  const geometry = await header.evaluate((element) => ({
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth,
+    innerWidth: window.innerWidth,
+  }));
+  expect(
+    geometry.scrollWidth,
+    `header content overflows its box: ${geometry.scrollWidth}px > ${geometry.clientWidth}px`,
+  ).toBeLessThanOrEqual(geometry.clientWidth + 1);
+
+  const slots = [
+    'header-slot-logo',
+    'header-slot-organization',
+    'header-slot-settings',
+    'header-slot-profile',
+  ];
+  const boxes = await Promise.all(
+    slots.map(async (slot) => ({
+      slot,
+      box: await page.getByTestId(slot).boundingBox(),
+    })),
+  );
+
+  for (const { slot, box } of boxes) {
+    expect(box, `${slot} is not rendered`).not.toBeNull();
+    if (box === null) continue;
+    expect(
+      box.x,
+      `${slot} starts outside the viewport (${box.x}px)`,
+    ).toBeGreaterThanOrEqual(-1);
+    expect(
+      box.x + box.width,
+      `${slot} ends outside the viewport (${box.x + box.width}px > ${geometry.innerWidth}px)`,
+    ).toBeLessThanOrEqual(geometry.innerWidth + 1);
+  }
+}
+
 test.describe('360px — phone', () => {
   test.use({ viewport: { width: 360, height: 780 } });
 
@@ -39,6 +85,7 @@ test.describe('360px — phone', () => {
     await expect(
       page.getByRole('heading', { name: t.dashboard.title }),
     ).toBeVisible();
+    await expectHeaderFits(page);
     await expectNoPageOverflow(page);
   });
 
@@ -57,6 +104,7 @@ test.describe('360px — phone', () => {
     await expect(page.getByTestId('data-table-filter-summary')).toContainText(
       summary(1, 6),
     );
+    await expectHeaderFits(page);
     await expectNoPageOverflow(page);
   });
 });

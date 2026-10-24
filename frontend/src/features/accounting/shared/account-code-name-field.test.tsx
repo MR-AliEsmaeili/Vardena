@@ -163,4 +163,68 @@ describe('AccountCodeNameField — linked code and name', () => {
     expect(screen.getByTestId('selected-account')).toBeEmptyDOMElement();
     expect(titleInput()).toHaveValue('');
   });
+
+  it('commits the highlighted suggestion with Enter and closes the list', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Harness />, { withProviders: false });
+
+    await user.type(codeInput(), '1010');
+    const list = await screen.findByTestId('account-suggestions');
+
+    await user.click(codeInput());
+    await user.keyboard('{ArrowDown}');
+    const highlighted = within(list).getAllByRole('option')[0] as HTMLElement;
+    expect(highlighted).toHaveAttribute('aria-selected', 'true');
+
+    await user.keyboard('{Enter}');
+
+    // Enter commits the highlighted row and dismisses the popup: the cell
+    // never keeps a stale list open over a resolved code/name pair.
+    await waitFor(() =>
+      expect(screen.queryByTestId('account-suggestions')).toBeNull(),
+    );
+    expect(codeInput()).toHaveValue('1010');
+    expect(titleInput()).toHaveValue('موجودی نقد');
+  });
+
+  it('commits the first selectable row with Enter when nothing is highlighted', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Harness />, { withProviders: false });
+
+    await user.type(codeInput(), '10');
+    await screen.findByTestId('account-suggestions');
+
+    // No ArrowDown: an open list must not swallow Enter.
+    await user.keyboard('{Enter}');
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('account-suggestions')).toBeNull(),
+    );
+    expect(codeInput()).toHaveValue('1010');
+    expect(titleInput()).toHaveValue('موجودی نقد');
+  });
+
+  it('keeps the highlight when focus returns to the same term', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Harness />, { withProviders: false });
+
+    await user.type(codeInput(), '10');
+    const list = await screen.findByTestId('account-suggestions');
+    await user.keyboard('{ArrowDown}');
+    const highlighted = within(list).getAllByRole('option')[0] as HTMLElement;
+    expect(highlighted).toHaveAttribute('aria-selected', 'true');
+
+    // A blur/focus round-trip on the SAME term (clicking back into the cell)
+    // must not silently reset the operator's position in the list.
+    await user.click(titleInput());
+    await user.click(codeInput());
+
+    await waitFor(() =>
+      expect(
+        (within(list).getAllByRole('option')[0] as HTMLElement).getAttribute(
+          'aria-selected',
+        ),
+      ).toBe('true'),
+    );
+  });
 });
