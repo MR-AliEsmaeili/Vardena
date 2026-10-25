@@ -35,8 +35,11 @@ export class LocalDevelopmentLicenseProvider implements LicenseProvider {
   async getLicense(): Promise<InstallationLicense> {
     const configured = this.config.licensing;
     return {
+      licenseType: 'LOCAL_DEVELOPMENT',
       customerId: '01JLOCALCUSTOMER0000000000',
       customerCode: 'CUST-LOCAL-DEV',
+      developerId: null,
+      developerName: null,
       installationId: DEVELOPMENT_INSTALLATION_ID,
       licenseId: '01JLOCALDEVELOPMENT0000000',
       status: configured.status,

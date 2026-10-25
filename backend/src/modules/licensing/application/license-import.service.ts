@@ -20,6 +20,13 @@ import {
   type LicenseAuditEventCommand,
 } from '../data/licenses.repository.js';
 import {
+  DEVELOPER_LICENSE_PREFIX,
+  developerLicenseDocumentHash,
+  developerLicenseEntitlements,
+  parseDeveloperLicenseDocument,
+  type DeveloperLicensePayload,
+} from '../domain/developer-license-document.js';
+import {
   LICENSE_CODE_PREFIX,
   licenseCodeHash,
   parseLicenseCode,
@@ -30,6 +37,7 @@ import {
 import {
   decodeLicenseTransport,
   licenseDocumentHash,
+  licenseKeyId,
   licenseVersionEntitlements,
   parseLicenseDocument,
   parseTrustedLicenseKeys,
@@ -192,6 +200,7 @@ type ConflictOperation = 'import' | 'recovery' | 'resolution';
 export type LicenseImportRejectionReason =
   | LicenseDocumentErrorReason
   | LicenseCodeErrorReason
+  | 'developer-license-disabled'
   | 'installation-mismatch'
   | 'not-active'
   | 'expired-document'
@@ -201,6 +210,7 @@ export type LicenseImportRejectionReason =
   | 'overlapping-range'
   | 'unknown-supersession'
   | 'license-binding-conflict'
+  | 'license-type-conflict'
   | 'customer-code-mismatch'
   | 'installation-customer-mismatch'
   | 'transfer-requires-different-customer'
@@ -246,6 +256,7 @@ const CONFLICT_REASONS: ReadonlySet<LicenseImportRejectionReason> = new Set([
   'overlapping-range',
   'unknown-supersession',
   'license-binding-conflict',
+  'license-type-conflict',
   'customer-code-mismatch',
   'installation-customer-mismatch',
   'transfer-requires-different-customer',
@@ -307,6 +318,7 @@ export class LicenseImportService {
    * clear message instead of surfacing as a server error on import.
    */
   private readonly trustedKeys: TrustedLicenseKey[];
+  private readonly developerTrustedKeys: TrustedLicenseKey[];
   private readonly publicKeys: KeyObject[];
 
   constructor(
@@ -321,6 +333,24 @@ export class LicenseImportService {
     this.trustedKeys = parseTrustedLicenseKeys(
       config.licensing.signingPublicKeys,
     );
+    this.developerTrustedKeys = parseTrustedLicenseKeys(
+      config.licensing.developerSigningPublicKeys ?? [],
+      'DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS',
+    );
+    const commercialKeyIds = new Set(this.trustedKeys.map((key) => key.id));
+    const commercialKeyMaterials = new Set(
+      this.trustedKeys.map((key) => licenseKeyId(key.key)),
+    );
+    const sharedKey = this.developerTrustedKeys.find(
+      (key) =>
+        commercialKeyIds.has(key.id) ||
+        commercialKeyMaterials.has(licenseKeyId(key.key)),
+    );
+    if (sharedKey !== undefined) {
+      throw new Error(
+        `Developer and commercial license trust lists must use separate Ed25519 keys; developer key id "${sharedKey.id}" is shared by identity or key material.`,
+      );
+    }
     this.publicKeys = this.trustedKeys.map((entry) => entry.key);
   }
 
@@ -493,11 +523,26 @@ export class LicenseImportService {
       document: string;
       transport: 'file' | 'text';
       keyId: string | null;
+      format: 'commercial' | 'developer';
     };
     try {
       transport = decodeLicenseTransport(rawDocument);
     } catch (error) {
       return this.rejectUnverified(error, installationId, 'text', now);
+    }
+
+    if (
+      transport.format === 'developer' ||
+      transport.document.startsWith(`${DEVELOPER_LICENSE_PREFIX}.`)
+    ) {
+      return this.applyDeveloperDocument(
+        transport,
+        installationId,
+        installationCustomerId,
+        now,
+        options,
+        precheckUsage,
+      );
     }
 
     if (transport.document.startsWith(`${LICENSE_CODE_PREFIX}.`)) {
@@ -790,15 +835,216 @@ export class LicenseImportService {
   }
 
   /**
+   * VDEV1 follows the ordinary authenticated import pipeline while preserving
+   * its separate policy, trust and non-commercial holder domain (ADR-0053).
+   * Every identity used for an audit/write comes from the verified payload.
+   */
+  private async applyDeveloperDocument(
+    transport: {
+      document: string;
+      transport: 'file' | 'text';
+      keyId: string | null;
+      format: 'commercial' | 'developer';
+    },
+    installationId: string | null,
+    installationCustomerId: string | null,
+    now: Date,
+    options: LicenseImportOptions,
+    precheckUsage: LicenseUsageSnapshot | null,
+  ): Promise<LicenseImportExecution> {
+    if (this.config.licensing.developerLicensesEnabled !== true) {
+      const message =
+        'Official Developer Licenses are disabled by deployment policy. Set the explicit Developer License trust policy only on an approved installation.';
+      await this.recordAudit({
+        installationId,
+        eventType: 'license.import.rejected',
+        outcome: 'REJECTED',
+        operationId: null,
+        licenseId: null,
+        versionId: null,
+        actorId: getPrincipal()?.userId ?? null,
+        source: transport.transport,
+        documentHash: null,
+        reason: 'developer-license-disabled',
+        detail: message,
+        occurredAt: now,
+      });
+      throw AppException.forbidden(message, {
+        reason: 'developer-license-disabled',
+      });
+    }
+
+    let payload: DeveloperLicensePayload;
+    let keyId: string;
+    try {
+      const verified = parseDeveloperLicenseDocument(
+        transport.document,
+        this.developerTrustedKeys,
+        { keyId: transport.keyId },
+      );
+      payload = verified.payload;
+      keyId = verified.keyId;
+    } catch (error) {
+      return this.rejectUnverified(
+        error,
+        installationId,
+        transport.transport,
+        now,
+      );
+    }
+    const documentHash = developerLicenseDocumentHash(transport.document);
+    const rejectionContext = {
+      now,
+      installationId,
+      payload,
+      keyId,
+      source: transport.transport,
+      documentHash,
+    };
+
+    if (installationId === null || payload.installationId !== installationId) {
+      return this.rejectVerified(
+        'installation-mismatch',
+        rejectionContext,
+        installationId === null
+          ? 'This installation has no identity yet, so the Developer License cannot be bound to it.'
+          : 'This Developer License was issued for a different Vardena installation.',
+      );
+    }
+    if (
+      options.customerTransfer != null ||
+      options.gapRecovery != null ||
+      options.reductionResolution != null
+    ) {
+      return this.rejectVerified(
+        'license-type-conflict',
+        rejectionContext,
+        'A Developer License may be installed only through ordinary activation; commercial transfer, recovery and reduction-resolution operations do not apply.',
+      );
+    }
+    if (payload.status !== 'ACTIVE') {
+      return this.rejectVerified(
+        'not-active',
+        rejectionContext,
+        'This Developer License is suspended or expired and cannot be imported.',
+      );
+    }
+    if (payload.issuedAt.getTime() > now.getTime()) {
+      return this.rejectVerified(
+        'not-yet-valid',
+        rejectionContext,
+        'This Developer License has an issuance time in the future and cannot be imported.',
+      );
+    }
+    if (payload.validUntil.getTime() <= now.getTime()) {
+      return this.rejectVerified(
+        'expired-document',
+        rejectionContext,
+        'This Developer License has already ended and cannot be imported.',
+      );
+    }
+    if (
+      await this.isRevokedForThisInstallation(payload.licenseId, installationId)
+    ) {
+      return this.rejectVerified(
+        'license-revoked',
+        rejectionContext,
+        'This Developer License identity is revoked and cannot receive another version.',
+      );
+    }
+
+    const versions = await this.licenses.listVersions(installationId);
+    const supersession: ImportSupersessionIntent =
+      payload.supersedesOperationId === null
+        ? { kind: 'none' }
+        : { kind: 'explicit', operationId: payload.supersedesOperationId };
+    const candidate: ImportCandidate = {
+      validFrom: payload.validFrom,
+      validUntil: payload.validUntil,
+      licenseId: payload.licenseId,
+      licenseType: 'DEVELOPER',
+      customerId: null,
+      customerCode: null,
+      developerId: payload.developerId,
+      developerName: payload.developerName,
+      organizationLimit: payload.organizationLimit,
+      userLimit: payload.userLimit,
+      deviceLimit: payload.deviceLimit,
+      deviceLimitSpecified: true,
+      entitlements: developerLicenseEntitlements(payload),
+    };
+    const precheck = evaluateImportConflicts({
+      candidate,
+      operationId: payload.operationId,
+      documentHash,
+      supersession,
+      versions,
+      at: now,
+      installationCustomerId,
+      installationCustomerCode: null,
+      knownCustomers: [],
+      customerTransfer: null,
+      usage: precheckUsage,
+      gapRecovery: null,
+      reductionResolution: null,
+    });
+    if (precheck.conflict !== null) {
+      return this.rejectVerified(
+        precheck.conflict.reason,
+        rejectionContext,
+        documentConflictMessage(precheck.conflict, 'import'),
+        precheck.conflict.overlapping,
+        precheck.conflict.reduction,
+      );
+    }
+
+    const execution = await this.persist(
+      {
+        installationId,
+        payload,
+        keyId,
+        source: transport.transport,
+        documentHash,
+        supersession,
+        supersedes: precheck.supersedes,
+        governsFrom: null,
+        now,
+        customerTransfer: null,
+        gapRecovery: null,
+        reductionResolution: null,
+        readUsage: () => this.usage.snapshot(installationId),
+      },
+      'license.developer.import.applied',
+    );
+    this.logger.log(
+      'Developer License imported',
+      {
+        installationId,
+        licenseId: execution.version.licenseId,
+        versionId: execution.version.versionId,
+        keyId,
+      },
+      LicenseImportService.name,
+    );
+    return {
+      changed: true,
+      outcome: 'APPLIED',
+      license: await this.licensing.current(now),
+      previousCustomerId: execution.previousCustomerId,
+      previousCustomerCode: execution.previousCustomerCode,
+      bindingChanged: execution.bindingChanged,
+      previousLicenseId: execution.previousLicenseId,
+      recovery: execution.recovery,
+      resolution: execution.resolution,
+    };
+  }
+
+  /**
    * The legacy `VLIC1` text code (L-02 compatibility alias inside the same
    * pipeline). Its documented lifecycle semantics are preserved exactly:
-   * the code must be active *now* (an expired or not-yet-valid code is still
-   * refused), re-submitting the same code is an idempotent no-op, and a
-   * different valid code replaces the version that governs at that moment.
-   *
-   * The lifecycle rule is why CF-2 is fixed for signed documents only: a
-   * future-dated renewal must be delivered as a v2 document, which is the
-   * primary transport. Behaviour for legacy codes is not silently changed.
+   * the code must be active now, replay is idempotent, and replacement follows
+   * the retained commercial lifecycle. It can never express a Developer
+   * License, customer transfer, renewal, recovery or reduction resolution.
    */
   private async applyLegacyCode(
     rawCode: string,
@@ -1054,7 +1300,7 @@ export class LicenseImportService {
   private async persist(
     context: {
       installationId: string;
-      payload: LicenseVersionPayload | LicensePayload;
+      payload: LicenseVersionPayload | LicensePayload | DeveloperLicensePayload;
       keyId: string | null;
       source: LicenseVersionSource;
       documentHash: string;
@@ -1082,12 +1328,11 @@ export class LicenseImportService {
     eventType: string,
   ): Promise<ImportVersionResult> {
     const legacy = context.legacy === true;
-    const operationId = legacy
-      ? legacyOperationId(context.documentHash)
-      : (context.payload as LicenseVersionPayload).operationId;
-    const entitlements = legacy
-      ? legacyEntitlements(context.payload as LicensePayload)
-      : licenseVersionEntitlements(context.payload as LicenseVersionPayload);
+    const payloadFacts = importPayloadFacts(
+      context.payload,
+      context.documentHash,
+    );
+    const operationId = payloadFacts.operationId;
     const versionId = generateId();
     // A signed document that names no supersession but was accepted because it
     // starts later than the version it overlaps hands over under OQ-80 Option B;
@@ -1115,9 +1360,12 @@ export class LicenseImportService {
         actorId: getPrincipal()?.userId ?? null,
         now: context.now,
         licenseId: context.payload.licenseId,
-        customerId: context.payload.customerId,
-        customerCode: context.payload.customerCode,
-        customerName: context.payload.customerName,
+        licenseType: payloadFacts.licenseType,
+        customerId: payloadFacts.customerId,
+        customerCode: payloadFacts.customerCode,
+        customerName: payloadFacts.customerName,
+        developerId: payloadFacts.developerId,
+        developerName: payloadFacts.developerName,
         versionId,
         operationId,
         status: context.payload.status,
@@ -1138,8 +1386,8 @@ export class LicenseImportService {
         organizationLimit: context.payload.organizationLimit,
         userLimit: context.payload.userLimit,
         deviceLimit: context.payload.deviceLimit,
-        deviceLimitSpecified: context.payload.deviceLimitSpecified,
-        entitlements,
+        deviceLimitSpecified: payloadFacts.deviceLimitSpecified,
+        entitlements: payloadFacts.entitlements,
         supersession: context.supersession,
         customerTransfer: context.customerTransfer,
         gapRecovery: context.gapRecovery,
@@ -1348,7 +1596,7 @@ export class LicenseImportService {
     context: {
       now: Date;
       installationId: string | null;
-      payload: LicenseVersionPayload;
+      payload: LicenseVersionPayload | DeveloperLicensePayload;
       keyId: string;
       source: string;
       documentHash: string;
@@ -1551,6 +1799,59 @@ function executionEventType(options: LicenseImportOptions): string {
   return 'license.import.applied';
 }
 
+function importPayloadFacts(
+  payload: LicenseVersionPayload | LicensePayload | DeveloperLicensePayload,
+  documentHash: string,
+): {
+  operationId: string;
+  licenseType: 'COMMERCIAL' | 'DEVELOPER';
+  customerId: string | null;
+  customerCode: string | null;
+  customerName: string | null;
+  developerId: string | null;
+  developerName: string | null;
+  deviceLimitSpecified: boolean;
+  entitlements: LicenseEntitlement[];
+} {
+  if ('licenseType' in payload) {
+    return {
+      operationId: payload.operationId,
+      licenseType: 'DEVELOPER',
+      customerId: null,
+      customerCode: null,
+      customerName: null,
+      developerId: payload.developerId,
+      developerName: payload.developerName,
+      deviceLimitSpecified: true,
+      entitlements: developerLicenseEntitlements(payload),
+    };
+  }
+  if ('operationId' in payload) {
+    return {
+      operationId: payload.operationId,
+      licenseType: 'COMMERCIAL',
+      customerId: payload.customerId,
+      customerCode: payload.customerCode,
+      customerName: payload.customerName,
+      developerId: null,
+      developerName: null,
+      deviceLimitSpecified: payload.deviceLimitSpecified,
+      entitlements: licenseVersionEntitlements(payload),
+    };
+  }
+  return {
+    operationId: legacyOperationId(documentHash),
+    licenseType: 'COMMERCIAL',
+    customerId: payload.customerId,
+    customerCode: payload.customerCode,
+    customerName: payload.customerName,
+    developerId: null,
+    developerName: null,
+    deviceLimitSpecified: payload.deviceLimitSpecified,
+    entitlements: legacyEntitlements(payload),
+  };
+}
+
 /** Entitlements of a legacy payload in the retained-version shape. */
 function legacyEntitlements(payload: LicensePayload): LicenseEntitlement[] {
   return [
@@ -1664,6 +1965,8 @@ function documentConflictMessage(
       return 'This license version overlaps a retained version, including versions that have already been retired, and does not start later than the version it would take over. Issue a document that starts later and takes it over, that explicitly retires it, or a non-overlapping renewal.';
     case 'license-binding-conflict':
       return LICENSE_BINDING_CONFLICT_MESSAGE;
+    case 'license-type-conflict':
+      return 'Commercial and Developer License history cannot be mixed on one installation, and Developer Licenses cannot use commercial transfer or recovery operations. Nothing was changed.';
     case 'customer-code-mismatch':
       return CUSTOMER_CODE_MISMATCH_MESSAGE;
     case 'backdated-supersession':
@@ -1762,6 +2065,8 @@ function legacyConflictMessage(conflict: ImportConflict): string {
       return 'This license code overlaps more than one retained version, or a version that is already retired, and cannot be applied.';
     case 'license-binding-conflict':
       return LICENSE_BINDING_CONFLICT_MESSAGE;
+    case 'license-type-conflict':
+      return 'Commercial and Developer License history cannot be mixed on one installation, and Developer Licenses cannot use commercial transfer or recovery operations. Nothing was changed.';
     case 'customer-code-mismatch':
       return CUSTOMER_CODE_MISMATCH_MESSAGE;
     case 'backdated-supersession':
@@ -1813,6 +2118,9 @@ function conflictLostRaceMessage(
   }
   if (conflict.reason === 'license-binding-conflict') {
     return LICENSE_BINDING_CONFLICT_MESSAGE;
+  }
+  if (conflict.reason === 'license-type-conflict') {
+    return 'Commercial and Developer License history cannot be mixed on one installation. Nothing was changed.';
   }
   if (conflict.reason === 'customer-code-mismatch') {
     return CUSTOMER_CODE_MISMATCH_MESSAGE;

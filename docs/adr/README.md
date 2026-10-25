@@ -114,3 +114,4 @@ Keep ADRs **short** (≤ ~60 lines). If it needs more, it belongs in `docs/`.
 | [0050](./0050-post-gap-recovery-reduction-guard.md) | Measure reducing post-gap recoveries against lapsed coverage (C10 / OD-LIC-05 Option 1) | **Accepted by Product Owner (2026-10-17)**; narrow post-gap exception only; OQ-87 remains open and C11 remains open |
 | [0051](./0051-global-request-loading-system.md) | Single request-activity loading system with Thinking Orbs (frontend) | Proposed; implemented for Product Owner review (2026-10-19) |
 | [0052](./0052-frontend-modernization-shell-theme-operational-forms.md) | Frontend modernization — semantic themes, font scales, full-width RTL shell and operational form patterns | Proposed; implemented for Product Owner review (2026-10-23) |
+| [0053](./0053-official-offline-developer-license.md) | Official offline Developer License — VDEV1, separate trust/policy, non-commercial holder and protected local issuer | Accepted (2026-10-25) |

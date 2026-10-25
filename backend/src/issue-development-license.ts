@@ -1,302 +1,302 @@
-import 'dotenv/config';
-import { loadAppConfig } from './kernel/config/app-config.js';
-import { runEntrypoint } from './kernel/bootstrap.js';
+import { createPublicKey, generateKeyPairSync } from 'node:crypto';
+import { lstat, readFile, stat, unlink } from 'node:fs/promises';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { generateId } from './kernel/ids/ulid.js';
+import { parsePrivateKey } from './modules/licensing/domain/license-code.js';
+import { licenseKeyId } from './modules/licensing/domain/license-document.js';
 import {
-  generateAuthorityKeyPair,
-  issueLicenseCode,
-  issueLicenseFile,
-} from './tools/development-license-authority.js';
+  parseDeveloperLicenseDocument,
+  serializeDeveloperLicenseFile,
+  signDeveloperLicenseDocument,
+  type DeveloperLicensePayload,
+} from './modules/licensing/domain/developer-license-document.js';
+import {
+  assertDeveloperKeyPathPrivate,
+  DeveloperKeyFileError,
+  writeExclusive,
+} from './tools/developer-license-key-files.js';
 
 /**
- * Development/test license issuing CLI (L-02).
+ * Official offline Developer License authority (ADR-0053).
  *
- *   npm run license:keygen
- *     → prints a fresh Ed25519 authority key pair. Put the PUBLIC key in
- *       `LICENSE_SIGNING_PUBLIC_KEYS`; keep the private key outside the
- *       application (a password manager, the CI secret store, …).
- *
- *   LICENSE_SIGNING_PRIVATE_KEY=<base64> npm run license:issue -- \
- *     --installation 01J... --customer 01J... --customer-code CUST-... \
- *     [--customer-name "Acme"] [--valid-until 2027-01-01] \
- *     [--organizations 3] [--users 25] [--devices 20] [--modules organization,users,rbac] \
- *     [--status ACTIVE] [--valid-from 2027-01-01] [--operation-id 01J...] \
- *     [--supersedes 01J... | --renews 01J...] [--key-id 2026-a] [--artifact] \
- *     [--out license.json]
- *     → prints the signed license FILE (the `vardena-license` envelope around
- *       the `VLIC2` artifact) to paste into `POST /api/v1/license/import`, or
- *       to hand to the customer as a file. `--artifact` prints the bare
- *       artifact instead (the text transport, for the same endpoint); `--out`
- *       writes the chosen payload to a file without printing it.
- *
- *   ... --renews <operationId>
- *     → issues a RENEWAL (OD-LIC-06, OQ-88) of the retained version carrying
- *       that operation id. The new signed end date is `--valid-until`; it is
- *       applied exactly, and the renewal starts governing when the named
- *       version's term ends — the customer can import it before that boundary
- *       without shortening the current term. `--valid-from` stays the signed
- *       issuance-day fact and is never the hand-over instant. The operation id
- *       to renew is the `operationId` of the version the customer's
- *       `GET /api/v1/license/current` reports (the current or scheduled one);
- *       it is never inferred. `--renews` and `--supersedes` are mutually
- *       exclusive, and a perpetual target cannot be renewed this way (use an
- *       explicit `--supersedes` for the PDR-12 term change).
- *
- *   ... --format v1
- *     → prints the legacy `VLIC1` license code accepted by
- *       `POST /api/v1/license/activate` (compatibility path). A text code
- *       cannot carry a renewal and `--renews` with `--format v1` is refused.
- *
- * It refuses to run with `NODE_ENV=production`: a production license must be
- * issued by the commercial authority, not by a copy of the application.
- * The installation id, customer id, and business customer code are NOT
- * invented here — the installation id is reported in
- * `GET /api/v1/license/current`, and `--customer` / `--customer-code` must
- * identify the target customer explicitly (PDR-14 / L-06).
+ * This tool is compiled only into `dist-tools`; the production backend image
+ * contains only `dist`. It never reads a private key from an environment
+ * variable, never prints private material or a license artifact, refuses to
+ * overwrite output, verifies filesystem privacy before reading a key, and
+ * verifies its own output before writing it.
  */
-async function issueDevelopmentLicense(): Promise<void> {
-  const config = loadAppConfig();
-  if (config.nodeEnv === 'production') {
-    throw new Error(
-      'The development license authority is disabled in production. Obtain a license from the commercial authority instead.',
-    );
-  }
-
-  const args = parseArgs(process.argv.slice(2));
+export async function runDeveloperLicenseCli(
+  argv: readonly string[],
+): Promise<void> {
+  const args = parseArgs(argv);
   if (args.has('keygen')) {
-    const pair = generateAuthorityKeyPair();
-    process.stdout.write(
-      [
-        'Ed25519 licensing authority key pair (development/test only)',
-        '',
-        `LICENSE_SIGNING_PUBLIC_KEYS=${pair.publicKey}`,
-        '',
-        'Private key (NEVER give this to the application or the frontend):',
-        pair.privateKey,
-        '',
-      ].join('\n'),
-    );
+    await generateKeyFiles(required(args, 'out-dir'));
     return;
   }
-
-  const privateKey = process.env['LICENSE_SIGNING_PRIVATE_KEY']?.trim();
-  if (privateKey === undefined || privateKey === '') {
-    throw new Error(
-      'LICENSE_SIGNING_PRIVATE_KEY is required (run "npm run license:keygen" first).',
-    );
-  }
-  const installationId = args.get('installation');
-  if (installationId === undefined || installationId === 'true') {
-    throw new Error(
-      '--installation <installationId> is required; read it from GET /api/v1/license/current on the target installation.',
-    );
-  }
-  const customerId = args.get('customer');
-  if (customerId === undefined || customerId === 'true') {
-    throw new Error(
-      '--customer <customerId> is required; specify the target customer id explicitly.',
-    );
-  }
-  const customerCode = args.get('customer-code');
-  if (customerCode === undefined || customerCode === 'true') {
-    throw new Error(
-      '--customer-code <customerCode> is required; specify the target customer business code explicitly.',
-    );
-  }
-
-  const format = (args.get('format') ?? 'v2').toLowerCase();
-  if (format !== 'v2' && format !== 'v1') {
-    throw new Error(`--format must be v2 or v1 (got "${format}").`);
-  }
-  // OD-LIC-06 §3.1: a document is either a renewal (extends the named version)
-  // or a supersession (replaces it from its own start). Encoding both is a
-  // payload defect, and the legacy text code cannot carry a renewal at all.
-  const renews = args.has('renews') ? args.get('renews') : undefined;
-  if (renews === 'true') {
-    throw new Error(
-      '--renews requires the operation id of the retained version being renewed; read it from GET /api/v1/license/current.',
-    );
-  }
-  if (renews !== undefined && args.has('supersedes')) {
-    throw new Error(
-      '--renews and --supersedes are mutually exclusive: a renewal extends the version it names, it never replaces it.',
-    );
-  }
-  if (renews !== undefined && format === 'v1') {
-    throw new Error(
-      'A legacy VLIC1 text code cannot carry a renewal; issue a signed VLIC2 document (--format v2).',
-    );
-  }
-  const common = {
-    installationId,
-    customerId,
-    customerCode,
-    ...optional('customerName', args.get('customer-name')),
-    ...optional('status', args.get('status') as 'ACTIVE' | undefined),
-    ...optional('validFrom', dateArg(args.get('valid-from'))),
-    ...optional('validUntil', dateArg(args.get('valid-until'))),
-    ...optional('organizationLimit', intArg(args.get('organizations'))),
-    ...optional('userLimit', intArg(args.get('users'))),
-    ...optional('deviceLimit', deviceLimitArg(args.get('devices'))),
-    ...optional('moduleEntitlements', listArg(args.get('modules'))),
-    ...optional('featureEntitlements', listArg(args.get('features'))),
-  };
-
-  if (format === 'v1') {
-    const { code, payload } = issueLicenseCode(common, privateKey);
-    process.stdout.write(
-      [...summaryLines(payload, 'VLIC1 (legacy text code)'), '', code, ''].join(
-        '\n',
-      ),
-    );
-    return;
-  }
-
-  const versionOptions = {
-    ...common,
-    ...optional('operationId', args.get('operation-id')),
-    ...optional(
-      'supersedesOperationId',
-      args.has('supersedes') ? args.get('supersedes') : undefined,
-    ),
-    ...(renews === undefined ? {} : { renewsOperationId: renews }),
-  };
-  const keyId = args.get('key-id');
-  const artifact = args.has('artifact');
-  const { file, document, payload } = issueLicenseFile(
-    versionOptions,
-    privateKey,
-    keyId === undefined || keyId === 'true' ? {} : { keyId },
-  );
-  const output = artifact ? document : file;
-
-  const out = args.get('out');
-  if (out !== undefined && out !== 'true') {
-    const { writeFileSync } = await import('node:fs');
-    writeFileSync(out, output.endsWith('\n') ? output : `${output}\n`, 'utf8');
-    process.stdout.write(
-      [
-        ...summaryLines(
-          payload,
-          artifact ? 'VLIC2 artifact' : 'vardena-license file',
-        ),
-        '',
-        `Written to   : ${out}`,
-        '',
-      ].join('\n'),
-    );
-    return;
-  }
-
-  process.stdout.write(
-    [
-      ...summaryLines(
-        payload,
-        artifact ? 'VLIC2 artifact' : 'vardena-license file',
-      ),
-      '',
-      output,
-      '',
-    ].join('\n'),
-  );
+  await issueDeveloperLicense(args);
 }
 
-function summaryLines(
-  payload: {
-    installationId: string;
-    licenseId: string;
-    customerId: string;
-    customerCode: string;
-    customerName: string;
-    status: string;
-    validFrom: Date;
-    validUntil: Date | null;
-    organizationLimit: number | null;
-    userLimit: number | null;
-    deviceLimit: number | null;
-    deviceLimitSpecified: boolean;
-    moduleEntitlements: readonly string[];
-    renewsOperationId?: string | null;
-  },
-  transport: string,
-): string[] {
-  return [
-    `Transport    : ${transport}`,
-    `Installation : ${payload.installationId}`,
-    `License      : ${payload.licenseId}`,
-    `Customer     : ${payload.customerId} [${payload.customerCode}] (${payload.customerName})`,
-    `Status       : ${payload.status}`,
-    `Valid        : ${payload.validFrom.toISOString()} → ${payload.validUntil?.toISOString() ?? 'perpetual'}`,
-    ...(payload.renewsOperationId === undefined ||
-    payload.renewsOperationId === null
-      ? []
-      : [
-          `Renews       : ${payload.renewsOperationId} (governs from that version's end, never from validFrom)`,
-        ]),
-    `Limits       : organizations=${payload.organizationLimit ?? 'unlimited'} users=${payload.userLimit ?? 'unlimited'} devices=${payload.deviceLimitSpecified ? (payload.deviceLimit ?? 'unlimited') : 'unspecified'}`,
-    `Modules      : ${payload.moduleEntitlements.join(', ')}`,
-  ];
+async function generateKeyFiles(outDirArgument: string): Promise<void> {
+  const outDir = path.resolve(outDirArgument);
+  const info = await stat(outDir).catch(() => null);
+  if (info === null || !info.isDirectory()) {
+    throw new DeveloperKeyFileError(
+      '--out-dir must name an existing private directory.',
+    );
+  }
+  await assertDeveloperKeyPathPrivate(outDir);
+
+  const destinations = {
+    privateKey: path.join(outDir, 'developer-license-key.pkcs8'),
+    publicKey: path.join(outDir, 'developer-license-public-key.txt'),
+    info: path.join(outDir, 'developer-license-key-info.json'),
+  };
+  for (const destination of Object.values(destinations)) {
+    if ((await lstat(destination).catch(() => null)) !== null) {
+      throw new DeveloperKeyFileError(
+        `Refusing to overwrite existing key artifact: ${destination}`,
+      );
+    }
+  }
+
+  const pair = generateKeyPairSync('ed25519');
+  const privateMaterial = pair.privateKey
+    .export({ format: 'der', type: 'pkcs8' })
+    .toString('base64');
+  const publicMaterial = pair.publicKey
+    .export({ format: 'der', type: 'spki' })
+    .toString('base64');
+  const keyId = licenseKeyId(pair.publicKey);
+  const created: string[] = [];
+  try {
+    await writeExclusive(destinations.privateKey, `${privateMaterial}\n`);
+    created.push(destinations.privateKey);
+    await assertDeveloperKeyPathPrivate(destinations.privateKey);
+    await writeExclusive(destinations.publicKey, `${publicMaterial}\n`);
+    created.push(destinations.publicKey);
+    await writeExclusive(
+      destinations.info,
+      `${JSON.stringify(
+        {
+          algorithm: 'Ed25519',
+          keyId,
+          publicKeySpkiBase64: publicMaterial,
+          trustEntry: `${keyId}:${publicMaterial}`,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    created.push(destinations.info);
+  } catch (error) {
+    await Promise.all(
+      created.map((createdPath) => unlink(createdPath).catch(() => undefined)),
+    );
+    throw error;
+  }
+
+  printJson({
+    ok: true,
+    keyId,
+    privateKeyPath: destinations.privateKey,
+    publicKeyPath: destinations.publicKey,
+    keyInfoPath: destinations.info,
+    trustConfiguration:
+      'Copy trustEntry from developer-license-key-info.json to DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS on approved installations only.',
+  });
+}
+
+async function issueDeveloperLicense(args: Map<string, string>): Promise<void> {
+  const privateKeyPath = path.resolve(required(args, 'private-key-file'));
+  const outputPath = path.resolve(required(args, 'out'));
+  // Both the file and its containing directory must be private. The directory
+  // check closes the replace-between-check-and-read path for other OS users;
+  // the helper also rejects links and special files.
+  await assertDeveloperKeyPathPrivate(path.dirname(privateKeyPath));
+  await assertDeveloperKeyPathPrivate(privateKeyPath);
+  const privateMaterial = (await readFile(privateKeyPath, 'utf8')).trim();
+  if (privateMaterial === '') {
+    throw new Error('The private key file is empty.');
+  }
+  const privateKey = parsePrivateKey(privateMaterial);
+  const publicKey = createPublicKey(privateKey);
+  const keyId = licenseKeyId(publicKey);
+  const issuedAt = canonicalDate(required(args, 'issued-at'), 'issued-at');
+  const payload: DeveloperLicensePayload = {
+    version: 1,
+    kind: 'DEVELOPER_LICENSE_VERSION',
+    licenseType: 'DEVELOPER',
+    operationId: valueOrGenerated(args, 'operation-id'),
+    licenseId: valueOrGenerated(args, 'license-id'),
+    developerId: required(args, 'developer-id'),
+    developerName: required(args, 'developer-name'),
+    installationId: required(args, 'installation'),
+    status: readStatus(args.get('status') ?? 'ACTIVE'),
+    validFrom: canonicalDate(required(args, 'valid-from'), 'valid-from'),
+    validUntil: canonicalDate(required(args, 'valid-until'), 'valid-until'),
+    organizationLimit: positiveInteger(
+      required(args, 'organizations'),
+      'organizations',
+    ),
+    userLimit: positiveInteger(required(args, 'users'), 'users'),
+    // VDEV1 deliberately cannot invent the commercial identity needed by the
+    // VDEA1 device protocol. It fails closed for device enrollment.
+    deviceLimit: 0,
+    moduleEntitlements: list(required(args, 'modules'), 'modules'),
+    featureEntitlements: list(args.get('features') ?? '', 'features'),
+    supersedesOperationId: optionalValue(args, 'supersedes'),
+    issuerKeyId: keyId,
+    issuedAt,
+  };
+
+  const document = signDeveloperLicenseDocument(payload, privateKey);
+  const verified = parseDeveloperLicenseDocument(
+    document,
+    [{ id: keyId, key: publicKey }],
+    { keyId },
+  );
+  if (verified.payload.operationId !== payload.operationId) {
+    throw new Error('Self-verification did not return the issued operation.');
+  }
+  const file = serializeDeveloperLicenseFile(document, keyId);
+  await writeExclusive(outputPath, file);
+
+  printJson({
+    ok: true,
+    format: 'vardena-developer-license',
+    licenseType: 'DEVELOPER',
+    outputPath,
+    keyId,
+    installationId: payload.installationId,
+    operationId: payload.operationId,
+    licenseId: payload.licenseId,
+    developerId: payload.developerId,
+    validFrom: payload.validFrom.toISOString(),
+    validUntil: payload.validUntil.toISOString(),
+    organizationLimit: payload.organizationLimit,
+    userLimit: payload.userLimit,
+    modules: [...payload.moduleEntitlements],
+    features: [...payload.featureEntitlements],
+    verified: true,
+  });
 }
 
 function parseArgs(argv: readonly string[]): Map<string, string> {
-  const args = new Map<string, string>();
+  const supported = new Set([
+    'keygen',
+    'out-dir',
+    'private-key-file',
+    'out',
+    'installation',
+    'developer-id',
+    'developer-name',
+    'operation-id',
+    'license-id',
+    'issued-at',
+    'valid-from',
+    'valid-until',
+    'organizations',
+    'users',
+    'modules',
+    'features',
+    'supersedes',
+    'status',
+  ]);
+  const result = new Map<string, string>();
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index]!;
-    if (!token.startsWith('--')) continue;
-    const name = token.slice(2);
-    const next = argv[index + 1];
-    if (next === undefined || next.startsWith('--')) {
-      args.set(name, 'true');
-    } else {
-      args.set(name, next);
-      index += 1;
+    const token = argv[index];
+    if (token === undefined || !token.startsWith('--')) {
+      throw new Error(`Unexpected positional argument: ${token ?? ''}`);
     }
+    const name = token.slice(2);
+    if (!supported.has(name)) throw new Error(`Unknown option: --${name}`);
+    if (result.has(name)) throw new Error(`Duplicate option: --${name}`);
+    if (name === 'keygen') {
+      result.set(name, 'true');
+      continue;
+    }
+    const value = argv[index + 1];
+    if (value === undefined || value.startsWith('--')) {
+      throw new Error(`--${name} requires a value.`);
+    }
+    result.set(name, value);
+    index += 1;
   }
-  return args;
-}
-
-function optional<K extends string, V>(
-  key: K,
-  value: V | undefined,
-): Record<K, V> | Record<string, never> {
-  return value === undefined ? {} : ({ [key]: value } as Record<K, V>);
-}
-
-function dateArg(raw: string | undefined): Date | undefined {
-  if (raw === undefined) return undefined;
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new Error(`"${raw}" is not an ISO-8601 date.`);
+  if (result.has('keygen') && result.size !== 2) {
+    throw new Error('Key generation accepts only --keygen --out-dir <path>.');
   }
-  return parsed;
+  return result;
 }
 
-function intArg(raw: string | undefined): number | undefined {
-  if (raw === undefined) return undefined;
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`"${raw}" is not a positive integer.`);
+function required(args: Map<string, string>, name: string): string {
+  const value = args.get(name)?.trim();
+  if (value === undefined || value === '') {
+    throw new Error(`--${name} is required.`);
   }
   return value;
 }
 
-function deviceLimitArg(raw: string | undefined): number | null | undefined {
-  if (raw === undefined) return undefined;
-  if (raw.trim().toLowerCase() === 'unlimited') return null;
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < 0) {
+function optionalValue(args: Map<string, string>, name: string): string | null {
+  const value = args.get(name)?.trim();
+  return value === undefined || value === '' ? null : value;
+}
+
+function valueOrGenerated(args: Map<string, string>, name: string): string {
+  return optionalValue(args, name) ?? generateId();
+}
+
+function canonicalDate(raw: string, name: string): Date {
+  const value = new Date(raw);
+  if (Number.isNaN(value.getTime()) || value.toISOString() !== raw) {
     throw new Error(
-      `"${raw}" is not a non-negative device limit or unlimited.`,
+      `--${name} must be a canonical ISO-8601 UTC instant such as 2026-10-25T10:00:00.000Z.`,
     );
   }
   return value;
 }
 
-function listArg(raw: string | undefined): string[] | undefined {
-  if (raw === undefined) return undefined;
-  return raw
-    .split(',')
-    .map((code) => code.trim().toLowerCase())
-    .filter((code) => code !== '');
+function positiveInteger(raw: string, name: string): number {
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0 || value > 2_147_483_647) {
+    throw new Error(`--${name} must be a positive 32-bit integer.`);
+  }
+  return value;
 }
 
-await runEntrypoint('issue-development-license', issueDevelopmentLicense);
+function list(raw: string, name: string): string[] {
+  const values = raw
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value !== '');
+  if (name === 'modules' && values.length === 0) {
+    throw new Error('--modules must contain at least one module code.');
+  }
+  if (new Set(values).size !== values.length) {
+    throw new Error(`--${name} contains duplicate codes.`);
+  }
+  return values;
+}
+
+function readStatus(raw: string): DeveloperLicensePayload['status'] {
+  if (raw !== 'ACTIVE' && raw !== 'EXPIRED' && raw !== 'SUSPENDED') {
+    throw new Error('--status must be ACTIVE, EXPIRED, or SUSPENDED.');
+  }
+  return raw;
+}
+
+function printJson(value: object): void {
+  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+const entrypoint = process.argv[1];
+if (
+  entrypoint !== undefined &&
+  import.meta.url === pathToFileURL(path.resolve(entrypoint)).href
+) {
+  runDeveloperLicenseCli(process.argv.slice(2)).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : 'Unknown failure.';
+    process.stderr.write(`refused\t${message}\n`);
+    process.exitCode = 2;
+  });
+}

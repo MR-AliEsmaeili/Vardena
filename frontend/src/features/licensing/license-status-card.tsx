@@ -25,6 +25,21 @@ function windowLabel(from: string, until: string | null): string {
   return `${start} — ${end}`;
 }
 
+function licenseTypeLabel(
+  type: 'COMMERCIAL' | 'DEVELOPER' | 'LOCAL_DEVELOPMENT' | null,
+): string | null {
+  switch (type) {
+    case 'COMMERCIAL':
+      return t.license.statusTypeCommercial;
+    case 'DEVELOPER':
+      return t.license.statusTypeDeveloper;
+    case 'LOCAL_DEVELOPMENT':
+      return t.license.statusTypeLocalDevelopment;
+    default:
+      return null;
+  }
+}
+
 /**
  * The license status / renewal surface for a session that holds
  * `Licensing.License.Activate` (L-03, ADR-0046).
@@ -125,6 +140,24 @@ export function LicenseStatusCard(): ReactElement | null {
           <p className="text-xs text-ink-subtle">{t.license.checking}</p>
         ) : (
           <>
+            {state.licensed && licenseTypeLabel(state.licenseType) !== null && (
+              <p className="text-xs text-ink-muted">
+                {t.license.statusTypeLabel}:{' '}
+                {licenseTypeLabel(state.licenseType)}
+              </p>
+            )}
+
+            {state.licenseType === 'DEVELOPER' &&
+              state.developerId !== null && (
+                <p className="text-xs text-ink-muted">
+                  {t.license.statusDeveloperHolder}:{' '}
+                  <span>{state.developerName ?? state.developerId}</span>{' '}
+                  <span className="code break-all" dir="ltr">
+                    ({state.developerId})
+                  </span>
+                </p>
+              )}
+
             {state.revokedAt !== null && (
               <p className="text-xs text-ink-muted">
                 {t.license.revokedAtLabel}:{' '}
@@ -256,19 +289,22 @@ export function LicenseStatusCard(): ReactElement | null {
               Hidden once the license IS revoked — the backend refuses a second
               revocation (409 `already-revoked`) and re-importing a license
               cannot restore it, so the form would only imply a recovery path
-              that does not exist.
+              that does not exist. VREV1 is commercial-customer-bound, so the
+              form is not offered for VDEV1 Developer Licenses either.
             */}
-            {isRevokePermitted && state.inactiveReason !== 'revoked' && (
-              <div className="border-t border-line pt-3">
-                <p className="mb-1 text-xs font-medium text-ink-muted">
-                  {t.license.revocationTitle}
-                </p>
-                <p className="mb-2 text-xs text-ink-subtle">
-                  {t.license.revocationBody}
-                </p>
-                <LicenseRevocationImportForm />
-              </div>
-            )}
+            {isRevokePermitted &&
+              state.licenseType !== 'DEVELOPER' &&
+              state.inactiveReason !== 'revoked' && (
+                <div className="border-t border-line pt-3">
+                  <p className="mb-1 text-xs font-medium text-ink-muted">
+                    {t.license.revocationTitle}
+                  </p>
+                  <p className="mb-2 text-xs text-ink-subtle">
+                    {t.license.revocationBody}
+                  </p>
+                  <LicenseRevocationImportForm />
+                </div>
+              )}
           </>
         )}
       </CardContent>

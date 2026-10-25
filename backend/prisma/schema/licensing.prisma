@@ -16,6 +16,13 @@ enum LicenseStatus {
   @@schema("licensing")
 }
 
+enum LicenseType {
+  COMMERCIAL
+  DEVELOPER
+
+  @@schema("licensing")
+}
+
 enum EntitlementKind {
   MODULE
   FEATURE
@@ -88,13 +95,19 @@ model Installation {
   @@schema("licensing")
 }
 
-/// The commercial License: customer + installation. It carries no dates, no
-/// limits and no entitlements — those belong to its versions. It is the future
-/// home of license-level revocation state (PDR-11 §10, OQ-78).
+/// Stable signed-license identity and holder binding for one installation.
+/// COMMERCIAL rows bind a customer; DEVELOPER rows bind an explicit
+/// non-commercial developer. Dates, limits and entitlements belong to retained
+/// versions. License-level commercial revocation state is retained here.
 model License {
-  id             String   @id
-  installationId String   @map("installation_id")
-  customerId     String   @map("customer_id")
+  id             String      @id
+  installationId String      @map("installation_id")
+  licenseType    LicenseType @default(COMMERCIAL) @map("license_type")
+  /// Commercial holder; null for an official non-commercial Developer License.
+  customerId     String?     @map("customer_id")
+  /// Explicit Developer holder identity; null for commercial licenses.
+  developerId    String?     @map("developer_id") @db.VarChar(64)
+  developerName  String?     @map("developer_name") @db.VarChar(200)
   /// OD-LIC-17 revocation state. Set together with `revocation_id`, never
   /// cleared: a revoked license is final and is never approximated by a status
   /// or a date. Guarded by `licenses_revocation_state_check`;
@@ -107,7 +120,7 @@ model License {
   updatedBy      String?  @map("updated_by")
 
   installation Installation       @relation(fields: [installationId], references: [id], onDelete: Restrict)
-  customer     LicenseCustomer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customer     LicenseCustomer?   @relation(fields: [customerId], references: [id], onDelete: Restrict)
   versions     LicenseVersion[]
   revocation   LicenseRevocation?
 
@@ -115,6 +128,7 @@ model License {
   /// installation (integrity, not convention).
   @@unique([id, installationId], map: "uq_licenses_id_installation")
   @@index([installationId], map: "idx_licenses_installation_id")
+  @@index([licenseType, developerId], map: "idx_licenses_type_developer_id")
   @@map("licenses")
   @@schema("licensing")
 }

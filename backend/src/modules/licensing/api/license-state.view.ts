@@ -1,4 +1,4 @@
-import type { EvaluatedLicense } from '../domain/license.js';
+import type { EvaluatedLicense, LicenseType } from '../domain/license.js';
 import type { LicenseVersionSummary } from '../domain/license-version.js';
 import type { LicenseVersionSnapshot } from '../application/license-provider.js';
 
@@ -19,6 +19,8 @@ export const MAX_LICENSE_VERSION_HISTORY = 20;
  */
 export interface LicenseStateView {
   licensed: boolean;
+  /** Explicitly distinguishes commercial, official developer and local config. */
+  licenseType: LicenseType | null;
   status: string;
   active: boolean;
   inactiveReason: string | null;
@@ -27,6 +29,8 @@ export interface LicenseStateView {
   installationId: string | null;
   customerId: string | null;
   customerCode: string | null;
+  developerId: string | null;
+  developerName: string | null;
   licenseId: string | null;
   validFrom: string | null;
   validUntil: string | null;
@@ -63,6 +67,7 @@ export function toLicenseStateView(
 ): LicenseStateView {
   return {
     licensed: license.licensed,
+    licenseType: license.licenseType,
     status: license.status,
     active: license.active,
     inactiveReason: license.inactiveReason,
@@ -71,6 +76,8 @@ export function toLicenseStateView(
     installationId: license.installationId,
     customerId: license.customerId,
     customerCode: license.customerCode,
+    developerId: license.developerId,
+    developerName: license.developerName,
     licenseId: license.licenseId,
     validFrom: license.validFrom?.toISOString() ?? null,
     validUntil: license.validUntil?.toISOString() ?? null,

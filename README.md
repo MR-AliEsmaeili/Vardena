@@ -113,6 +113,8 @@ production deployment.
 - [docs/architecture.md](docs/architecture.md) — system architecture, module anatomy, event model, API conventions, deployment
 - [docs/modules.md](docs/modules.md) — module catalog, boundaries, event catalog
 - [docs/security.md](docs/security.md) — authentication, RBAC, audit, API security
+- [docs/licensing/developer-license.md](docs/licensing/developer-license.md) — official offline Developer License architecture, trust policy, key management, transfer, troubleshooting, tests and verified CLI usage
+- [docs/operations/developer-license-windows-fa.md](docs/operations/developer-license-windows-fa.md) — راهنمای کامل فارسی و ویندوزی مجوز توسعه‌دهنده از صفر تا نتیجه
 - [docs/integrations.md](docs/integrations.md) — external systems, adapter layer, synchronization
 - [docs/database-strategy.md](docs/database-strategy.md) — schemas, conventions, migrations, outbox DDL
 - [docs/reporting-strategy.md](docs/reporting-strategy.md) — reporting engine, views, export, performance

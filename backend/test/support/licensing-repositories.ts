@@ -309,8 +309,11 @@ export function createLicensingStores(
           validFrom: command.validFrom,
           validUntil: command.validUntil,
           licenseId: command.licenseId,
+          licenseType: command.licenseType ?? 'COMMERCIAL',
           customerId: command.customerId,
           customerCode: command.customerCode,
+          developerId: command.developerId ?? null,
+          developerName: command.developerName ?? null,
           organizationLimit: command.organizationLimit,
           userLimit: command.userLimit,
           deviceLimit: command.deviceLimit,
@@ -369,7 +372,13 @@ export function createLicensingStores(
         });
       }
 
-      if (!customerRecords.has(command.customerId)) {
+      if (
+        (command.licenseType ?? 'COMMERCIAL') === 'COMMERCIAL' &&
+        command.customerId !== null &&
+        command.customerCode !== null &&
+        command.customerName !== null &&
+        !customerRecords.has(command.customerId)
+      ) {
         for (const existing of customerRecords.values()) {
           if (existing.customerCode === command.customerCode) {
             throw new ImportConflictError({
@@ -497,8 +506,11 @@ export function createLicensingStores(
       const created: RetainedLicenseVersion = {
         versionId: command.versionId,
         licenseId: command.licenseId,
+        licenseType: command.licenseType ?? 'COMMERCIAL',
         customerId: command.customerId,
         customerCode: command.customerCode,
+        developerId: command.developerId ?? null,
+        developerName: command.developerName ?? null,
         installationId: command.installationId,
         operationId: command.operationId,
         status: command.status,
@@ -589,7 +601,7 @@ export function createLicensingStores(
     async findRevocationTarget(licenseId: string): Promise<{
       licenseId: string;
       installationId: string;
-      customerId: string;
+      customerId: string | null;
       revokedAt: Date | null;
       revocationId: string | null;
       versions: Array<{

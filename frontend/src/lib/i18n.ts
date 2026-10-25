@@ -198,6 +198,11 @@ export const fa = {
     importFailed: 'ورود مجوز انجام نشد. دوباره تلاش کنید.',
     // کارت وضعیت مجوز (L-03): نمایش وضعیت ارزیابی‌شدهٔ سرور و مسیر تمدید.
     statusTitle: 'مجوز این نصب',
+    statusTypeLabel: 'نوع مجوز',
+    statusTypeCommercial: 'تجاری',
+    statusTypeDeveloper: 'توسعه‌دهندهٔ رسمی',
+    statusTypeLocalDevelopment: 'محلی آزمایشی (غیررسمی)',
+    statusDeveloperHolder: 'دارندهٔ توسعه‌دهنده',
     statusUnlicensed: 'هنوز مجوزی ثبت نشده است.',
     statusActive: 'مجوز فعال است',
     statusRevoked: 'مجوز ابطال شده است',

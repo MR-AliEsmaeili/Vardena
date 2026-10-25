@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
-import type { LicenseStatus } from '../../domain/license.js';
+import type { LicenseStatus, LicenseType } from '../../domain/license.js';
 import type {
   LicenseVersionSource,
   LicenseVersionSummary,
@@ -172,7 +172,7 @@ export class ResolveReductionDto {
 export class ImportLicenseDocumentDto {
   @ApiProperty({
     description:
-      'A signed license document: either the vardena-license file envelope or the bare VLIC2 artifact (legacy VLIC1 codes are accepted as well).',
+      'A signed license document: vardena-license/VLIC2 commercial, vardena-developer-license/VDEV1 official Developer License, or a legacy VLIC1 code. Developer acceptance additionally requires explicit deployment policy and dedicated trust.',
     example:
       '{"format":"vardena-license","fileVersion":1,"document":"VLIC2.eyJ2Ijoy...c2lnbmF0dXJl"}',
     maxLength: 65536,
@@ -281,6 +281,15 @@ export class LicenseStateDto implements LicenseStateView {
   licensed!: boolean;
 
   @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: ['COMMERCIAL', 'DEVELOPER', 'LOCAL_DEVELOPMENT'],
+    description:
+      'Explicit license type. LOCAL_DEVELOPMENT is the synthetic config provider and is not an official signed Developer License.',
+  })
+  licenseType!: LicenseType | null;
+
+  @ApiProperty({
     description: 'Evaluated status (ACTIVE, EXPIRED or SUSPENDED).',
   })
   status!: string;
@@ -338,6 +347,22 @@ export class LicenseStateDto implements LicenseStateView {
     description: 'Stable business customer code (L-06, PDR-14).',
   })
   customerCode!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Explicit non-commercial holder id for a DEVELOPER license; null for commercial and local-config licenses.',
+  })
+  developerId!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Display name of the Developer License holder; null for commercial and local-config licenses.',
+  })
+  developerName!: string | null;
 
   @ApiProperty({
     type: String,

@@ -81,6 +81,13 @@ export interface LicensingConfig {
    * invalidating licenses signed by the previous one.
    */
   signingPublicKeys: string[];
+  /**
+   * Explicit deployment gate for official signed Developer Licenses. Disabled
+   * by default in every NODE_ENV; setting NODE_ENV never changes it.
+   */
+  developerLicensesEnabled: boolean;
+  /** Dedicated developer-authority public keys; never shared implicitly. */
+  developerSigningPublicKeys: string[];
   status: 'ACTIVE' | 'EXPIRED' | 'SUSPENDED';
   validFrom: Date;
   validUntil: Date | null;
@@ -422,6 +429,23 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     .split(',')
     .map((key) => key.trim())
     .filter((key) => key !== '');
+  const developerLicensesEnabled =
+    parseBoolean(
+      env['DEVELOPER_LICENSES_ENABLED'],
+      'DEVELOPER_LICENSES_ENABLED',
+      errors,
+    ) ?? false;
+  const developerSigningPublicKeys = (
+    env['DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS'] ?? ''
+  )
+    .split(',')
+    .map((key) => key.trim())
+    .filter((key) => key !== '');
+  if (developerLicensesEnabled && developerSigningPublicKeys.length === 0) {
+    errors.push(
+      'DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS must contain at least one trusted developer public key when DEVELOPER_LICENSES_ENABLED=true.',
+    );
+  }
   const licenseStatusRaw =
     env['LICENSE_STATUS']?.trim().toUpperCase() || 'ACTIVE';
   if (!['ACTIVE', 'EXPIRED', 'SUSPENDED'].includes(licenseStatusRaw)) {
@@ -484,6 +508,8 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     licensing: {
       provider: licenseProviderRaw as LicenseProviderName,
       signingPublicKeys: licenseSigningPublicKeys,
+      developerLicensesEnabled,
+      developerSigningPublicKeys,
       status: licenseStatusRaw as LicensingConfig['status'],
       validFrom: licenseValidFrom,
       validUntil: licenseValidUntil,

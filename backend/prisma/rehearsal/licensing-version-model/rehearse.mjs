@@ -40,7 +40,10 @@
  * the external artifact's retained SHA-256, and customer identity survive;
  * every old version becomes UNSPECIFIED (NULL + presence=false); and the new
  * columns, enums, tables, checks, foreign keys, and partial unique indexes have
- * their expected PostgreSQL shape.
+ * their expected PostgreSQL shape. The rehearsal then reaches the official
+ * Developer-license migration and proves lossless commercial backfill, closed
+ * holder typing, database-enforced holder exclusivity, and customer-free
+ * Developer-license persistence.
  *
  * Connection: VARDENA_REHEARSAL_ADMIN_URL (same local maintenance-database URL
  * used by the other migration rehearsals). This script refuses non-local
@@ -107,6 +110,10 @@ const CLIENT_DEVICE_LIFECYCLE_SQL = readMigration(
  */
 const RENEWAL_GOVERNS_FROM_SQL = readMigration(
   '20261023000000_licensing_renewal_governs_from',
+);
+const REVOCATIONS_SQL = readMigration('20261024000000_licensing_revocations');
+const OFFICIAL_DEVELOPER_LICENSE_SQL = readMigration(
+  '20261025000000_official_developer_license',
 );
 const PRE_DEVICE_VLIC2_ARTIFACT =
   'VLIC2.eyJ2IjoyLCJraW5kIjoic2VydmVyLWxpY2Vuc2UtdmVyc2lvbiIsIm9wZXJhdGlvbklkIjoiMDFLN09QRVJBVElPTkxFR0FDWVYyMDAwIn0.ZGV0ZXJtaW5pc3RpYy1yZWhlYXJzYWwtc2lnbmF0dXJl';
@@ -1070,7 +1077,180 @@ async function rehearsal() {
     log(
       '  OQ-88 governs_from / renewal-audit schema assertions and no-backfill proof passed',
     );
+
+    await client.query(REVOCATIONS_SQL);
+    log('  applied 20261024000000_licensing_revocations');
+
+    const preDeveloperState = await snapshotPreDeveloperLicenses(client);
+    await client.query(OFFICIAL_DEVELOPER_LICENSE_SQL);
+    log('  applied 20261025000000_official_developer_license');
+    await assertOfficialDeveloperLicenseMigration(client, preDeveloperState);
+    log(
+      '  Developer holder backfill, schema, exclusivity, and customer-free license assertions passed',
+    );
   });
+}
+
+async function snapshotPreDeveloperLicenses(client) {
+  const result = await client.query(
+    `SELECT "id", "installation_id", "customer_id", "revoked_at",
+            "revocation_id", "created_at", "updated_at", "created_by",
+            "updated_by"
+       FROM "licensing"."licenses" ORDER BY "id"`,
+  );
+  return result.rows.map((row) => ({
+    ...row,
+    revoked_at:
+      row.revoked_at === null ? null : new Date(row.revoked_at).toISOString(),
+    created_at: new Date(row.created_at).toISOString(),
+    updated_at: new Date(row.updated_at).toISOString(),
+  }));
+}
+
+async function assertOfficialDeveloperLicenseMigration(client, preState) {
+  const enumValues = await client.query(
+    `SELECT e.enumlabel
+       FROM pg_type AS t
+       JOIN pg_enum AS e ON e.enumtypid = t.oid
+       JOIN pg_namespace AS n ON n.oid = t.typnamespace
+      WHERE n.nspname = 'licensing' AND t.typname = 'LicenseType'
+      ORDER BY e.enumsortorder`,
+  );
+  assert.deepEqual(
+    enumValues.rows.map((row) => row.enumlabel),
+    ['COMMERCIAL', 'DEVELOPER'],
+    'license type is closed over commercial and Developer holders',
+  );
+
+  const columns = await client.query(
+    `SELECT column_name, is_nullable, data_type, column_default
+       FROM information_schema.columns
+      WHERE table_schema = 'licensing' AND table_name = 'licenses'
+        AND column_name IN ('license_type', 'developer_id', 'developer_name')
+      ORDER BY column_name`,
+  );
+  assert.deepEqual(
+    columns.rows.map((row) => [row.column_name, row.is_nullable]),
+    [
+      ['developer_id', 'YES'],
+      ['developer_name', 'YES'],
+      ['license_type', 'NO'],
+    ],
+    'the explicit holder columns have the intended nullability',
+  );
+
+  const holderConstraint = await client.query(
+    `SELECT pg_get_constraintdef(c.oid) AS definition
+       FROM pg_constraint AS c
+       JOIN pg_class AS t ON t.oid = c.conrelid
+       JOIN pg_namespace AS n ON n.oid = t.relnamespace
+      WHERE n.nspname = 'licensing' AND t.relname = 'licenses'
+        AND c.conname = 'licenses_holder_type_check'`,
+  );
+  assert.equal(holderConstraint.rowCount, 1, 'holder exclusivity is enforced');
+
+  const migrated = await client.query(
+    `SELECT "id", "installation_id", "customer_id", "revoked_at",
+            "revocation_id", "created_at", "updated_at", "created_by",
+            "updated_by", "license_type", "developer_id", "developer_name"
+       FROM "licensing"."licenses" ORDER BY "id"`,
+  );
+  assert.deepEqual(
+    migrated.rows.map((row) => ({
+      id: row.id,
+      installation_id: row.installation_id,
+      customer_id: row.customer_id,
+      revoked_at:
+        row.revoked_at === null ? null : new Date(row.revoked_at).toISOString(),
+      revocation_id: row.revocation_id,
+      created_at: new Date(row.created_at).toISOString(),
+      updated_at: new Date(row.updated_at).toISOString(),
+      created_by: row.created_by,
+      updated_by: row.updated_by,
+    })),
+    preState,
+    'all pre-existing license facts survive byte-for-byte',
+  );
+  assert.ok(
+    migrated.rows.every(
+      (row) =>
+        row.license_type === 'COMMERCIAL' &&
+        row.customer_id !== null &&
+        row.developer_id === null &&
+        row.developer_name === null,
+    ),
+    'every existing license is backfilled as an unchanged commercial holder',
+  );
+
+  const expectHolderRejection = async (values, expected) => {
+    await client.query('BEGIN');
+    let message = null;
+    try {
+      await client.query(
+        `INSERT INTO "licensing"."licenses"
+           ("id", "installation_id", "customer_id", "license_type",
+            "developer_id", "developer_name")
+         VALUES ($1, '01K7INSTALLATIONBBBBBBBBBB', $2, $3, $4, $5)`,
+        values,
+      );
+    } catch (error) {
+      message = error.message;
+    }
+    await client.query('ROLLBACK');
+    assert.ok(
+      message !== null && /holder_type/i.test(message),
+      `${expected} must be rejected by holder exclusivity (got: ${String(message)})`,
+    );
+  };
+
+  await expectHolderRejection(
+    ['rehearsal-commercial-without-customer', null, 'COMMERCIAL', null, null],
+    'commercial holder without a customer',
+  );
+  await expectHolderRejection(
+    [
+      'rehearsal-developer-with-customer',
+      preState[0].customer_id,
+      'DEVELOPER',
+      'developer-rehearsal',
+      'Developer Rehearsal',
+    ],
+    'Developer holder with a customer',
+  );
+  await expectHolderRejection(
+    ['rehearsal-developer-without-id', null, 'DEVELOPER', null, null],
+    'Developer holder without an identity',
+  );
+
+  const customersBefore = await client.query(
+    `SELECT COUNT(*)::int AS count FROM "licensing"."customers"`,
+  );
+  await client.query(
+    `INSERT INTO "licensing"."licenses"
+       ("id", "installation_id", "customer_id", "license_type",
+        "developer_id", "developer_name")
+     VALUES ('01K7REHEARSALDEVELOPER001', '01K7INSTALLATIONBBBBBBBBBB', NULL,
+             'DEVELOPER', 'developer-rehearsal', 'Developer Rehearsal')`,
+  );
+  const developer = await client.query(
+    `SELECT "license_type", "customer_id", "developer_id", "developer_name"
+       FROM "licensing"."licenses"
+      WHERE "id" = '01K7REHEARSALDEVELOPER001'`,
+  );
+  assert.deepEqual(developer.rows[0], {
+    license_type: 'DEVELOPER',
+    customer_id: null,
+    developer_id: 'developer-rehearsal',
+    developer_name: 'Developer Rehearsal',
+  });
+  const customersAfter = await client.query(
+    `SELECT COUNT(*)::int AS count FROM "licensing"."customers"`,
+  );
+  assert.equal(
+    customersAfter.rows[0].count,
+    customersBefore.rows[0].count,
+    'storing a Developer license creates no commercial customer',
+  );
 }
 
 /**

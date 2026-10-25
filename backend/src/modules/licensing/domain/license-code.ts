@@ -482,8 +482,11 @@ export function toInstallationLicense(
   provider: string,
 ): InstallationLicense {
   return {
+    licenseType: 'COMMERCIAL',
     customerId: payload.customerId,
     customerCode: payload.customerCode,
+    developerId: null,
+    developerName: null,
     installationId: payload.installationId,
     licenseId: payload.licenseId,
     status: payload.status,
