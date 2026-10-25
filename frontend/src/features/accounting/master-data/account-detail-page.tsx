@@ -26,6 +26,12 @@ export function AccountDetailPage() {
   const organizationId = useOrganizationId();
   const { accountId } = useParams();
   const query = useAccountDetail(organizationId, accountId);
+  // The parent is resolved to its code/title — a raw parent ULID tells an
+  // operator nothing about where this account sits in the coding tree.
+  const parentQuery = useAccountDetail(
+    organizationId,
+    query.data?.parentId ?? undefined,
+  );
   if (query.isPending) return <LoadingState rows={7} />;
   if (query.isError)
     return (
@@ -59,8 +65,15 @@ export function AccountDetailPage() {
         }
       />
       <DefinitionList>
-        <Definition label={t.masterData.code}>
-          <span className="code">{account.code}</span>
+        <Definition label={t.masterData.fullCode}>
+          <span dir="ltr" className="code">
+            {account.code}
+          </span>
+        </Definition>
+        <Definition label={t.masterData.localCodeLabel}>
+          <span dir="ltr" className="code">
+            {account.localCode}
+          </span>
         </Definition>
         <Definition label={t.masterData.name}>{account.title}</Definition>
         <Definition label={t.masterData.level}>
@@ -69,8 +82,20 @@ export function AccountDetailPage() {
         <Definition label={t.masterData.parent}>
           {account.parentId === null ? (
             t.masterData.rootAccount
+          ) : parentQuery.data !== undefined ? (
+            <Link
+              className="text-brand hover:underline"
+              to={`/app/accounting/accounts/${encodeURIComponent(parentQuery.data.id)}`}
+            >
+              <span dir="ltr" className="code">
+                {parentQuery.data.code}
+              </span>{' '}
+              — {parentQuery.data.title}
+            </Link>
+          ) : parentQuery.isError ? (
+            t.masterData.parentUnavailable
           ) : (
-            <span className="code">{account.parentId}</span>
+            t.app.loading
           )}
         </Definition>
         <Definition label={t.masterData.nature}>

@@ -10,8 +10,10 @@ import { ChartSetupForm } from './chart-setup-form';
 import { PeriodCreateForm } from './period-create-form';
 
 vi.mock('@/api/accounting.api', () => ({
+  MAX_PAGE_SIZE: 500,
   createAccountingPeriod: vi.fn(),
   createAccount: vi.fn(),
+  listAccounts: vi.fn(),
   createCodingStructureVersion: vi.fn(),
   publishCodingStructureVersion: vi.fn(),
   createAccountingConfiguration: vi.fn(),
@@ -56,6 +58,12 @@ beforeEach(() => {
     total: 0,
     page: 1,
     pageSize: 100,
+  } as never);
+  vi.mocked(api.listAccounts).mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 500,
   } as never);
   resetDateTimeSettings();
   setDateTimeSettings({ timeZone: 'Asia/Tehran' });
@@ -184,19 +192,62 @@ describe('ChartSetupForm', () => {
   });
 });
 
-describe('AccountCreateForm', () => {
-  it('creates a root postable account with the exact backend payload', async () => {
-    vi.mocked(api.createAccount).mockResolvedValue({} as never);
+describe('AccountCreateForm (local segment → backend-composed full code)', () => {
+  // The acceptance structure, as the ACTIVE configuration defines it:
+  // گروه 1 digit, کل 2 digits, معین 3 digits (معین postable by default).
+  const ACTIVE_LEVELS = [
+    { levelIndex: 1, title: 'گروه', digitLength: 1, defaultIsPostable: false },
+    { levelIndex: 2, title: 'کل', digitLength: 2, defaultIsPostable: false },
+    { levelIndex: 3, title: 'معین', digitLength: 3, defaultIsPostable: true },
+  ];
+  const GENERAL_101 = {
+    id: 'gen-101',
+    code: '101',
+    localCode: '01',
+    title: 'دارایی ثابت',
+    level: 2,
+    parentId: 'grp-1',
+    isPostable: false,
+    isActive: true,
+  };
+
+  function mockFormReads(parents: unknown[] = []) {
+    vi.mocked(api.getActiveAccountingConfiguration).mockResolvedValue({
+      levels: ACTIVE_LEVELS,
+    } as never);
+    vi.mocked(api.listAccounts).mockResolvedValue({
+      items: parents,
+      total: parents.length,
+      page: 1,
+      pageSize: 500,
+    } as never);
+  }
+
+  async function renderForm() {
     const user = userEvent.setup();
-    renderWithProviders(
-      <AccountCreateForm organizationId="org-1" accounts={[]} />,
-      { withProviders: false },
-    );
-    await user.type(screen.getByLabelText(t.masterData.accountCode), '10');
-    await user.type(screen.getByLabelText(t.masterData.accountTitle), 'نقد');
+    renderWithProviders(<AccountCreateForm organizationId="org-1" />, {
+      withProviders: false,
+    });
+    const localCode = screen.getByLabelText(t.masterData.localCode);
+    await waitFor(() => expect(localCode).toBeEnabled());
+    return { user, localCode };
+  }
+
+  it('previews 101003 live from parent 101 + local 003 and sends only localCode', async () => {
+    mockFormReads([GENERAL_101]);
+    vi.mocked(api.createAccount).mockResolvedValue({} as never);
+    const { user, localCode } = await renderForm();
+
+    await screen.findByRole('option', { name: /101/ });
     await user.selectOptions(
-      screen.getByLabelText(t.masterData.postableMode),
-      'YES',
+      screen.getByLabelText(t.masterData.parentAccount),
+      'gen-101',
+    );
+    await user.type(localCode, '003');
+    expect(screen.getByText('101003')).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText(t.masterData.accountTitle),
+      'تاسیسات',
     );
     await user.click(
       screen.getByRole('button', { name: t.masterData.createAccount }),
@@ -204,14 +255,87 @@ describe('AccountCreateForm', () => {
     await waitFor(() =>
       expect(api.createAccount).toHaveBeenCalledWith({
         organizationId: 'org-1',
-        code: '10',
-        title: 'نقد',
+        localCode: '003',
+        title: 'تاسیسات',
+        parentId: 'gen-101',
+        accountNature: 'DUAL',
+        accountType: 'BALANCE_SHEET',
+      }),
+    );
+  });
+
+  it('a root segment is its whole code (preview 1, parentId null)', async () => {
+    mockFormReads();
+    vi.mocked(api.createAccount).mockResolvedValue({} as never);
+    const { user, localCode } = await renderForm();
+
+    await user.type(localCode, '1');
+    await user.type(
+      screen.getByLabelText(t.masterData.accountTitle),
+      'دارایی‌ها',
+    );
+    await user.selectOptions(
+      screen.getByLabelText(t.masterData.postableMode),
+      'NO',
+    );
+    await user.click(
+      screen.getByRole('button', { name: t.masterData.createAccount }),
+    );
+    await waitFor(() =>
+      expect(api.createAccount).toHaveBeenCalledWith({
+        organizationId: 'org-1',
+        localCode: '1',
+        title: 'دارایی‌ها',
         parentId: null,
         accountNature: 'DUAL',
         accountType: 'BALANCE_SHEET',
-        isPostable: true,
+        isPostable: false,
       }),
     );
+  });
+
+  it('refuses a wrong-width segment in the form and never calls the API', async () => {
+    mockFormReads([GENERAL_101]);
+    const { user, localCode } = await renderForm();
+
+    await screen.findByRole('option', { name: /101/ });
+    await user.selectOptions(
+      screen.getByLabelText(t.masterData.parentAccount),
+      'gen-101',
+    );
+    await user.type(localCode, '03');
+    await user.type(screen.getByLabelText(t.masterData.accountTitle), 'بدعرض');
+    await user.click(
+      screen.getByRole('button', { name: t.masterData.createAccount }),
+    );
+    // The configured width is named (hint + field error share the sentence).
+    expect(
+      await screen.findAllByText(
+        t.masterData.localCodeLength.replace('{digits}', '3'),
+      ),
+    ).not.toHaveLength(0);
+    expect(localCode).toHaveAttribute('aria-invalid', 'true');
+    expect(api.createAccount).not.toHaveBeenCalled();
+  });
+
+  it('without an active configuration the form explains and cannot submit', async () => {
+    vi.mocked(api.getActiveAccountingConfiguration).mockResolvedValue(null);
+    vi.mocked(api.listAccounts).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 500,
+    } as never);
+    renderWithProviders(<AccountCreateForm organizationId="org-1" />, {
+      withProviders: false,
+    });
+    expect(
+      await screen.findByText(t.masterData.chartNotReadyForAccount),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: t.masterData.createAccount }),
+    ).toBeDisabled();
+    expect(api.createAccount).not.toHaveBeenCalled();
   });
 });
 
@@ -447,15 +571,32 @@ describe('PeriodCreateForm validation', () => {
 
 describe('AccountCreateForm backend errors', () => {
   it('409 duplicate code shows an alert and no success', async () => {
+    vi.mocked(api.getActiveAccountingConfiguration).mockResolvedValue({
+      levels: [
+        {
+          levelIndex: 1,
+          title: 'گروه',
+          digitLength: 1,
+          defaultIsPostable: false,
+        },
+      ],
+    } as never);
+    vi.mocked(api.listAccounts).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 500,
+    } as never);
     vi.mocked(api.createAccount).mockRejectedValue(
       new ApiError({ code: 'Conflict', status: 409, message: 'duplicate' }),
     );
     const user = userEvent.setup();
-    renderWithProviders(
-      <AccountCreateForm organizationId="org-1" accounts={[]} />,
-      { withProviders: false },
-    );
-    await user.type(screen.getByLabelText(t.masterData.accountCode), '10');
+    renderWithProviders(<AccountCreateForm organizationId="org-1" />, {
+      withProviders: false,
+    });
+    const localCode = screen.getByLabelText(t.masterData.localCode);
+    await waitFor(() => expect(localCode).toBeEnabled());
+    await user.type(localCode, '1');
     await user.type(screen.getByLabelText(t.masterData.accountTitle), 'نقد');
     await user.click(
       screen.getByRole('button', { name: t.masterData.createAccount }),
@@ -676,5 +817,48 @@ describe('ChartSetupForm timeout-after-commit and reload recovery', () => {
     expect(api.createAccountingConfiguration).toHaveBeenCalledWith(
       expect.objectContaining({ levels: LEVELS }),
     );
+  });
+});
+
+describe('ChartSetupForm postable-default guardrails', () => {
+  it('warns when a postable-by-default level is not the last level (the appended-level trap)', async () => {
+    mockEmptySetup();
+    const user = userEvent.setup();
+    renderWithProviders(<ChartSetupForm organizationId="org-1" />, {
+      withProviders: false,
+    });
+    // Shipped defaults: [L1 non-postable, L2 postable(last)] → no warning yet.
+    const addLevel = await screen.findByRole('button', {
+      name: t.masterData.addLevel,
+    });
+    expect(
+      screen.queryByText(
+        t.masterData.levelPostableNonLastWarning.replace('{level}', '2'),
+      ),
+    ).not.toBeInTheDocument();
+    // Appending a level makes the previously-last postable level a parent
+    // level — exactly the shape whose accounts later refuse children.
+    await user.click(addLevel);
+    expect(
+      await screen.findByText(
+        t.masterData.levelPostableNonLastWarning.replace('{level}', '2'),
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('warns when NO level defaults to postable', async () => {
+    mockEmptySetup();
+    const user = userEvent.setup();
+    renderWithProviders(<ChartSetupForm organizationId="org-1" />, {
+      withProviders: false,
+    });
+    const checkboxes = await screen.findAllByRole('checkbox');
+    // Uncheck the one postable-by-default level (level 2 ships checked).
+    const checked = checkboxes.find((box) => (box as HTMLInputElement).checked);
+    expect(checked).toBeDefined();
+    await user.click(checked as HTMLElement);
+    expect(
+      await screen.findByText(t.masterData.noPostableLevelWarning),
+    ).toBeInTheDocument();
   });
 });

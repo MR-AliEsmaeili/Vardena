@@ -114,10 +114,10 @@ export function AccountsPage() {
       )}
       {organizationId !== null && (
         <PermissionGate permission={PERMISSIONS.accounting.accountCreate}>
-          <AccountCreateForm
-            organizationId={organizationId}
-            accounts={query.data?.items ?? []}
-          />
+          {/* The form loads its own eligible-parent candidates (active
+              aggregate accounts) — the grid's current page must never
+              decide which parents exist. */}
+          <AccountCreateForm organizationId={organizationId} />
         </PermissionGate>
       )}
       <MasterFilters

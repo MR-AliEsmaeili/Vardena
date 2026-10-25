@@ -14,7 +14,9 @@ import { ApiError } from '@/api/errors';
 import { queryKeys } from '@/api/query-keys';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
+import { formatCount } from '@/lib/format';
 import { t } from '@/lib/i18n';
+import { Alert, AlertBody } from '@/ui/alert';
 import { Button } from '@/ui/button';
 import {
   Card,
@@ -237,6 +239,30 @@ export function ChartSetupForm({ organizationId }: { organizationId: string }) {
     ((needsCoding && canCoding) || (needsConfig && canConfig)) &&
     !mutation.isPending;
 
+  // Postable-default guardrails (informational only — per-level postability
+  // stays the organization's own configuration, OQ-25): a level that
+  // defaults to postable but is not the last one produces parents that can
+  // never receive children (§14 rule 2), and a shape with NO postable
+  // default produces silently-aggregate leaves. Both traps rejected real
+  // balanced vouchers downstream, so they are named here, before publish.
+  const postableWarnings: string[] = [];
+  editableLevels.forEach((level, index) => {
+    if (level.defaultIsPostable && index < editableLevels.length - 1) {
+      postableWarnings.push(
+        t.masterData.levelPostableNonLastWarning.replace(
+          '{level}',
+          formatCount(index + 1),
+        ),
+      );
+    }
+  });
+  if (
+    editableLevels.length > 0 &&
+    editableLevels.every((level) => !level.defaultIsPostable)
+  ) {
+    postableWarnings.push(t.masterData.noPostableLevelWarning);
+  }
+
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!canRun || mutation.isPending) return;
@@ -438,6 +464,17 @@ export function ChartSetupForm({ organizationId }: { organizationId: string }) {
                   {t.masterData.addLevel}
                 </Button>
               </div>
+              {postableWarnings.length > 0 && (
+                <Alert variant="warning" role="alert">
+                  <AlertBody>
+                    <ul className="list-disc space-y-1 ps-4">
+                      {postableWarnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  </AlertBody>
+                </Alert>
+              )}
             </>
           )}
           {formError && (

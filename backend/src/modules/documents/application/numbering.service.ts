@@ -144,15 +144,30 @@ export class NumberingService {
       scopeKey,
     );
     if (resolved === null) {
+      // Stable machine-readable discriminator: composition surfaces (e.g. the
+      // accounting voucher form) classify business-rule failures by
+      // `details.problem`, never by message text — without it this refusal
+      // degrades to a generic "operation failed" and the operator cannot
+      // tell a missing numbering configuration from an accounting defect.
       throw AppException.businessRule(
         `No numbering series is configured for document type "${input.documentType}"` +
           (scopeKey === '' ? '' : ` (scope "${scopeKey}")`) +
           ` in this organization. Configure one before allocating numbers.`,
+        {
+          problem: 'numbering_series_missing',
+          documentType: input.documentType,
+          scopeKey,
+        },
       );
     }
     if (!resolved.isActive) {
       throw AppException.businessRule(
         `The numbering series for document type "${input.documentType}" is disabled.`,
+        {
+          problem: 'numbering_series_disabled',
+          documentType: input.documentType,
+          scopeKey,
+        },
       );
     }
 

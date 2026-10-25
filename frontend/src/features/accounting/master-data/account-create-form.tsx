@@ -1,11 +1,14 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useMemo } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { createAccount } from '@/api/accounting.api';
 import type { Account } from '@/api/contracts';
 import { queryKeys } from '@/api/query-keys';
+import { formatCount } from '@/lib/format';
 import { t } from '@/lib/i18n';
+import { Alert, AlertBody } from '@/ui/alert';
 import { Button } from '@/ui/button';
 import {
   Card,
@@ -18,36 +21,138 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { FormField } from '@/ui/patterns/form-field';
+import {
+  checkLocalCodeForm,
+  derivedLevel,
+  levelDefinition,
+  orderedLevels,
+  previewFullCode,
+  type ConfigurationLevel,
+} from './account-code';
+import {
+  useAccountParentCandidates,
+  useActiveAccountingConfiguration,
+} from './master-data-hooks';
 
-const schema = z.object({
-  code: z.string().trim().min(1, t.masterData.codeRequired).max(30),
-  title: z.string().trim().min(1, t.masterData.titleRequired).max(200),
-  parentId: z.string(),
-  accountNature: z.enum(['DEBIT', 'CREDIT', 'DUAL']),
-  accountType: z.enum(['BALANCE_SHEET', 'INCOME_STATEMENT', 'MEMORANDUM']),
-  /**
-   * Tri-state on purpose: the API treats an OMITTED `isPostable` as "use the
-   * coding structure's default for this level", and the old forced `false`
-   * silently turned every account an operator created into an aggregate
-   * account — which then never appeared in the document-line picker.
-   */
-  postability: z.enum(['DEFAULT', 'YES', 'NO']),
-});
-type Values = z.infer<typeof schema>;
+/**
+ * Build the schema from the ACTIVE configuration's levels and the eligible
+ * parents, so the local-segment rule (digits only, exactly the level's
+ * configured width) is checked against the level the SELECTED parent
+ * implies. This is instant feedback only — the backend recomposes and
+ * re-validates the full code authoritatively on submit.
+ */
+function buildSchema(
+  levels: readonly ConfigurationLevel[],
+  parentsById: ReadonlyMap<string, Account>,
+) {
+  return z
+    .object({
+      localCode: z.string(),
+      title: z.string().trim().min(1, t.masterData.titleRequired).max(200),
+      parentId: z.string(),
+      accountNature: z.enum(['DEBIT', 'CREDIT', 'DUAL']),
+      accountType: z.enum(['BALANCE_SHEET', 'INCOME_STATEMENT', 'MEMORANDUM']),
+      /**
+       * Tri-state on purpose: the API treats an OMITTED `isPostable` as "use
+       * the coding structure's default for this level", and the old forced
+       * `false` silently turned every account an operator created into an
+       * aggregate account — which then never appeared in the document-line
+       * picker.
+       */
+      postability: z.enum(['DEFAULT', 'YES', 'NO']),
+    })
+    .superRefine((values, ctx) => {
+      if (values.parentId !== '' && !parentsById.has(values.parentId)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['parentId'],
+          message: t.masterData.parentLoadFailed,
+        });
+        return;
+      }
+      const parent =
+        values.parentId === ''
+          ? null
+          : (parentsById.get(values.parentId) ?? null);
+      const definition = levelDefinition(levels, derivedLevel(parent));
+      if (definition === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['parentId'],
+          message: t.masterData.levelBeyondStructure,
+        });
+        return;
+      }
+      const problem = checkLocalCodeForm(values.localCode, definition);
+      if (problem === 'required') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['localCode'],
+          message: t.masterData.localCodeRequired,
+        });
+      } else if (problem === 'not_digits') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['localCode'],
+          message: t.masterData.localCodeDigits,
+        });
+      } else if (problem === 'wrong_length') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['localCode'],
+          message: t.masterData.localCodeLength.replace(
+            '{digits}',
+            formatCount(definition.digitLength),
+          ),
+        });
+      }
+    });
+}
+type Values = z.infer<ReturnType<typeof buildSchema>>;
 
-/** Create an account — POST /accounts, `Accounting.Account.Create`. Level, pins and code shape are derived/validated by the backend against the active configuration + coding structure. */
+/**
+ * Create an account — POST /accounts with `localCode`,
+ * `Accounting.Account.Create`.
+ *
+ * The operator picks the parent (empty = a level-1 root) and types ONLY
+ * the local segment of the new account's own level (`003` under کل `101`).
+ * The full code the backend will compose (`101003`) is previewed live and
+ * updates with every parent/segment change; the level, its configured
+ * segment width and its postable default are announced from the ACTIVE
+ * accounting configuration. Level, pins, composition and every invariant
+ * remain derived/validated by the backend — this form never sends a full
+ * code it composed itself.
+ */
 export function AccountCreateForm({
   organizationId,
-  accounts,
 }: {
   organizationId: string;
-  accounts: readonly Account[];
 }) {
   const queryClient = useQueryClient();
+  const configurationQuery = useActiveAccountingConfiguration(organizationId);
+  const parentsQuery = useAccountParentCandidates(organizationId);
+
+  const levels = useMemo(
+    () => orderedLevels(configurationQuery.data?.levels),
+    [configurationQuery.data],
+  );
+  const parents = useMemo(
+    () => parentsQuery.data?.items ?? [],
+    [parentsQuery.data],
+  );
+  const parentsById = useMemo(
+    () => new Map(parents.map((account) => [account.id, account])),
+    [parents],
+  );
+  const schema = useMemo(
+    () => buildSchema(levels, parentsById),
+    [levels, parentsById],
+  );
+
   const form = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: {
-      code: '',
+      localCode: '',
       title: '',
       parentId: '',
       accountNature: 'DUAL',
@@ -56,11 +161,29 @@ export function AccountCreateForm({
     },
     mode: 'onSubmit',
   });
+  const watchedParentId =
+    useWatch({ control: form.control, name: 'parentId' }) ?? '';
+  const watchedLocalCode =
+    useWatch({ control: form.control, name: 'localCode' }) ?? '';
+
+  const selectedParent =
+    watchedParentId === '' ? null : (parentsById.get(watchedParentId) ?? null);
+  const level = derivedLevel(selectedParent);
+  const definition = levelDefinition(levels, level);
+  const fullCodePreview = previewFullCode(selectedParent, watchedLocalCode);
+
+  // No active configuration (or its state still unknown) → no structure to
+  // compose against; the form must not guess widths or invent a layout.
+  const chartReady =
+    configurationQuery.isSuccess && configurationQuery.data !== null;
+  const parentsReady = parentsQuery.isSuccess;
+  const formReady = chartReady && parentsReady;
+
   const mutation = useMutation({
     mutationFn: (values: Values) =>
       createAccount({
         organizationId,
-        code: values.code.trim(),
+        localCode: values.localCode.trim(),
         title: values.title.trim(),
         parentId: values.parentId === '' ? null : values.parentId,
         accountNature: values.accountNature,
@@ -77,7 +200,27 @@ export function AccountCreateForm({
     },
   });
   const errors = form.formState.errors;
-  const parents = accounts.filter((a) => !a.isPostable && a.isActive);
+  const fieldsDisabled = mutation.isPending || !formReady;
+
+  const localCodeHint =
+    definition === undefined
+      ? undefined
+      : selectedParent === null
+        ? `${t.masterData.localCodeLength.replace('{digits}', formatCount(definition.digitLength))} ${t.masterData.localCodeHintRoot}`
+        : t.masterData.localCodeLength.replace(
+            '{digits}',
+            formatCount(definition.digitLength),
+          );
+  const postabilityHint =
+    definition === undefined
+      ? t.masterData.postableHint
+      : t.masterData.levelDefaultPostable.replace(
+          '{state}',
+          definition.defaultIsPostable
+            ? t.masterData.postable
+            : t.masterData.aggregate,
+        );
+
   return (
     <Card>
       <CardHeader>
@@ -90,19 +233,63 @@ export function AccountCreateForm({
           noValidate
           onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
         >
+          {configurationQuery.isError && (
+            <ApiErrorAlert
+              error={configurationQuery.error}
+              onRetry={() => void configurationQuery.refetch()}
+            />
+          )}
+          {configurationQuery.isSuccess && configurationQuery.data === null && (
+            <Alert variant="warning" role="alert">
+              <AlertBody>
+                <p>{t.masterData.chartNotReadyForAccount}</p>
+              </AlertBody>
+            </Alert>
+          )}
+          {parentsQuery.isError && (
+            <ApiErrorAlert
+              error={parentsQuery.error}
+              description={t.masterData.parentLoadFailed}
+              onRetry={() => void parentsQuery.refetch()}
+            />
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField
-              id="account-code"
-              label={t.masterData.accountCode}
+              id="account-parent"
+              label={t.masterData.parentAccount}
+              error={errors.parentId?.message}
+            >
+              {(p) => (
+                <Select
+                  {...p}
+                  {...form.register('parentId')}
+                  disabled={fieldsDisabled}
+                >
+                  <option value="">{t.masterData.rootParent}</option>
+                  {parents.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.code} — {a.title}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </FormField>
+            <FormField
+              id="account-local-code"
+              label={t.masterData.localCode}
               required
-              error={errors.code?.message}
+              hint={localCodeHint}
+              error={errors.localCode?.message}
             >
               {(p) => (
                 <Input
                   {...p}
                   dir="ltr"
-                  {...form.register('code')}
-                  disabled={mutation.isPending}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={definition?.digitLength ?? 32}
+                  {...form.register('localCode')}
+                  disabled={fieldsDisabled}
                 />
               )}
             </FormField>
@@ -116,24 +303,8 @@ export function AccountCreateForm({
                 <Input
                   {...p}
                   {...form.register('title')}
-                  disabled={mutation.isPending}
+                  disabled={fieldsDisabled}
                 />
-              )}
-            </FormField>
-            <FormField id="account-parent" label={t.masterData.parentAccount}>
-              {(p) => (
-                <Select
-                  {...p}
-                  {...form.register('parentId')}
-                  disabled={mutation.isPending}
-                >
-                  <option value="">{t.masterData.rootParent}</option>
-                  {parents.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.code} — {a.title}
-                    </option>
-                  ))}
-                </Select>
               )}
             </FormField>
             <FormField id="account-nature" label={t.masterData.nature}>
@@ -141,7 +312,7 @@ export function AccountCreateForm({
                 <Select
                   {...p}
                   {...form.register('accountNature')}
-                  disabled={mutation.isPending}
+                  disabled={fieldsDisabled}
                 >
                   <option value="DEBIT">{t.masterData.natureDebit}</option>
                   <option value="CREDIT">{t.masterData.natureCredit}</option>
@@ -154,7 +325,7 @@ export function AccountCreateForm({
                 <Select
                   {...p}
                   {...form.register('accountType')}
-                  disabled={mutation.isPending}
+                  disabled={fieldsDisabled}
                 >
                   <option value="BALANCE_SHEET">
                     {t.masterData.balanceSheet}
@@ -169,13 +340,13 @@ export function AccountCreateForm({
             <FormField
               id="account-postability"
               label={t.masterData.postableMode}
-              hint={t.masterData.postableHint}
+              hint={postabilityHint}
             >
               {(p) => (
                 <Select
                   {...p}
                   {...form.register('postability')}
-                  disabled={mutation.isPending}
+                  disabled={fieldsDisabled}
                 >
                   <option value="DEFAULT">
                     {t.masterData.postableDefault}
@@ -186,6 +357,35 @@ export function AccountCreateForm({
               )}
             </FormField>
           </div>
+          <div
+            className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-card border border-line bg-sunken px-3 py-2 text-sm"
+            aria-live="polite"
+          >
+            <span>
+              {t.masterData.levelPreview}:{' '}
+              <span className="num font-medium">{formatCount(level)}</span>
+              {definition !== undefined && (
+                <span className="text-ink-muted"> — {definition.title}</span>
+              )}
+            </span>
+            <span>
+              {t.masterData.fullCodePreview}:{' '}
+              {fullCodePreview !== null ? (
+                <span dir="ltr" className="code font-bold">
+                  {fullCodePreview}
+                </span>
+              ) : (
+                <span className="text-ink-muted">
+                  {t.masterData.fullCodeIncomplete}
+                </span>
+              )}
+            </span>
+          </div>
+          {chartReady && definition === undefined && (
+            <p role="alert" className="text-sm text-danger-ink">
+              {t.masterData.levelBeyondStructure}
+            </p>
+          )}
           {mutation.isError && <ApiErrorAlert error={mutation.error} />}
           {mutation.isSuccess && (
             <output className="block text-sm text-success">
@@ -194,7 +394,7 @@ export function AccountCreateForm({
           )}
           <Button
             type="submit"
-            disabled={mutation.isPending}
+            disabled={fieldsDisabled}
             loading={mutation.isPending}
           >
             {mutation.isPending

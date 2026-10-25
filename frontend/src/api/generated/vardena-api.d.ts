@@ -7480,6 +7480,11 @@ export interface components {
             organizationId: string;
             /** @example 02003 */
             code: string;
+            /**
+             * @description The LOCAL segment of this account’s own level, derived from `code` by removing the parent’s code (a root’s segment is its whole code). Derived-only — never stored, never a second source of truth.
+             * @example 003
+             */
+            localCode: string;
             /** @example Cash */
             title: string;
             /** Format: ulid */
@@ -7519,10 +7524,15 @@ export interface components {
              */
             organizationId: string;
             /**
-             * @description Canonical code: the concatenation of the level segments, DIGITS only (§9.2). The value is stored TRIMMED (the master-data convention) and then validated digits-only by the service — the "wrong shape" 400 comes from the same rule whether a padded code reaches it or not. Uniqueness is per organization; the code is immutable once created.
+             * @description Canonical FULL code: the concatenation of the level segments, DIGITS only (§9.2). Exactly one of `code` / `localCode` must be sent. The value is stored TRIMMED (the master-data convention) and then validated digits-only by the service — the "wrong shape" 400 comes from the same rule whether a padded code reaches it or not. Uniqueness is per organization; the code is immutable once created.
              * @example 02003
              */
-            code: string;
+            code?: string;
+            /**
+             * @description LOCAL code segment of this account’s own level only (e.g. `003` under parent `101` in a 1+2+3 structure). Exactly one of `code` / `localCode` must be sent. The backend composes the stored full code as `parent.code + localCode` (a root’s segment is its whole code) and validates that the segment is digits-only and exactly the configured digit length of the derived level — leading zeros are significant and are never added or stripped silently.
+             * @example 003
+             */
+            localCode?: string;
             /**
              * @description Account title (Persian-capable). Titles stay editable; codes and structure do not.
              * @example Cash
@@ -8128,6 +8138,11 @@ export interface components {
              * @example 02003
              */
             code: string;
+            /**
+             * @description The LOCAL segment of this node’s own level, derived from `code` by removing the parent’s code (a root’s segment is its whole code). Derived-only — never stored, never a second source of truth.
+             * @example 003
+             */
+            localCode: string;
             /**
              * @description Node name (account title).
              * @example Cash

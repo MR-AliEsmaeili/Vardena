@@ -48,6 +48,13 @@ export class ChartTreeNodeDto {
   })
   code!: string;
 
+  @ApiProperty({
+    example: '003',
+    description:
+      'The LOCAL segment of this node’s own level, derived from `code` by removing the parent’s code (a root’s segment is its whole code). Derived-only — never stored, never a second source of truth.',
+  })
+  localCode!: string;
+
   @ApiProperty({ example: 'Cash', description: 'Node name (account title).' })
   title!: string;
 

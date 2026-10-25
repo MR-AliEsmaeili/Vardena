@@ -9,7 +9,12 @@ import { AuthorizationService } from '../../rbac/application/authorization.servi
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { AccountsRepository } from '../data/accounts.repository.js';
 import type { OrderBy } from '../data/accounting-rows.js';
-import { toAccountDto, type AccountDto } from '../domain/account.js';
+import {
+  toAccountDto,
+  type Account,
+  type AccountDto,
+} from '../domain/account.js';
+import { localSegmentOfAccountCode } from '../domain/account-code.js';
 import { ACCOUNT_PERMISSIONS } from '../domain/accounting-permissions.js';
 
 /**
@@ -79,7 +84,7 @@ export class ChartTreeService {
       take,
     });
     return toPaginatedResult(
-      items.map(toAccountDto),
+      await toChartTreeDtos(this.repository, items),
       total,
       query.page,
       query.pageSize,
@@ -95,6 +100,56 @@ export class ChartTreeService {
       // ones (the established Accounting isolation posture).
       throw AppException.notFound('Account', id);
     }
-    return toAccountDto(account);
+    const [dto] = await toChartTreeDtos(this.repository, [account]);
+    return dto as AccountDto;
   }
+}
+
+/**
+ * DTOs with the derived LOCAL segment — the same derivation the
+ * administration surface performs (`AccountsService`): the segment is the
+ * stored full code minus the parent's code (§9.3; FK authority, prefix
+ * proof), never a stored value. Parents inside the batch are reused; only
+ * missing distinct parents are read, and an unresolvable parent presents
+ * the full code as the segment instead of blocking the read (read-total
+ * derivation, see `localSegmentOfAccountCode`).
+ *
+ * A module function, not a method: the service's structural surface is
+ * pinned to exactly `get`/`list` (the read-only guarantee test).
+ */
+async function toChartTreeDtos(
+  repository: AccountsRepository,
+  accounts: readonly Account[],
+): Promise<AccountDto[]> {
+  if (accounts.length === 0) return [];
+  const organizationId = (accounts[0] as Account).organizationId;
+  const codeById = new Map(accounts.map((a) => [a.id, a.code]));
+  const missingParentIds = [
+    ...new Set(
+      accounts
+        .map((a) => a.parentId)
+        .filter(
+          (parentId): parentId is string =>
+            parentId !== null && !codeById.has(parentId),
+        ),
+    ),
+  ];
+  for (const parentId of missingParentIds) {
+    const parent = await repository.findById(parentId);
+    if (parent !== null && parent.organizationId === organizationId) {
+      codeById.set(parentId, parent.code);
+    }
+  }
+  return accounts.map((account) =>
+    toAccountDto(
+      account,
+      localSegmentOfAccountCode({
+        code: account.code,
+        parentCode:
+          account.parentId === null
+            ? null
+            : (codeById.get(account.parentId) ?? null),
+      }),
+    ),
+  );
 }

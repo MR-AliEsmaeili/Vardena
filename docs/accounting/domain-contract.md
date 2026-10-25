@@ -1553,6 +1553,7 @@ how a backlog of unapproved accounting drafts is governed.
 | Immutability after finalization | Inherited + reinforced: `assign_number` is refused for `final` (Foundation `planEdit`), and §15.2 makes Final structurally immutable. |
 | Prefix/suffix configuration | **Rejected** for accounting serials: it contradicts the Foundation's numeric-only decision and the reported legal expectation that books show plain sequential numbers. Presentation may add separators (§9.2). |
 | Permissions | Accounting registers **no** numbering permission: series configuration is `Document.NumberingSeries.{View,Create,Edit}` and allocation is an internal service call inside Accounting's own transaction (ADR-0023's explicit "no `Allocate` permission" reasoning). `Accounting.Document.View` covers reading a document's number. |
+| Missing/disabled series | An issuance that finds no enabled series is refused (422, `BusinessRuleViolation`) and the document write is rolled back — numbering is a **prerequisite**, never silently bypassed. The error carries stable details (`problem` = `numbering_series_missing` | `numbering_series_disabled`, plus `documentType` and `scopeKey`) so the UI can name the actual cause instead of hiding it behind generic copy. A balanced voucher is still refused until a series is configured: **balanced ≠ postable**. The provisioning *policy* (auto-seed vs explicit admin setup) remains an open product decision (OQ-12) — no default is invented here. |
 
 ---
 

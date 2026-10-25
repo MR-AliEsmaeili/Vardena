@@ -130,6 +130,7 @@ export class AccountsController {
     return this.accounts.createAccount({
       organizationId: body.organizationId,
       code: body.code,
+      localCode: body.localCode,
       title: body.title,
       parentId: body.parentId,
       accountNature: body.accountNature,
