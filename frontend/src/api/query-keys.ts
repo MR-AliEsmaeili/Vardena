@@ -183,6 +183,23 @@ export const queryKeys = {
         filters,
       ] as const,
 
+    /**
+     * Prefix shared by every financial-area LIST query, every DETAIL query
+     * and the `financialAreas` reference read of one organization — the
+     * invalidation scope after a financial-area mutation (ACC-01).
+     */
+    financialAreaPrefix: (organizationId: string) =>
+      ['accounting', organizationId, 'financial-areas'] as const,
+
+    financialAreaDetail: (organizationId: string, financialAreaId: string) =>
+      [
+        'accounting',
+        organizationId,
+        'financial-areas',
+        'detail',
+        financialAreaId,
+      ] as const,
+
     fiscalYearList: (
       organizationId: string,
       filters: Record<string, unknown>,

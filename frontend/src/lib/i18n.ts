@@ -2023,6 +2023,69 @@ export const fa = {
     setupPartialFailure:
       'برخی گام‌ها انجام نشد. وضعیت واقعی سرور دوباره خوانده می‌شود؛ فقط گام‌های باقی‌مانده قابل تلاش دوباره‌اند.',
   },
+  // Financial-area administration (ACC-01): the management surface over
+  // `FinancialAreasController`. The domain term stays «حوزه مالی» — the
+  // established repository vocabulary — never a UI-invented synonym.
+  financialArea: {
+    title: 'حوزه‌های مالی',
+    subtitle:
+      'حوزه مالی، دفاتر مالی مستقل یک سازمان را مشخص می‌کند و سال‌های مالی درون آن تعریف می‌شوند.',
+    new: 'حوزه مالی جدید',
+    edit: 'ویرایش',
+    code: 'کد',
+    name: 'نام',
+    actions: 'عملیات',
+    defaultArea: 'حوزه پیش‌فرض',
+    setDefault: 'تعیین پیش‌فرض',
+    setDefaultBody:
+      'با تعیین این حوزه به‌عنوان پیش‌فرض سازمان، حوزه‌ای که پیش‌تر پیش‌فرض بود دیگر پیش‌فرض نخواهد بود. در هر سازمان فقط یک حوزه پیش‌فرض وجود دارد.',
+    enable: 'فعال‌سازی',
+    disable: 'غیرفعال‌سازی',
+    enabling: 'در حال فعال‌سازی…',
+    disabling: 'در حال غیرفعال‌سازی…',
+    enableBody:
+      'با فعال‌سازی، این حوزه دوباره برای انتخاب در زمینه مالی و تعریف سال مالی جدید در دسترس خواهد بود.',
+    disableBody:
+      'با غیرفعال‌سازی، این حوزه برای انتخاب در زمینه مالی پیشنهاد نمی‌شود و تعریف سال مالی جدید در آن ممکن نخواهد بود؛ سوابق موجود همچنان قابل مشاهده می‌مانند. این عملیات حذف نیست و بعداً قابل برگشت است.',
+    save: 'ذخیره',
+    saving: 'در حال ذخیره…',
+    saved: 'حوزه مالی ذخیره شد.',
+    created: 'حوزه مالی ایجاد شد.',
+    updated: 'حوزه مالی به‌روزرسانی شد.',
+    enabled: 'حوزه مالی فعال شد.',
+    disabled: 'حوزه مالی غیرفعال شد.',
+    defaultSet: 'حوزه مالی پیش‌فرض تعیین شد.',
+    createTitle: 'ایجاد حوزه مالی',
+    editTitle: 'ویرایش حوزه مالی',
+    codeRequired: 'کد الزامی است.',
+    codeTooLong: 'کد نباید بیش از ۶۴ نویسه باشد.',
+    titleRequired: 'نام الزامی است.',
+    titleTooLong: 'نام نباید بیش از ۲۰۰ نویسه باشد.',
+    loadFailed: 'دریافت حوزه مالی انجام نشد. دوباره تلاش کنید.',
+    saveFailed: 'ذخیره حوزه مالی انجام نشد. دوباره تلاش کنید.',
+    loading: 'در حال دریافت حوزه مالی…',
+    dirtyLeaveTitle: 'خروج از فرم',
+    dirtyLeaveDescription: 'تغییرات ذخیره‌نشده این فرم از دست می‌رود.',
+    dirtyLeaveConfirm: 'خروج بدون ذخیره',
+    // Mapped by the stable error CODE of the normalized envelope (never by
+    // message text). The backend service raises Conflict for a duplicate
+    // code and BusinessRuleViolation (with `details.openFiscalYearId`) when
+    // disabling an area that still has an open fiscal year; there is no
+    // `accounting.financial_area.*` code family in the backend contract.
+    errorCodes: {
+      duplicateCode:
+        'این کد در سازمان جاری قبلاً ثبت شده است. کد دیگری بگذارید.',
+      hasOpenFiscalYear:
+        'این حوزه سال مالی باز دارد و غیرفعال نمی‌شود. ابتدا سال مالی باز را ببندید یا مهروموم کنید.',
+      businessRule:
+        'سامانه این تغییر را با قواعد کسب‌وکار سازگار ندانست. وضعیت حوزه و سال‌های مالی آن را بازبینی کنید.',
+      validationSummary:
+        'سامانه اطلاعات ارسالی را نپذیرفت. فیلدهای مشخص‌شده را اصلاح کنید.',
+      enableFailed: 'فعال‌سازی حوزه مالی انجام نشد. دوباره تلاش کنید.',
+      disableFailed: 'غیرفعال‌سازی حوزه مالی انجام نشد. دوباره تلاش کنید.',
+      setDefaultFailed: 'تعیین حوزه پیش‌فرض انجام نشد. دوباره تلاش کنید.',
+    },
+  },
   financialContext: {
     areaResolving: 'در حال دریافت حوزه‌های مالی فعال…',
     yearResolving: 'در حال دریافت سال‌های مالی باز…',

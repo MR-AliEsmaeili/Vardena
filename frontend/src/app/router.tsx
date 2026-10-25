@@ -13,6 +13,7 @@ import { GeneralLedgerPage } from '@/features/accounting/general-ledger/general-
 import { AccountDetailPage } from '@/features/accounting/master-data/account-detail-page';
 import { AccountingPeriodsPage } from '@/features/accounting/master-data/accounting-periods-page';
 import { AccountsPage } from '@/features/accounting/master-data/accounts-page';
+import { FinancialAreaFormPage } from '@/features/accounting/master-data/financial-area-form-page';
 import { FinancialAreasPage } from '@/features/accounting/master-data/financial-areas-page';
 import { FiscalYearsPage } from '@/features/accounting/master-data/fiscal-years-page';
 import { TrialBalancePage } from '@/features/accounting/trial-balance/trial-balance-page';
@@ -177,6 +178,38 @@ export function AppRoutes() {
               }
             >
               <Route path="financial-areas" element={<FinancialAreasPage />} />
+              <Route
+                element={
+                  <RequirePermission
+                    permissions={[PERMISSIONS.accounting.financialAreaEdit]}
+                  />
+                }
+              >
+                <Route
+                  path="financial-areas/:financialAreaId/edit"
+                  element={<FinancialAreaFormPage mode="edit" />}
+                />
+              </Route>
+            </Route>
+
+            {/*
+              `POST /financial-areas` enforces exactly
+              `Accounting.FinancialArea.Create` — it does not require
+              `Accounting.FinancialArea.View`. The create route is therefore
+              a SIBLING of the View-gated group above, never nested inside
+              it, so a Create-only principal is not blocked here (ACC-01).
+            */}
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.accounting.financialAreaCreate]}
+                />
+              }
+            >
+              <Route
+                path="financial-areas/new"
+                element={<FinancialAreaFormPage mode="create" />}
+              />
             </Route>
 
             <Route

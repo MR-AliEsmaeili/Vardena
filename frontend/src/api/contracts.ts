@@ -546,6 +546,7 @@ export type UpdatePartyRequest = Schemas['UpdatePartyDto'];
 
 export type FinancialArea = Schemas['FinancialAreaResponseDto'];
 export type CreateFinancialAreaRequest = Schemas['CreateFinancialAreaDto'];
+export type UpdateFinancialAreaRequest = Schemas['UpdateFinancialAreaDto'];
 export type FiscalYear = NullableString<
   Schemas['FiscalYearResponseDto'],
   'priorYearId'

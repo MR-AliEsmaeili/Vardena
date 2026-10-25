@@ -62,6 +62,7 @@ vi.mock('@/api/accounting.api', () => ({
     updatedAt: '2026-01-01T00:00:00.000Z',
   }),
   listFinancialAreas: vi.fn(),
+  getFinancialArea: vi.fn(),
   listFiscalYears: vi.fn(),
   listAccountingPeriods: vi.fn(),
   listPostableAccounts: vi.fn(),
@@ -114,6 +115,9 @@ beforeEach(() => {
   ]);
   vi.mocked(accountingApi.listFinancialAreas).mockResolvedValue(
     paginated([testFinancialArea]),
+  );
+  vi.mocked(accountingApi.getFinancialArea).mockResolvedValue(
+    testFinancialArea,
   );
   vi.mocked(accountingApi.listFiscalYears).mockResolvedValue(
     paginated([testFiscalYear]),
@@ -261,6 +265,85 @@ describe('protected routing', () => {
 
     expect(
       await screen.findByRole('heading', { name: t.documents.createTitle }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(t.permissions.forbiddenTitle),
+    ).not.toBeInTheDocument();
+  });
+
+  it('allows /app/accounting/financial-areas/new with only Accounting.FinancialArea.Create — no FinancialArea.View prerequisite (ACC-01)', async () => {
+    // The backend's `POST /financial-areas` enforces exactly
+    // `Accounting.FinancialArea.Create`; the create route is a sibling of
+    // the View-gated group and must not additionally require View.
+    vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [
+        'Organization.Organization.View',
+        'Accounting.FinancialArea.Create',
+      ],
+    });
+
+    renderWithProviders(<AppRoutes />, {
+      initialEntries: ['/app/accounting/financial-areas/new'],
+    });
+
+    expect(
+      await screen.findByRole('heading', {
+        name: t.financialArea.createTitle,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(t.permissions.forbiddenTitle),
+    ).not.toBeInTheDocument();
+  });
+
+  it('blocks /app/accounting/financial-areas/:id/edit without Accounting.FinancialArea.Edit (ACC-01)', async () => {
+    vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      // Has View (and could see the list) but not Edit.
+      permissions: [
+        'Organization.Organization.View',
+        'Accounting.FinancialArea.View',
+      ],
+    });
+
+    renderWithProviders(<AppRoutes />, {
+      initialEntries: [
+        `/app/accounting/financial-areas/${testFinancialArea.id}/edit`,
+      ],
+    });
+
+    expect(
+      await screen.findByText(t.permissions.forbiddenTitle),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: t.financialArea.editTitle }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('allows /app/accounting/financial-areas/:id/edit with FinancialArea.View and FinancialArea.Edit (ACC-01)', async () => {
+    vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [
+        'Organization.Organization.View',
+        'Accounting.FinancialArea.View',
+        'Accounting.FinancialArea.Edit',
+      ],
+    });
+
+    renderWithProviders(<AppRoutes />, {
+      initialEntries: [
+        `/app/accounting/financial-areas/${testFinancialArea.id}/edit`,
+      ],
+    });
+
+    expect(
+      await screen.findByRole('heading', {
+        name: t.financialArea.editTitle,
+      }),
     ).toBeInTheDocument();
     expect(
       screen.queryByText(t.permissions.forbiddenTitle),

@@ -36,6 +36,7 @@ import type {
   TrialBalanceQuery,
   TrialBalanceRow,
   UpdateAccountingDocumentInput,
+  UpdateFinancialAreaRequest,
 } from './contracts';
 
 /**
@@ -80,6 +81,54 @@ export function createFinancialArea(
   return apiPost<FinancialArea, CreateFinancialAreaRequest>(
     '/financial-areas',
     body,
+  );
+}
+
+export function getFinancialArea(
+  organizationId: string,
+  financialAreaId: string,
+  signal?: AbortSignal,
+): Promise<FinancialArea> {
+  return apiGet<FinancialArea>(
+    `/financial-areas/${encodeURIComponent(financialAreaId)}`,
+    {
+      params: { organizationId },
+      ...(signal ? { signal } : {}),
+    },
+  );
+}
+
+export function updateFinancialArea(
+  organizationId: string,
+  financialAreaId: string,
+  body: UpdateFinancialAreaRequest,
+): Promise<FinancialArea> {
+  return apiPatch<FinancialArea, UpdateFinancialAreaRequest>(
+    `/financial-areas/${encodeURIComponent(financialAreaId)}`,
+    body,
+    { params: { organizationId } },
+  );
+}
+
+export function enableFinancialArea(
+  organizationId: string,
+  financialAreaId: string,
+): Promise<FinancialArea> {
+  return apiPost<FinancialArea>(
+    `/financial-areas/${encodeURIComponent(financialAreaId)}/enable`,
+    undefined,
+    { params: { organizationId } },
+  );
+}
+
+export function disableFinancialArea(
+  organizationId: string,
+  financialAreaId: string,
+): Promise<FinancialArea> {
+  return apiPost<FinancialArea>(
+    `/financial-areas/${encodeURIComponent(financialAreaId)}/disable`,
+    undefined,
+    { params: { organizationId } },
   );
 }
 
