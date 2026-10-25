@@ -21,6 +21,7 @@ import type {
   CreateAccountingConfigurationRequest,
   CreateAccountingDocumentInput,
   CreateAccountingPeriodRequest,
+  TransitionAccountingPeriodRequest,
   CreateCodingStructureRequest,
   CreateFinancialAreaRequest,
   CreateFiscalYearRequest,
@@ -274,6 +275,35 @@ export function listAccounts(
     params: cleanParams({ ...query }),
     ...(signal ? { signal } : {}),
   });
+}
+
+export function getAccountingPeriod(
+  organizationId: string,
+  periodId: string,
+  signal?: AbortSignal,
+): Promise<AccountingPeriod> {
+  return apiGet<AccountingPeriod>(
+    `/accounting-periods/${encodeURIComponent(periodId)}`,
+    {
+      params: cleanParams({ organizationId }),
+      ...(signal ? { signal } : {}),
+    },
+  );
+}
+
+export type AccountingPeriodAction = 'close' | 'reopen' | 'seal';
+
+export function transitionAccountingPeriod(
+  organizationId: string,
+  periodId: string,
+  action: AccountingPeriodAction,
+  body: TransitionAccountingPeriodRequest,
+): Promise<AccountingPeriod> {
+  return apiPost<AccountingPeriod, TransitionAccountingPeriodRequest>(
+    `/accounting-periods/${encodeURIComponent(periodId)}/${action}`,
+    body,
+    { params: cleanParams({ organizationId }) },
+  );
 }
 
 export function createAccountingPeriod(

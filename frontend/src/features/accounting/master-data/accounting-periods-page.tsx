@@ -1,5 +1,8 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { Button } from '@/ui/button';
+import { AccountingPeriodRowActions } from './accounting-period-transition-dialog';
 import type {
   AccountingPeriod,
   FinancialArea,
@@ -24,6 +27,7 @@ import { useMasterDataQuery } from './use-master-data-query';
 function periodColumns(
   areaById: ReadonlyMap<string, FinancialArea>,
   yearById: ReadonlyMap<string, FiscalYear>,
+  organizationId: string | null,
 ): ColumnDef<AccountingPeriod, unknown>[] {
   return [
     { accessorKey: 'sequence', header: t.masterData.sequence },
@@ -63,6 +67,19 @@ function periodColumns(
       header: t.masterData.status,
       cell: ({ row }) => <LifecycleBadge status={row.original.status} />,
     },
+    {
+      id: 'actions',
+      header: t.accountingPeriod.actions,
+      meta: { align: 'end' },
+      cell: ({ row }) =>
+        organizationId === null ? null : (
+          <AccountingPeriodRowActions
+            period={row.original}
+            year={yearById.get(row.original.fiscalYearId)}
+            organizationId={organizationId}
+          />
+        ),
+    },
   ];
 }
 
@@ -81,8 +98,8 @@ export function AccountingPeriodsPage() {
     [areas.data],
   );
   const columns = useMemo(
-    () => periodColumns(areaById, yearById),
-    [areaById, yearById],
+    () => periodColumns(areaById, yearById, organizationId),
+    [areaById, yearById, organizationId],
   );
   const yearOptions = [
     { value: '', label: t.masterData.selectFiscalYear },
@@ -96,6 +113,17 @@ export function AccountingPeriodsPage() {
       <PageHeader
         title={t.masterData.periods}
         description={t.masterData.periodsDescription}
+        actions={
+          <PermissionGate
+            permission={PERMISSIONS.accounting.accountingPeriodOpen}
+          >
+            <Button asChild size="sm">
+              <Link to="/app/accounting/periods/new">
+                {t.accountingPeriod.new}
+              </Link>
+            </Button>
+          </PermissionGate>
+        }
       />
       <p className="text-xs font-medium text-ink-subtle">
         {t.masterData.contextHint}

@@ -573,6 +573,8 @@ export type CreateAccountingPeriodRequest = Omit<
   startDate: BusinessDateInput;
   endDate: BusinessDateInput;
 };
+export type TransitionAccountingPeriodRequest =
+  Schemas['TransitionAccountingPeriodDto'];
 export type Account = NullableString<
   Schemas['AccountResponseDto'],
   'parentId' | 'codingStructureVersionId' | 'accountingConfigurationId'

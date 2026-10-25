@@ -206,6 +206,18 @@ export const queryKeys = {
     ) =>
       ['accounting', organizationId, 'fiscal-years', 'list', filters] as const,
 
+    accountingPeriodPrefix: (organizationId: string) =>
+      ['accounting', organizationId, 'accounting-periods'] as const,
+
+    accountingPeriodDetail: (organizationId: string, periodId: string) =>
+      [
+        'accounting',
+        organizationId,
+        'accounting-periods',
+        'detail',
+        periodId,
+      ] as const,
+
     accountingPeriodList: (
       organizationId: string,
       filters: Record<string, unknown>,

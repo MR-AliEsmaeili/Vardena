@@ -12,6 +12,7 @@ import { PeriodCreateForm } from './period-create-form';
 vi.mock('@/api/accounting.api', () => ({
   MAX_PAGE_SIZE: 500,
   createAccountingPeriod: vi.fn(),
+  listAccountingPeriodsPage: vi.fn(),
   createAccount: vi.fn(),
   listAccounts: vi.fn(),
   createCodingStructureVersion: vi.fn(),
@@ -59,6 +60,12 @@ beforeEach(() => {
     page: 1,
     pageSize: 100,
   } as never);
+  vi.mocked(api.listAccountingPeriodsPage).mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 1,
+  });
   vi.mocked(api.listAccounts).mockResolvedValue({
     items: [],
     total: 0,
@@ -215,6 +222,12 @@ describe('AccountCreateForm (local segment → backend-composed full code)', () 
     vi.mocked(api.getActiveAccountingConfiguration).mockResolvedValue({
       levels: ACTIVE_LEVELS,
     } as never);
+    vi.mocked(api.listAccountingPeriodsPage).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 1,
+    });
     vi.mocked(api.listAccounts).mockResolvedValue({
       items: parents,
       total: parents.length,
@@ -320,6 +333,12 @@ describe('AccountCreateForm (local segment → backend-composed full code)', () 
 
   it('without an active configuration the form explains and cannot submit', async () => {
     vi.mocked(api.getActiveAccountingConfiguration).mockResolvedValue(null);
+    vi.mocked(api.listAccountingPeriodsPage).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 1,
+    });
     vi.mocked(api.listAccounts).mockResolvedValue({
       items: [],
       total: 0,
@@ -581,6 +600,12 @@ describe('AccountCreateForm backend errors', () => {
         },
       ],
     } as never);
+    vi.mocked(api.listAccountingPeriodsPage).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 1,
+    });
     vi.mocked(api.listAccounts).mockResolvedValue({
       items: [],
       total: 0,
