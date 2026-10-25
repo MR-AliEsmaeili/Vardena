@@ -1,13 +1,18 @@
 import type { ColumnDef } from '@tanstack/react-table';
+import { Link } from 'react-router-dom';
 import type { FiscalYear } from '@/api/contracts';
 import { useOrganizationId } from '@/features/organization/use-organization';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
+import { usePermissions } from '@/features/permissions/use-permissions';
 import { formatDateOnly, formatDateOnlyCanonical } from '@/lib/format';
 import { t } from '@/lib/i18n';
+import { Button } from '@/ui/button';
 import { DataTable } from '@/ui/patterns/data-table';
 import { PageHeader } from '@/ui/patterns/page-header';
 import { useFinancialAreas } from '../shared/use-accounting-references';
 import { LifecycleBadge, MasterFilters } from './master-data-ui';
 import { useFiscalYearList } from './master-data-hooks';
+import { FiscalYearRowActions } from './fiscal-year-row-actions';
 import { useMasterDataQuery } from './use-master-data-query';
 
 const columns: ColumnDef<FiscalYear, unknown>[] = [
@@ -40,10 +45,16 @@ const columns: ColumnDef<FiscalYear, unknown>[] = [
     header: t.masterData.status,
     cell: ({ row }) => <LifecycleBadge status={row.original.status} />,
   },
+  {
+    id: 'actions',
+    header: t.fiscalYear.actions,
+    cell: ({ row }) => <FiscalYearRowActions fiscalYear={row.original} />,
+  },
 ];
 
 export function FiscalYearsPage() {
   const organizationId = useOrganizationId();
+  const permissions = usePermissions();
   const state = useMasterDataQuery();
   const areas = useFinancialAreas(organizationId);
   const query = useFiscalYearList(organizationId, state);
@@ -59,6 +70,15 @@ export function FiscalYearsPage() {
       <PageHeader
         title={t.masterData.fiscalYears}
         description={t.masterData.fiscalYearsDescription}
+        actions={
+          permissions.has(PERMISSIONS.accounting.fiscalYearCreate) ? (
+            <Button asChild>
+              <Link to="/app/accounting/fiscal-years/new">
+                {t.fiscalYear.new}
+              </Link>
+            </Button>
+          ) : undefined
+        }
       />
       <p className="text-xs font-medium text-ink-subtle">
         {t.masterData.contextHint}

@@ -558,13 +558,14 @@ export type CreateFiscalYearRequest = OptionalNullableString<
   startDate: BusinessDateInput;
   endDate: BusinessDateInput;
 };
-export type UpdateFiscalYearRequest = Omit<
-  Schemas['UpdateFiscalYearDto'],
-  'startDate' | 'endDate'
+export type UpdateFiscalYearRequest = OptionalNullableString<
+  Omit<Schemas['UpdateFiscalYearDto'], 'startDate' | 'endDate'>,
+  'priorYearId'
 > & {
   startDate?: BusinessDateInput;
   endDate?: BusinessDateInput;
 };
+export type TransitionFiscalYearRequest = Schemas['TransitionFiscalYearDto'];
 export type AccountingPeriod = Schemas['AccountingPeriodResponseDto'];
 export type CreateAccountingPeriodRequest = Omit<
   Schemas['CreateAccountingPeriodDto'],

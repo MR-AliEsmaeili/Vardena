@@ -36,7 +36,7 @@ function useRefreshPeriods(organizationId: string) {
     );
     // Includes reference queries, paginated lists and financial context.
     void client.invalidateQueries({
-      queryKey: queryKeys.accounting.accountingPeriodPrefix(organizationId),
+      queryKey: queryKeys.accounting.accountingPeriodsPrefix(organizationId),
     });
     void client.invalidateQueries({
       queryKey: queryKeys.accounting.all(organizationId),

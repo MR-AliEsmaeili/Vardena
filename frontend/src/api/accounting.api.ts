@@ -38,6 +38,8 @@ import type {
   TrialBalanceRow,
   UpdateAccountingDocumentInput,
   UpdateFinancialAreaRequest,
+  UpdateFiscalYearRequest,
+  TransitionFiscalYearRequest,
 } from './contracts';
 
 /**
@@ -160,6 +162,47 @@ export function createFiscalYear(
   body: CreateFiscalYearRequest,
 ): Promise<FiscalYear> {
   return apiPost<FiscalYear, CreateFiscalYearRequest>('/fiscal-years', body);
+}
+
+export function getFiscalYear(
+  organizationId: string,
+  fiscalYearId: string,
+  signal?: AbortSignal,
+): Promise<FiscalYear> {
+  return apiGet<FiscalYear>(
+    `/fiscal-years/${encodeURIComponent(fiscalYearId)}`,
+    {
+      params: { organizationId },
+      ...(signal ? { signal } : {}),
+    },
+  );
+}
+
+export function updateFiscalYear(
+  organizationId: string,
+  fiscalYearId: string,
+  body: UpdateFiscalYearRequest,
+): Promise<FiscalYear> {
+  return apiPatch<FiscalYear, UpdateFiscalYearRequest>(
+    `/fiscal-years/${encodeURIComponent(fiscalYearId)}`,
+    body,
+    { params: { organizationId } },
+  );
+}
+
+export type FiscalYearTransitionAction = 'close' | 'reopen' | 'seal' | 'unseal';
+
+export function transitionFiscalYear(
+  organizationId: string,
+  fiscalYearId: string,
+  action: FiscalYearTransitionAction,
+  body: TransitionFiscalYearRequest,
+): Promise<FiscalYear> {
+  return apiPost<FiscalYear, TransitionFiscalYearRequest>(
+    `/fiscal-years/${encodeURIComponent(fiscalYearId)}/${action}`,
+    body,
+    { params: { organizationId } },
+  );
 }
 
 export function listAccountingPeriods(
