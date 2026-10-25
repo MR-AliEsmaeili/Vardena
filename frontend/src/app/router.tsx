@@ -16,6 +16,7 @@ import { AccountsPage } from '@/features/accounting/master-data/accounts-page';
 import { FinancialAreaFormPage } from '@/features/accounting/master-data/financial-area-form-page';
 import { FinancialAreasPage } from '@/features/accounting/master-data/financial-areas-page';
 import { FiscalYearsPage } from '@/features/accounting/master-data/fiscal-years-page';
+import { FiscalYearFormPage } from '@/features/accounting/master-data/fiscal-year-form-page';
 import { TrialBalancePage } from '@/features/accounting/trial-balance/trial-balance-page';
 import { ChangePasswordPage } from '@/features/auth/change-password-page';
 import { LoginPage } from '@/features/auth/login-page';
@@ -220,6 +221,32 @@ export function AppRoutes() {
               }
             >
               <Route path="fiscal-years" element={<FiscalYearsPage />} />
+              <Route
+                element={
+                  <RequirePermission
+                    permissions={[PERMISSIONS.accounting.fiscalYearEdit]}
+                  />
+                }
+              >
+                <Route
+                  path="fiscal-years/:fiscalYearId/edit"
+                  element={<FiscalYearFormPage mode="edit" />}
+                />
+              </Route>
+            </Route>
+
+            {/* Fiscal-year creation is authorized independently of View. */}
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.accounting.fiscalYearCreate]}
+                />
+              }
+            >
+              <Route
+                path="fiscal-years/new"
+                element={<FiscalYearFormPage mode="create" />}
+              />
             </Route>
 
             <Route
