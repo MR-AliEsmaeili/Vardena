@@ -1,9 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
-import { z } from 'zod';
 import { createFinancialArea } from '@/api/accounting.api';
 import { queryKeys } from '@/api/query-keys';
+import {
+  financialAreaSchema,
+  type FinancialAreaFormValues,
+} from '@/features/accounting/master-data/financial-area-schema';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import {
@@ -16,24 +19,6 @@ import {
 import { Input } from '@/ui/input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { FormField } from '@/ui/patterns/form-field';
-
-const MAX_CODE_LENGTH = 64;
-const MAX_TITLE_LENGTH = 200;
-
-const financialAreaSchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .min(1, t.financialContext.codeRequired)
-    .max(MAX_CODE_LENGTH),
-  title: z
-    .string()
-    .trim()
-    .min(1, t.financialContext.titleRequired)
-    .max(MAX_TITLE_LENGTH),
-});
-
-type FinancialAreaFormValues = z.infer<typeof financialAreaSchema>;
 
 /**
  * Explicit first-area creation used only by the empty financial-context

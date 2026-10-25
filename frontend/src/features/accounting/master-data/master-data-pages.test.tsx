@@ -28,6 +28,11 @@ vi.mock('@/api/accounting.api', () => ({
   listAccountingPeriodsPage: vi.fn(),
   listAccounts: vi.fn(),
   getAccount: vi.fn(),
+  getFinancialArea: vi.fn(),
+  createFinancialArea: vi.fn(),
+  updateFinancialArea: vi.fn(),
+  enableFinancialArea: vi.fn(),
+  disableFinancialArea: vi.fn(),
 }));
 
 const identityApi = await import('@/api/identity.api');

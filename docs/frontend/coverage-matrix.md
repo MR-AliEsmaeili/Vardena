@@ -30,7 +30,7 @@
 | دفتر کل | `GET /accounting/general-ledger` | `general-ledger-page` | **COMPLETE** |
 | تراز آزمایشی | `GET /accounting/trial-balance` | `trial-balance-page` | **COMPLETE** |
 | حساب‌ها (master) | `GET /accounts`, `/:id`, `POST`, `PATCH`, `enable/disable`, `unlink-detail-group` | فهرست + جزئیات | **PARTIAL** — ایجاد/ویرایش/فعال‌سازی حساب و جداکردن گروه تفصیلی UI ندارد |
-| نواحی مالی | `GET /financial-areas`, `POST`, `PATCH`, `enable/disable` | فهرست | **PARTIAL** — فقط خواندن |
+| نواحی مالی | `GET /financial-areas`, `GET /:id`, `POST`, `PATCH`, `enable/disable` | فهرست + فرم ایجاد/ویرایش (`financial-area-form-page`) + اکشن‌های ردیف (ویرایش، تعیین پیش‌فرض، فعال/غیرفعال با تأیید) | **COMPLETE** — همه عملیات قرارداد با گیت مجوز دقیق هر endpoint (ACC-01) |
 | سال‌های مالی | `GET /fiscal-years`, `POST`, `PATCH`, `close/reopen/seal/unseal` | فهرست + ایجاد | **PARTIAL** — چرخۀ عمر (بستن/مهر) UI ندارد |
 | دوره‌های حسابداری | `GET /accounting-periods`, `POST`, `close/reopen/seal` | فهرست | **PARTIAL** — چرخۀ عمر UI ندارد |
 | تراز حساب‌ها (balances) | `GET /accounting/balances`, `/reconciliation`, `/:accountId`, `POST /rebuild` | ویجت داشبورد (`listAccountBalances`) | **PARTIAL** — صفحهٔ اختصاصی گزارش و بازسازی داخلی ندارد |
@@ -119,14 +119,14 @@
 
 | وضعیت | تعداد گروه |
 | ----- | ---------- |
-| COMPLETE | ۲۶ |
-| PARTIAL | ۱۱ |
+| COMPLETE | ۲۷ |
+| PARTIAL | ۱۰ |
 | MISSING | ۱۳ |
 | NOT_REQUIRED | ۳ |
 
 **اولویت‌های بعدی (به ترتیب ارزش کاربر):**
 
-1. **PARTIALهای چرخۀ عمر حساب‌داری** (بستن سال/دوره، ایجاد حساب/financial-area) — کاربر برای بستن دوره به بک‌اند دسترسی ندارد؛ ریسک عملیاتی بالا.
+1. **PARTIALهای چرخۀ عمر حساب‌داری** (بستن سال/دوره، ایجاد حساب) — کاربر برای بستن دوره به بک‌اند دسترسی ندارد؛ ریسک عملیاتی بالا. (مدیریت نواحی مالی در ACC-01 کامل شد.)
 2. **درخواست کالا / رزرو / قیمت‌گذاری** — قرارداد کامل بک‌اند موجود است و بدون UI قابلیت استفاده ندارد.
 3. **انواع سند و سری شماره‌گذاری** — پیش‌نیاز پیکربندی واقعی شماره‌گذاری در استقرار مشتری.
 4. **گردش کار** — نیازمند تصمیم مالک (BLOCKED از نظر محصول، نه فنی).

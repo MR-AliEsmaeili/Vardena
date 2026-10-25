@@ -1,14 +1,19 @@
 import type { ColumnDef } from '@tanstack/react-table';
+import { Link } from 'react-router-dom';
 import {
   useOrganization,
   useOrganizationId,
 } from '@/features/organization/use-organization';
 import type { FinancialArea } from '@/api/contracts';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
+import { PermissionGate } from '@/features/permissions/permission-gate';
 import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
+import { Button } from '@/ui/button';
 import { DataTable } from '@/ui/patterns/data-table';
 import { PageHeader } from '@/ui/patterns/page-header';
 import { ActiveBadge, MasterFilters } from './master-data-ui';
+import { FinancialAreaRowActions } from './financial-area-row-actions';
 import { useFinancialAreaList } from './master-data-hooks';
 import { useMasterDataQuery } from './use-master-data-query';
 
@@ -34,6 +39,13 @@ const columns: ColumnDef<FinancialArea, unknown>[] = [
     header: t.masterData.status,
     cell: ({ row }) => <ActiveBadge active={row.original.isActive} />,
   },
+  {
+    id: 'actions',
+    header: t.financialArea.actions,
+    enableSorting: false,
+    meta: { align: 'end' },
+    cell: ({ row }) => <FinancialAreaRowActions area={row.original} />,
+  },
 ];
 
 export function FinancialAreasPage() {
@@ -46,6 +58,17 @@ export function FinancialAreasPage() {
       <PageHeader
         title={t.masterData.financialAreas}
         description={`${t.masterData.financialAreasDescription} ${t.masterData.organizationScope}: ${organization.organization?.name ?? t.app.none}`}
+        actions={
+          <PermissionGate
+            permission={PERMISSIONS.accounting.financialAreaCreate}
+          >
+            <Button asChild size="sm">
+              <Link to="/app/accounting/financial-areas/new">
+                {t.financialArea.new}
+              </Link>
+            </Button>
+          </PermissionGate>
+        }
       />
       <MasterFilters
         synchronizationKey={`${state.search}:${state.status}`}
