@@ -521,6 +521,13 @@ describe.skipIf(DATABASE_URL === undefined)(
         ).toBe(0);
       } finally {
         await cleanup(prisma);
+        // The installation identity service caches the identity it created.
+        // Reboot after deleting this test's isolated holder so the following
+        // commercial persistence chain starts from a truly fresh process and
+        // database together rather than retaining a stale in-memory identity.
+        await app.close();
+        app = await boot();
+        prisma = app.get(PrismaService);
       }
     }, 60_000);
 

@@ -278,7 +278,7 @@ describe('License document import (e2e)', () => {
       );
     }
 
-    await importDocument(developerFile(installationId)).expect(201);
+    await importDocument(developerFile(installationId)).expect(200);
 
     expect(await state()).toMatchObject({
       licensed: true,

@@ -124,6 +124,7 @@ describe('License state route registration (e2e)', () => {
     expect(Object.keys(schema.properties).sort()).toEqual(
       [
         'licensed',
+        'licenseType',
         'status',
         'active',
         'inactiveReason',
@@ -132,6 +133,8 @@ describe('License state route registration (e2e)', () => {
         'installationId',
         'customerId',
         'customerCode',
+        'developerId',
+        'developerName',
         'licenseId',
         'validFrom',
         'validUntil',
