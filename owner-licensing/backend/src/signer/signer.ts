@@ -1,6 +1,7 @@
 import { createPublicKey, timingSafeEqual, type KeyObject } from "node:crypto";
-import { appendFile, mkdir, open, readFile, stat } from "node:fs/promises";
+import { appendFile, mkdir, open, readFile } from "node:fs/promises";
 import path from "node:path";
+import { SignerError } from "./errors.js";
 import {
   ProtocolError,
   REVOCATION_REASONS,
@@ -42,35 +43,8 @@ import {
 export const SIGNER_DIGEST_PATTERN = /^[0-9a-f]{64}$/;
 export const SIGNER_CLOCK_TOLERANCE_MS = 10 * 60 * 1000;
 
-export type SignerErrorCode =
-  | "request-malformed"
-  | "digest-missing"
-  | "digest-malformed"
-  | "digest-mismatch"
-  | "key-id-mismatch"
-  | "date-invalid"
-  | "already-signed"
-  | "state-unavailable"
-  | "key-unavailable"
-  | "unsafe-environment";
-
-export class SignerError extends Error {
-  constructor(
-    readonly code: SignerErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = "SignerError";
-  }
-
-  get exitCode(): number {
-    if (this.code === "already-signed") return 4;
-    if (this.code === "key-unavailable" || this.code === "state-unavailable")
-      return 3;
-    if (this.code === "unsafe-environment") return 5;
-    return 2;
-  }
-}
+export { SignerError, type SignerErrorCode } from "./errors.js";
+export { assertKeyFilePrivate } from "./key-permissions.js";
 
 export interface SignedLicenseResult {
   document: string;
@@ -216,7 +190,9 @@ async function recordSigned(
       encoding: "utf8",
       mode: 0o600,
     });
-    const handle = await open(statePath, "r");
+    const handle = await open(statePath, "r+");
+    // Windows rejects fsync on a read-only handle; r+ keeps the durability
+    // barrier without changing the replay semantics.
     try {
       await handle.sync();
     } finally {
@@ -361,24 +337,6 @@ export function assertSignerEnvironment(
     throw new SignerError(
       "unsafe-environment",
       "The offline signer must not run inside the Owner application or a production service environment.",
-    );
-  }
-}
-
-/** Refuse a key file that other users can read. */
-export async function assertKeyFilePrivate(keyPath: string): Promise<void> {
-  try {
-    const info = await stat(keyPath);
-    if ((info.mode & 0o077) !== 0)
-      throw new SignerError(
-        "key-unavailable",
-        "The private key file must not be readable by group or others.",
-      );
-  } catch (error) {
-    if (error instanceof SignerError) throw error;
-    throw new SignerError(
-      "key-unavailable",
-      "The private key file is missing.",
     );
   }
 }

@@ -43,6 +43,15 @@ every signed field survives, that a one-byte change is refused and that an
 untrusted signer is refused. It generates a disposable key pair in memory; no key
 material is read from or written to the repository.
 
+**Offline signer key-file permissions.** The signer verifies the key file before
+reading or loading it. POSIX keeps the restrictive mode rule (no group or other
+bits); Windows inspects the effective DACL instead of Node's synthesized
+`stat().mode`, accepting only the signing account, `SYSTEM` and
+`Administrators`, and refusing broad or inherited grants such as `Everyone`,
+`Users` and `Authenticated Users`. Unreadable, malformed or unsupported ACL
+inspection fails closed. Exact POSIX and Windows setup instructions are in
+[offline-signer-key-permissions.md](../docs/licensing/offline-signer-key-permissions.md).
+
 **What this application still does not implement.** Prepared-request expiry
 (`OD-LIC-20`, fixed 14 × 24 hours) **is** enforced in the import service with a
 committed system-origin `ABANDONED` transition and is now reported on the

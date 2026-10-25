@@ -401,15 +401,22 @@ describe("offline signer — operand isolation", () => {
     }
   });
 
-  it("refuses a private key file that other users can read", async () => {
+  it.skipIf(process.platform === "win32")(
+    "refuses a private key file that other users can read",
+    async () => {
+      const dir = mkdtempSync(path.join(os.tmpdir(), "owner-signer-key-"));
+      const strict = path.join(dir, "strict.pkcs8");
+      writeFileSync(strict, authorityA.privateKeyPkcs8Base64, { mode: 0o600 });
+      await expect(assertKeyFilePrivate(strict)).resolves.toBeUndefined();
+      const loose = path.join(dir, "loose.pkcs8");
+      writeFileSync(loose, authorityA.privateKeyPkcs8Base64);
+      chmodSync(loose, 0o644);
+      await expect(assertKeyFilePrivate(loose)).rejects.toThrow(SignerError);
+    },
+  );
+
+  it("refuses a missing private key file", async () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "owner-signer-key-"));
-    const strict = path.join(dir, "strict.pkcs8");
-    writeFileSync(strict, authorityA.privateKeyPkcs8Base64, { mode: 0o600 });
-    await expect(assertKeyFilePrivate(strict)).resolves.toBeUndefined();
-    const loose = path.join(dir, "loose.pkcs8");
-    writeFileSync(loose, authorityA.privateKeyPkcs8Base64);
-    chmodSync(loose, 0o644);
-    await expect(assertKeyFilePrivate(loose)).rejects.toThrow(SignerError);
     await expect(
       assertKeyFilePrivate(path.join(dir, "missing")),
     ).rejects.toThrow(SignerError);
