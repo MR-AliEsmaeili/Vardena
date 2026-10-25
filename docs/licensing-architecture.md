@@ -39,13 +39,27 @@
 > for independent review and operational evidence from the external device
 > client and Owner-side issuer.
 
+## Official Developer License update (2026-10-25)
+
+[ADR-0053](adr/0053-official-offline-developer-license.md) adds the implemented,
+offline `VDEV1` artifact. It is formally `DEVELOPER`, carries an explicit
+non-commercial developer holder, binds one backend-owned installation, remains
+finite/bounded, and enters through the same authenticated import and backend
+enforcement chain. It does **not** create a `licensing.customers` row.
+Acceptance requires both `DEVELOPER_LICENSES_ENABLED=true` and a dedicated
+`DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS` trust list; this is disabled by default
+in every `NODE_ENV`. VDEV1 cannot be interpreted as VLIC2 and commercial and
+developer history cannot be mixed on one installation. See the complete
+[Developer License operations and security guide](licensing/developer-license.md).
+
 ## Model
 
-`Customer → Installation → License → LicenseVersion → Entitlement → assignable Permission → Role → Organization Membership → Access`
+`(Commercial Customer | Developer Holder) → Installation → License → LicenseVersion → Entitlement → assignable Permission → Role → Organization Membership → Access`
 
-- **Customer:** minimal commercial identity (`licensing.customers`: internal `id` / `customerId`, unique business `customer_code` / `customerCode`, and mutable `display_name` / `customerName` — [PDR-14](decisions/product/PDR-14-licensing-customer-code.md)); not the Organization party/customer master and not CRM.
+- **Customer:** minimal commercial identity (`licensing.customers`: internal `id` / `customerId`, unique business `customer_code` / `customerCode`, and mutable `display_name` / `customerName` — [PDR-14](decisions/product/PDR-14-licensing-customer-code.md)); not the Organization party/customer master and not CRM. Developer Licenses never create one.
+- **Developer holder:** explicit non-commercial `developer_id`/`developer_name` stored on a `DEVELOPER` license; mutually exclusive with `customer_id` by database constraint.
 - **Installation:** deployed Vardena instance. The current deployment is one installation and may contain multiple Organizations. Since L-02 it has a persistent backend-owned identity (below).
-- **License:** installation-scoped commercial right, bound to exactly one customer and one installation (`licensing.licenses`). Since L-03 it holds no dates, limits or entitlements of its own — those belong to its versions. It is the future home of license-level revocation state (PDR-11 §10, OQ-78).
+- **License:** installation-scoped signed right (`COMMERCIAL` or `DEVELOPER`), bound to exactly one holder model and one installation (`licensing.licenses`). Since L-03 it holds no dates, limits or entitlements of its own — those belong to its versions. License-level revocation state remains on this row.
 - **LicenseVersion:** one retained, signed version of a license (`licensing.license_versions`): validity window, status, limits, entitlements, signing key id, document hash, operation id, source, import facts and supersession state. Retained, never overwritten.
 - **ClientDevice (OQ-83):** installation-scoped cryptographic identity (`licensing.client_devices`) with retained lifecycle and public-key fingerprint; enrollment challenges and replacement requests are retained in their own Licensing tables. The device limit belongs to the signed LicenseVersion, not to a frontend setting or duplicate entitlement store.
 - **Entitlement:** typed `MODULE` or `FEATURE` capability, owned by a version. Feature codes do not imply the feature is implemented.
@@ -296,35 +310,48 @@ deployment-organization provisioning is deferred while unlicensed: run
 `npm run bootstrap:system-admin` again after activation — it is idempotent and
 provisions the organization then.
 
-### Issuing a development or test license
+### Issuing an official Developer License
 
-Issuing is a developer CLI, never a product endpoint. It refuses to run with
-`NODE_ENV=production`, and the private key lives only in the issuer's
-environment — never in frontend config, never in the database, never in an
-application table:
+The repository has one official, offline VDEV1 issuer for explicitly approved
+Developer installations. It is a `dist-tools` command, never an API endpoint or
+production-image entrypoint. It takes private material only from a
+permission-checked file, never from environment variables; refuses links,
+permissive key paths and output overwrite; signs with Ed25519; self-verifies;
+and writes only the requested file. It neither runs Owner Licensing nor creates
+or names a commercial customer.
 
+From `backend/` on a POSIX offline workstation:
+
+```bash
+mkdir -m 700 "$HOME/vardena-developer-authority"
+npm run developer-license:keygen -- \
+  --out-dir "$HOME/vardena-developer-authority"
+
+npm run developer-license:issue -- \
+  --private-key-file "$HOME/vardena-developer-authority/developer-license-key.pkcs8" \
+  --out "$HOME/developer-alice.vdev.json" \
+  --installation 01JDEVINSTALLATION000000000 \
+  --developer-id developer-alice \
+  --developer-name "Alice Example" \
+  --issued-at 2026-10-25T10:00:00.000Z \
+  --valid-from 2026-10-25T10:00:00.000Z \
+  --valid-until 2027-01-25T10:00:00.000Z \
+  --organizations 2 --users 10 \
+  --modules organization,users,rbac
 ```
-npm run license:keygen                                   # prints a key pair
-LICENSE_SIGNING_PRIVATE_KEY=<base64> npm run license:issue -- \
-  --installation <installation-id> --customer <customer-id> --customer-code <customer-code> \
-  --users 25 --modules organization,users \
-  --valid-from 2027-01-01 --valid-until 2028-01-01 --out renewal.vlic
-```
 
-`--out <path>` writes the signed **file** (the primary transport). Without it the
-CLI prints the signed file to stdout; `--artifact` prints the bare `VLIC2` artifact
-instead, and `--format v1` still prints a `VLIC1` code for L-02 compatibility tests.
-`--customer` and `--customer-code` are required and bind customer identity and
-business customer code ([PDR-14](decisions/product/PDR-14-licensing-customer-code.md) / L-06);
-`--operation-id`, `--supersedes` and `--key-id` cover operation identity, explicit
-supersession and key rotation. The CLI always generates a new `licenseId` and
-has no `--license-id` flag (F-8 Decision #4). A
-superseding document retires its target from its own `validFrom`, so it must
-start at or after the instant it is imported: pass a current or future
-`--valid-from` (the default start would be refused as `backdated-supersession`;
-see `docs/licensing/version-model-and-file-exchange.md` §3.3 and OQ-86).
-The installation id is printed by `npm run bootstrap:system-admin`, returned by
-`GET /api/v1/license/current`, and shown on the frontend license screen.
+The installation id comes from `GET /api/v1/license/current` or the
+post-login license screen. Acceptance requires `LICENSE_PROVIDER=persistent`,
+`DEVELOPER_LICENSES_ENABLED=true`, and the generated public `trustEntry` in
+`DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS` on both API and worker. It is disabled
+by default in every `NODE_ENV`, uses trust disjoint from commercial VLIC2, and
+cannot be introduced on an installation with commercial holder/history. The
+complete protocol, replacement, transfer, custody and troubleshooting reference
+is [Official offline Developer License](licensing/developer-license.md); the
+nontechnical Windows procedure is the
+[Persian Windows guide](operations/developer-license-windows-fa.md).
+Commercial customer issuance remains in the Owner licensing workflow and does
+not use this Developer authority.
 
 ## Development bootstrap
 

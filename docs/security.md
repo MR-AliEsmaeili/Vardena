@@ -8,6 +8,25 @@ are architectural configuration values (tunable per deployment via config); they
 are _not_ business rules. Where a value is a business/policy decision, it is
 registered as an OQ instead of being assumed.
 
+## Official Developer License authority (2026-10-25)
+
+The offline Developer License boundary is specified in
+[ADR-0053](adr/0053-official-offline-developer-license.md) and the
+[operational/security guide](licensing/developer-license.md). The target runtime
+contains only dedicated Ed25519 **public** trust configured through
+`DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS`; acceptance is separately gated by
+`DEVELOPER_LICENSES_ENABLED=false` by default in every environment. Commercial
+and developer trust may not overlap commercial key IDs or Ed25519 key material.
+
+The issuer is a `dist-tools` artifact, excluded from production `dist` and the
+customer Docker image. It reads a private key only from a filesystem path whose
+POSIX mode or Windows DACL it can validate, uses exclusive no-overwrite writes,
+self-verifies output, and never prints private material or signed license bytes.
+Private keys and real licenses must not enter Git, databases, frontend bundles,
+logs, APIs, environment variables, tickets, or chat. VDEV1 is bound to one
+backend-owned installation and uses the existing authenticated import, replay,
+transaction, audit, RBAC, limit, and entitlement enforcement chain.
+
 > **Licensing product-policy cross-reference (2026-10-15):**
 > [PDR-11 §§9–10, 12 and 20](decisions/product/PDR-11-vardena-licensing-product-requirements.md)
 > approves distinct expiry, emergency and integrity reasons, independent approved

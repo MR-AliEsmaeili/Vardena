@@ -24,8 +24,11 @@ describe('unlicensed installation', () => {
 
     await expect(licensing.current()).resolves.toEqual({
       licensed: false,
+      licenseType: null,
       customerId: null,
       customerCode: null,
+      developerId: null,
+      developerName: null,
       installationId: '01K7INSTALLATIONAAAAAAAAAA',
       licenseId: null,
       status: 'UNLICENSED',

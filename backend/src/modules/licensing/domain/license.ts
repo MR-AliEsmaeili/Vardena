@@ -1,4 +1,11 @@
 export type LicenseStatus = 'ACTIVE' | 'EXPIRED' | 'SUSPENDED';
+/**
+ * COMMERCIAL and DEVELOPER are persisted signed-license types.
+ * LOCAL_DEVELOPMENT is the separate synthetic config provider and is never
+ * presented as an official Developer License.
+ */
+export type LicenseType = 'COMMERCIAL' | 'DEVELOPER' | 'LOCAL_DEVELOPMENT';
+export type PersistedLicenseType = Exclude<LicenseType, 'LOCAL_DEVELOPMENT'>;
 export type EntitlementKind = 'MODULE' | 'FEATURE';
 
 /**
@@ -56,8 +63,12 @@ export interface LicenseEntitlement {
 
 /** Authoritative provider result for exactly one installation. */
 export interface InstallationLicense {
-  customerId: string;
-  customerCode: string;
+  /** Defaults to COMMERCIAL for compatibility with pre-type provider fixtures. */
+  licenseType?: LicenseType;
+  customerId: string | null;
+  customerCode: string | null;
+  developerId?: string | null;
+  developerName?: string | null;
   installationId: string;
   licenseId: string;
   status: LicenseStatus;
@@ -91,8 +102,11 @@ export interface InstallationLicense {
 export interface EvaluatedLicense {
   /** True when a license is persisted/served for this installation. */
   licensed: boolean;
+  licenseType: LicenseType | null;
   customerId: string | null;
   customerCode: string | null;
+  developerId: string | null;
+  developerName: string | null;
   installationId: string | null;
   licenseId: string | null;
   status: EvaluatedStatus;
@@ -151,6 +165,9 @@ export function evaluateLicense(
   return {
     ...license,
     licensed: true,
+    licenseType: license.licenseType ?? 'COMMERCIAL',
+    developerId: license.developerId ?? null,
+    developerName: license.developerName ?? null,
     active: inactiveReason === null,
     inactiveReason,
     graceEndsAt,
@@ -165,8 +182,11 @@ export function unlicensedEvaluation(context: {
 }): EvaluatedLicense {
   return {
     licensed: false,
+    licenseType: null,
     customerId: null,
     customerCode: null,
+    developerId: null,
+    developerName: null,
     installationId: context.installationId,
     licenseId: null,
     status: 'UNLICENSED',

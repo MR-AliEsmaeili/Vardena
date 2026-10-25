@@ -143,6 +143,7 @@ describe('Licensing OpenAPI success-response contracts', () => {
 
       const stateFields = [
         'licensed',
+        'licenseType',
         'status',
         // OD-LIC-17: the revocation instant is part of the additive state.
         'revokedAt',
@@ -153,6 +154,8 @@ describe('Licensing OpenAPI success-response contracts', () => {
         'installationId',
         'customerId',
         'customerCode',
+        'developerId',
+        'developerName',
         'licenseId',
         'validFrom',
         'validUntil',
@@ -173,6 +176,19 @@ describe('Licensing OpenAPI success-response contracts', () => {
       );
       expect(state.properties.changed).toBeUndefined();
       expect(state.properties.outcome).toBeUndefined();
+      expect(state.properties.licenseType).toMatchObject({
+        type: 'string',
+        nullable: true,
+        enum: ['COMMERCIAL', 'DEVELOPER', 'LOCAL_DEVELOPMENT'],
+      });
+      expect(state.properties.developerId).toMatchObject({
+        type: 'string',
+        nullable: true,
+      });
+      expect(state.properties.developerName).toMatchObject({
+        type: 'string',
+        nullable: true,
+      });
       expect(state.properties.validFrom).toMatchObject({
         format: 'date-time',
         nullable: true,

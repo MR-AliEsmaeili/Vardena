@@ -16,6 +16,7 @@ import type {
   LicenseEntitlement,
   LicenseLimit,
   LicenseStatus,
+  PersistedLicenseType,
 } from '../domain/license.js';
 import {
   evaluateImportConflicts,
@@ -150,9 +151,13 @@ export interface ImportLicenseVersionCommand {
   actorId: string | null;
   now: Date;
   licenseId: string;
-  customerId: string;
-  customerCode: string;
-  customerName: string;
+  /** Omitted by pre-type callers and fixtures; defaults to COMMERCIAL. */
+  licenseType?: PersistedLicenseType;
+  customerId: string | null;
+  customerCode: string | null;
+  customerName: string | null;
+  developerId?: string | null;
+  developerName?: string | null;
   /** Locally generated version identity (ULID). */
   versionId: string;
   operationId: string;
@@ -315,7 +320,9 @@ function conflictErrorDefaultMessage(reason: ImportConflictReason): string {
     case 'unknown-supersession':
       return 'The version named by this document is no longer eligible for supersession.';
     case 'license-binding-conflict':
-      return 'This license identifier is already bound to a different customer or installation.';
+      return 'This license identifier is already bound to a different holder or installation.';
+    case 'license-type-conflict':
+      return 'Commercial and developer license history cannot be mixed on one installation.';
     case 'customer-code-mismatch':
       return 'This license document carries a customer code that does not match the customer record.';
     case 'installation-customer-mismatch':
@@ -419,8 +426,11 @@ interface VersionRow {
   source: string;
   entitlements: Array<{ kind: EntitlementKind; code: string }>;
   license: {
-    customerId: string;
-    customer?: { customerCode: string };
+    licenseType: PersistedLicenseType;
+    customerId: string | null;
+    customer?: { customerCode: string } | null;
+    developerId: string | null;
+    developerName: string | null;
   };
 }
 
@@ -431,8 +441,11 @@ interface VersionDelegate {
       entitlements: { select: { kind: true; code: true } };
       license: {
         select: {
+          licenseType: true;
           customerId: true;
           customer: { select: { customerCode: true } };
+          developerId: true;
+          developerName: true;
         };
       };
     };
@@ -447,8 +460,11 @@ interface VersionDelegate {
       entitlements: { select: { kind: true; code: true } };
       license: {
         select: {
+          licenseType: true;
           customerId: true;
           customer: { select: { customerCode: true } };
+          developerId: true;
+          developerName: true;
         };
       };
     };
@@ -505,8 +521,11 @@ interface VersionDelegate {
       entitlements: { select: { kind: true; code: true } };
       license: {
         select: {
+          licenseType: true;
           customerId: true;
           customer: { select: { customerCode: true } };
+          developerId: true;
+          developerName: true;
         };
       };
     };
@@ -550,10 +569,18 @@ interface LicenseDelegate {
   /** Binding + license-level revocation state projection. */
   findUnique(args: {
     where: { id: string };
-    select: { installationId: true; customerId: true; revokedAt: true };
+    select: {
+      installationId: true;
+      licenseType: true;
+      customerId: true;
+      developerId: true;
+      revokedAt: true;
+    };
   }): Promise<{
     installationId: string;
-    customerId: string;
+    licenseType: PersistedLicenseType;
+    customerId: string | null;
+    developerId: string | null;
     revokedAt: Date | null;
   } | null>;
   /**
@@ -575,7 +602,10 @@ interface LicenseDelegate {
     data: {
       id: string;
       installationId: string;
-      customerId: string;
+      licenseType: PersistedLicenseType;
+      customerId: string | null;
+      developerId: string | null;
+      developerName: string | null;
       createdAt: Date;
       updatedAt: Date;
     };
@@ -584,7 +614,9 @@ interface LicenseDelegate {
     where: {
       id: string;
       installationId?: string;
-      customerId?: string;
+      licenseType?: PersistedLicenseType;
+      customerId?: string | null;
+      developerId?: string | null;
       /** Guarded revocation stamp: an already-revoked row is never rewritten. */
       revokedAt?: null;
     };
@@ -610,7 +642,10 @@ interface LicenseDelegate {
 interface LicenseTargetRow {
   id: string;
   installationId: string;
-  customerId: string;
+  licenseType: PersistedLicenseType;
+  customerId: string | null;
+  developerId: string | null;
+  developerName: string | null;
   revokedAt: Date | null;
   revocationId: string | null;
   versions: Array<{
@@ -824,8 +859,11 @@ export class LicensesRepository {
         entitlements: { select: { kind: true, code: true } },
         license: {
           select: {
+            licenseType: true,
             customerId: true,
             customer: { select: { customerCode: true } },
+            developerId: true,
+            developerName: true,
           },
         },
       },
@@ -971,6 +1009,9 @@ export class LicensesRepository {
   async importVersion(
     command: ImportLicenseVersionCommand,
   ): Promise<ImportVersionResult> {
+    const licenseType = command.licenseType ?? 'COMMERCIAL';
+    const developerId = command.developerId ?? null;
+    const developerName = command.developerName ?? null;
     const client = await this.client();
     const committed = await client.$transaction(async (tx) => {
       // 1. Serialize every import of THIS installation. The lock is held until
@@ -993,7 +1034,9 @@ export class LicensesRepository {
         where: { id: command.licenseId },
         select: {
           installationId: true,
+          licenseType: true,
           customerId: true,
+          developerId: true,
           revokedAt: true,
         },
       });
@@ -1022,17 +1065,29 @@ export class LicensesRepository {
       //    service may have run before another import committed; THIS one runs
       //    under the lock, so it decides.
       const retained = await readVersions(tx, command.installationId);
-      const customerLookup = await readCustomersForImport(tx, {
-        customerId: command.customerId,
-        customerCode: command.customerCode,
-        installationCustomerId: installation.customerId,
-      });
+      const customerLookup =
+        licenseType === 'COMMERCIAL' &&
+        command.customerId !== null &&
+        command.customerCode !== null
+          ? await readCustomersForImport(tx, {
+              customerId: command.customerId,
+              customerCode: command.customerCode,
+              installationCustomerId: installation.customerId,
+            })
+          : {
+              byId: null,
+              installationCustomerCode: null,
+              knownCustomers: [],
+            };
       const candidate = {
         validFrom: command.validFrom,
         validUntil: command.validUntil,
         licenseId: command.licenseId,
+        licenseType: licenseType,
         customerId: command.customerId,
         customerCode: command.customerCode,
+        developerId: developerId,
+        developerName: developerName,
         organizationLimit: command.organizationLimit,
         userLimit: command.userLimit,
         deviceLimit: command.deviceLimit,
@@ -1114,14 +1169,19 @@ export class LicensesRepository {
         where: { id: command.licenseId },
         select: {
           installationId: true,
+          licenseType: true,
           customerId: true,
+          developerId: true,
           revokedAt: true,
         },
       });
       if (
         boundLicense !== null &&
         (boundLicense.installationId !== command.installationId ||
-          boundLicense.customerId !== command.customerId)
+          boundLicense.licenseType !== licenseType ||
+          (licenseType === 'COMMERCIAL'
+            ? boundLicense.customerId !== command.customerId
+            : boundLicense.developerId !== developerId))
       ) {
         throw new ImportConflictError({
           reason: 'license-binding-conflict',
@@ -1132,7 +1192,17 @@ export class LicensesRepository {
       // L-06 (PDR-14 / OD-LIC-03): Create the customer row only when
       // `command.customerId` is not yet persisted; NEVER overwrite an existing
       // customer's stored `display_name` or `customer_code` on import.
-      if (customerLookup.byId === null) {
+      if (licenseType === 'COMMERCIAL' && customerLookup.byId === null) {
+        if (
+          command.customerId === null ||
+          command.customerCode === null ||
+          command.customerName === null
+        ) {
+          throw new ImportConflictError({
+            reason: 'customer-code-mismatch',
+            overlapping: 0,
+          });
+        }
         try {
           await tx.licenseCustomer.create({
             data: {
@@ -1168,7 +1238,10 @@ export class LicensesRepository {
             data: {
               id: command.licenseId,
               installationId: command.installationId,
+              licenseType: licenseType,
               customerId: command.customerId,
+              developerId: developerId,
+              developerName: developerName,
               createdAt: command.now,
               updatedAt: command.now,
             },
@@ -1189,7 +1262,9 @@ export class LicensesRepository {
           where: {
             id: command.licenseId,
             installationId: command.installationId,
+            licenseType: licenseType,
             customerId: command.customerId,
+            developerId: developerId,
           },
           data: { updatedAt: command.now },
         });
@@ -1208,8 +1283,16 @@ export class LicensesRepository {
       // binding not at all.
       const previousCustomerId = installation.customerId;
       const previousCustomerCode = customerLookup.installationCustomerCode;
-      const bindingChanged = previousCustomerId !== command.customerId;
+      const bindingChanged =
+        licenseType === 'COMMERCIAL' &&
+        previousCustomerId !== command.customerId;
       if (bindingChanged) {
+        if (command.customerId === null) {
+          throw new ImportConflictError({
+            reason: 'license-type-conflict',
+            overlapping: 0,
+          });
+        }
         await tx.installation.update({
           where: { id: command.installationId },
           data: { customerId: command.customerId, updatedAt: command.now },
@@ -1360,8 +1443,11 @@ export class LicensesRepository {
           entitlements: { select: { kind: true, code: true } },
           license: {
             select: {
+              licenseType: true,
               customerId: true,
               customer: { select: { customerCode: true } },
+              developerId: true,
+              developerName: true,
             },
           },
         },
@@ -1477,7 +1563,7 @@ export class LicensesRepository {
   async findRevocationTarget(licenseId: string): Promise<{
     licenseId: string;
     installationId: string;
-    customerId: string;
+    customerId: string | null;
     revokedAt: Date | null;
     revocationId: string | null;
     versions: Array<{
@@ -1529,7 +1615,9 @@ export class LicensesRepository {
       where: { id: licenseId },
       select: {
         installationId: true,
+        licenseType: true,
         customerId: true,
+        developerId: true,
         revokedAt: true,
       },
     });
@@ -1611,7 +1699,9 @@ export class LicensesRepository {
         where: { id: command.licenseId },
         select: {
           installationId: true,
+          licenseType: true,
           customerId: true,
+          developerId: true,
           revokedAt: true,
         },
       });
@@ -1814,8 +1904,11 @@ async function readVersions(
       entitlements: { select: { kind: true, code: true } },
       license: {
         select: {
+          licenseType: true,
           customerId: true,
           customer: { select: { customerCode: true } },
+          developerId: true,
+          developerName: true,
         },
       },
     },
@@ -2127,8 +2220,11 @@ function toRetainedVersion(row: VersionRow): RetainedLicenseVersion {
   return {
     versionId: row.id,
     licenseId: row.licenseId,
+    licenseType: row.license.licenseType,
     customerId: row.license.customerId,
-    customerCode: row.license.customer?.customerCode ?? '',
+    customerCode: row.license.customer?.customerCode ?? null,
+    developerId: row.license.developerId,
+    developerName: row.license.developerName,
     installationId: row.installationId,
     operationId: row.operationId,
     status: row.status,

@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppConfig } from '../../../kernel/config/app-config.js';
+import {
+  serializeDeveloperLicenseFile,
+  signDeveloperLicenseDocument,
+  type DeveloperLicensePayload,
+} from '../domain/developer-license-document.js';
+import { parsePrivateKey } from '../domain/license-code.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import {
@@ -48,6 +54,8 @@ import { PersistentLicenseProvider } from './persistent-license.provider.js';
 const INSTALLATION = '01K7INSTALLATION0000000000';
 const ATTACKER_INSTALLATION = '01K7OTHERINSTALLATION0000';
 const AUTHORITY = generateAuthorityKeyPair();
+const DEVELOPER_AUTHORITY = generateAuthorityKeyPair();
+const DEVELOPER_KEY_ID = 'developer-authority-2026';
 const STRANGER = generateAuthorityKeyPair();
 /**
  * One installation belongs to one commercial customer, and a renewal keeps the
@@ -131,6 +139,39 @@ function signedCode(
   );
 }
 
+function developerDocument(
+  overrides: Partial<DeveloperLicensePayload> = {},
+  authority = DEVELOPER_AUTHORITY,
+): string {
+  const payload: DeveloperLicensePayload = {
+    version: 1,
+    kind: 'DEVELOPER_LICENSE_VERSION',
+    licenseType: 'DEVELOPER',
+    operationId: 'developer-operation-001',
+    licenseId: 'developer-license-001',
+    developerId: 'developer-alice',
+    developerName: 'Alice Example',
+    installationId: INSTALLATION,
+    status: 'ACTIVE',
+    validFrom: new Date('2020-01-01T00:00:00.000Z'),
+    validUntil: new Date('2099-01-01T00:00:00.000Z'),
+    organizationLimit: 2,
+    userLimit: 10,
+    deviceLimit: 0,
+    moduleEntitlements: ['organization', 'users'],
+    featureEntitlements: ['developer-tools'],
+    supersedesOperationId: null,
+    issuerKeyId: DEVELOPER_KEY_ID,
+    issuedAt: new Date('2020-01-01T00:00:00.000Z'),
+    ...overrides,
+  };
+  const document = signDeveloperLicenseDocument(
+    payload,
+    parsePrivateKey(authority.privateKey),
+  );
+  return serializeDeveloperLicenseFile(document, payload.issuerKeyId);
+}
+
 function loggerStub(): JsonLogger {
   return {
     log: () => {},
@@ -165,9 +206,20 @@ function authorizationStub(allowed = true): AuthorizationService {
   } as unknown as AuthorizationService;
 }
 
-function configStub(keys: string[]): AppConfig {
+function configStub(
+  keys: string[],
+  developer: { enabled: boolean; keys: string[] } = {
+    enabled: false,
+    keys: [],
+  },
+): AppConfig {
   return {
-    licensing: { provider: 'persistent', signingPublicKeys: keys },
+    licensing: {
+      provider: 'persistent',
+      signingPublicKeys: keys,
+      developerLicensesEnabled: developer.enabled,
+      developerSigningPublicKeys: developer.keys,
+    },
   } as unknown as AppConfig;
 }
 
@@ -184,6 +236,8 @@ function buildHarness(
     withIdentity?: boolean;
     allowed?: boolean;
     keys?: string[];
+    developerEnabled?: boolean;
+    developerKeys?: string[];
     /** §8.6 usage counts the pre-check and the transaction see (L-04). */
     usage?: {
       organizations?: number;
@@ -217,7 +271,10 @@ function buildHarness(
   );
   const licensing = new LicensingService(provider);
   const service = new LicenseImportService(
-    configStub(options.keys ?? [AUTHORITY.publicKey]),
+    configStub(options.keys ?? [AUTHORITY.publicKey], {
+      enabled: options.developerEnabled ?? false,
+      keys: options.developerKeys ?? [],
+    }),
     authorizationStub(options.allowed ?? true),
     identity,
     stores.licenses,
@@ -306,7 +363,9 @@ describe('license import pipeline', () => {
       supersededAt: null,
     });
     expect(
-      harness.stores.customers.get(harness.stores.versions[0]!.customerId),
+      harness.stores.customers.get(
+        harness.stores.versions[0]!.customerId ?? '',
+      ),
     ).toBe('Acme Holding');
     expect(harness.stores.auditEvents.map((event) => event.eventType)).toEqual([
       'license.import.applied',
@@ -315,6 +374,173 @@ describe('license import pipeline', () => {
       outcome: 'APPLIED',
       source: 'file',
       reason: null,
+    });
+  });
+
+  describe('official Developer License', () => {
+    const trustedDeveloperKey = `${DEVELOPER_KEY_ID}:${DEVELOPER_AUTHORITY.publicKey}`;
+
+    it('refuses shared commercial/developer authority material even under different key ids', () => {
+      expect(() =>
+        buildHarness({
+          keys: [`commercial-alias:${DEVELOPER_AUTHORITY.publicKey}`],
+          developerEnabled: true,
+          developerKeys: [trustedDeveloperKey],
+        }),
+      ).toThrow(/must use separate Ed25519 keys/);
+    });
+
+    it('imports through the official activation path without creating a commercial customer', async () => {
+      harness = buildHarness({
+        developerEnabled: true,
+        developerKeys: [trustedDeveloperKey],
+      });
+
+      const result = await harness.service.importDocument(developerDocument());
+
+      expect(result).toMatchObject({
+        changed: true,
+        outcome: 'APPLIED',
+        license: {
+          licensed: true,
+          active: true,
+          licenseType: 'DEVELOPER',
+          customerId: null,
+          customerCode: null,
+          developerId: 'developer-alice',
+          developerName: 'Alice Example',
+          organizationLimit: 2,
+          userLimit: 10,
+        },
+      });
+      expect(harness.stores.customers.size).toBe(0);
+      expect(harness.stores.versions[0]).toMatchObject({
+        licenseType: 'DEVELOPER',
+        customerId: null,
+        customerCode: null,
+        developerId: 'developer-alice',
+      });
+    });
+
+    it('retains a future explicit replacement for the same Developer holder', async () => {
+      harness = buildHarness({
+        developerEnabled: true,
+        developerKeys: [trustedDeveloperKey],
+      });
+      await harness.service.importDocument(developerDocument());
+
+      const replacement = await harness.service.importDocument(
+        developerDocument({
+          operationId: 'developer-operation-002',
+          licenseId: 'developer-license-002',
+          validFrom: new Date('2098-01-01T00:00:00.000Z'),
+          validUntil: new Date('2100-01-01T00:00:00.000Z'),
+          supersedesOperationId: 'developer-operation-001',
+        }),
+      );
+
+      expect(replacement).toMatchObject({
+        changed: true,
+        license: {
+          licenseType: 'DEVELOPER',
+          developerId: 'developer-alice',
+          licenseId: 'developer-license-001',
+        },
+      });
+      expect(harness.stores.versions).toHaveLength(2);
+      expect(harness.stores.versions[0]).toMatchObject({
+        operationId: 'developer-operation-001',
+        governsUntil: new Date('2098-01-01T00:00:00.000Z'),
+      });
+      expect(harness.stores.versions[1]).toMatchObject({
+        operationId: 'developer-operation-002',
+        developerId: 'developer-alice',
+      });
+    });
+
+    it('is disabled by default independently of NODE_ENV and writes no license state', async () => {
+      const error = await rejectionOf(
+        harness.service.importDocument(developerDocument()),
+      );
+      expect(error.status).toBe(403);
+      expect(error.details).toEqual({ reason: 'developer-license-disabled' });
+      expect(harness.stores.versions).toHaveLength(0);
+      expect(harness.stores.customers.size).toBe(0);
+    });
+
+    it('uses only the dedicated developer trust list and checks installation binding', async () => {
+      harness = buildHarness({
+        developerEnabled: true,
+        developerKeys: [`${DEVELOPER_KEY_ID}:${STRANGER.publicKey}`],
+      });
+      const untrusted = await rejectionOf(
+        harness.service.importDocument(developerDocument()),
+      );
+      expect(untrusted.status).toBe(422);
+      expect(harness.stores.versions).toHaveLength(0);
+
+      harness = buildHarness({
+        developerEnabled: true,
+        developerKeys: [trustedDeveloperKey],
+      });
+      const wrongInstallation = await rejectionOf(
+        harness.service.importDocument(
+          developerDocument({ installationId: ATTACKER_INSTALLATION }),
+        ),
+      );
+      expect(wrongInstallation.details).toEqual({
+        reason: 'installation-mismatch',
+      });
+      expect(harness.stores.versions).toHaveLength(0);
+    });
+
+    it('refuses replay and refuses mixing developer history with a commercial installation binding', async () => {
+      harness = buildHarness({
+        developerEnabled: true,
+        developerKeys: [trustedDeveloperKey],
+      });
+      const document = developerDocument();
+      await harness.service.importDocument(document);
+      const replay = await rejectionOf(
+        harness.service.importDocument(document),
+      );
+      expect(replay.status).toBe(409);
+      expect(replay.details).toEqual({ reason: 'duplicate-operation' });
+
+      const holderChange = await rejectionOf(
+        harness.service.importDocument(
+          developerDocument({
+            operationId: 'developer-operation-002',
+            licenseId: 'developer-license-002',
+            developerId: 'developer-bob',
+            developerName: 'Bob Example',
+          }),
+        ),
+      );
+      expect(holderChange.status).toBe(409);
+      expect(holderChange.details).toEqual({
+        reason: 'license-binding-conflict',
+      });
+      expect(harness.stores.versions).toHaveLength(1);
+
+      const commercialStores = createLicensingStores({
+        installation: {
+          installationId: INSTALLATION,
+          name: 'Vardena',
+          customerId: CUSTOMER,
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        },
+      });
+      harness = buildHarness({
+        stores: commercialStores,
+        developerEnabled: true,
+        developerKeys: [trustedDeveloperKey],
+      });
+      const mixed = await rejectionOf(
+        harness.service.importDocument(developerDocument()),
+      );
+      expect(mixed.details).toEqual({ reason: 'license-type-conflict' });
+      expect(harness.stores.versions).toHaveLength(0);
     });
   });
 

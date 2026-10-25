@@ -21,6 +21,12 @@ import {
 } from '../src/modules/licensing/data/licenses.repository.js';
 import { licenseDocumentHash } from '../src/modules/licensing/domain/license-document.js';
 import {
+  serializeDeveloperLicenseFile,
+  signDeveloperLicenseDocument,
+  type DeveloperLicensePayload,
+} from '../src/modules/licensing/domain/developer-license-document.js';
+import { parsePrivateKey } from '../src/modules/licensing/domain/license-code.js';
+import {
   canonicalizeRevocation,
   type RevocationPayload,
 } from '../src/modules/licensing/domain/license-revocation.js';
@@ -72,6 +78,8 @@ describe.skipIf(DATABASE_URL === undefined)(
   'Licensing persistence (live PostgreSQL)',
   () => {
     const authority = generateAuthorityKeyPair();
+    const developerAuthority = generateAuthorityKeyPair();
+    const developerKeyId = 'developer-live-authority';
     /**
      * One installation belongs to one commercial customer (Owner decision
      * 2026-10-12, Q4). Every document this suite issues for the SELF
@@ -126,6 +134,10 @@ describe.skipIf(DATABASE_URL === undefined)(
               ...base.licensing,
               provider: 'persistent',
               signingPublicKeys: [authority.publicKey],
+              developerLicensesEnabled: true,
+              developerSigningPublicKeys: [
+                `${developerKeyId}:${developerAuthority.publicKey}`,
+              ],
             },
           }),
       });
@@ -439,6 +451,85 @@ describe.skipIf(DATABASE_URL === undefined)(
         ].join('.'),
       };
     }
+
+    it('persists an official Developer License with no commercial customer', async () => {
+      await cleanup(prisma);
+      try {
+        const identity = await app.get(InstallationIdentityService).current();
+        const payload: DeveloperLicensePayload = {
+          version: 1,
+          kind: 'DEVELOPER_LICENSE_VERSION',
+          licenseType: 'DEVELOPER',
+          operationId: 'developer-live-operation-001',
+          licenseId: 'developer-live-license-001',
+          developerId: 'developer-live-holder',
+          developerName: 'Developer Live Holder',
+          installationId: identity.installationId,
+          status: 'ACTIVE',
+          validFrom: new Date('2020-01-01T00:00:00.000Z'),
+          validUntil: new Date('2099-01-01T00:00:00.000Z'),
+          organizationLimit: 2,
+          userLimit: 10,
+          deviceLimit: 0,
+          moduleEntitlements: ['organization', 'users'],
+          featureEntitlements: ['developer-tools'],
+          supersedesOperationId: null,
+          issuerKeyId: developerKeyId,
+          issuedAt: new Date('2020-01-01T00:00:00.000Z'),
+        };
+        const document = signDeveloperLicenseDocument(
+          payload,
+          parsePrivateKey(developerAuthority.privateKey),
+        );
+
+        await expect(
+          app
+            .get(LicenseImportService)
+            .importDocument(
+              serializeDeveloperLicenseFile(document, developerKeyId),
+            ),
+        ).resolves.toMatchObject({
+          changed: true,
+          license: {
+            licenseType: 'DEVELOPER',
+            customerId: null,
+            developerId: payload.developerId,
+          },
+        });
+
+        expect(
+          await query<{
+            license_type: string;
+            customer_id: string | null;
+            developer_id: string | null;
+          }>(
+            `SELECT "license_type"::text, "customer_id", "developer_id"
+             FROM "licensing"."licenses" WHERE "id" = $1`,
+            payload.licenseId,
+          ),
+        ).toEqual([
+          {
+            license_type: 'DEVELOPER',
+            customer_id: null,
+            developer_id: payload.developerId,
+          },
+        ]);
+        expect(
+          await count(
+            'SELECT COUNT(*)::bigint AS count FROM "licensing"."customers"',
+          ),
+        ).toBe(0);
+      } finally {
+        await cleanup(prisma);
+        // The installation identity service caches the identity it created.
+        // Reboot after deleting this test's isolated holder so the following
+        // commercial persistence chain starts from a truly fresh process and
+        // database together rather than retaining a stale in-memory identity.
+        await app.close();
+        app = await boot();
+        prisma = app.get(PrismaService);
+      }
+    }, 60_000);
 
     it('persists the identity and the retained version across a restart', async () => {
       // 1. Fresh installation: identity is created once, nothing is licensed.

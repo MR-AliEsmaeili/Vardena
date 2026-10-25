@@ -45,6 +45,15 @@ Notes:
   report — never silently skipped.
 - Unit tests are fully hermetic (`vitest.config.ts` → `src/**/*.spec.ts`):
   in-memory fakes only, no Prisma connection.
+- The official Developer License fast gate uses synthetic Ed25519 keys and
+  temporary protected files only:
+  `npm test -- --run src/modules/licensing/domain/developer-license-document.spec.ts src/modules/licensing/application/license-import.service.spec.ts src/tools/developer-license-key-files.spec.ts src/issue-development-license.spec.ts`.
+  It covers deterministic signing, domain separation, dedicated trust/policy,
+  no-customer activation, replay, safe CLI permissions, self-verification and
+  no-overwrite. Real keys and licenses are forbidden test fixtures.
+- Developer migration/import behavior against PostgreSQL and the production
+  artifact exclusion remain CI migration/live-DB/build responsibilities; local
+  unit success is not a substitute.
 
 ## 2. CI Heavy Gates (CI-HEAVY)
 

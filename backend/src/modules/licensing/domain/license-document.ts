@@ -39,9 +39,10 @@ import type {
  * must round-trip to exactly the signed bytes: a re-serialization that differs
  * from what was signed is rejected.
  *
- * The private key never exists on a customer installation: the repository's
- * only issuer lives in `src/tools/development-license-authority.ts` and refuses
- * `NODE_ENV=production` (PDR-11 §4.4, G-3).
+ * Private keys never belong on a customer installation. Offline issuing tools
+ * are compiled into `dist-tools`/the Owner signer boundary and are excluded
+ * from the production backend image; runtime configuration carries public
+ * verification trust only (PDR-11 §4.4, ADR-0053).
  */
 
 export const LICENSE_FILE_FORMAT = 'vardena-license';
@@ -171,10 +172,13 @@ export interface TrustedLicenseKey {
   key: KeyObject;
 }
 
-export function hashKeyMaterial(key: KeyObject): string {
+export function licenseKeyId(key: KeyObject): string {
   const der = key.export({ format: 'der', type: 'spki' });
   return `sha256-${createHash('sha256').update(der).digest('hex').slice(0, 16)}`;
 }
+
+/** Backward-compatible name retained for commercial protocol tests/callers. */
+export const hashKeyMaterial = licenseKeyId;
 
 /**
  * Split one configured trust entry into `keyId:<material>` or a bare key.
@@ -202,7 +206,7 @@ export function toTrustedKeys(
   entries: readonly { id?: string; key: KeyObject }[],
 ): TrustedLicenseKey[] {
   return entries.map(({ id, key }) => ({
-    id: id ?? hashKeyMaterial(key),
+    id: id ?? licenseKeyId(key),
     key,
   }));
 }
@@ -210,6 +214,7 @@ export function toTrustedKeys(
 /** Parse the shared trusted authority list for license and device responses. */
 export function parseTrustedLicenseKeys(
   entries: readonly string[],
+  variableName = 'LICENSE_SIGNING_PUBLIC_KEYS',
 ): TrustedLicenseKey[] {
   const seen = new Set<string>();
   const parsed = entries.map((entry, index) => {
@@ -219,7 +224,7 @@ export function parseTrustedLicenseKeys(
       key = parsePublicKey(material);
     } catch {
       throw new Error(
-        `LICENSE_SIGNING_PUBLIC_KEYS entry ${index + 1} is not a valid Ed25519 public key (PEM or base64 DER).`,
+        `${variableName} entry ${index + 1} is not a valid Ed25519 public key (PEM or base64 DER).`,
       );
     }
     return id === null ? { key } : { id, key };
@@ -228,7 +233,7 @@ export function parseTrustedLicenseKeys(
   for (const key of trusted) {
     if (seen.has(key.id)) {
       throw new Error(
-        `LICENSE_SIGNING_PUBLIC_KEYS contains the duplicate key id "${key.id}".`,
+        `${variableName} contains the duplicate key id "${key.id}".`,
       );
     }
     seen.add(key.id);
@@ -303,15 +308,33 @@ export function canonicalizeLicenseVersion(
   return JSON.stringify(wire);
 }
 
-/** Issue the signed artifact. Used only by the development issuing tool. */
+/** Sign canonical VLIC2 bytes for offline authorities and synthetic tests. */
 export function signLicenseDocument(
   payload: LicenseVersionPayload,
   privateKey: KeyObject,
 ): string {
   assertLicenseVersionPayload(payload);
-  const body = Buffer.from(canonicalizeLicenseVersion(payload), 'utf8');
-  return [
+  return signArmoredLicenseArtifact(
     LICENSE_DOCUMENT_PREFIX,
+    canonicalizeLicenseVersion(payload),
+    privateKey,
+  );
+}
+
+/**
+ * Shared Ed25519 armor primitive for every domain-separated license artifact.
+ * Format-specific modules own canonicalization and semantic validation; this
+ * helper owns the one signing implementation so commercial and developer
+ * documents cannot drift cryptographically.
+ */
+export function signArmoredLicenseArtifact(
+  prefix: string,
+  canonicalBody: string,
+  privateKey: KeyObject,
+): string {
+  const body = Buffer.from(canonicalBody, 'utf8');
+  return [
+    prefix,
     body.toString('base64url'),
     cryptoSign(null, body, privateKey).toString('base64url'),
   ].join('.');
@@ -350,6 +373,8 @@ export function decodeLicenseTransport(input: string): {
   document: string;
   transport: 'file' | 'text';
   keyId: string | null;
+  /** Domain-separated artifact family; never inferred from environment. */
+  format: 'commercial' | 'developer';
 } {
   const value = input.trim();
   if (value === '') {
@@ -359,7 +384,12 @@ export function decodeLicenseTransport(input: string): {
     );
   }
   if (!value.startsWith('{')) {
-    return { document: value, transport: 'text', keyId: null };
+    return {
+      document: value,
+      transport: 'text',
+      keyId: null,
+      format: value.startsWith('VDEV1.') ? 'developer' : 'commercial',
+    };
   }
 
   let raw: unknown;
@@ -386,10 +416,14 @@ export function decodeLicenseTransport(input: string): {
       );
     }
   }
-  if (envelope['format'] !== LICENSE_FILE_FORMAT) {
+  const format = envelope['format'];
+  if (
+    format !== LICENSE_FILE_FORMAT &&
+    format !== 'vardena-developer-license'
+  ) {
     throw new LicenseDocumentError(
       'malformed',
-      'The license file does not declare the Vardena license format.',
+      'The license file does not declare a supported Vardena license format.',
     );
   }
   if (envelope['fileVersion'] !== LICENSE_FILE_VERSION) {
@@ -412,10 +446,20 @@ export function decodeLicenseTransport(input: string): {
       'The license file key hint must be a string.',
     );
   }
+  const normalizedDocument = document.trim();
+  const developerEnvelope = format === 'vardena-developer-license';
+  const developerArtifact = normalizedDocument.startsWith('VDEV1.');
+  if (developerEnvelope !== developerArtifact) {
+    throw new LicenseDocumentError(
+      'malformed',
+      'The license file envelope and signed artifact belong to different license formats.',
+    );
+  }
   return {
-    document: document.trim(),
+    document: normalizedDocument,
     transport: 'file',
     keyId: keyId ?? null,
+    format: developerEnvelope ? 'developer' : 'commercial',
   };
 }
 
@@ -441,6 +485,46 @@ export function parseLicenseDocument(
     verify?: (key: KeyObject, body: Buffer, signature: Buffer) => boolean;
   } = {},
 ): { payload: LicenseVersionPayload; keyId: string } {
+  const verified = verifyArmoredLicenseArtifact(
+    LICENSE_DOCUMENT_PREFIX,
+    document,
+    trustedKeys,
+    options,
+  );
+  let raw: unknown;
+  try {
+    raw = JSON.parse(verified.body);
+  } catch {
+    throw new LicenseDocumentError(
+      'malformed',
+      'The license document payload is not readable.',
+    );
+  }
+  const payload = readLicenseVersionPayload(raw);
+  assertLicenseVersionPayload(payload);
+  if (canonicalizeLicenseVersion(payload) !== verified.body) {
+    throw new LicenseDocumentError(
+      'payload',
+      'The license document payload is not in canonical form.',
+    );
+  }
+  return { payload, keyId: verified.keyId };
+}
+
+/**
+ * Shared, fail-closed Ed25519 verification for domain-separated license
+ * artifacts. A key hint only narrows the configured trust list; it never adds
+ * trust. The returned body is authenticated bytes, not yet a typed payload.
+ */
+export function verifyArmoredLicenseArtifact(
+  expectedPrefix: string,
+  document: string,
+  trustedKeys: readonly TrustedLicenseKey[],
+  options: {
+    keyId?: string | null;
+    verify?: (key: KeyObject, body: Buffer, signature: Buffer) => boolean;
+  } = {},
+): { body: string; keyId: string } {
   const verify =
     options.verify ??
     ((key, body, signature) => {
@@ -450,9 +534,7 @@ export function parseLicenseDocument(
         return false;
       }
     });
-
-  const value = document.trim();
-  const parts = value.split('.');
+  const parts = document.trim().split('.');
   if (parts.length !== 3) {
     throw new LicenseDocumentError(
       'malformed',
@@ -460,7 +542,7 @@ export function parseLicenseDocument(
     );
   }
   const [prefix, bodyPart, signaturePart] = parts as [string, string, string];
-  if (prefix !== LICENSE_DOCUMENT_PREFIX) {
+  if (prefix !== expectedPrefix) {
     throw new LicenseDocumentError(
       'unsupported-version',
       `Unsupported license document version "${prefix}".`,
@@ -474,7 +556,6 @@ export function parseLicenseDocument(
       'The license document payload or signature is empty.',
     );
   }
-
   const hint = options.keyId ?? null;
   if (trustedKeys.length === 0) {
     throw new LicenseDocumentError(
@@ -497,25 +578,7 @@ export function parseLicenseDocument(
       'The license document signature is not valid for this installation.',
     );
   }
-
-  let raw: unknown;
-  try {
-    raw = JSON.parse(body.toString('utf8'));
-  } catch {
-    throw new LicenseDocumentError(
-      'malformed',
-      'The license document payload is not readable.',
-    );
-  }
-  const payload = readLicenseVersionPayload(raw);
-  assertLicenseVersionPayload(payload);
-  if (canonicalizeLicenseVersion(payload) !== body.toString('utf8')) {
-    throw new LicenseDocumentError(
-      'payload',
-      'The license document payload is not in canonical form.',
-    );
-  }
-  return { payload, keyId: matched.id };
+  return { body: body.toString('utf8'), keyId: matched.id };
 }
 
 function readLicenseVersionPayload(raw: unknown): LicenseVersionPayload {

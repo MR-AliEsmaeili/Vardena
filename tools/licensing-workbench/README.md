@@ -1,6 +1,11 @@
 # Vardena Local Licensing Workbench (Windows)
 
-This is a local Windows Forms front end for the existing Vardena offline signer. It reduces command-line use for key generation and signing. The Owner web app still prepares issuance/revocation requests and imports signed artifacts; the customer app still imports the issued license separately.
+This is a local Windows Forms front end for two deliberately separate offline authorities:
+
+1. the existing commercial Owner request signer; and
+2. the official `VDEV1` Developer License issuer, which does **not** run Owner Licensing and does **not** create a commercial customer.
+
+It reduces command-line use while retaining protected key files, no-overwrite output and local-only operation. Developer acceptance still requires the target backend's explicit policy and dedicated public trust; `NODE_ENV` never enables it.
 
 ## Requirements
 
@@ -11,16 +16,34 @@ This is a local Windows Forms front end for the existing Vardena offline signer.
 
 ## Start
 
-From PowerShell at the repository root:
+Install the locked dependencies once in both tool projects (before taking the
+authority workstation offline), then start from PowerShell at the repository
+root:
 
 ```powershell
+Push-Location .\owner-licensing\backend
+npm ci --no-audit --no-fund
+Pop-Location
+Push-Location .\backend
+npm ci --no-audit --no-fund
+Pop-Location
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\tools\licensing-workbench\Start-VardenaLicensingWorkbench.ps1
 ```
 
 The execution-policy command affects only the current PowerShell process. If your organization's policy prohibits scripts, do not bypass it; use an approved method to run the tool.
 
-## Existing signing key
+## Official Developer License workflow
+
+1. Click **Build signer**; this now builds both the Owner signer and the backend `dist-tools` Developer issuer.
+2. In the separate Developer License group, select a base key folder and click **Generate Developer key**. A timestamped private-ACL directory receives `developer-license-key.pkcs8`, the public key and public key-info file. Existing files are never overwritten.
+3. Deploy only the `trustEntry` from `developer-license-key-info.json` to an approved target's `DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS`, with `DEVELOPER_LICENSES_ENABLED=true` on API and worker. Never transfer the private key.
+4. Read the backend-owned `installationId` from the target and click **Issue Developer License**. Enter explicit finite dates, positive organization/user limits and entitlements. The tool signs and self-verifies locally before writing a new output file.
+5. Import that `.vdev.json` through the target's existing authenticated activation UI. Confirm `licenseType=DEVELOPER`, the developer holder and null customer fields.
+
+A VDEV1 license binds one installation and does not support client-device enrollment. See [the full technical guide](../../docs/licensing/developer-license.md) and [the complete Persian Windows guide](../../docs/operations/developer-license-windows-fa.md).
+
+## Existing commercial signing key
 
 1. Use **Select folder** to choose the folder containing the existing `key.pkcs8` file.
 2. Click **Identify existing key** to derive the public Key ID without displaying the private key. Confirm that this ID is the one registered in Owner and trusted by the customer backend.
@@ -47,7 +70,7 @@ The execution-policy command affects only the current PowerShell process. If you
 ## Important boundaries
 
 - The workbench does not connect to Owner's database or make HTTP requests to the Owner/customer applications. It only opens their local pages from its buttons.
-- It does not issue a license by itself: Owner must prepare and accept the relevant operation, and the customer runtime independently verifies/applies the signed artifact.
+- Commercial issuance still requires Owner to prepare/accept the operation. The separate Developer workflow intentionally issues VDEV1 locally without Owner; the customer runtime still independently verifies/applies it under explicit policy.
 - It does not repair or reactivate an existing license automatically. Diagnose runtime status and trust configuration before issuing a replacement.
 - Do not generate a new key as a troubleshooting step for an existing license. A changed key ID requires deliberate trust-list configuration.
 - Never delete the signer replay-state file as a shortcut. It is part of duplicate-operation protection.
@@ -63,6 +86,12 @@ $tokens = $null; $errors = $null
 if ($errors.Count) { $errors | Format-List; throw 'Workbench syntax failed' }
 ```
 
-Run `npm ci` and `npm run build:signer` in `owner-licensing/backend`, then launch the workbench in a separate non-production shell. Using only a disposable key and synthetic Owner request: inspect a key, reject a 63-character/uppercase digest and accept a 64-character lowercase digest; cancel the output dialog; confirm an existing output cannot be overwritten; sign once with the independently supplied digest, confirm a second attempt is rejected using the unchanged `signer-state.log`; test invalid/missing paths and a deliberately failed signer invocation. Confirm the UI never reports success for failures and the key directory DACL contains no broad allow entry. Never delete the replay log to repeat a production operation. Windows CI parses the script and runs the key utility tests but cannot exercise WinForms interaction.
+Run `npm ci` and `npm run build:signer` in `owner-licensing/backend`; also run `npm ci` and `npm run build:tools` in `backend`. Then launch the workbench in a separate shell. Using only disposable keys/data:
+
+- Owner flow: inspect a key, reject a 63-character/uppercase digest and accept a 64-character lowercase digest; cancel output; prove no overwrite; sign once and prove replay-state refusal.
+- Developer flow: generate into a private-DACL directory, confirm no private material appears in the log, issue one finite installation-bound file, confirm the receipt says `verified`, import it only into a synthetic approved target, and prove a second write to the same output path is refused.
+- Both flows: test invalid/missing paths and a deliberately failed invocation; confirm the UI never reports success for failures and each key directory DACL has no broad allow entry.
+
+Never delete replay/history to repeat a production operation. Windows CI parses the script and runs key-utility tests but cannot exercise WinForms interaction.
 
 The replay-state field is read-only and follows the selected key directory. Changing directories changes signing authority and replay state; return to the original directory to keep its state. Digest files use unique filenames and are never silently replaced. A local browser button may open Owner/customer pages, but the workbench itself makes no HTTP request.

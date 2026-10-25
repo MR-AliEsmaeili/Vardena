@@ -10,6 +10,7 @@
     "dist",
     "**/*spec.ts",
     "src/issue-development-license.ts",
-    "src/tools/development-license-authority.ts"
+    "src/tools/development-license-authority.ts",
+    "src/tools/developer-license-key-files.ts"
   ]
 }

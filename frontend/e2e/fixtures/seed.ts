@@ -91,6 +91,7 @@ export const ACCOUNTING_PERIOD: AccountingPeriod = {
 /** Active license: the shell must not fall into the Grace/Read-Only gate. */
 export const LICENSE_STATE: LicenseState = {
   licensed: true,
+  licenseType: 'COMMERCIAL',
   status: 'ACTIVE',
   active: true,
   inactiveReason: null,
@@ -100,6 +101,8 @@ export const LICENSE_STATE: LicenseState = {
   installationId: 'inst-1',
   customerId: 'cust-1',
   customerCode: 'CUST-1',
+  developerId: null,
+  developerName: null,
   licenseId: 'lic-1',
   validFrom: '2026-01-01T00:00:00.000Z',
   validUntil: '2028-01-01T00:00:00.000Z',

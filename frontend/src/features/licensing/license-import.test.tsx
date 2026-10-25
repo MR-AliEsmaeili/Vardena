@@ -150,6 +150,38 @@ beforeEach(() => {
 });
 
 describe('license import', () => {
+  it('shows the official Developer License holder and hides the commercial-only revocation action', async () => {
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [...importPermissions, PERMISSIONS.licensing.licenseRevoke],
+    });
+    serveLicenseState({
+      ...testActiveLicenseState,
+      licenseType: 'DEVELOPER',
+      customerId: null,
+      customerCode: null,
+      developerId: 'developer-alice',
+      developerName: 'Alice Example',
+      deviceLimit: 0,
+    });
+
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+
+    expect(
+      await screen.findByText((_, element) =>
+        Boolean(
+          element?.textContent?.includes(t.license.statusTypeDeveloper) &&
+          element.tagName === 'P',
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Alice Example')).toBeInTheDocument();
+    expect(screen.getByText('(developer-alice)')).toBeInTheDocument();
+    expect(
+      screen.queryByText(t.license.revocationTitle),
+    ).not.toBeInTheDocument();
+  });
+
   it('offers the file-first import form when the backend reports no active license', async () => {
     renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
 

@@ -106,6 +106,9 @@ services:
       # never belongs on an installation. An empty list rejects every
       # activation while an already-activated license keeps evaluating.
       LICENSE_SIGNING_PUBLIC_KEYS: ${LICENSE_SIGNING_PUBLIC_KEYS:-}
+      # Separate, explicit policy/trust domain for official VDEV1 artifacts.
+      DEVELOPER_LICENSES_ENABLED: ${DEVELOPER_LICENSES_ENABLED:-false}
+      DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS: ${DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS:-}
       AUTH_LOGIN_RATE_LIMIT_MAX: ${AUTH_LOGIN_RATE_LIMIT_MAX:-10}
     ports:
       - "${API_PORT:-3000}:3000"
@@ -136,6 +139,9 @@ services:
       # The worker evaluates the same installation license as the API.
       LICENSE_PROVIDER: ${LICENSE_PROVIDER:-persistent}
       LICENSE_SIGNING_PUBLIC_KEYS: ${LICENSE_SIGNING_PUBLIC_KEYS:-}
+      # Separate, explicit policy/trust domain for official VDEV1 artifacts.
+      DEVELOPER_LICENSES_ENABLED: ${DEVELOPER_LICENSES_ENABLED:-false}
+      DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS: ${DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS:-}
     depends_on:
       postgres:
         condition: service_healthy

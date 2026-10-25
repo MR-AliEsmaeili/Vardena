@@ -3787,6 +3787,11 @@ export interface components {
         LicenseStateDto: {
             /** @description Whether an installation license is evaluated. */
             licensed: boolean;
+            /**
+             * @description Explicit license type. LOCAL_DEVELOPMENT is the synthetic config provider and is not an official signed Developer License.
+             * @enum {string|null}
+             */
+            licenseType: "COMMERCIAL" | "DEVELOPER" | "LOCAL_DEVELOPMENT" | null;
             /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
             status: string;
             /**
@@ -3812,6 +3817,10 @@ export interface components {
             customerId: string | null;
             /** @description Stable business customer code (L-06, PDR-14). */
             customerCode: string | null;
+            /** @description Explicit non-commercial holder id for a DEVELOPER license; null for commercial and local-config licenses. */
+            developerId: string | null;
+            /** @description Display name of the Developer License holder; null for commercial and local-config licenses. */
+            developerName: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;
@@ -3847,6 +3856,11 @@ export interface components {
         LicenseImportResultDto: {
             /** @description Whether an installation license is evaluated. */
             licensed: boolean;
+            /**
+             * @description Explicit license type. LOCAL_DEVELOPMENT is the synthetic config provider and is not an official signed Developer License.
+             * @enum {string|null}
+             */
+            licenseType: "COMMERCIAL" | "DEVELOPER" | "LOCAL_DEVELOPMENT" | null;
             /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
             status: string;
             /**
@@ -3872,6 +3886,10 @@ export interface components {
             customerId: string | null;
             /** @description Stable business customer code (L-06, PDR-14). */
             customerCode: string | null;
+            /** @description Explicit non-commercial holder id for a DEVELOPER license; null for commercial and local-config licenses. */
+            developerId: string | null;
+            /** @description Display name of the Developer License holder; null for commercial and local-config licenses. */
+            developerName: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;
@@ -3903,7 +3921,7 @@ export interface components {
         };
         ImportLicenseDocumentDto: {
             /**
-             * @description A signed license document: either the vardena-license file envelope or the bare VLIC2 artifact (legacy VLIC1 codes are accepted as well).
+             * @description A signed license document: vardena-license/VLIC2 commercial, vardena-developer-license/VDEV1 official Developer License, or a legacy VLIC1 code. Developer acceptance additionally requires explicit deployment policy and dedicated trust.
              * @example {"format":"vardena-license","fileVersion":1,"document":"VLIC2.eyJ2Ijoy...c2lnbmF0dXJl"}
              */
             document: string;
@@ -3923,6 +3941,11 @@ export interface components {
         LicenseCustomerTransferResultDto: {
             /** @description Whether an installation license is evaluated. */
             licensed: boolean;
+            /**
+             * @description Explicit license type. LOCAL_DEVELOPMENT is the synthetic config provider and is not an official signed Developer License.
+             * @enum {string|null}
+             */
+            licenseType: "COMMERCIAL" | "DEVELOPER" | "LOCAL_DEVELOPMENT" | null;
             /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
             status: string;
             /**
@@ -3948,6 +3971,10 @@ export interface components {
             customerId: string | null;
             /** @description Stable business customer code (L-06, PDR-14). */
             customerCode: string | null;
+            /** @description Explicit non-commercial holder id for a DEVELOPER license; null for commercial and local-config licenses. */
+            developerId: string | null;
+            /** @description Display name of the Developer License holder; null for commercial and local-config licenses. */
+            developerName: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;
@@ -4031,6 +4058,11 @@ export interface components {
         GapRecoveryResultDto: {
             /** @description Whether an installation license is evaluated. */
             licensed: boolean;
+            /**
+             * @description Explicit license type. LOCAL_DEVELOPMENT is the synthetic config provider and is not an official signed Developer License.
+             * @enum {string|null}
+             */
+            licenseType: "COMMERCIAL" | "DEVELOPER" | "LOCAL_DEVELOPMENT" | null;
             /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
             status: string;
             /**
@@ -4056,6 +4088,10 @@ export interface components {
             customerId: string | null;
             /** @description Stable business customer code (L-06, PDR-14). */
             customerCode: string | null;
+            /** @description Explicit non-commercial holder id for a DEVELOPER license; null for commercial and local-config licenses. */
+            developerId: string | null;
+            /** @description Display name of the Developer License holder; null for commercial and local-config licenses. */
+            developerName: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;
@@ -4106,6 +4142,11 @@ export interface components {
         ReductionResolutionResultDto: {
             /** @description Whether an installation license is evaluated. */
             licensed: boolean;
+            /**
+             * @description Explicit license type. LOCAL_DEVELOPMENT is the synthetic config provider and is not an official signed Developer License.
+             * @enum {string|null}
+             */
+            licenseType: "COMMERCIAL" | "DEVELOPER" | "LOCAL_DEVELOPMENT" | null;
             /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
             status: string;
             /**
@@ -4131,6 +4172,10 @@ export interface components {
             customerId: string | null;
             /** @description Stable business customer code (L-06, PDR-14). */
             customerCode: string | null;
+            /** @description Explicit non-commercial holder id for a DEVELOPER license; null for commercial and local-config licenses. */
+            developerId: string | null;
+            /** @description Display name of the Developer License holder; null for commercial and local-config licenses. */
+            developerName: string | null;
             licenseId: string | null;
             /** Format: date-time */
             validFrom: string | null;

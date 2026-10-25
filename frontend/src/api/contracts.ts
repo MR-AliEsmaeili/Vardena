@@ -224,6 +224,8 @@ export interface LicenseVersionSummary {
  */
 export interface LicenseState {
   licensed: boolean;
+  /** Commercial, official Developer, or the separate synthetic local provider. */
+  licenseType: 'COMMERCIAL' | 'DEVELOPER' | 'LOCAL_DEVELOPMENT' | null;
   status: 'ACTIVE' | 'EXPIRED' | 'SUSPENDED' | 'UNLICENSED';
   active: boolean;
   inactiveReason:
@@ -246,6 +248,9 @@ export interface LicenseState {
   installationId: string | null;
   customerId: string | null;
   customerCode: string | null;
+  /** Non-commercial holder fields, present only for an official Developer License. */
+  developerId: string | null;
+  developerName: string | null;
   licenseId: string | null;
   validFrom: string | null;
   validUntil: string | null;
@@ -276,8 +281,9 @@ export interface LicenseState {
  * `backend/src/modules/licensing/api/dto/license.dto.ts`).
  *
  * The body carries exactly ONE field — the document a client received (the
- * `vardena-license` file envelope, a bare VLIC2 artifact, or a legacy VLIC1
- * code). Status, limits, validity window, versions and entitlements are read
+ * `vardena-license`/VLIC2 commercial artifact, a
+ * `vardena-developer-license`/VDEV1 official Developer License, or a legacy
+ * VLIC1 code). Status, limits, validity window, versions and entitlements are read
  * from the verified payload, so the client can never describe the license it
  * wants.
  */

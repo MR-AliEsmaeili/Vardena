@@ -4,8 +4,9 @@
 Phase 0.5A regression gate:
 1. Production Build Output Gate:
    - Verifies that `backend/dist` exists and does NOT contain:
-     - Development CLI or authority files: `issue-development-license.*`,
-       `tools/development-license-authority.*`
+     - Offline issuer/key files: `issue-development-license.*`,
+       `tools/development-license-authority.*`,
+       `tools/developer-license-key-files.*`
      - Forbidden development-only symbols/exports: `generateAuthorityKeyPair`,
        `issueLicenseCode`, `issueLicenseFile`, `issueLicenseDocument`,
        `LICENSE_SIGNING_PRIVATE_KEY`
@@ -72,6 +73,9 @@ FORBIDDEN_FILES = [
     "tools/development-license-authority.js",
     "tools/development-license-authority.d.ts",
     "tools/development-license-authority.js.map",
+    "tools/developer-license-key-files.js",
+    "tools/developer-license-key-files.d.ts",
+    "tools/developer-license-key-files.js.map",
 ]
 
 FORBIDDEN_SYMBOLS = [
@@ -79,6 +83,8 @@ FORBIDDEN_SYMBOLS = [
     b"issueLicenseCode",
     b"issueLicenseFile",
     b"issueLicenseDocument",
+    b"assertDeveloperKeyPathPrivate",
+    b"DeveloperKeyFileError",
     b"LICENSE_SIGNING_PRIVATE_KEY",
 ]
 

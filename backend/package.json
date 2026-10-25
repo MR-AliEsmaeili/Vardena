@@ -42,6 +42,8 @@
     "bootstrap:system-admin": "node --enable-source-maps dist/bootstrap-system-administrator.js",
     "license:keygen": "npm run build:tools && node --enable-source-maps dist-tools/issue-development-license.js --keygen",
     "license:issue": "npm run build:tools && node --enable-source-maps dist-tools/issue-development-license.js",
+    "developer-license:keygen": "npm run build:tools && node --enable-source-maps dist-tools/issue-development-license.js --keygen",
+    "developer-license:issue": "npm run build:tools && node --enable-source-maps dist-tools/issue-development-license.js",
     "prisma:format": "prisma format",
     "prisma:validate": "prisma validate",
     "openapi:dump": "node --enable-source-maps dist/tools/dump-openapi.js",

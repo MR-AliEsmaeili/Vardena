@@ -42,6 +42,8 @@ describe('loadAppConfig', () => {
       licensing: {
         provider: 'persistent',
         signingPublicKeys: [],
+        developerLicensesEnabled: false,
+        developerSigningPublicKeys: [],
         status: 'ACTIVE',
         validFrom: new Date('2020-01-01T00:00:00.000Z'),
         validUntil: null,
@@ -59,6 +61,36 @@ describe('loadAppConfig', () => {
         featureEntitlements: [],
       },
     });
+  });
+
+  it('keeps official Developer Licenses disabled in every environment unless explicitly allowed', () => {
+    for (const nodeEnv of ['development', 'test', 'production'] as const) {
+      const config = loadAppConfig({
+        DATABASE_URL: VALID_DB,
+        NODE_ENV: nodeEnv,
+      });
+      expect(config.licensing.developerLicensesEnabled).toBe(false);
+      expect(config.licensing.developerSigningPublicKeys).toEqual([]);
+    }
+  });
+
+  it('requires a dedicated public trust list when Developer Licenses are enabled', () => {
+    expect(() =>
+      loadAppConfig({
+        DATABASE_URL: VALID_DB,
+        DEVELOPER_LICENSES_ENABLED: 'true',
+      }),
+    ).toThrow(/DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS/);
+
+    const config = loadAppConfig({
+      DATABASE_URL: VALID_DB,
+      DEVELOPER_LICENSES_ENABLED: 'true',
+      DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS: 'dev-key:synthetic-key-material',
+    });
+    expect(config.licensing.developerLicensesEnabled).toBe(true);
+    expect(config.licensing.developerSigningPublicKeys).toEqual([
+      'dev-key:synthetic-key-material',
+    ]);
   });
 
   it('defaults the deployment organization pin to unset', () => {

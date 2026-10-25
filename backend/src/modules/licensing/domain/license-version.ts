@@ -5,6 +5,7 @@ import type {
   LicenseEntitlement,
   LicenseLimit,
   LicenseStatus,
+  PersistedLicenseType,
 } from './license.js';
 
 /**
@@ -138,10 +139,14 @@ export function isResolvableReductionConflict(
 export interface RetainedLicenseVersion {
   versionId: string;
   licenseId: string;
-  /** Commercial customer of the version's license (from the license row). */
-  customerId: string;
-  /** Stable business customer code of the version's customer (L-06, PDR-14). */
-  customerCode: string;
+  /** Missing only in pre-Developer-License test fixtures; defaults COMMERCIAL. */
+  licenseType?: PersistedLicenseType;
+  /** Commercial holder fields; null for DEVELOPER. */
+  customerId: string | null;
+  customerCode: string | null;
+  /** Non-commercial holder fields; null/absent for COMMERCIAL. */
+  developerId?: string | null;
+  developerName?: string | null;
   installationId: string;
   /** Unique operation identity; the replay guard keys on it. */
   operationId: string;
@@ -953,6 +958,7 @@ export type ImportConflictReason =
   | 'overlapping-range'
   | 'backdated-supersession'
   | 'license-binding-conflict'
+  | 'license-type-conflict'
   | 'customer-code-mismatch'
   | 'installation-customer-mismatch'
   | 'transfer-requires-different-customer'
@@ -1028,8 +1034,12 @@ export interface ImportCandidate {
   validFrom: Date;
   validUntil: Date | null;
   licenseId: string;
-  customerId: string;
-  customerCode: string;
+  /** Defaults to COMMERCIAL only for compatibility with existing fixtures. */
+  licenseType?: PersistedLicenseType;
+  customerId: string | null;
+  customerCode: string | null;
+  developerId?: string | null;
+  developerName?: string | null;
   organizationLimit: LicenseLimit;
   userLimit: LicenseLimit;
   deviceLimit: LicenseLimit;
@@ -1056,6 +1066,29 @@ export function candidateStart(candidate: {
   effectiveStart?: Date | null;
 }): Date {
   return candidate.effectiveStart ?? candidate.validFrom;
+}
+
+function persistedTypeOf(value: {
+  licenseType?: PersistedLicenseType;
+}): PersistedLicenseType {
+  return value.licenseType ?? 'COMMERCIAL';
+}
+
+function sameLicenseHolder(
+  left: Pick<
+    ImportCandidate,
+    'licenseType' | 'customerId' | 'customerCode' | 'developerId'
+  >,
+  right: Pick<
+    RetainedLicenseVersion,
+    'licenseType' | 'customerId' | 'customerCode' | 'developerId'
+  >,
+): boolean {
+  const type = persistedTypeOf(left);
+  if (type !== persistedTypeOf(right)) return false;
+  return type === 'COMMERCIAL'
+    ? left.customerId !== null && left.customerId === right.customerId
+    : left.developerId != null && left.developerId === right.developerId;
 }
 
 /**
@@ -1428,42 +1461,81 @@ export function evaluateImportConflicts(
   if (versions.some((version) => version.documentHash === documentHash)) {
     return conflictOnly({ reason: 'duplicate-operation', overlapping: 0 });
   }
+  const candidateType = persistedTypeOf(candidate);
+  const mixedType = versions.some(
+    (version) => persistedTypeOf(version) !== candidateType,
+  );
+  // An installation never mixes commercial and developer history. Together
+  // with the explicit deployment gate and separate trust list this prevents a
+  // Developer License from becoming an accidental customer-environment path.
+  if (
+    mixedType ||
+    (candidateType === 'DEVELOPER' && installationCustomerId !== null)
+  ) {
+    return conflictOnly({ reason: 'license-type-conflict', overlapping: 0 });
+  }
   if (
     versions.some(
       (version) =>
         version.licenseId === candidate.licenseId &&
-        version.customerId !== candidate.customerId,
+        !sameLicenseHolder(candidate, version),
     )
   ) {
     return conflictOnly({ reason: 'license-binding-conflict', overlapping: 0 });
   }
-  if (
-    hasCustomerCodeMismatch(
-      candidate,
-      versions,
-      installationCustomerId,
-      installationCustomerCode,
-      knownCustomers,
-    )
-  ) {
-    return conflictOnly({ reason: 'customer-code-mismatch', overlapping: 0 });
-  }
 
-  const customerChanges =
-    installationCustomerId !== null &&
-    installationCustomerId !== candidate.customerId;
-  if (customerTransfer === null) {
-    if (customerChanges) {
+  if (candidateType === 'COMMERCIAL') {
+    if (
+      candidate.customerId === null ||
+      candidate.customerCode === null ||
+      hasCustomerCodeMismatch(
+        {
+          customerId: candidate.customerId,
+          customerCode: candidate.customerCode,
+        },
+        versions,
+        installationCustomerId,
+        installationCustomerCode,
+        knownCustomers,
+      )
+    ) {
+      return conflictOnly({ reason: 'customer-code-mismatch', overlapping: 0 });
+    }
+
+    const customerChanges =
+      installationCustomerId !== null &&
+      installationCustomerId !== candidate.customerId;
+    if (customerTransfer === null) {
+      if (customerChanges) {
+        return conflictOnly({
+          reason: 'installation-customer-mismatch',
+          overlapping: 0,
+        });
+      }
+    } else if (!customerChanges) {
       return conflictOnly({
-        reason: 'installation-customer-mismatch',
+        reason: 'transfer-requires-different-customer',
         overlapping: 0,
       });
     }
-  } else if (!customerChanges) {
-    return conflictOnly({
-      reason: 'transfer-requires-different-customer',
-      overlapping: 0,
-    });
+  } else if (
+    candidate.developerId == null ||
+    candidate.developerName == null ||
+    customerTransfer !== null
+  ) {
+    return conflictOnly({ reason: 'license-type-conflict', overlapping: 0 });
+  } else if (
+    versions.some(
+      (version) =>
+        version.developerId == null ||
+        version.developerId !== candidate.developerId,
+    )
+  ) {
+    // VDEV1 has no holder-transfer operation. A trusted authority may replace
+    // or extend a Developer License for the same holder, but silently changing
+    // that identity would invent a transfer path with no dedicated intent,
+    // permission or audit semantics.
+    return conflictOnly({ reason: 'license-binding-conflict', overlapping: 0 });
   }
 
   let target: RetainedLicenseVersion | null = null;
@@ -1491,8 +1563,7 @@ export function evaluateImportConflicts(
       found === null ||
       hasRecordedSupersession(found) ||
       !isEligibleAt(found, at) ||
-      found.customerId !== candidate.customerId ||
-      found.customerCode !== candidate.customerCode
+      !sameLicenseHolder(candidate, found)
     ) {
       return conflictOnly({ reason: 'renewal-target-unknown', overlapping: 0 });
     }
@@ -2064,7 +2135,10 @@ function postGapGuard(
  * different `customerId`, is refused as `customer-code-mismatch` (409).
  */
 function hasCustomerCodeMismatch(
-  candidate: Pick<ImportCandidate, 'customerId' | 'customerCode'>,
+  candidate: Pick<ImportCandidate, 'customerId' | 'customerCode'> & {
+    customerId: string;
+    customerCode: string;
+  },
   versions: readonly RetainedLicenseVersion[],
   installationCustomerId: string | null,
   installationCustomerCode: string | null,
@@ -2082,8 +2156,12 @@ function hasCustomerCodeMismatch(
     return true;
   }
   if (
-    versions.some((version) =>
-      pairConflicts(version.customerId, version.customerCode),
+    versions.some(
+      (version) =>
+        persistedTypeOf(version) === 'COMMERCIAL' &&
+        version.customerId !== null &&
+        version.customerCode !== null &&
+        pairConflicts(version.customerId, version.customerCode),
     )
   ) {
     return true;
@@ -2185,8 +2263,11 @@ export function toInstallationLicense(
   revokedAt: Date | null = null,
 ): InstallationLicense {
   return {
+    licenseType: persistedTypeOf(version),
     customerId: version.customerId,
     customerCode: version.customerCode,
+    developerId: version.developerId ?? null,
+    developerName: version.developerName ?? null,
     installationId: version.installationId,
     licenseId: version.licenseId,
     status: version.status,

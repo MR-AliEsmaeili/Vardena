@@ -46,37 +46,56 @@ startup by `src/kernel/config/app-config.ts`. Invalid config fails fast with a
 message naming every bad key. `.env` files are dev convenience only — real
 deployments inject real env (dotenv never overrides real env).
 
-| Key                                | Default               | Notes                                                                                             |
-| ---------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`                         | `development`         | `development \| test \| production`                                                               |
-| `PORT`                             | `3000`                | API listen port                                                                                   |
-| `DATABASE_URL`                     | _(required)_          | `postgresql://` connection string                                                                 |
-| `APP_VERSION`                      | `0.0.0-dev`           | release label in health + OpenAPI                                                                 |
-| `LOG_LEVEL`                        | `debug` (dev), `info` | `debug \| info \| warn \| error`                                                                  |
-| `SWAGGER_ENABLED`                  | `true` except prod    | Swagger UI at `/api/docs`                                                                         |
-| `CORS_ORIGINS`                     | _(empty)_             | comma-separated origins; empty = same-origin only                                                 |
-| `TRUST_PROXY`                      | `false`               | `true` behind a trusted reverse proxy (client IPs)                                                |
-| `RATE_LIMIT_WINDOW_MS`             | `60000`               | per-IP fixed window                                                                               |
-| `RATE_LIMIT_MAX`                   | `300`                 | requests per window per IP                                                                        |
-| `DEPLOYMENT_ORGANIZATION_ID`       | _(unset)_             | ULID pin confining the deployment to one organization (ADR-0025); unset = structural scoping only |
-| `AUTH_COOKIE_NAME`                 | `vardena_session`     | httpOnly session cookie name (ADR-0007)                                                           |
-| `AUTH_COOKIE_PATH`                 | `/`                   | cookie path                                                                                       |
-| `AUTH_COOKIE_SAME_SITE`            | `lax`                 | `lax \| strict \| none` (default: lax)                                                            |
-| `AUTH_COOKIE_SECURE`               | `true` in prod        | `Secure` flag (auto in prod: true; dev/test: false)                                               |
-| `AUTH_SESSION_IDLE_TIMEOUT_MS`     | `1800000` (30 min)    | Sliding idle session timeout                                                                      |
-| `AUTH_SESSION_ABSOLUTE_TIMEOUT_MS` | `43200000` (12 h)     | Absolute session hard cap                                                                         |
-| `AUTH_LOGIN_RATE_LIMIT_WINDOW_MS`  | `900000` (15 min)     | Login-only rate-limit window                                                                      |
-| `AUTH_LOGIN_RATE_LIMIT_MAX`        | `10`                  | Login-only max attempts per window                                                                |
-| `LICENSE_PROVIDER`                 | `local-development`   | Explicit provider; never inferred from `NODE_ENV`                                                 |
-| `LICENSE_STATUS`                   | `ACTIVE`              | `ACTIVE \| EXPIRED \| SUSPENDED`                                                                  |
-| `LICENSE_VALID_FROM`               | `2020-01-01T00:00Z`   | Inclusive ISO-8601 boundary                                                                       |
-| `LICENSE_VALID_UNTIL`              | `perpetual`           | Exclusive ISO-8601 boundary or explicit `perpetual`                                               |
-| `LICENSE_ORGANIZATION_LIMIT`       | `unlimited`           | Positive integer or explicit `unlimited`                                                          |
-| `LICENSE_USER_LIMIT`               | `unlimited`           | Unique active users; positive integer or `unlimited`                                              |
-| `LICENSE_MODULE_ENTITLEMENTS`      | implemented modules   | Comma-separated lower-case module prefixes                                                        |
-| `LICENSE_FEATURE_ENTITLEMENTS`     | _(empty)_             | Comma-separated feature codes; codes do not implement features                                    |
+| Key                                     | Default               | Notes                                                                                                  |
+| --------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------ |
+| `NODE_ENV`                              | `development`         | `development \| test \| production`                                                                    |
+| `PORT`                                  | `3000`                | API listen port                                                                                        |
+| `DATABASE_URL`                          | _(required)_          | `postgresql://` connection string                                                                      |
+| `APP_VERSION`                           | `0.0.0-dev`           | release label in health + OpenAPI                                                                      |
+| `LOG_LEVEL`                             | `debug` (dev), `info` | `debug \| info \| warn \| error`                                                                       |
+| `SWAGGER_ENABLED`                       | `true` except prod    | Swagger UI at `/api/docs`                                                                              |
+| `CORS_ORIGINS`                          | _(empty)_             | comma-separated origins; empty = same-origin only                                                      |
+| `TRUST_PROXY`                           | `false`               | `true` behind a trusted reverse proxy (client IPs)                                                     |
+| `RATE_LIMIT_WINDOW_MS`                  | `60000`               | per-IP fixed window                                                                                    |
+| `RATE_LIMIT_MAX`                        | `300`                 | requests per window per IP                                                                             |
+| `DEPLOYMENT_ORGANIZATION_ID`            | _(unset)_             | ULID pin confining the deployment to one organization (ADR-0025); unset = structural scoping only      |
+| `AUTH_COOKIE_NAME`                      | `vardena_session`     | httpOnly session cookie name (ADR-0007)                                                                |
+| `AUTH_COOKIE_PATH`                      | `/`                   | cookie path                                                                                            |
+| `AUTH_COOKIE_SAME_SITE`                 | `lax`                 | `lax \| strict \| none` (default: lax)                                                                 |
+| `AUTH_COOKIE_SECURE`                    | `true` in prod        | `Secure` flag (auto in prod: true; dev/test: false)                                                    |
+| `AUTH_SESSION_IDLE_TIMEOUT_MS`          | `1800000` (30 min)    | Sliding idle session timeout                                                                           |
+| `AUTH_SESSION_ABSOLUTE_TIMEOUT_MS`      | `43200000` (12 h)     | Absolute session hard cap                                                                              |
+| `AUTH_LOGIN_RATE_LIMIT_WINDOW_MS`       | `900000` (15 min)     | Login-only rate-limit window                                                                           |
+| `AUTH_LOGIN_RATE_LIMIT_MAX`             | `10`                  | Login-only max attempts per window                                                                     |
+| `LICENSE_PROVIDER`                      | `local-development`   | Explicit provider; never inferred from `NODE_ENV`                                                      |
+| `LICENSE_STATUS`                        | `ACTIVE`              | `ACTIVE \| EXPIRED \| SUSPENDED`                                                                       |
+| `LICENSE_VALID_FROM`                    | `2020-01-01T00:00Z`   | Inclusive ISO-8601 boundary                                                                            |
+| `LICENSE_VALID_UNTIL`                   | `perpetual`           | Exclusive ISO-8601 boundary or explicit `perpetual`                                                    |
+| `LICENSE_ORGANIZATION_LIMIT`            | `unlimited`           | Positive integer or explicit `unlimited`                                                               |
+| `LICENSE_USER_LIMIT`                    | `unlimited`           | Unique active users; positive integer or `unlimited`                                                   |
+| `LICENSE_MODULE_ENTITLEMENTS`           | implemented modules   | Comma-separated lower-case module prefixes                                                             |
+| `LICENSE_FEATURE_ENTITLEMENTS`          | _(empty)_             | Comma-separated feature codes; codes do not implement features                                         |
+| `LICENSE_SIGNING_PUBLIC_KEYS`           | _(empty)_             | Commercial VLIC trust list; public Ed25519 keys only                                                   |
+| `DEVELOPER_LICENSES_ENABLED`            | `false`               | Explicit VDEV1 deployment policy; never inferred from `NODE_ENV`                                       |
+| `DEVELOPER_LICENSE_SIGNING_PUBLIC_KEYS` | _(empty)_             | Dedicated VDEV1 `keyId:public-key` trust list; required when enabled and disjoint from commercial keys |
 
 Adding a key? Update `app-config.ts`, `.env.example`, and this table together.
+
+### Official offline Developer License
+
+VDEV1 Developer Licenses are finite, bounded, installation-bound Ed25519
+artifacts imported through the existing authenticated activation route. They do
+not run Owner Licensing and do not create a commercial customer. Acceptance is
+disabled by default in every environment and requires the explicit policy and
+dedicated public trust entries above. Private keys are accepted only by the
+offline `dist-tools` issuer and never by the API/worker.
+
+Build the safe issuer with `npm run build:tools`; then follow the complete,
+copyable commands, Windows workflow, transfer, key-management, troubleshooting
+and test reference in
+[`../docs/licensing/developer-license.md`](../docs/licensing/developer-license.md).
+The nontechnical Persian Windows guide is
+[`../docs/operations/developer-license-windows-fa.md`](../docs/operations/developer-license-windows-fa.md).
 
 ## Run
 

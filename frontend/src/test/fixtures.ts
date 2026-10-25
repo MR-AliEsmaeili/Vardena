@@ -125,6 +125,7 @@ export const testScheduledLicenseVersion: LicenseVersionSummary = {
 /** `GET /license/current` under the default, unconfigured local provider. */
 export const testActiveLicenseState: LicenseState = {
   licensed: true,
+  licenseType: 'COMMERCIAL',
   status: 'ACTIVE',
   active: true,
   inactiveReason: null,
@@ -134,6 +135,8 @@ export const testActiveLicenseState: LicenseState = {
   installationId: '01K7INSTALLATIONAAAAAAAAAA',
   customerId: '01K7CUSTOMERAAAAAAAAAAAAAA',
   customerCode: 'CUST-ACME-01',
+  developerId: null,
+  developerName: null,
   licenseId: '01K7LICENSEAAAAAAAAAAAAAAA',
   validFrom: '2026-01-01T00:00:00.000Z',
   validUntil: null,
@@ -157,6 +160,7 @@ export const testUnlicensedLicenseState: LicenseState = {
   accessMode: 'BLOCKED',
   graceEndsAt: null,
   licensed: false,
+  licenseType: null,
   status: 'UNLICENSED',
   active: false,
   inactiveReason: 'unlicensed',

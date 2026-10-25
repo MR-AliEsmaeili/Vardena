@@ -7,6 +7,12 @@ import { InstallationsRepository } from '../src/modules/licensing/data/installat
 import { LicensesRepository } from '../src/modules/licensing/data/licenses.repository.js';
 import { ClientDevicesRepository } from '../src/modules/licensing/data/client-devices.repository.js';
 import { LICENSING_PERMISSIONS } from '../src/modules/licensing/domain/licensing-permissions.js';
+import {
+  serializeDeveloperLicenseFile,
+  signDeveloperLicenseDocument,
+  type DeveloperLicensePayload,
+} from '../src/modules/licensing/domain/developer-license-document.js';
+import { parsePrivateKey } from '../src/modules/licensing/domain/license-code.js';
 import { UsersService } from '../src/modules/users/application/users.service.js';
 import { UsersRepository } from '../src/modules/users/data/users.repository.js';
 import { SessionsRepository } from '../src/modules/identity/data/sessions.repository.js';
@@ -41,6 +47,8 @@ import { createTestApp } from './support/test-app.js';
  */
 describe('License document import (e2e)', () => {
   const authority = generateAuthorityKeyPair();
+  const developerAuthority = generateAuthorityKeyPair();
+  const developerKeyId = 'developer-e2e-authority';
   const stranger = generateAuthorityKeyPair();
 
   let licensing: ReturnType<typeof createLicensingStores>;
@@ -69,8 +77,12 @@ describe('License document import (e2e)', () => {
             licensing: {
               ...loadAppConfig().licensing,
               provider: 'persistent',
-              // The real trust list: the test authority's PUBLIC key only.
+              // Real, separate trust domains: PUBLIC keys only.
               signingPublicKeys: [authority.publicKey],
+              developerLicensesEnabled: true,
+              developerSigningPublicKeys: [
+                `${developerKeyId}:${developerAuthority.publicKey}`,
+              ],
             },
           })
           .overrideProvider(PrismaService)
@@ -209,6 +221,35 @@ describe('License document import (e2e)', () => {
     );
   }
 
+  function developerFile(installationId: string): string {
+    const payload: DeveloperLicensePayload = {
+      version: 1,
+      kind: 'DEVELOPER_LICENSE_VERSION',
+      licenseType: 'DEVELOPER',
+      operationId: 'developer-e2e-operation-001',
+      licenseId: 'developer-e2e-license-001',
+      developerId: 'developer-e2e-holder',
+      developerName: 'Developer E2E Holder',
+      installationId,
+      status: 'ACTIVE',
+      validFrom: new Date('2020-01-01T00:00:00.000Z'),
+      validUntil: new Date('2099-01-01T00:00:00.000Z'),
+      organizationLimit: 2,
+      userLimit: 10,
+      deviceLimit: 0,
+      moduleEntitlements: ['organization', 'users', 'rbac'],
+      featureEntitlements: ['developer-tools'],
+      supersedesOperationId: null,
+      issuerKeyId: developerKeyId,
+      issuedAt: new Date('2020-01-01T00:00:00.000Z'),
+    };
+    const document = signDeveloperLicenseDocument(
+      payload,
+      parsePrivateKey(developerAuthority.privateKey),
+    );
+    return serializeDeveloperLicenseFile(document, developerKeyId);
+  }
+
   async function state(): Promise<Record<string, unknown>> {
     const response = await agent.get('/api/v1/license/current').expect(200);
     return response.body as Record<string, unknown>;
@@ -227,6 +268,37 @@ describe('License document import (e2e)', () => {
       provider: 'persistent',
     });
     expect(body.installationId).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+  });
+
+  it('imports an official Developer License over the authenticated HTTP path without a commercial customer', async () => {
+    const installationId = (await state()).installationId;
+    if (typeof installationId !== 'string') {
+      throw new Error(
+        'The HTTP license state did not expose an installation id.',
+      );
+    }
+
+    await importDocument(developerFile(installationId)).expect(200);
+
+    expect(await state()).toMatchObject({
+      licensed: true,
+      licenseType: 'DEVELOPER',
+      customerId: null,
+      customerCode: null,
+      developerId: 'developer-e2e-holder',
+      developerName: 'Developer E2E Holder',
+      installationId,
+      organizationLimit: 2,
+      userLimit: 10,
+      active: true,
+    });
+    expect(licensing.customers.size).toBe(0);
+    expect(licensing.versions).toHaveLength(1);
+    expect(licensing.versions[0]).toMatchObject({
+      licenseType: 'DEVELOPER',
+      customerId: null,
+      developerId: 'developer-e2e-holder',
+    });
   });
 
   it('imports a signed file and reports the effective version', async () => {

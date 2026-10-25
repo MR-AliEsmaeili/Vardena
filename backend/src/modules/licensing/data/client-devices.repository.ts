@@ -1644,6 +1644,9 @@ export class ClientDevicesRepository {
       );
     }
     if (
+      context.version.licenseType === 'DEVELOPER' ||
+      context.version.customerId === null ||
+      context.version.customerCode === null ||
       context.installation.customerId !== context.version.customerId ||
       !CUSTOMER_CODE_PATTERN.test(context.version.customerCode)
     ) {
@@ -1664,7 +1667,16 @@ export class ClientDevicesRepository {
         'The effective signed license does not specify a device entitlement.',
       );
     }
-    return { ...context, version: context.version, limitSpecified: true };
+    return {
+      ...context,
+      version: {
+        ...context.version,
+        licenseType: 'COMMERCIAL',
+        customerId: context.version.customerId,
+        customerCode: context.version.customerCode,
+      },
+      limitSpecified: true,
+    };
   }
 
   private async lockedLicenseContext(
@@ -1858,7 +1870,12 @@ interface AllocationLicenseContext {
 }
 
 interface ActiveAllocationLicenseContext extends AllocationLicenseContext {
-  version: RetainedLicenseVersion;
+  /** Device enrollment protocol is a commercial-customer artifact. */
+  version: RetainedLicenseVersion & {
+    licenseType: 'COMMERCIAL';
+    customerId: string;
+    customerCode: string;
+  };
   limitSpecified: true;
 }
 
