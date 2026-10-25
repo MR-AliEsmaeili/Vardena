@@ -512,6 +512,8 @@ describe('ChartTreeService — ODR-2 Accounting-owned Chart Tree read surface', 
         'isActive',
         'isPostable',
         'level',
+        // The derived local segment of `code` — identity shape, not a figure.
+        'localCode',
         'organizationId',
         'parentId',
         'title',

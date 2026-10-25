@@ -416,6 +416,44 @@ describe('Document create — submission', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('a balanced voucher refused for a missing numbering series shows THAT cause and stays unsaved', async () => {
+    vi.mocked(accountingApi.createAccountingDocument).mockRejectedValue(
+      new ApiError({
+        code: 'BusinessRuleViolation',
+        message: 'No numbering series is configured…',
+        status: 422,
+        details: {
+          problem: 'numbering_series_missing',
+          documentType: 'accounting_voucher',
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    renderCreate();
+
+    await selectFinancialArea(user);
+    await user.type(
+      screen.getByLabelText(t.documents.fieldDescription),
+      'شرح سند آزمایشی',
+    );
+    await fillLine(user, 0, 'acc-2', 'debit', '10000');
+    await fillLine(user, 1, 'acc-3', 'credit', '10000');
+    // The UI honestly shows "balanced" — balance is NOT a posting claim.
+    expect(
+      await screen.findByText(t.operationalForm.balanced),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: t.documents.save }));
+
+    expect(
+      await screen.findByText(t.documents.business.numberingSeriesMissing),
+    ).toBeInTheDocument();
+    // No navigation, no half-saved state: the form is still here to retry.
+    expect(
+      screen.getByRole('button', { name: t.documents.save }),
+    ).toBeInTheDocument();
+    expect(accountingApi.createAccountingDocument).toHaveBeenCalledTimes(1);
+  });
+
   it('does not submit twice for a rapid double-click (duplicate-submit protection)', async () => {
     let resolveCreate!: (value: AccountingDocument) => void;
     vi.mocked(accountingApi.createAccountingDocument).mockReturnValue(

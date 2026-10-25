@@ -297,6 +297,8 @@ function account(
     id,
     organizationId: ORGANIZATION.id,
     code,
+    // Roots in this fixture: the local segment is the whole code.
+    localCode: code,
     title,
     parentId: null,
     level: 2,

@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   getAccount,
+  getActiveAccountingConfiguration,
   listAccountingPeriodsPage,
   listAccounts,
   listFinancialAreasPage,
   listFiscalYearsPage,
+  MAX_PAGE_SIZE,
 } from '@/api/accounting.api';
 import type { AccountListQuery } from '@/api/contracts';
 import { queryKeys } from '@/api/query-keys';
@@ -131,6 +133,56 @@ export function useAccountList(
     ),
     queryFn: ({ signal }) => listAccounts(query as AccountListQuery, signal),
     enabled: query !== null,
+  });
+}
+
+/**
+ * The ACTIVE accounting configuration — the level set (titles, digit
+ * lengths, postable defaults) the backend validates new accounts against.
+ * `null` data means "no active configuration" (the API client's 404
+ * mapping); the account form must not guess a structure in that state.
+ */
+export function useActiveAccountingConfiguration(
+  organizationId: string | null,
+) {
+  return useQuery({
+    queryKey: queryKeys.accounting.accountingConfigurationActive(
+      organizationId ?? 'none',
+    ),
+    queryFn: ({ signal }) =>
+      getActiveAccountingConfiguration(organizationId as string, signal),
+    enabled: organizationId !== null,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Eligible PARENT accounts for the create form: active, non-postable
+ * (aggregate) nodes, server-filtered and code-ordered. A postable account
+ * can never receive children (§14 rule 2), so it is not offered; the
+ * backend re-validates eligibility on submit regardless. Bounded by the
+ * list contract's hard page cap — deliberately NOT the accounts grid's
+ * current page, which made valid parents disappear under paging/filters.
+ */
+export function useAccountParentCandidates(organizationId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.accounting.accountList(organizationId ?? 'none', {
+      purpose: 'parent-candidates',
+    }),
+    queryFn: ({ signal }) =>
+      listAccounts(
+        {
+          organizationId: organizationId as string,
+          isActive: true,
+          isPostable: false,
+          page: 1,
+          pageSize: MAX_PAGE_SIZE,
+          sort: 'code:asc',
+        },
+        signal,
+      ),
+    enabled: organizationId !== null,
+    staleTime: 30_000,
   });
 }
 

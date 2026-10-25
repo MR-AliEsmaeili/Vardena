@@ -51,6 +51,13 @@ import {
   toAccountDto,
 } from '../domain/account.js';
 import type { AccountImmutableField } from '../domain/account.js';
+import {
+  ACCOUNT_CODE_PATTERN,
+  checkLocalCodeSegment,
+  composeAccountCode,
+  localCodeProblemMessage,
+  localSegmentOfAccountCode,
+} from '../domain/account-code.js';
 import { collectDescendantIds } from '../domain/hierarchy.js';
 import { ACCOUNT_PERMISSIONS } from '../domain/accounting-permissions.js';
 import { normalizeCode, normalizeTitle } from '../domain/master-data.js';
@@ -132,7 +139,18 @@ export interface ListAccountsQuery {
 
 export interface CreateAccountInput {
   organizationId: string;
-  code: string;
+  /**
+   * The FULL canonical code (`101003`). Exactly one of `code` / `localCode`
+   * must be supplied: the two forms must never be allowed to disagree.
+   */
+  code?: string | undefined;
+  /**
+   * The LOCAL segment of this account's own level (`003` under parent
+   * `101`). The backend composes the stored full code as
+   * `parent.code + localCode` (a root's segment is its whole code) and
+   * validates the segment width against the pinned coding structure.
+   */
+  localCode?: string | undefined;
   title: string;
   parentId?: string | null | undefined;
   accountNature: string;
@@ -207,7 +225,7 @@ export class AccountsService {
       take,
     });
     return toPaginatedResult(
-      items.map(toAccountDto),
+      await this.toDtos(items),
       total,
       query.page,
       query.pageSize,
@@ -216,18 +234,47 @@ export class AccountsService {
 
   async getAccount(organizationId: string, id: string): Promise<AccountDto> {
     await this.authorization.requireAllPermissions([ACCOUNT_PERMISSIONS.VIEW]);
-    return toAccountDto(await this.mustFindInOrganization(organizationId, id));
+    return this.toDto(await this.mustFindInOrganization(organizationId, id));
   }
 
   async createAccount(input: CreateAccountInput): Promise<AccountDto> {
     await this.authorization.requireAllPermissions([
       ACCOUNT_PERMISSIONS.CREATE,
     ]);
-    const code = normalizeCode(input.code);
     const title = normalizeTitle(input.title);
-    assertAccountCode(code);
     assertTitle(title);
     this.assertNature(input.accountNature);
+
+    // Exactly one code form per request. `code` is the full canonical code;
+    // `localCode` is only this level's segment and the backend composes the
+    // full code from the resolved parent below. Accepting both would let a
+    // client submit two disagreeing truths; accepting neither leaves the
+    // account unaddressable. Blank strings count as absent (a form that
+    // always serializes both fields must not be punished for the empty one).
+    const fullCodeInput = input.code?.trim() ?? '';
+    const localCodeInput = input.localCode?.trim() ?? '';
+    if (fullCodeInput !== '' && localCodeInput !== '') {
+      throw AppException.badRequest(
+        'Send either code (the full canonical code) or localCode (only the segment of this level), not both.',
+      );
+    }
+    if (fullCodeInput === '' && localCodeInput === '') {
+      throw AppException.validation([
+        {
+          field: 'localCode',
+          message: 'Either code or localCode is required.',
+          code: 'required',
+        },
+      ]);
+    }
+    if (fullCodeInput !== '') {
+      assertAccountCode(normalizeCode(fullCodeInput));
+    }
+    if (localCodeInput !== '' && !ACCOUNT_CODE_PATTERN.test(localCodeInput)) {
+      throw AppException.badRequest(
+        localCodeProblemMessage('local_code_not_digits'),
+      );
+    }
 
     await this.organizations.requireUsableOrganization(input.organizationId);
 
@@ -331,6 +378,36 @@ export class AccountsService {
     }
 
     const level = parent === null ? 1 : parent.level + 1;
+
+    // The ONE place a full code is established for a new account: either the
+    // client sent it whole, or it is composed here from the resolved
+    // parent's code + the validated local segment. Everything downstream
+    // (placement, uniqueness, storage) sees only the full canonical code,
+    // exactly as before — the local segment is never stored.
+    let code: string;
+    if (localCodeInput !== '') {
+      const problem = checkLocalCodeSegment({
+        localCode: localCodeInput,
+        level,
+        levels: (structure as any).levels,
+      });
+      if (problem !== null) {
+        if (problem === 'local_code_not_digits') {
+          throw AppException.badRequest(localCodeProblemMessage(problem));
+        }
+        throw AppException.businessRule(localCodeProblemMessage(problem), {
+          rule: problem,
+          field: 'localCode',
+        });
+      }
+      code = composeAccountCode({
+        parentCode: parent?.code ?? null,
+        localCode: localCodeInput,
+      });
+    } else {
+      code = normalizeCode(fullCodeInput);
+    }
+
     // The same decision table the repository re-applies under the lock.
     this.assertPlacement({
       id: '',
@@ -408,7 +485,7 @@ export class AccountsService {
       },
       AccountsService.name,
     );
-    return toAccountDto(created);
+    return this.toDto(created);
   }
 
   async updateAccount(
@@ -632,7 +709,7 @@ export class AccountsService {
         actorId: getPrincipal()?.userId ?? null,
       });
       await this.publishAccountEvent(ACCOUNT_UPDATED_EVENT, updated);
-      return toAccountDto(updated);
+      return this.toDto(updated);
     } catch (error) {
       const mapped = mapAccountGuardError(error);
       if (mapped !== null) throw mapped;
@@ -692,7 +769,7 @@ export class AccountsService {
       },
       AccountsService.name,
     );
-    return toAccountDto(result.account);
+    return this.toDto(result.account);
   }
 
   async enableAccount(organizationId: string, id: string): Promise<AccountDto> {
@@ -848,7 +925,7 @@ export class AccountsService {
   ): Promise<AccountDto> {
     await this.authorization.requireAllPermissions([permission]);
     const current = await this.mustFindInOrganization(organizationId, id);
-    if (current.isActive === isActive) return toAccountDto(current);
+    if (current.isActive === isActive) return this.toDto(current);
 
     const updated = await this.repository.update(id, {
       isActive,
@@ -857,7 +934,7 @@ export class AccountsService {
     });
     if (updated === null) throw AppException.notFound('Account', id);
     await this.publishAccountEvent(eventType, updated);
-    return toAccountDto(updated);
+    return this.toDto(updated);
   }
 
   private async publishAccountEvent(
@@ -895,6 +972,58 @@ export class AccountsService {
       throw AppException.notFound('Account', id);
     }
     return account;
+  }
+
+  /**
+   * DTOs with the derived LOCAL segment (`localCode`). The segment is
+   * recovered from the stored full code by removing the parent's code —
+   * the `parent_id` FK is the authority and the prefix is the proof (§9.3).
+   * The derivation is read-total: a legacy row whose parent cannot be
+   * resolved (or whose code does not extend it) presents its full code as
+   * the segment instead of blocking the read (the ODR-1 posture).
+   * Parent codes already present in the batch are reused; only the missing
+   * distinct parents are read.
+   */
+  private async toDtos(accounts: readonly Account[]): Promise<AccountDto[]> {
+    if (accounts.length === 0) return [];
+    const organizationId = (accounts[0] as Account).organizationId;
+    const codeById = new Map(accounts.map((a) => [a.id, a.code]));
+    const missingParentIds = [
+      ...new Set(
+        accounts
+          .map((a) => a.parentId)
+          .filter(
+            (parentId): parentId is string =>
+              parentId !== null && !codeById.has(parentId),
+          ),
+      ),
+    ];
+    for (const parentId of missingParentIds) {
+      const parent = await this.repository.findById(parentId);
+      if (parent !== null && parent.organizationId === organizationId) {
+        codeById.set(parentId, parent.code);
+      }
+    }
+    return accounts.map((account) =>
+      toAccountDto(
+        account,
+        localSegmentOfAccountCode({
+          code: account.code,
+          // An unresolvable parent yields `null` here, and the derivation
+          // presents the full code as the segment (read-total, see
+          // `localSegmentOfAccountCode`) — reads stay unblocked.
+          parentCode:
+            account.parentId === null
+              ? null
+              : (codeById.get(account.parentId) ?? null),
+        }),
+      ),
+    );
+  }
+
+  private async toDto(account: Account): Promise<AccountDto> {
+    const [dto] = await this.toDtos([account]);
+    return dto as AccountDto;
   }
 }
 

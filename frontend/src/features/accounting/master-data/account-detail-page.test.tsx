@@ -28,6 +28,7 @@ const postableAccount = {
   id: 'acc-1',
   organizationId: 'org-1',
   code: '1010',
+  localCode: '1010',
   title: 'بانک',
   parentId: null,
   level: 2,
@@ -115,5 +116,47 @@ describe('Account Detail statement action', () => {
     expect(
       screen.queryByRole('link', { name: t.masterData.viewStatement }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('Account Detail full/local code + parent resolution', () => {
+  it('shows full code, local segment, and the parent by code/title (never a raw ULID)', async () => {
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [
+        'Organization.Organization.View',
+        PERMISSIONS.accounting.accountView,
+      ],
+    });
+    const child = {
+      ...postableAccount,
+      id: 'acc-1',
+      code: '101003',
+      localCode: '003',
+      title: 'تاسیسات',
+      parentId: 'acc-parent',
+      level: 3,
+    } as Account;
+    const parent = {
+      ...postableAccount,
+      id: 'acc-parent',
+      code: '101',
+      localCode: '01',
+      title: 'دارایی ثابت',
+      parentId: null,
+      level: 2,
+      isPostable: false,
+    } as Account;
+    vi.mocked(accountingApi.getAccount).mockImplementation(
+      async (_organizationId: string, id: string) =>
+        (id === 'acc-parent' ? parent : child) as never,
+    );
+    renderDetail();
+
+    expect(await screen.findByText('101003')).toBeInTheDocument();
+    expect(screen.getByText('003')).toBeInTheDocument();
+    const parentLink = await screen.findByRole('link', { name: /101/ });
+    expect(parentLink).toHaveTextContent('دارایی ثابت');
+    expect(screen.queryByText('acc-parent')).not.toBeInTheDocument();
   });
 });

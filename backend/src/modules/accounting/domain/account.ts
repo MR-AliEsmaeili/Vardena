@@ -115,7 +115,14 @@ export interface Account {
 export interface AccountDto {
   id: string;
   organizationId: string;
+  /** The canonical FULL code (`101003`) — the stored value (§9.2). */
   code: string;
+  /**
+   * The LOCAL segment of this account's own level (`003` in `101003`),
+   * derived from `code` by removing the parent's code. A derivation only:
+   * it is never stored and never a second source of truth.
+   */
+  localCode: string;
   title: string;
   parentId: string | null;
   level: number;
@@ -130,11 +137,12 @@ export interface AccountDto {
   updatedAt: string;
 }
 
-export function toAccountDto(account: Account): AccountDto {
+export function toAccountDto(account: Account, localCode: string): AccountDto {
   return {
     id: account.id,
     organizationId: account.organizationId,
     code: account.code,
+    localCode,
     title: account.title,
     parentId: account.parentId,
     level: account.level,

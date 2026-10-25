@@ -52,6 +52,13 @@ const PROBLEM_MESSAGES: Record<string, string> = {
   account_not_postable: t.documents.business.accountNotPostable,
   account_disabled: t.documents.business.accountDisabled,
   area_immutable_after_issuance: t.documents.areaImmutableHint,
+  // Document Foundation numbering (§18): composition/issuance allocates the
+  // serial BEFORE any accounting write, so a fresh organization without a
+  // configured series refuses even a perfectly balanced voucher. Naming
+  // that prerequisite precisely is what separates «متوازن است» from
+  // «مجاز به ثبت است» — the balance verdict alone never implied the latter.
+  numbering_series_missing: t.documents.business.numberingSeriesMissing,
+  numbering_series_disabled: t.documents.business.numberingSeriesDisabled,
 };
 
 export interface DocumentErrorMessage {

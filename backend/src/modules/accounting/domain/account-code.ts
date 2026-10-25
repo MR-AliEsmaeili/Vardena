@@ -90,6 +90,114 @@ export function checkAccountCode(input: {
   return root;
 }
 
+// ---------------------------------------------------------------------------
+// Local code segment ⇄ full code (the operator-facing composition)
+// ---------------------------------------------------------------------------
+//
+// The STORED code stays exactly what it has always been: the full canonical
+// digit string (§9.2). What an operator types when CREATING an account is
+// the LOCAL segment of the account's own level — `003` for the معین under کل
+// `101` — and the backend composes `parent.code + localCode` into the full
+// code. The local segment is therefore an INPUT/DISPLAY derivation, never a
+// second stored value and never a second source of truth: it is recovered
+// from the full code by removing the parent's code (the `parent_id` FK is
+// the authority and the prefix is the proof, §9.3), and its width is exactly
+// the level's configured `digitLength`, leading zeros included (`003` is a
+// three-digit segment, not the number 3).
+
+export type LocalCodeProblem =
+  /** The segment is not ASCII digits only. */
+  | 'local_code_not_digits'
+  /** The segment width differs from the level's configured digit length. */
+  | 'local_code_length_mismatch'
+  /** The level the segment belongs to is not defined by the structure. */
+  | 'level_unknown';
+
+/**
+ * Validate one candidate LOCAL segment against the level it will occupy.
+ * `level` is derived from the parent exactly as for a full code (root = 1,
+ * child = parent + 1); the segment must be digits only and EXACTLY the
+ * level's configured digit length — never zero-padded or trimmed into shape
+ * (the same no-silent-rewrite posture as the full code).
+ */
+export function checkLocalCodeSegment(input: {
+  localCode: string;
+  level: number;
+  levels: readonly Pick<CodingStructureLevel, 'levelIndex' | 'digitLength'>[];
+}): LocalCodeProblem | null {
+  if (!ACCOUNT_CODE_PATTERN.test(input.localCode)) {
+    return 'local_code_not_digits';
+  }
+  const segmentLength = segmentLengthForLevel(input.levels, input.level);
+  if (segmentLength === null) {
+    return 'level_unknown';
+  }
+  if (input.localCode.length !== segmentLength) {
+    return 'local_code_length_mismatch';
+  }
+  return null;
+}
+
+/**
+ * Compose the canonical full code from a parent's full code and a local
+ * segment (`'101' + '003' → '101003'`; a root composes to its own segment).
+ * Composition is pure concatenation — validation lives in
+ * `checkLocalCodeSegment` and the composed value is still re-validated as a
+ * full code by `checkAccountCode` on every write path.
+ */
+export function composeAccountCode(input: {
+  parentCode: string | null;
+  localCode: string;
+}): string {
+  return input.parentCode === null
+    ? input.localCode
+    : input.parentCode + input.localCode;
+}
+
+/**
+ * The local segment of a stored full code: everything after the parent's
+ * code (`'101003'` under `'101'` → `'003'`). A root's local segment is its
+ * whole code.
+ *
+ * This derivation is TOTAL on purpose: it serves READ surfaces, and the
+ * established posture is that reads are never blocked by legacy or
+ * divergent rows (the ODR-1 rule in `domain/account.ts` — existing rows
+ * stay readable; their repair is explicit, never a read-time failure). A
+ * stored code that does not strictly extend its parent's code has no
+ * PROVEN segment boundary, so the full code is presented as its segment
+ * rather than inventing a boundary — such a row is still the §9.3 data
+ * bug, but it is surfaced by write-path validation and reconciliation,
+ * not by breaking a list. Nothing on any write path validates through
+ * this function; writes use `checkAccountCode` / `checkLocalCodeSegment`.
+ */
+export function localSegmentOfAccountCode(input: {
+  code: string;
+  parentCode: string | null;
+}): string {
+  if (input.parentCode === null) {
+    return input.code;
+  }
+  if (
+    !input.code.startsWith(input.parentCode) ||
+    input.code.length <= input.parentCode.length
+  ) {
+    return input.code;
+  }
+  return input.code.slice(input.parentCode.length);
+}
+
+/** Human-readable message per local-segment problem (AR-24). */
+export function localCodeProblemMessage(problem: LocalCodeProblem): string {
+  switch (problem) {
+    case 'local_code_not_digits':
+      return 'The local code segment must be digits only — no separators, letters or spaces (the separator is a display concern).';
+    case 'local_code_length_mismatch':
+      return 'The local code segment must be exactly as many digits as the coding structure configures for this level (leading zeros count).';
+    case 'level_unknown':
+      return 'The account level is not defined by the applicable coding structure.';
+  }
+}
+
 /** Human-readable message per problem (AR-24: never leak internals). */
 export function accountCodeProblemMessage(problem: AccountCodeProblem): string {
   switch (problem) {

@@ -49,17 +49,31 @@ export class CreateAccountDto {
   @IsUlid()
   organizationId!: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: '02003',
     minLength: 1,
     maxLength: MAX_ACCOUNT_CODE_LENGTH,
     description:
-      'Canonical code: the concatenation of the level segments, DIGITS only (§9.2). The value is stored TRIMMED (the master-data convention) and then validated digits-only by the service — the "wrong shape" 400 comes from the same rule whether a padded code reaches it or not. Uniqueness is per organization; the code is immutable once created.',
+      'Canonical FULL code: the concatenation of the level segments, DIGITS only (§9.2). Exactly one of `code` / `localCode` must be sent. The value is stored TRIMMED (the master-data convention) and then validated digits-only by the service — the "wrong shape" 400 comes from the same rule whether a padded code reaches it or not. Uniqueness is per organization; the code is immutable once created.',
   })
+  @IsOptional()
   @IsString()
   @MinLength(1, { message: 'Code is required.' })
   @MaxLength(MAX_ACCOUNT_CODE_LENGTH)
-  code!: string;
+  code?: string;
+
+  @ApiPropertyOptional({
+    example: '003',
+    minLength: 1,
+    maxLength: MAX_ACCOUNT_CODE_LENGTH,
+    description:
+      'LOCAL code segment of this account’s own level only (e.g. `003` under parent `101` in a 1+2+3 structure). Exactly one of `code` / `localCode` must be sent. The backend composes the stored full code as `parent.code + localCode` (a root’s segment is its whole code) and validates that the segment is digits-only and exactly the configured digit length of the derived level — leading zeros are significant and are never added or stripped silently.',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(1, { message: 'Local code is required.' })
+  @MaxLength(MAX_ACCOUNT_CODE_LENGTH)
+  localCode?: string;
 
   @ApiProperty({
     example: 'Cash',
@@ -233,6 +247,13 @@ export class AccountResponseDto {
 
   @ApiProperty({ example: '02003' })
   code!: string;
+
+  @ApiProperty({
+    example: '003',
+    description:
+      'The LOCAL segment of this account’s own level, derived from `code` by removing the parent’s code (a root’s segment is its whole code). Derived-only — never stored, never a second source of truth.',
+  })
+  localCode!: string;
 
   @ApiProperty({ example: 'Cash' })
   title!: string;
