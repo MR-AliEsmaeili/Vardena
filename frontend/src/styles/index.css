@@ -256,6 +256,9 @@
     direction: ltr;
     unicode-bidi: isolate;
     text-align: start;
+    /* Long machine identifiers (ULIDs, signed operation ids) must wrap instead
+     * of forcing the whole page into a horizontal scroll. */
+    overflow-wrap: anywhere;
   }
 
   :focus-visible {

@@ -168,11 +168,11 @@ export function AppHeader({
       className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/85"
       data-testid="app-header"
     >
-      <div className="flex h-14 w-full items-center gap-2 px-3 sm:px-4">
+      <div className="flex h-14 w-full items-center gap-1.5 px-2 sm:gap-2 sm:px-4">
         {/* 1 — Logo + mobile menu (Right / inline-start in RTL). The desktop
             collapse handle lives inside the sidebar itself. */}
         <div
-          className="flex shrink-0 items-center gap-1.5"
+          className="flex min-w-0 shrink items-center gap-1.5"
           data-testid="header-slot-logo"
         >
           <Button
@@ -199,6 +199,7 @@ export function AppHeader({
 
           <Link
             to="/app"
+            aria-label={t.app.name}
             className="flex min-w-0 items-center gap-2 rounded-control focus-visible:outline-2 focus-visible:outline-brand"
           >
             <span
@@ -207,8 +208,12 @@ export function AppHeader({
             >
               <Boxes className="h-4.5 w-4.5" />
             </span>
-            <span className="flex min-w-0 flex-col justify-center leading-tight">
-              <span className="truncate text-sm font-bold text-ink">
+            <span className="hidden min-w-0 flex-col justify-center leading-tight sm:flex">
+              {/* The mark alone is the logo on a phone: a 360px header cannot
+                  afford a wordmark next to the scope, settings and profile
+                  controls (it carries no function, and the link keeps its
+                  accessible name through `aria-label`). */}
+              <span className="hidden truncate text-sm font-bold text-ink sm:inline">
                 {t.app.name}
               </span>
               <span className="hidden truncate text-[0.6875rem] text-ink-subtle xl:block">
@@ -317,7 +322,9 @@ export function AppHeader({
         )}
 
         <div className="ms-auto flex min-w-0 items-center gap-1.5 sm:gap-2.5">
-          <BackgroundActivityIndicator />
+          <span className="hidden sm:inline-flex">
+            <BackgroundActivityIndicator />
+          </span>
 
           {/* 3 — Jalali Date */}
           <span
@@ -337,7 +344,7 @@ export function AppHeader({
           {/* 4 — Organization & Financial Scope */}
           {licenseActive && (
             <div
-              className="flex min-w-0 shrink-0 items-center gap-2"
+              className="flex min-w-0 shrink items-center gap-2"
               data-testid="header-slot-organization"
             >
               <OrganizationSwitcher compact />

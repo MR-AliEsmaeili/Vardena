@@ -221,3 +221,35 @@ describe('AppSidebar — navigation side effects', () => {
     expect(props.onCloseMobile).toHaveBeenCalledWith(false);
   });
 });
+
+describe('AppSidebar — collapsed rail geometry', () => {
+  it('keeps the expand handle the same visual size as a menu glyph', () => {
+    const { sidebar } = renderSidebar({ collapsed: true });
+
+    const handle = within(sidebar).getByTestId('sidebar-toggle');
+    // Same 24px visual box as `NavGlyph` (`size="md"`); the hit area is the
+    // `after:` pseudo-element, so the icon is not a visually larger banner.
+    expect(handle.className).toContain('h-6');
+    expect(handle.className).toContain('w-6');
+    expect(handle.className).toContain('rounded-glyph');
+    expect(handle.querySelector('svg')).not.toBeNull();
+  });
+
+  it('keeps a real inline-start inset on the collapsed icon column', () => {
+    const { sidebar } = renderSidebar({ collapsed: true });
+
+    const scroll = within(sidebar).getByTestId('sidebar-scroll');
+    // RTL: the inline-start edge is the visual RIGHT edge, so `ps-3` is the
+    // padding that keeps the rail from gluing itself to the viewport side.
+    expect(scroll.className).toContain('ps-3');
+    expect(scroll.className).toContain('pe-1.5');
+  });
+
+  it('labels the expand handle with a tooltip that opens on hover', async () => {
+    const user = userEvent.setup();
+    const { sidebar } = renderSidebar({ collapsed: true });
+
+    await user.hover(within(sidebar).getByTestId('sidebar-toggle'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent(t.nav.expandSidebar);
+  });
+});

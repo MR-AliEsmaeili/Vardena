@@ -28,11 +28,11 @@ export function OrganizationSwitcher({
   if (organization === null) return null;
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex min-w-0 items-center gap-1.5">
       <Building2 className="h-3.5 w-3.5 shrink-0 text-ink-subtle" aria-hidden />
       {canSwitch ? (
         <Select
-          className={compact ? 'h-8 max-w-44 text-xs' : 'h-9 w-56'}
+          className={compact ? 'h-8 min-w-0 max-w-44 text-xs' : 'h-9 w-56'}
           aria-label={t.organization.switcher}
           value={organization.id}
           onChange={(event) => selectOrganization(event.target.value)}
@@ -44,10 +44,16 @@ export function OrganizationSwitcher({
           ))}
         </Select>
       ) : (
+        /*
+         * Compact mode = the application header. On a phone the name is
+         * hidden (the icon plus its `title`/accessible name still say which
+         * organization is active) because a 360px header has no room for the
+         * wordmark, the scope name and the settings/profile controls at once.
+         */
         <span
           className={
             compact
-              ? 'max-w-32 truncate text-xs font-medium text-ink-muted'
+              ? 'hidden min-w-0 max-w-32 truncate text-xs font-medium text-ink-muted sm:inline'
               : 'text-sm font-medium text-ink-muted'
           }
           title={`${t.organization.label}: ${organization.name}`}

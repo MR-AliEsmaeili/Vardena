@@ -130,5 +130,7 @@ production deployment.
 - [docs/adr/](docs/adr/) — architecture decision records
 - [.vardena/](.vardena/) — agent context, architecture rules, development rules
 - [backend/README.md](backend/README.md) — backend setup, workflows, conventions
+- [docs/frontend/data-table.md](docs/frontend/data-table.md) — **the official DataTable/grid standard**: the one shared grid, opt-in client-side search/filtering (`meta.filter`, Persian normalization, exact decimal and BusinessDate ranges), the server-side pattern for unbounded datasets, the grid inventory and the checklist for adding a grid
+- [docs/frontend/e2e-testing.md](docs/frontend/e2e-testing.md) — the browser (Playwright) test contract: real dev server, stubbed HTTP boundary, 360/768/1280 viewport matrix, selector rules and the `frontend-e2e` CI gate
 - [frontend/README.md](frontend/README.md) — frontend setup, scripts, layout and conventions
 - [docker-compose.yml](docker-compose.yml) — local stack (PostgreSQL + API + worker)

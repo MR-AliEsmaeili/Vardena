@@ -45,6 +45,7 @@ vi.mock('@/api/accounting.api', async () => {
     listAccountingPeriods: vi.fn(),
     getAccount: vi.fn(),
     listPostableAccounts: vi.fn(),
+    listActiveAccounts: vi.fn(),
     listPostableDetails: vi.fn(),
     getDetailRecord: vi.fn(),
     listAccountingDocuments: vi.fn(),
@@ -169,6 +170,9 @@ beforeEach(() => {
   vi.mocked(accountingApi.listAccountingPeriods).mockResolvedValue(
     paginated([]),
   );
+  vi.mocked(accountingApi.listActiveAccounts).mockResolvedValue(
+    paginated([acc1, acc2]),
+  );
   vi.mocked(accountingApi.listPostableAccounts).mockResolvedValue(
     paginated([acc1, acc2]),
   );
@@ -177,6 +181,24 @@ beforeEach(() => {
   );
   vi.mocked(accountingApi.listPostableDetails).mockResolvedValue(paginated([]));
 });
+
+/**
+ * Fill the linked account cell by typing the code; the real title must be
+ * resolved from the account itself (the cell is not a hidden select).
+ */
+async function chooseAccount(
+  user: ReturnType<typeof userEvent.setup>,
+  row: HTMLElement,
+  code: string,
+  title: string,
+) {
+  await user.type(within(row).getByLabelText(t.documents.accountCode), code);
+  await waitFor(() =>
+    expect(within(row).getByLabelText(t.documents.accountName)).toHaveValue(
+      title,
+    ),
+  );
+}
 
 describe('Operational Form full user journey — Collapsible Header, Detail Grid, Summary & Dirty Pagination', () => {
   it('blocks collapsing an incomplete header, collapses after filling required fields, updates exact Summary live, and saves', async () => {
@@ -225,17 +247,21 @@ describe('Operational Form full user journey — Collapsible Header, Detail Grid
     // 3. Enter lines and observe live Summary transitions (unbalanced -> balanced)
     const row0 = screen.getByTestId('detail-grid-row-0');
     const row1 = screen.getByTestId('detail-grid-row-1');
-    await user.selectOptions(within(row0).getByRole('combobox'), 'acc-1');
-    const [debit0] = within(row0).getAllByRole('textbox');
-    await user.type(debit0!, '500000.25');
+    await chooseAccount(user, row0, '1010', 'بانک');
+    await user.type(
+      within(row0).getByLabelText(t.documents.debit),
+      '500000.25',
+    );
 
     const summary = screen.getByTestId('operational-summary');
     expect(summary).toHaveTextContent('500,000.25');
     expect(summary).toHaveTextContent('اختلاف: 500,000.25');
 
-    await user.selectOptions(within(row1).getByRole('combobox'), 'acc-2');
-    const [, credit1] = within(row1).getAllByRole('textbox');
-    await user.type(credit1!, '500000.25');
+    await chooseAccount(user, row1, '3010', 'درآمد فروش');
+    await user.type(
+      within(row1).getByLabelText(t.documents.credit),
+      '500000.25',
+    );
     expect(summary).toHaveTextContent(t.operationalForm.balanced);
 
     // 4. Save
@@ -247,6 +273,31 @@ describe('Operational Form full user journey — Collapsible Header, Detail Grid
       expect(screen.getByLabelText('current-path')).toHaveTextContent(
         '/app/accounting/documents/doc-saved',
       ),
+    );
+  });
+
+  it('commits a highlighted suggestion with Enter inside the detail grid', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<DocumentCreatePage />, {
+      initialEntries: ['/app/accounting/documents/new'],
+    });
+
+    const row0 = await screen.findByTestId('detail-grid-row-0');
+    const code = within(row0).getByLabelText(t.documents.accountCode);
+    await user.type(code, '10');
+
+    await screen.findByTestId('account-suggestions');
+    await user.keyboard('{ArrowDown}');
+    await user.keyboard('{Enter}');
+
+    // Enter belongs to the suggestion list while it is open: it commits the
+    // highlighted account instead of advancing the grid row.
+    await waitFor(() =>
+      expect(screen.queryByTestId('account-suggestions')).toBeNull(),
+    );
+    expect(code).toHaveValue('1010');
+    expect(within(row0).getByLabelText(t.documents.accountName)).toHaveValue(
+      'بانک',
     );
   });
 

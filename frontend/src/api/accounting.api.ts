@@ -156,6 +156,33 @@ export function listPostableAccounts(
   });
 }
 
+/**
+ * Active accounts for the document-line code/name picker.
+ *
+ * Unlike `listPostableAccounts`, this read does NOT narrow to postable
+ * leaves: the chart-of-accounts administration lets an operator define an
+ * account that is not a posting leaf, and an account that exists but can
+ * never be found in a picker reads as "my accounts are missing". The picker
+ * therefore searches the whole active chart and marks aggregate accounts as
+ * non-selectable instead of hiding them.
+ */
+export function listActiveAccounts(
+  params: { organizationId: string; search?: string | undefined },
+  signal?: AbortSignal,
+): Promise<Paginated<Account>> {
+  return apiGet<Paginated<Account>>('/accounts', {
+    params: cleanParams({
+      organizationId: params.organizationId,
+      isActive: true,
+      search: params.search,
+      page: 1,
+      pageSize: 50,
+      sort: 'code:asc',
+    }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Master-data administration reads — server filtered, sorted and paged
 // ---------------------------------------------------------------------------

@@ -194,7 +194,10 @@ describe('AccountCreateForm', () => {
     );
     await user.type(screen.getByLabelText(t.masterData.accountCode), '10');
     await user.type(screen.getByLabelText(t.masterData.accountTitle), 'نقد');
-    await user.click(screen.getByLabelText(t.masterData.postableAccount));
+    await user.selectOptions(
+      screen.getByLabelText(t.masterData.postableMode),
+      'YES',
+    );
     await user.click(
       screen.getByRole('button', { name: t.masterData.createAccount }),
     );

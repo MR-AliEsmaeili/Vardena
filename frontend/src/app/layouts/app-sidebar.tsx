@@ -118,7 +118,15 @@ export function AppSidebar({
          * menu never loses it.
          */}
         {isIconOnly && (
-          <div className="flex justify-center px-2 pt-2 pb-1">
+          /*
+           * The expand handle is a peer of the menu glyphs, not a banner:
+           * it keeps the SAME 24px visual box as `NavGlyph` and sits in the
+           * same centred column (the `after:` pseudo-element widens only the
+           * hit area, never the visual size). The rail also keeps a real
+           * inline-start padding (RTL = the right edge) so the icon column
+           * never glues itself to the viewport edge.
+           */
+          <div className="flex justify-center ps-3 pe-1.5 pt-2 pb-1">
             <Tooltip content={t.nav.expandSidebar} side="end">
               <button
                 type="button"
@@ -127,15 +135,21 @@ export function AppSidebar({
                 aria-controls={navigationId}
                 onClick={onToggleCollapsed}
                 data-testid="sidebar-toggle"
-                className="action-press flex h-8 w-8 items-center justify-center rounded-control border border-brand/25 bg-brand-soft text-brand-ink hover:border-brand/50 hover:bg-brand hover:text-white"
+                className="action-press relative flex h-6 w-6 items-center justify-center rounded-glyph border border-brand/25 bg-brand-soft text-brand-ink after:absolute after:-inset-1.5 after:content-[''] hover:border-brand/50 hover:bg-brand hover:text-white"
               >
-                <ChevronLeft className="h-4 w-4" aria-hidden />
+                <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
               </button>
             </Tooltip>
           </div>
         )}
 
-        <div className="scroll-elegant min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pt-2 pb-3">
+        <div
+          data-testid="sidebar-scroll"
+          className={cn(
+            'scroll-elegant min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-2 pb-3',
+            isIconOnly ? 'ps-3 pe-1.5' : 'px-2',
+          )}
+        >
           <ul className="space-y-1">
             {visibleSections.map((section) => {
               const isGroupCollapsed =
@@ -160,7 +174,7 @@ export function AppSidebar({
                           )}
                           onClick={() => onExpandGroup(section.id)}
                           data-testid={`sidebar-group-${section.id}`}
-                          className="action-press flex h-7 w-7 items-center justify-center rounded-glyph hover:bg-sunken"
+                          className="action-press flex h-6 w-6 items-center justify-center rounded-glyph hover:bg-sunken"
                         >
                           <section.icon
                             className={cn(
@@ -221,7 +235,7 @@ export function AppSidebar({
                                   'group relative flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-[0.8125rem] transition-[background-color,color] duration-150',
                                   'action-press',
                                   isIconOnly &&
-                                    'lg:justify-center lg:gap-0 lg:px-1.5',
+                                    'lg:justify-center lg:gap-0 lg:px-0',
                                   isActive
                                     ? 'bg-brand-soft/80 font-semibold text-brand-ink'
                                     : 'text-ink-muted hover:bg-sunken hover:text-ink',

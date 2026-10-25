@@ -119,3 +119,33 @@ export function compareExactDecimals(
     absoluteDifference: fromScaledBigInt(diff, scale),
   };
 }
+
+/**
+ * Three-way comparison of two decimal strings, digit-exact.
+ *
+ * Returns `-1` when `left < right`, `1` when `left > right` and `0` when they
+ * are equal. Malformed input is treated as `0`, matching the rest of this
+ * module (a half-typed value never throws inside a filter). Used by the
+ * number-range grid filter so an amount is never routed through a JavaScript
+ * `number` and silently rounded (standards.md §۷).
+ */
+export function compareDecimalStrings(left: string, right: string): -1 | 0 | 1 {
+  const parsedLeft = parseDecimal(left) ?? {
+    negative: false,
+    integer: '0',
+    fraction: '',
+  };
+  const parsedRight = parseDecimal(right) ?? {
+    negative: false,
+    integer: '0',
+    fraction: '',
+  };
+  const scale = Math.max(
+    parsedLeft.fraction.length,
+    parsedRight.fraction.length,
+  );
+  const a = toScaledBigInt(parsedLeft, scale);
+  const b = toScaledBigInt(parsedRight, scale);
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}

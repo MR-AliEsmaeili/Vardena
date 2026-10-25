@@ -1115,6 +1115,14 @@ export const fa = {
     searchAccounts: 'جست‌وجوی حساب',
     searchDetails: 'جست‌وجوی تفصیلی',
     postableAccountHint: 'فقط حساب‌های فعال و قابل ثبت قابل انتخاب هستند.',
+    accountName: 'نام حساب',
+    accountSearchPlaceholder: 'کد یا نام حساب…',
+    accountAggregateOption: '(تجمیعی — قابل ثبت نیست)',
+    accountNotFound: 'حسابی با این کد یا نام یافت نشد.',
+    accountPickerLoading: 'در حال دریافت حساب‌ها…',
+    accountLinkHint:
+      'کد و نام حساب به هم لینک‌اند: با نوشتن کد، نام معتبر همان حساب پر می‌شود و برعکس.',
+    accountSuggestions: 'پیشنهادهای حساب',
     detailHint: 'برای این حساب تعیین تفصیلی الزامی است.',
     detailNotRequired: 'این حساب تفصیلی ندارد.',
     linesHint:
@@ -1983,6 +1991,12 @@ export const fa = {
     parentAccount: 'حساب والد (خالی = ریشه)',
     rootParent: 'بدون والد (ریشه)',
     postableAccount: 'قابل ثبت (برگ)',
+    postableMode: 'حالت ثبت حساب',
+    postableDefault: 'پیش‌فرض پیکربندی سطح',
+    postableYes: 'بله — حساب برگ قابل ثبت',
+    postableNo: 'خیر — حساب تجمیعی',
+    postableHint:
+      'اگر «پیش‌فرض پیکربندی» بماند، سرور وضعیت ثبت را از تنظیم سطح حساب تعیین می‌کند؛ بنابراین حساب‌های تازه دیگر به‌طور ناخواسته تجمیعی ساخته نمی‌شوند.',
     creatingAccount: 'در حال ایجاد…',
     accountCreated: 'حساب ایجاد شد.',
     setupStateLoading: 'در حال دریافت وضعیت راه‌اندازی ساختار حساب‌ها…',
@@ -2099,6 +2113,30 @@ export const fa = {
     selectRow: 'انتخاب ردیف',
     selectedCount: '{count} ردیف انتخاب‌شده',
     clearSelection: 'لغو انتخاب',
+    // Light client-side filtering (`docs/frontend/data-table.md`).
+    filters: {
+      searchLabel: 'جست‌وجوی سراسری',
+      searchPlaceholder: 'جست‌وجو در همه ستون‌ها…',
+      columnFilterLabel: 'فیلتر ستون',
+      textPlaceholder: 'شامل می‌شود…',
+      allOption: 'همه',
+      from: 'از',
+      to: 'تا',
+      min: 'حداقل',
+      max: 'حداکثر',
+      numberPlaceholder: 'مثلاً 1000',
+      multiSelect: '{count} انتخاب',
+      multiSelectEmpty: 'انتخاب مقادیر',
+      reset: 'پاک کردن فیلترها',
+      activeCount: '{count} فیلتر فعال',
+      noMatchTitle: 'نتیجه‌ای یافت نشد',
+      noMatchBody:
+        'هیچ ردیفی با جست‌وجو یا فیلترهای فعلی مطابقت ندارد. فیلترها را پاک کنید یا عبارت دیگری بنویسید.',
+      clearFilters: 'پاک کردن جست‌وجو و فیلترها',
+      resultSummary: 'نمایش {filtered} از {total} ردیف',
+      truncatedNotice:
+        'فیلترها روی {count} ردیف بارگذاری‌شده اعمال می‌شوند؛ برای دیدن بقیه، فیلتر سمت سرور را به کار ببرید.',
+    },
   },
   chartTree: {
     title: 'درخت حساب‌ها',

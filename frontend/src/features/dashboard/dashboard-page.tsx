@@ -294,7 +294,7 @@ export function DashboardPage(): ReactElement {
   );
 
   return (
-    <div className="w-full space-y-5">
+    <div className="w-full min-w-0 space-y-5">
       <header className="flex flex-wrap items-center gap-3">
         <div>
           <h1 className="text-lg font-extrabold text-ink">
@@ -346,7 +346,7 @@ export function DashboardPage(): ReactElement {
         scopeMissing={isScopePermitted && isScopeReady && scope === null}
       />
 
-      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_21rem]">
+      <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
         <DocumentsTable
           documents={documentsQuery.data?.items ?? []}
           total={documentTotal}
@@ -373,7 +373,7 @@ export function DashboardPage(): ReactElement {
           }
         />
 
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <WorkflowWidget
             instances={workflowQuery.data?.items}
             isLoading={workflowQuery.isPending}

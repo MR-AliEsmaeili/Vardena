@@ -13,7 +13,8 @@ import {
   type DocumentFormValues,
   type DocumentLineValues,
 } from './document-form-schema';
-import { LineAccountSelect, LineDetailSelect } from './line-reference-fields';
+import { AccountCodeNameField } from '../shared/account-code-name-field';
+import { LineDetailSelect } from './line-reference-fields';
 import { useAccountReference } from './use-document-detail';
 
 interface FieldLineRow extends DocumentLineValues {
@@ -134,6 +135,9 @@ export function DocumentLinesEditor({
         </p>
       )}
       <p className="text-[0.6875rem] text-ink-subtle">
+        {t.documents.accountLinkHint}
+      </p>
+      <p className="text-[0.6875rem] text-ink-subtle">
         {t.documents.linesHint}
       </p>
     </div>
@@ -152,7 +156,7 @@ function AccountCell({
   const error = form.formState.errors.lines?.[index]?.accountId?.message;
 
   return (
-    <LineAccountSelect
+    <AccountCodeNameField
       id={`lines-${index}-account`}
       organizationId={organizationId}
       value={accountId}

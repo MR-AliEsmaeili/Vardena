@@ -35,9 +35,15 @@ export interface ReferenceOptions<TItem> {
   unavailable: boolean;
 }
 
+/**
+ * The part of a TanStack Query result this module reads.
+ *
+ * `data` — never the query object itself — carries the page: these endpoints
+ * answer `{ items, total, page, pageSize }`, so `items`/`total` live one level
+ * down. Reading them off the query result silently yields an empty list.
+ */
 interface Queryable {
-  items?: unknown[];
-  total?: number;
+  data?: { items?: unknown[]; total?: number } | undefined;
   isPending: boolean;
   isError: boolean;
   fetchStatus: string;
@@ -48,10 +54,10 @@ function toOptions<TItem>(
   allowed: boolean,
   permissionsLoaded: boolean,
 ): ReferenceOptions<TItem> {
-  const items = (query.items ?? []) as TItem[];
+  const items = (query.data?.items ?? []) as TItem[];
   return {
     items,
-    truncated: (query.total ?? 0) > items.length,
+    truncated: (query.data?.total ?? 0) > items.length,
     isPending: query.isPending && query.fetchStatus !== 'idle',
     unavailable: (permissionsLoaded && !allowed) || query.isError,
   };

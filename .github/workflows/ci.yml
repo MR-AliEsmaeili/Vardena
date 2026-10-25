@@ -5,6 +5,7 @@
 #    backend              Prisma, lint, typecheck, format, unit, build,
 #                         PostgreSQL migrations, bootstrap, live-DB E2E
 #    frontend             lint, typecheck, format, tests, build
+#    frontend-e2e         Playwright browser suite on the real dev server
 #    generated-api-client OpenAPI dump vs the committed generated client
 #    owner-artifact-store-windows
 #                         Node 24 Windows artifact-store regression coverage
@@ -530,6 +531,123 @@ jobs:
       - name: Independent Owner UI image with canonical date sources
         run: docker build -f owner-licensing/frontend/Dockerfile -t vardena-owner-ui-ci .
 
+  # Browser (Playwright/Chromium) verification on the real dev server. Kept
+  # separate from `frontend` so a layout/RTL regression and a unit/type
+  # regression are distinguishable, and so browser time is paid once. It is
+  # gated by the same `frontend` scope: every change that can alter the
+  # rendered UI runs it. The HTTP boundary is stubbed in-process
+  # (`frontend/e2e/fixtures/api.ts`) — no PostgreSQL, no API process.
+  # Contract: docs/frontend/e2e-testing.md.
+  frontend-e2e:
+    name: frontend-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: classify
+    if: needs.classify.outputs.frontend == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Upgrade npm to v11
+        run: npm install -g npm@11
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser tests (360 / 768 / 1280)
+        working-directory: frontend
+        env:
+          CI: "true"
+        run: npm run test:e2e
+
+      # DIAGNOSTIC ONLY — changes no test, no assertion and no product code.
+      # GitHub exposes at most ten annotations per job and the uploaded report
+      # artifact is served from a host a review surface may not reach, so the
+      # failure inventory is published explicitly: one annotation per failing
+      # spec with the assertion message that decided it. Never gates the job.
+      - name: Publish browser-test failure inventory
+        if: failure()
+        working-directory: frontend
+        run: |
+          python3 - <<'PY' || true
+          import json
+          from pathlib import Path
+
+          path = Path('test-results/results.json')
+          try:
+              report = json.loads(path.read_text(encoding='utf-8'))
+          except (OSError, ValueError):
+              print('::error title=Playwright inventory::no JSON report was written')
+              raise SystemExit(0)
+
+          failures = []
+
+          def walk(node):
+              for spec in node.get('specs', []):
+                  for test in spec.get('tests', []):
+                      results = test.get('results', [])
+                      statuses = {result.get('status') for result in results}
+                      if not statuses & {'failed', 'timedOut', 'interrupted'}:
+                          continue
+                      last = results[-1] if results else {}
+                      error = (last.get('error') or {}).get('message', '')
+                      location = ' '.join(
+                          part for part in (
+                              spec.get('file'),
+                              str(spec.get('line')),
+                              spec.get('title'),
+                          ) if part
+                      )
+                      failures.append((location, error))
+              for child in node.get('suites', []):
+                  walk(child)
+
+          for suite in report.get('suites', []):
+              walk(suite)
+
+          if not failures:
+              print('::error title=Playwright inventory::job failed without a failed test (see logs)')
+              raise SystemExit(0)
+
+          def escape(text):
+              # GitHub workflow-command escaping for annotation data.
+              return (
+                  text.replace('%', '%25')
+                  .replace('\r', '%0D')
+                  .replace('\n', '%0A')
+              )
+
+          print(f'failed tests: {len(failures)}')
+          for location, error in failures[:9]:
+              body = ' | '.join(
+                  line.strip() for line in error.splitlines() if line.strip()
+              )[:1200]
+              print(f'::error title={escape(location)}::{escape(body)}')
+          PY
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            frontend/playwright-report/**
+            frontend/test-results/**
+
   # F-7: the committed generated TypeScript client must match the OpenAPI
   # document produced by this checkout. The dump boots Nest far enough to
   # collect DTO metadata; it does not listen on a port and does not query
@@ -593,6 +711,7 @@ jobs:
       - docs
       - backend
       - frontend
+      - frontend-e2e
       - generated-api-client
       - owner-artifact-store-windows
     steps:
