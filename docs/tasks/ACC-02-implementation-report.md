@@ -48,4 +48,10 @@
 
 ## وضعیت Pull Request و CI
 
-پس از ساخت PR، شماره PR، SHA مورد بررسی و نتیجهٔ نهایی checkهای الزامی CI در این بخش ثبت می‌شود. نتیجهٔ محلی جایگزین CI نیست.
+- PR: [#211](https://github.com/MR-AliEsmaeili/Vardena/pull/211)
+- SHA پیاده‌سازی بررسی‌شده: `ac6b674` (`feat(accounting): administer fiscal year lifecycle`).
+- GitHub Actions run `40234565027`: `ci-gate`, `frontend`, `frontend-e2e`, `docs`, `generated-api-client` همگی **PASS**.
+- `frontend` شامل typecheck/lint/format، کل Vitest suite و build بود؛ `frontend-e2e` نیز PASS شد.
+- `backend` و `owner-artifact-store-windows` توسط classifier برای تغییر فرانت‌اند/مستندات skip شدند؛ CI gate سبز است.
+
+نتیجهٔ محلی جایگزین CI نیست؛ status بالا از checks همان SHA PR گرفته شده است.
