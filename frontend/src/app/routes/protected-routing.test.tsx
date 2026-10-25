@@ -200,6 +200,46 @@ describe('protected routing', () => {
     },
   );
 
+  it('allows fiscal-year creation with only Accounting.FiscalYear.Create (no View prerequisite)', async () => {
+    vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [
+        'Organization.Organization.View',
+        'Accounting.FiscalYear.Create',
+      ],
+    });
+
+    renderWithProviders(<AppRoutes />, {
+      initialEntries: ['/app/accounting/fiscal-years/new'],
+    });
+
+    expect(
+      await screen.findByRole('heading', { name: t.fiscalYear.createTitle }),
+    ).toBeInTheDocument();
+  });
+
+  it('requires FiscalYear.View as well as Edit to open the edit route', async () => {
+    vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [
+        'Organization.Organization.View',
+        'Accounting.FiscalYear.Edit',
+      ],
+    });
+
+    renderWithProviders(<AppRoutes />, {
+      initialEntries: [
+        `/app/accounting/fiscal-years/${testFiscalYear.id}/edit`,
+      ],
+    });
+
+    expect(
+      await screen.findByText(t.permissions.forbiddenTitle),
+    ).toBeInTheDocument();
+  });
+
   it('allows /app/accounting/documents/new with only Accounting.Document.Create — no Document.View prerequisite (backend permission alignment)', async () => {
     // The backend's `POST /accounting-documents` enforces exactly
     // `Accounting.Document.Create`; the create route must not additionally
