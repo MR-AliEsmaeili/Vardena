@@ -19,6 +19,15 @@ import { AccountsPage } from '@/features/accounting/master-data/accounts-page';
 import { ConfigurationDetailPage } from '@/features/accounting/configuration/configuration-detail-page';
 import { ConfigurationFormPage } from '@/features/accounting/configuration/configuration-form-page';
 import { ConfigurationListPage } from '@/features/accounting/configuration/configuration-list-page';
+import {
+  DetailsListPage,
+  DetailFormPage,
+} from '@/features/accounting/details/details-admin-page';
+import {
+  StructureDetailPage,
+  StructureFormPage,
+  StructureListPage,
+} from '@/features/accounting/structures/structure-admin-page';
 import { FinancialAreaFormPage } from '@/features/accounting/master-data/financial-area-form-page';
 import { FinancialAreasPage } from '@/features/accounting/master-data/financial-areas-page';
 import { FiscalYearsPage } from '@/features/accounting/master-data/fiscal-years-page';
@@ -329,6 +338,133 @@ export function AppRoutes() {
               <Route
                 path="configurations/new"
                 element={<ConfigurationFormPage mode="create" />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.accounting.detailView]}
+                />
+              }
+            >
+              <Route path="details" element={<DetailsListPage />} />
+              <Route
+                path="details/:detailId"
+                element={<DetailFormPage mode="view" />}
+              />
+              <Route
+                element={
+                  <RequirePermission
+                    permissions={[PERMISSIONS.accounting.detailEdit]}
+                  />
+                }
+              >
+                <Route
+                  path="details/:detailId/edit"
+                  element={<DetailFormPage mode="edit" />}
+                />
+              </Route>
+            </Route>
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.accounting.detailCreate]}
+                />
+              }
+            >
+              <Route
+                path="details/new"
+                element={<DetailFormPage mode="create" />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.accounting.codingStructureView]}
+                />
+              }
+            >
+              <Route
+                path="coding-structures"
+                element={<StructureListPage kind="coding" />}
+              />
+              <Route
+                path="coding-structures/:structureId"
+                element={<StructureDetailPage kind="coding" />}
+              />
+              <Route
+                element={
+                  <RequirePermission
+                    permissions={[
+                      PERMISSIONS.accounting.codingStructureConfigure,
+                    ]}
+                  />
+                }
+              >
+                <Route
+                  path="coding-structures/:structureId/edit"
+                  element={<StructureFormPage kind="coding" mode="edit" />}
+                />
+              </Route>
+            </Route>
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[
+                    PERMISSIONS.accounting.codingStructureConfigure,
+                  ]}
+                />
+              }
+            >
+              <Route
+                path="coding-structures/new"
+                element={<StructureFormPage kind="coding" mode="create" />}
+              />
+            </Route>
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.accounting.detailStructureView]}
+                />
+              }
+            >
+              <Route
+                path="detail-structures"
+                element={<StructureListPage kind="detail" />}
+              />
+              <Route
+                path="detail-structures/:structureId"
+                element={<StructureDetailPage kind="detail" />}
+              />
+              <Route
+                element={
+                  <RequirePermission
+                    permissions={[
+                      PERMISSIONS.accounting.detailStructureConfigure,
+                    ]}
+                  />
+                }
+              >
+                <Route
+                  path="detail-structures/:structureId/edit"
+                  element={<StructureFormPage kind="detail" mode="edit" />}
+                />
+              </Route>
+            </Route>
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[
+                    PERMISSIONS.accounting.detailStructureConfigure,
+                  ]}
+                />
+              }
+            >
+              <Route
+                path="detail-structures/new"
+                element={<StructureFormPage kind="detail" mode="create" />}
               />
             </Route>
 

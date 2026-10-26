@@ -259,8 +259,58 @@ export const queryKeys = {
     accountDetail: (organizationId: string, accountId: string) =>
       ['accounting', organizationId, 'accounts', 'detail', accountId] as const,
 
+    codingStructurePrefix: (organizationId: string) =>
+      ['accounting', organizationId, 'coding-structures'] as const,
+    codingStructureList: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+    ) =>
+      [
+        'accounting',
+        organizationId,
+        'coding-structures',
+        'list',
+        filters,
+      ] as const,
+    codingStructureDetail: (organizationId: string, structureId: string) =>
+      [
+        'accounting',
+        organizationId,
+        'coding-structures',
+        'detail',
+        structureId,
+      ] as const,
     codingStructureActive: (organizationId: string) =>
       ['accounting', organizationId, 'coding-structures', 'active'] as const,
+    detailStructurePrefix: (organizationId: string) =>
+      ['accounting', organizationId, 'detail-structures'] as const,
+    detailStructureList: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+    ) =>
+      [
+        'accounting',
+        organizationId,
+        'detail-structures',
+        'list',
+        filters,
+      ] as const,
+    detailStructureDetail: (organizationId: string, structureId: string) =>
+      [
+        'accounting',
+        organizationId,
+        'detail-structures',
+        'detail',
+        structureId,
+      ] as const,
+    detailStructureActive: (organizationId: string) =>
+      ['accounting', organizationId, 'detail-structures', 'active'] as const,
+    detailsList: (organizationId: string, filters: Record<string, unknown>) =>
+      ['accounting', organizationId, 'details', 'list', filters] as const,
+    detailsPrefix: (organizationId: string) =>
+      ['accounting', organizationId, 'details'] as const,
+    detailStructureDrafts: (organizationId: string) =>
+      ['accounting', organizationId, 'detail-structures', 'drafts'] as const,
     codingStructureDrafts: (organizationId: string) =>
       ['accounting', organizationId, 'coding-structures', 'drafts'] as const,
     accountingConfigurationActive: (organizationId: string) =>

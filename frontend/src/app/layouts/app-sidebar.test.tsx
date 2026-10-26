@@ -114,20 +114,24 @@ describe('AppSidebar — ownership of the collapse handle', () => {
 describe('AppSidebar — categories in both shapes', () => {
   it('renders a group header with its expanded state and the list it controls', () => {
     const { sidebar } = renderSidebar();
-    const header = within(sidebar).getByTestId('sidebar-group-accounting');
+    const header = within(sidebar).getByTestId(
+      'sidebar-group-accounting-documents',
+    );
 
     expect(header).toHaveAttribute('aria-expanded', 'true');
     const controlled = header.getAttribute('aria-controls');
-    expect(controlled).toBe('app-navigation-accounting');
+    expect(controlled).toBe('app-navigation-accounting-documents');
     expect(document.getElementById(controlled ?? '')).not.toBeNull();
   });
 
   it('hides the entries of a collapsed group and asks the shell to reopen it', async () => {
     const user = userEvent.setup();
     const { sidebar, props } = renderSidebar({
-      collapsedGroups: ['accounting'],
+      collapsedGroups: ['accounting-documents'],
     });
-    const header = within(sidebar).getByTestId('sidebar-group-accounting');
+    const header = within(sidebar).getByTestId(
+      'sidebar-group-accounting-documents',
+    );
 
     expect(header).toHaveAttribute('aria-expanded', 'false');
     // The group is controlled: nothing inside it is rendered, but the other
@@ -140,7 +144,7 @@ describe('AppSidebar — categories in both shapes', () => {
     ).toBeInTheDocument();
 
     await user.click(header);
-    expect(props.onToggleGroup).toHaveBeenCalledWith('accounting');
+    expect(props.onToggleGroup).toHaveBeenCalledWith('accounting-documents');
   });
 
   it('keeps every permitted domain as a labelled marker on the collapsed rail', async () => {
@@ -148,7 +152,7 @@ describe('AppSidebar — categories in both shapes', () => {
     const { sidebar, props } = renderSidebar({ collapsed: true });
 
     for (const [sectionId, label] of [
-      ['accounting', t.nav.accounting],
+      ['accounting-documents', t.nav.accountingDocumentsGroup],
       ['inventory', t.nav.inventory],
       ['admin', t.nav.admin],
     ] as const) {
