@@ -32,7 +32,7 @@
 | حساب‌ها (master) | `GET /accounts`, `/:id`, `POST`, `PATCH`, `enable/disable`, `unlink-detail-group` | فهرست + جزئیات | **PARTIAL** — ایجاد/ویرایش/فعال‌سازی حساب و جداکردن گروه تفصیلی UI ندارد |
 | نواحی مالی | `GET /financial-areas`, `GET /:id`, `POST`, `PATCH`, `enable/disable` | فهرست + فرم ایجاد/ویرایش (`financial-area-form-page`) + اکشن‌های ردیف (ویرایش، تعیین پیش‌فرض، فعال/غیرفعال با تأیید) | **COMPLETE** — همه عملیات قرارداد با گیت مجوز دقیق هر endpoint (ACC-01) |
 | سال‌های مالی | `GET /fiscal-years`, `GET /:id`, `POST`, `PATCH`, `close/reopen/seal/unseal` | فهرست + فرم ایجاد/ویرایش + گذارهای چرخه عمر با دلیل اجباری و گیت مجوز دقیق | **COMPLETE** (ACC-02) |
-| دوره‌های حسابداری | `GET /accounting-periods`, `POST`, `close/reopen/seal` | فهرست، فرم ایجاد، اکشن‌های گذار با دلیل | **PARTIAL** — ACC-03: سناریوی `sealed → open` در بک‌اند پس از رفع مهر سال مجاز است اما ماتریس UI تسک آن را منع می‌کند؛ نیازمند تطبیق با مالک |
+| دوره‌های حسابداری | `GET /accounting-periods`, `POST`, `close/reopen/seal` | فهرست، فرم ایجاد (شناسهٔ دستی برای مجوز Open-only)، اکشن‌های گذار با دلیل و ماتریس وضعیت منطبق با بک‌اند | **COMPLETE** (ACC-03؛ `sealed → open` پس از رفع مهر سال نیز از UI ممکن است) |
 | تراز حساب‌ها (balances) | `GET /accounting/balances`, `/reconciliation`, `/:accountId`, `POST /rebuild` | ویجت داشبورد (`listAccountBalances`) | **PARTIAL** — صفحهٔ اختصاصی گزارش و بازسازی داخلی ندارد |
 | حرکات دفتر | `GET /accounting/ledger-movements` | — | **NOT_REQUIRED** — دفتر کل از endpoint گزارش خودش استفاده می‌کند؛ این مسیر مصرف مستقیم ندارد |
 | پیکربندی حساب‌داری | `GET/POST/PATCH/DELETE /accounting-configurations`, `:id/publish`, `active` | — | **MISSING** |
@@ -119,8 +119,8 @@
 
 | وضعیت | تعداد گروه |
 | ----- | ---------- |
-| COMPLETE | ۲۸ |
-| PARTIAL | ۹ |
+| COMPLETE | ۲۹ |
+| PARTIAL | ۸ |
 | MISSING | ۱۳ |
 | NOT_REQUIRED | ۳ |
 

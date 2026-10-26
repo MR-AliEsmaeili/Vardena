@@ -12,6 +12,7 @@ import {
 } from '@/test/fixtures';
 import { renderWithProviders } from '@/test/test-utils';
 import { AccountingPeriodsPage } from './accounting-periods-page';
+import { AccountingPeriodFormPage } from './accounting-period-form-page';
 
 vi.mock('@/api/identity.api', () => ({
   login: vi.fn(),
@@ -73,6 +74,21 @@ beforeEach(() => {
 });
 
 describe('accounting periods list (ACC-03)', () => {
+  it('shows the manual year-id form to Open-only users, without requesting FiscalYear.View', async () => {
+    vi.mocked(identity.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [PERMISSIONS.accounting.accountingPeriodOpen],
+    });
+    renderWithProviders(<AccountingPeriodFormPage />);
+    expect(
+      await screen.findByText(t.accountingPeriod.yearViewRequired),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(t.masterData.fiscalYear)).toHaveAttribute(
+      'dir',
+      'ltr',
+    );
+    expect(accounting.listFiscalYears).not.toHaveBeenCalled();
+  });
   it('shows only the allowed actions of each status plus the new route', async () => {
     renderWithProviders(<AccountingPeriodsPage />);
     const first = await screen.findByText(testAccountingPeriod.title);
@@ -102,8 +118,10 @@ describe('accounting periods list (ACC-03)', () => {
       }),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByText('خرداد').closest('tr')!).queryByRole('button'),
-    ).not.toBeInTheDocument();
+      within(screen.getByText('خرداد').closest('tr')!).getByRole('button', {
+        name: t.accountingPeriod.transitions.reopen,
+      }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: t.accountingPeriod.new }),
     ).toHaveAttribute('href', '/app/accounting/periods/new');

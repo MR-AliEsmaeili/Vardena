@@ -21,8 +21,11 @@ const permissionCodes = {
   seal: PERMISSIONS.accounting.accountingPeriodSeal,
 };
 
-/** Only operations allowed by BOTH the current row and its year are offered.
- * The server remains authoritative and rechecks status under lock. */
+/** Mirror the backend transition plan and its *only* year-status gate.
+ * `close`/`reopen` are blocked by a sealed year; `seal` has no year gate.
+ * A closed or inactive year does not itself block transitions. When the
+ * reference year is unavailable, the server remains authoritative.
+ */
 export function AccountingPeriodRowActions({
   period,
   year,
@@ -37,14 +40,19 @@ export function AccountingPeriodRowActions({
   const [action, setAction] = useState<AccountingPeriodAction | null>(null);
   const [reason, setReason] = useState('');
   const [reasonError, setReasonError] = useState(false);
+  const yearSealed = year?.status === 'sealed';
   const available: AccountingPeriodAction[] =
-    year?.status !== 'open' || !year.isActive
-      ? []
-      : period.status === 'open'
-        ? ['close']
-        : period.status === 'closed'
-          ? ['reopen', 'seal']
-          : [];
+    period.status === 'open'
+      ? yearSealed
+        ? []
+        : ['close']
+      : period.status === 'closed'
+        ? yearSealed
+          ? ['seal']
+          : ['reopen', 'seal']
+        : yearSealed
+          ? []
+          : ['reopen'];
   const closeDialog = () => {
     setAction(null);
     setReason('');
@@ -53,12 +61,12 @@ export function AccountingPeriodRowActions({
   };
   return (
     <div className="flex flex-wrap justify-end gap-1">
-      {year !== undefined && year.status !== 'open' && (
+      {yearSealed && period.status !== 'sealed' && (
         <span
-          title={t.accountingPeriod.yearNotOpen}
+          title={t.accountingPeriod.yearSealed}
           className="text-xs text-ink-muted"
         >
-          {t.accountingPeriod.yearNotOpen}
+          {t.accountingPeriod.yearSealed}
         </span>
       )}
       {available

@@ -82,11 +82,81 @@ describe('period lifecycle availability and mandatory reason', () => {
     );
   });
 
-  it('closed offers reopen and seal, but sealed has no period action', () => {
+  it.each([
+    ['open', 'open', ['close']],
+    ['closed', 'open', ['reopen', 'seal']],
+    ['sealed', 'open', ['reopen']],
+    ['open', 'closed', ['close']],
+    ['closed', 'closed', ['reopen', 'seal']],
+    ['sealed', 'closed', ['reopen']],
+    ['open', 'sealed', []],
+    ['closed', 'sealed', ['seal']],
+    ['sealed', 'sealed', []],
+  ] as const)(
+    'backend matrix: %s period in %s year offers %s',
+    (status, yearStatus, expected) => {
+      show(status, { ...testFiscalYear, status: yearStatus });
+      for (const action of ['close', 'reopen', 'seal'] as const) {
+        const control = screen.queryByRole('button', {
+          name: t.accountingPeriod.transitions[action],
+        });
+        expect(control !== null).toBe(
+          expected.some((value) => value === action),
+        );
+      }
+    },
+  );
+
+  it('reopens a sealed period in an unsealed year with an audit reason', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.transitionAccountingPeriod).mockResolvedValue({
+      ...testAccountingPeriod,
+      status: 'open',
+    });
+    show('sealed', { ...testFiscalYear, status: 'closed' });
+    await user.click(
+      screen.getByRole('button', {
+        name: t.accountingPeriod.transitions.reopen,
+      }),
+    );
+    const confirm = screen
+      .getAllByRole('button', { name: t.accountingPeriod.transitions.reopen })
+      .at(-1)!;
+    expect(confirm).toBeDisabled();
+    await user.type(
+      screen.getByLabelText(t.accountingPeriod.reason),
+      '  رفع مهر سال  ',
+    );
+    await user.click(confirm);
+    await waitFor(() =>
+      expect(api.transitionAccountingPeriod).toHaveBeenCalledWith(
+        'org-1',
+        testAccountingPeriod.id,
+        'reopen',
+        { reason: 'رفع مهر سال' },
+      ),
+    );
+  });
+
+  it('does not gate period operations on the year active flag or an unavailable year reference', () => {
     const { unmount } = renderWithProviders(
       <AccountingPeriodRowActions
-        period={{ ...testAccountingPeriod, status: 'closed' }}
-        year={testFiscalYear}
+        period={testAccountingPeriod}
+        year={{ ...testFiscalYear, isActive: false }}
+        organizationId="org-1"
+      />,
+      { withProviders: false },
+    );
+    expect(
+      screen.getByRole('button', {
+        name: t.accountingPeriod.transitions.close,
+      }),
+    ).toBeInTheDocument();
+    unmount();
+    renderWithProviders(
+      <AccountingPeriodRowActions
+        period={{ ...testAccountingPeriod, status: 'sealed' }}
+        year={undefined}
         organizationId="org-1"
       />,
       { withProviders: false },
@@ -96,31 +166,18 @@ describe('period lifecycle availability and mandatory reason', () => {
         name: t.accountingPeriod.transitions.reopen,
       }),
     ).toBeInTheDocument();
+  });
+
+  it('hides only operations denied by their exact backend permission', () => {
+    permissions.codes = [PERMISSIONS.accounting.accountingPeriodSeal];
+    show('closed');
     expect(
       screen.getByRole('button', { name: t.accountingPeriod.transitions.seal }),
     ).toBeInTheDocument();
-    unmount();
-    show('sealed');
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
-  });
-
-  it('hides forbidden operations and every operation for a closed year', () => {
-    permissions.codes = [];
-    const { unmount } = renderWithProviders(
-      <AccountingPeriodRowActions
-        period={testAccountingPeriod}
-        year={testFiscalYear}
-        organizationId="org-1"
-      />,
-      { withProviders: false },
-    );
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    unmount();
-    permissions.codes = codes;
-    show('open', { ...testFiscalYear, status: 'closed' });
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(
-      screen.getByText(t.accountingPeriod.yearNotOpen),
-    ).toBeInTheDocument();
+      screen.queryByRole('button', {
+        name: t.accountingPeriod.transitions.reopen,
+      }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -30,7 +30,9 @@ export function AccountingPeriodFormPage() {
       />
       {!permissions.loaded && <LoadingState />}
       {permissions.loaded && !canReadYears && (
-        <p role="alert">{t.accountingPeriod.yearViewRequired}</p>
+        <p className="text-sm text-ink-muted">
+          {t.accountingPeriod.yearViewRequired}
+        </p>
       )}
       {canReadYears && years.isPending && <LoadingState />}
       {years.isError && (
@@ -42,13 +44,25 @@ export function AccountingPeriodFormPage() {
       {years.data?.items.length === 0 && (
         <EmptyState title={t.masterData.noFiscalYears} />
       )}
-      {organizationId !== null && years.data && years.data.items.length > 0 && (
-        <PeriodCreateForm
-          organizationId={organizationId}
-          fiscalYears={years.data.items}
-          initialFiscalYearId={searchParams.get('fiscalYearId') ?? ''}
-        />
-      )}
+      {organizationId !== null &&
+        permissions.loaded &&
+        (canReadYears ? (
+          years.data &&
+          years.data.items.length > 0 && (
+            <PeriodCreateForm
+              organizationId={organizationId}
+              fiscalYears={years.data.items}
+              initialFiscalYearId={searchParams.get('fiscalYearId') ?? ''}
+            />
+          )
+        ) : (
+          <PeriodCreateForm
+            organizationId={organizationId}
+            fiscalYears={[]}
+            initialFiscalYearId={searchParams.get('fiscalYearId') ?? ''}
+            allowYearIdEntry
+          />
+        ))}
     </div>
   );
 }
