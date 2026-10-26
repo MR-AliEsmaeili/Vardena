@@ -6,7 +6,6 @@ import {
   listAccounts,
   listFinancialAreasPage,
   listFiscalYearsPage,
-  MAX_PAGE_SIZE,
 } from '@/api/accounting.api';
 import type { AccountListQuery } from '@/api/contracts';
 import { queryKeys } from '@/api/query-keys';
@@ -164,10 +163,15 @@ export function useActiveAccountingConfiguration(
  * list contract's hard page cap — deliberately NOT the accounts grid's
  * current page, which made valid parents disappear under paging/filters.
  */
-export function useAccountParentCandidates(organizationId: string | null) {
+export function useAccountParentCandidates(
+  organizationId: string | null,
+  search: string,
+) {
+  const normalizedSearch = search.trim();
   return useQuery({
     queryKey: queryKeys.accounting.accountList(organizationId ?? 'none', {
       purpose: 'parent-candidates',
+      search: normalizedSearch,
     }),
     queryFn: ({ signal }) =>
       listAccounts(
@@ -176,7 +180,8 @@ export function useAccountParentCandidates(organizationId: string | null) {
           isActive: true,
           isPostable: false,
           page: 1,
-          pageSize: MAX_PAGE_SIZE,
+          pageSize: 50,
+          ...(normalizedSearch ? { search: normalizedSearch } : {}),
           sort: 'code:asc',
         },
         signal,

@@ -1,26 +1,30 @@
-# ACC-04 — Account administration (in-progress; backend contract wins)
+# ACC-04 — Account administration
 
-**Date:** 2026-10-26 · **Status:** PARTIAL (not yet Definition of Done)
+**Date:** 2026-10-26 · **Status:** IMPLEMENTED; local verification complete, CI pending
 
 ## Implemented
 
-- Added `PATCH /accounts/:id`, enable/disable API calls with exact organization scope and `UpdateAccountDto`-derived type. `UpdateAccountDto` contains neither `code` nor `localCode`: edit form renders no code input and sends neither field. Create uses the backend's existing `localCode` path for guided root/child creation, or its `code` path for independently authorized Create-only root creation.
-- Added edit route (`Account.View` + `Account.Edit`), Create-only route (`Account.Create`), per-row/detail lifecycle confirmation and permissions, Detail Group selection when `Detail.View` is held, and a shared account-prefix/chart-tree invalidation. Existing embedded create form retained.
-- **Archive mismatch:** the ACC-04 evidence describes `code` as the only creation field, but current backend `CreateAccountDto` accepts **exactly one of `code` or `localCode`** and composes the full code for `localCode`. The pre-existing create UI uses this authoritative flow, so it was extended, not replaced. The generated `AccountResponseDto.detailGroupId` incorrectly emits `Record<string, never> | null` because Swagger lacks its explicit string type; `contracts.ts` now refines it to the DTO's declared `string | null`.
-- See [OQ-95](../decisions/product/OQ-95-account-admin-cross-permission-reference-ux.md) for undecided cross-permission reference-data UX. No backend, generated file, permission registry or migration changed.
+- Completed the account administration flow on the existing backend contract: create, list/inspect, edit, enable, and disable. Lifecycle actions remain individually permission-gated and require confirmation where the existing UI pattern requires it. `unlink-detail-group` was deliberately left unchanged and out of ACC-04 (ACC-05).
+- Account creation uses the backend's supported `localCode` path when the active accounting configuration is available, with a server-backed eligible-parent picker and full-code preview. Create-only users without the separate read grants get the contract-supported full `code` root form; it issues no unauthorized configuration or account-reference GETs.
+- Parent candidates are searched through the backend account-list query, not by filtering a fixed client-side page. A selected parent remains visible while the operator changes the search term.
+- Detail-group candidates are queried only when both `Accounting.Detail.View` and `Accounting.DetailStructure.View` are present, and are restricted to active level-1 groups in the active detail-structure version. The active structure ID scopes both the server filter and React Query key. A selected candidate is retained across server-search changes.
+- Account edit has no code/localCode input and sends neither field in `PATCH`; the request is formed from `UpdateAccountDto` fields only. Existing linked groups outside the active candidate set are shown as unchanged and not silently resubmitted.
+- Shared create/edit/lifecycle mutations refresh the organization account list and chart tree; update/lifecycle also invalidate the edited account detail query.
+- **Archive mismatch:** the ACC-04 evidence describes `code` as the only creation field, while the current backend `CreateAccountDto` supports exactly one of `code` or `localCode`. The implementation follows the current DTO. `UpdateAccountDto` excludes both code variants; codes are immutable. The generated `AccountResponseDto.detailGroupId` Swagger type mismatch was already refined in `frontend/src/api/contracts.ts`; no generated file was changed in this task.
+- No backend endpoint, API contract, permission, or business rule was added or changed. OQ-95 remains open; this implementation requests reference data only under its existing independent read permissions.
 
-## Remaining / not claimed
+## Verification
 
-- ACC-06 accounting-configuration administration and dedicated configuration link have **not** been completed; a pre-existing guided create warning is retained when no active configuration exists.
-- The Detail Group selector currently reads active level-1 groups (bounded server list) and relies on the server to reject an obsolete structure; refine to the active structure and a paginated/search picker when ACC-08/09 land.
-- End-to-end screenshots, heavy browser/live-DB validation, full acceptance-case matrix and final PR CI verification are outstanding. This report does not claim ACC-04 COMPLETE.
+- Feature tests cover create-only behavior without unauthorized reference GETs, server-side parent search, active-structure group selection, independent group-read permissions, immutable PATCH fields, and mutation cache invalidation.
+- Full acceptance-case testing and browser screenshots remain CI-heavy and are tracked by the GitHub PR checks; they have not been claimed as locally completed.
 
 ## Test execution matrix
 
 | Gate | Environment | Result |
 | --- | --- | --- |
-| Account forms, detail, mutation hooks | FAST-LOCAL | Passed focused Vitest; see PR/checkpoint output |
-| Typecheck/lint/format, frontend full unit/build, date guard/docs links | FAST-LOCAL | Passed: 749 tests / 106 files, build, date guard and 1,337 documentation links (0 broken) |
-| Browser E2E, live DB | CI-HEAVY | Pending GitHub run on pushed SHA |
+| Account administration and adjacent master-data/chart-tree tests | FAST-LOCAL | Passed: 127 tests across 22 files |
+| Full frontend unit suite | FAST-LOCAL | Passed: 813 tests across 122 files. An earlier run had two transient failures in unrelated shell/licensing suites; both isolated reruns and the subsequent full rerun passed. |
+| Typecheck, lint, format, production build, date-contract, design-token and documentation-link checks | FAST-LOCAL | Passed; 1,336 relative documentation links, 0 broken. Build emitted non-blocking dependency annotation and large-chunk warnings. |
+| Browser E2E, live DB and other CI-heavy checks | CI-HEAVY | Pending GitHub run on the pushed ACC-04 SHA |
 
-No heavy E2E/live-DB test was executed locally unless explicitly authorized.
+No heavy E2E/live-DB test was executed locally.

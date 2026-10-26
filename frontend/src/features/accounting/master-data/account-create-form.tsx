@@ -1,18 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
+import { Link } from 'react-router-dom';
 import { z } from 'zod';
-import {
-  createAccount,
-  listDetailGroups,
-  MAX_PAGE_SIZE,
-} from '@/api/accounting.api';
-import type { Account } from '@/api/contracts';
+import type { Account, AccountingDetail } from '@/api/contracts';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
-import { useState } from 'react';
-import { queryKeys } from '@/api/query-keys';
 import { formatCount } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Alert, AlertBody } from '@/ui/alert';
@@ -36,6 +30,11 @@ import {
   previewFullCode,
   type ConfigurationLevel,
 } from './account-code';
+import {
+  useCreateAccountMutation,
+  useAccountDetailGroupCandidates,
+} from './account-admin-hooks';
+import { AccountParentPicker } from './account-parent-picker';
 import {
   useAccountParentCandidates,
   useActiveAccountingConfiguration,
@@ -136,27 +135,30 @@ export function AccountCreateForm({
 }: {
   organizationId: string;
 }) {
-  const queryClient = useQueryClient();
   const permissions = usePermissions();
-  const canViewDetails = permissions.has(PERMISSIONS.accounting.detailView);
+  const canChooseDetailGroup =
+    permissions.has(PERMISSIONS.accounting.detailView) &&
+    permissions.has(PERMISSIONS.accounting.detailStructureView);
   const [groupSearch, setGroupSearch] = useState('');
-  const groups = useQuery({
-    queryKey: queryKeys.accounting.detailGroupList(organizationId, groupSearch),
-    queryFn: ({ signal }) =>
-      listDetailGroups(
-        {
-          organizationId,
-          page: 1,
-          pageSize: MAX_PAGE_SIZE,
-          isActive: true,
-          ...(groupSearch ? { search: groupSearch } : {}),
-        },
-        signal,
-      ),
-    enabled: canViewDetails,
-  });
+  const [selectedDetailGroupRecord, setSelectedDetailGroupRecord] =
+    useState<AccountingDetail | null>(null);
+  const debouncedGroupSearch = useDebouncedValue(groupSearch);
+  const { activeStructure: detailStructureQuery, groups } =
+    useAccountDetailGroupCandidates(
+      organizationId,
+      debouncedGroupSearch,
+      canChooseDetailGroup,
+    );
+  const [parentSearch, setParentSearch] = useState('');
+  const debouncedParentSearch = useDebouncedValue(parentSearch);
+  const parentsQuery = useAccountParentCandidates(
+    organizationId,
+    debouncedParentSearch,
+  );
+  const [selectedParentRecord, setSelectedParentRecord] =
+    useState<Account | null>(null);
   const configurationQuery = useActiveAccountingConfiguration(organizationId);
-  const parentsQuery = useAccountParentCandidates(organizationId);
+  const mutation = useCreateAccountMutation(organizationId);
 
   const levels = useMemo(
     () => orderedLevels(configurationQuery.data?.levels),
@@ -166,10 +168,30 @@ export function AccountCreateForm({
     () => parentsQuery.data?.items ?? [],
     [parentsQuery.data],
   );
-  const parentsById = useMemo(
-    () => new Map(parents.map((account) => [account.id, account])),
-    [parents],
-  );
+  const parentsById = useMemo(() => {
+    const indexed = new Map(parents.map((account) => [account.id, account]));
+    if (selectedParentRecord !== null) {
+      indexed.set(selectedParentRecord.id, selectedParentRecord);
+    }
+    return indexed;
+  }, [parents, selectedParentRecord]);
+  const activeDetailGroups = useMemo(() => {
+    const candidates = groups.data?.items ?? [];
+    const selected = selectedDetailGroupRecord;
+    if (
+      selected !== null &&
+      selected.isActive &&
+      selected.detailStructureVersionId === detailStructureQuery.data?.id &&
+      !candidates.some((candidate) => candidate.id === selected.id)
+    ) {
+      return [selected, ...candidates];
+    }
+    return candidates;
+  }, [
+    detailStructureQuery.data?.id,
+    groups.data?.items,
+    selectedDetailGroupRecord,
+  ]);
   const schema = useMemo(
     () => buildSchema(levels, parentsById),
     [levels, parentsById],
@@ -188,6 +210,7 @@ export function AccountCreateForm({
     },
     mode: 'onSubmit',
   });
+  const detailGroupField = form.register('detailGroupId');
   const watchedParentId =
     useWatch({ control: form.control, name: 'parentId' }) ?? '';
   const watchedLocalCode =
@@ -206,33 +229,33 @@ export function AccountCreateForm({
   const parentsReady = parentsQuery.isSuccess;
   const formReady = chartReady && parentsReady;
 
-  const mutation = useMutation({
-    mutationFn: (values: Values) =>
-      createAccount({
+  const submit = form.handleSubmit((values) => {
+    if (mutation.isPending) return;
+    mutation.mutate(
+      {
         organizationId,
         localCode: values.localCode.trim(),
         title: values.title.trim(),
         parentId: values.parentId === '' ? null : values.parentId,
         accountNature: values.accountNature,
         accountType: values.accountType,
-        ...(canViewDetails && values.detailGroupId !== ''
+        ...(canChooseDetailGroup &&
+        activeDetailGroups.some((group) => group.id === values.detailGroupId)
           ? { detailGroupId: values.detailGroupId }
           : {}),
         ...(values.postability === 'DEFAULT'
           ? {}
           : { isPostable: values.postability === 'YES' }),
-      }),
-    onSuccess: async () => {
-      form.reset();
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.accounting.accountPrefix(organizationId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.accounting.chartTree(organizationId),
-        }),
-      ]);
-    },
+      },
+      {
+        onSuccess: () => {
+          form.reset();
+          setSelectedParentRecord(null);
+          setSelectedDetailGroupRecord(null);
+          setParentSearch('');
+        },
+      },
+    );
   });
   const errors = form.formState.errors;
   const fieldsDisabled = mutation.isPending || !formReady;
@@ -263,11 +286,7 @@ export function AccountCreateForm({
         <CardDescription>{t.masterData.createAccountBody}</CardDescription>
       </CardHeader>
       <CardContent>
-        <form
-          className="space-y-4"
-          noValidate
-          onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
-        >
+        <form className="space-y-4" noValidate onSubmit={submit}>
           {configurationQuery.isError && (
             <ApiErrorAlert
               error={configurationQuery.error}
@@ -278,10 +297,23 @@ export function AccountCreateForm({
             <Alert variant="warning" role="alert">
               <AlertBody>
                 <p>{t.masterData.chartNotReadyForAccount}</p>
+                <Link
+                  className="font-medium text-brand hover:underline"
+                  to="/app/accounting/configurations"
+                >
+                  {t.accountAdmin.configureAccounting}
+                </Link>
               </AlertBody>
             </Alert>
           )}
-          {canViewDetails && groups.isError && (
+          {canChooseDetailGroup && detailStructureQuery.isError && (
+            <ApiErrorAlert
+              error={detailStructureQuery.error}
+              description={t.accountAdmin.groupLoadFailed}
+              onRetry={() => void detailStructureQuery.refetch()}
+            />
+          )}
+          {canChooseDetailGroup && groups.isError && (
             <ApiErrorAlert
               error={groups.error}
               description={t.accountAdmin.groupLoadFailed}
@@ -296,26 +328,32 @@ export function AccountCreateForm({
             />
           )}
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField
+            <AccountParentPicker
               id="account-parent"
-              label={t.masterData.parentAccount}
+              value={watchedParentId}
+              candidates={parents}
+              search={parentSearch}
+              onSearchChange={setParentSearch}
+              onChange={(parentId) => {
+                const candidate =
+                  parents.find((parent) => parent.id === parentId) ?? null;
+                setSelectedParentRecord(candidate);
+                form.setValue('parentId', parentId, {
+                  shouldDirty: true,
+                  shouldTouch: true,
+                });
+              }}
+              disabled={fieldsDisabled}
               error={errors.parentId?.message}
-            >
-              {(p) => (
-                <Select
-                  {...p}
-                  {...form.register('parentId')}
-                  disabled={fieldsDisabled}
-                >
-                  <option value="">{t.masterData.rootParent}</option>
-                  {parents.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.code} — {a.title}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </FormField>
+              fallback={
+                selectedParentRecord !== null
+                  ? {
+                      id: selectedParentRecord.id,
+                      label: `${selectedParentRecord.code} — ${selectedParentRecord.title}`,
+                    }
+                  : null
+              }
+            />
             <FormField
               id="account-local-code"
               label={t.masterData.localCode}
@@ -379,7 +417,7 @@ export function AccountCreateForm({
                 </Select>
               )}
             </FormField>
-            {canViewDetails && (
+            {canChooseDetailGroup && (
               <FormField
                 id="account-create-group"
                 label={t.masterData.detailGroup}
@@ -393,16 +431,36 @@ export function AccountCreateForm({
                     />
                     <Select
                       {...props}
-                      {...form.register('detailGroupId')}
-                      disabled={fieldsDisabled || groups.isPending}
+                      {...detailGroupField}
+                      onChange={(event) => {
+                        void detailGroupField.onChange(event);
+                        const selectedId = event.target.value;
+                        setSelectedDetailGroupRecord(
+                          activeDetailGroups.find(
+                            (group) => group.id === selectedId,
+                          ) ?? null,
+                        );
+                      }}
+                      disabled={
+                        fieldsDisabled ||
+                        detailStructureQuery.isPending ||
+                        detailStructureQuery.data === null ||
+                        groups.isPending
+                      }
                     >
                       <option value="">{t.accountAdmin.groupNone}</option>
-                      {groups.data?.items.map((group) => (
+                      {activeDetailGroups.map((group) => (
                         <option key={group.id} value={group.id}>
                           {group.code} — {group.title}
                         </option>
                       ))}
                     </Select>
+                    {detailStructureQuery.isSuccess &&
+                      detailStructureQuery.data === null && (
+                        <p className="text-xs text-ink-muted">
+                          {t.accountAdmin.noActiveDetailStructure}
+                        </p>
+                      )}
                   </>
                 )}
               </FormField>

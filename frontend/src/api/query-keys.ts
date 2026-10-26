@@ -409,8 +409,18 @@ export const queryKeys = {
     postableDetails: (organizationId: string, search: string) =>
       ['accounting', organizationId, 'details', 'postable', search] as const,
 
-    detailGroupList: (organizationId: string, search: string) =>
-      ['accounting', organizationId, 'detail-groups', search] as const,
+    detailGroupList: (
+      organizationId: string,
+      search: string,
+      structureVersionId: string | null,
+    ) =>
+      [
+        'accounting',
+        organizationId,
+        'detail-groups',
+        search,
+        structureVersionId,
+      ] as const,
 
     detailRecord: (organizationId: string, detailId: string) =>
       ['accounting', organizationId, 'details', 'detail', detailId] as const,

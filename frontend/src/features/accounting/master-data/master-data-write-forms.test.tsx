@@ -21,6 +21,8 @@ vi.mock('@/api/accounting.api', () => ({
   publishAccountingConfiguration: vi.fn(),
   getActiveCodingStructure: vi.fn(),
   getActiveAccountingConfiguration: vi.fn(),
+  getActiveDetailStructure: vi.fn(),
+  listDetailGroups: vi.fn(),
   listCodingStructureVersions: vi.fn(),
   listAccountingConfigurations: vi.fn(),
 }));
@@ -352,9 +354,102 @@ describe('AccountCreateForm (local segment → backend-composed full code)', () 
       await screen.findByText(t.masterData.chartNotReadyForAccount),
     ).toBeInTheDocument();
     expect(
+      screen.getByRole('link', { name: t.accountAdmin.configureAccounting }),
+    ).toHaveAttribute('href', '/app/accounting/configurations');
+    expect(
       screen.getByRole('button', { name: t.masterData.createAccount }),
     ).toBeDisabled();
     expect(api.createAccount).not.toHaveBeenCalled();
+  });
+
+  it('searches eligible parent accounts through the server list query', async () => {
+    mockFormReads([GENERAL_101]);
+    const { user } = await renderForm();
+    await user.type(
+      screen.getByRole('searchbox', { name: t.accountAdmin.parentSearch }),
+      'دارایی',
+    );
+    await waitFor(() =>
+      expect(api.listAccounts).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          organizationId: 'org-1',
+          isActive: true,
+          isPostable: false,
+          pageSize: 50,
+          search: 'دارایی',
+        }),
+        expect.any(AbortSignal),
+      ),
+    );
+  });
+
+  it('limits the group picker to the active detail structure and sends the selected group', async () => {
+    mockPermissions.codes = [
+      ...BOTH_CONFIGURE,
+      PERMISSIONS.accounting.detailView,
+      PERMISSIONS.accounting.detailStructureView,
+    ];
+    mockFormReads();
+    const group = {
+      id: 'group-active',
+      code: '01',
+      title: 'گروه بانک',
+      level: 1,
+      detailStructureVersionId: 'detail-structure-active',
+      parentId: null,
+      isPostable: false,
+      isActive: true,
+    };
+    vi.mocked(api.getActiveDetailStructure).mockResolvedValue({
+      id: 'detail-structure-active',
+    } as never);
+    vi.mocked(api.listDetailGroups).mockResolvedValue({
+      items: [group],
+      total: 1,
+      page: 1,
+      pageSize: 50,
+    } as never);
+    vi.mocked(api.createAccount).mockResolvedValue({} as never);
+    const { user, localCode } = await renderForm();
+
+    expect(
+      await screen.findByRole('option', { name: /گروه بانک/ }),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.listDetailGroups).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: 'org-1',
+          detailStructureVersionId: 'detail-structure-active',
+          isActive: true,
+        }),
+        expect.any(AbortSignal),
+      ),
+    );
+    await user.selectOptions(
+      screen.getByLabelText(t.masterData.detailGroup),
+      'group-active',
+    );
+    await user.type(localCode, '1');
+    await user.type(screen.getByLabelText(t.masterData.accountTitle), 'بانک');
+    await user.click(
+      screen.getByRole('button', { name: t.masterData.createAccount }),
+    );
+    await waitFor(() =>
+      expect(api.createAccount).toHaveBeenCalledWith(
+        expect.objectContaining({ detailGroupId: 'group-active' }),
+      ),
+    );
+  });
+
+  it('does not read detail groups without both independent view permissions', async () => {
+    mockPermissions.codes = [
+      ...BOTH_CONFIGURE,
+      PERMISSIONS.accounting.detailView,
+    ];
+    mockFormReads();
+    await renderForm();
+    expect(api.getActiveDetailStructure).not.toHaveBeenCalled();
+    expect(api.listDetailGroups).not.toHaveBeenCalled();
   });
 });
 

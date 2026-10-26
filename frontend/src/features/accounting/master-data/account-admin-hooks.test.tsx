@@ -6,11 +6,13 @@ import { queryKeys } from '@/api/query-keys';
 import { createTestQueryClient } from '@/test/test-utils';
 import {
   useAccountLifecycleMutation,
+  useCreateAccountMutation,
   useUnlinkAccountDetailGroupMutation,
   useUpdateAccountMutation,
 } from './account-admin-hooks';
 
 vi.mock('@/api/accounting.api', () => ({
+  createAccount: vi.fn(),
   updateAccount: vi.fn(),
   enableAccount: vi.fn(),
   disableAccount: vi.fn(),
@@ -37,6 +39,24 @@ function expectRefresh(invalidated: ReturnType<typeof setup>['invalidated']) {
 }
 
 describe('account administration mutations', () => {
+  it('creates an account and refreshes its organization list and chart', async () => {
+    const { wrapper, invalidated } = setup();
+    const { result } = renderHook(() => useCreateAccountMutation(org), {
+      wrapper,
+    });
+    const body = {
+      organizationId: org,
+      code: '101',
+      title: 'بانک',
+      accountNature: 'DUAL' as const,
+    };
+    await act(async () => {
+      await result.current.mutateAsync(body);
+    });
+    expect(api.createAccount).toHaveBeenCalledWith(body);
+    expectRefresh(invalidated);
+  });
+
   it('updates a scoped account and refreshes the list/detail and chart', async () => {
     const { wrapper, invalidated } = setup();
     const { result } = renderHook(() => useUpdateAccountMutation(org, id), {
@@ -47,6 +67,9 @@ describe('account administration mutations', () => {
     });
     expect(api.updateAccount).toHaveBeenCalledWith(org, id, { title: 'جدید' });
     expectRefresh(invalidated);
+    expect(invalidated).toHaveBeenCalledWith({
+      queryKey: queryKeys.accounting.accountDetail(org, id),
+    });
   });
   it('transitions active state via distinct backend endpoints', async () => {
     const { wrapper, invalidated } = setup();
@@ -62,6 +85,9 @@ describe('account administration mutations', () => {
     });
     expect(api.enableAccount).toHaveBeenCalledWith(org, id);
     expectRefresh(invalidated);
+    expect(invalidated).toHaveBeenCalledWith({
+      queryKey: queryKeys.accounting.accountDetail(org, id),
+    });
   });
   it('sends the explicit confirmation body and refreshes chart', async () => {
     const { wrapper, invalidated } = setup();
