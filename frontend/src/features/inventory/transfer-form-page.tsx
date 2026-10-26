@@ -7,6 +7,7 @@ import { ArrowRight } from 'lucide-react';
 import { normalizeApiError } from '@/api/errors';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
+import { useWorkspaceWindowDirty } from '@/app/workspace/workspace-context';
 import {
   todayBusinessDay,
   toBusinessDateInput,
@@ -134,6 +135,22 @@ function TransferForm({
   const { register, watch, setValue, formState } = form;
   const itemId = watch('itemId');
   const selectedItem = references.itemById(itemId);
+
+  // The two dirty-guard layers every other document form already had
+  // (spec §4.7 — this was the known movement/transfer gap): a browser
+  // unload warning plus the workspace-window registration that drives the
+  // dock's dirty dot and close confirmation.
+  const isDirty = formState.isDirty;
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+  useWorkspaceWindowDirty(isDirty);
 
   // The unit defaults to the item's base unit (see the movement form).
   useEffect(() => {

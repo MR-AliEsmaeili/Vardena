@@ -1,0 +1,189 @@
+/**
+ * workspace-route-tree — the extraction parity suite (spec §10.3).
+ *
+ * The tree moved VERBATIM out of `router.tsx`; these tests pin that fact:
+ *  - the inventory snapshot (leaf routes + RequirePermission gates) fails if
+ *    any route or gate silently disappeared in the move — intentional route
+ *    changes must update the numbers consciously;
+ *  - key paths resolve to the SAME leaf component and the SAME permission
+ *    gate as before;
+ *  - `matchWorkspaceRoute` (lenient — used for live deep links) and
+ *    `matchRestorableWorkspaceRoute` (strict — a `*`-only match is not a
+ *    restorable route, FDR-01 §3.1) agree with §6.3 rules a–e.
+ */
+
+import { describe, expect, it } from 'vitest';
+import { matchRoutes, type RouteObject } from 'react-router-dom';
+import { DocumentsPage } from '@/features/accounting/documents/documents-page';
+import { DocumentCreatePage } from '@/features/accounting/documents/document-form-page';
+import { AccountingHomePage } from '@/features/accounting/accounting-home-page';
+import { ProfilePage } from '@/features/auth/profile-page';
+import { MovementFormPage } from '@/features/inventory/movement-form-page';
+import { UsersPage } from '@/features/administration/users/users-page';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
+import { DashboardRoute } from './dashboard-route';
+import { NotFoundPage } from './not-found-page';
+import { RequirePermission } from './require-permission';
+import {
+  matchRestorableWorkspaceRoute,
+  matchWorkspaceRoute,
+  WORKSPACE_ROUTES,
+} from './workspace-route-tree';
+
+interface RouteElementLike {
+  type?: unknown;
+  props?: { permissions?: readonly string[] };
+}
+
+function elementOf(route: RouteObject): RouteElementLike | null {
+  return (route.element as RouteElementLike | undefined) ?? null;
+}
+
+function chainFor(pathname: string) {
+  const matches = matchRoutes(WORKSPACE_ROUTES, pathname);
+  expect(matches).not.toBeNull();
+  return matches!;
+}
+
+function leafType(pathname: string): unknown {
+  const matches = chainFor(pathname);
+  return elementOf(matches[matches.length - 1]!.route)?.type;
+}
+
+function gatePermissions(pathname: string): readonly string[] | null {
+  for (const match of chainFor(pathname)) {
+    const element = elementOf(match.route);
+    if (element?.type === RequirePermission) {
+      return element.props?.permissions ?? null;
+    }
+  }
+  return null;
+}
+
+function inventory(routes: readonly RouteObject[]): {
+  leaves: number;
+  gates: number;
+} {
+  let leaves = 0;
+  let gates = 0;
+  const walk = (list: readonly RouteObject[]) => {
+    for (const route of list) {
+      if (elementOf(route as RouteObject)?.type === RequirePermission) {
+        gates += 1;
+      }
+      if (route.children !== undefined && route.children.length > 0) {
+        walk(route.children);
+      } else {
+        leaves += 1;
+      }
+    }
+  };
+  walk(routes);
+  return { leaves, gates };
+}
+
+describe('tree inventory — verbatim extraction snapshot (§10.3)', () => {
+  it('has exactly the pre-extraction number of leaf routes and permission gates', () => {
+    // The whole /app subtree as it stood in router.tsx at extraction time:
+    // 99 leaf routes behind 72 RequirePermission gates (+ the pathless
+    // shells). Update ONLY together with a deliberate route change.
+    expect(inventory(WORKSPACE_ROUTES)).toEqual({ leaves: 99, gates: 72 });
+  });
+
+  it('is rooted at /app with a single top-level route object', () => {
+    expect(WORKSPACE_ROUTES).toHaveLength(1);
+    expect(WORKSPACE_ROUTES[0]?.path).toBe('/app');
+  });
+});
+
+describe('leaf parity — same component as the old inline tree', () => {
+  it('resolves the workspace index to the dashboard', () => {
+    expect(leafType('/app')).toBe(DashboardRoute);
+    expect(leafType('/app/accounting')).toBe(AccountingHomePage);
+  });
+
+  it('resolves lists, drafts and detail segments', () => {
+    expect(leafType('/app/accounting/documents')).toBe(DocumentsPage);
+    expect(leafType('/app/accounting/documents/new')).toBe(DocumentCreatePage);
+    expect(leafType('/app/inventory/movements/new')).toBe(MovementFormPage);
+    expect(leafType('/app/profile')).toBe(ProfilePage);
+    expect(leafType('/app/admin/users')).toBe(UsersPage);
+  });
+
+  it('resolves unmatched /app paths to the in-tree 404', () => {
+    expect(leafType('/app/deep/garbage')).toBe(NotFoundPage);
+    expect(leafType('/app/accounting/not-a-page')).toBe(NotFoundPage);
+  });
+
+  it('does not match outside /app', () => {
+    expect(matchRoutes(WORKSPACE_ROUTES, '/login')).toBeNull();
+    expect(matchRoutes(WORKSPACE_ROUTES, '/')).toBeNull();
+  });
+});
+
+describe('permission gates stayed inside the tree (§6.3 rule b, AR-21)', () => {
+  it('document lists sit behind their backend permission', () => {
+    expect(gatePermissions('/app/accounting/documents')).toContain(
+      PERMISSIONS.accounting.documentView,
+    );
+  });
+
+  it('draft routes keep their Create gate and detail routes the View gate', () => {
+    expect(gatePermissions('/app/accounting/documents/new')).toContain(
+      PERMISSIONS.accounting.documentCreate,
+    );
+    expect(gatePermissions('/app/accounting/documents/some-id-123')).toContain(
+      PERMISSIONS.accounting.documentView,
+    );
+  });
+
+  it('administration routes keep the RBAC gate', () => {
+    const permissions = gatePermissions('/app/admin/users');
+    expect(permissions).not.toBeNull();
+    expect(permissions!.length).toBeGreaterThan(0);
+  });
+
+  it('the profile route needs no permission gate (session only)', () => {
+    expect(gatePermissions('/app/profile')).toBeNull();
+  });
+});
+
+describe('matchWorkspaceRoute — lenient deep-link predicate', () => {
+  it('accepts real routes and the in-window 404 alike', () => {
+    expect(matchWorkspaceRoute('/app')).toBe(true);
+    expect(matchWorkspaceRoute('/app/accounting/documents')).toBe(true);
+    expect(matchWorkspaceRoute('/app/inventory/movements/new')).toBe(true);
+    // A live deep link to garbage still opens (showing the in-window 404),
+    // exactly like the pre-window router did.
+    expect(matchWorkspaceRoute('/app/deep/garbage')).toBe(true);
+  });
+
+  it('rejects paths outside /app', () => {
+    expect(matchWorkspaceRoute('/login')).toBe(false);
+    expect(matchWorkspaceRoute('/')).toBe(false);
+    expect(matchWorkspaceRoute('/appx')).toBe(false);
+  });
+});
+
+describe('matchRestorableWorkspaceRoute — strict restore predicate (FDR-01 §3.1)', () => {
+  it('accepts real routes', () => {
+    expect(matchRestorableWorkspaceRoute('/app')).toBe(true);
+    expect(matchRestorableWorkspaceRoute('/app/accounting/documents')).toBe(
+      true,
+    );
+    expect(matchRestorableWorkspaceRoute('/app/accounting/documents/new')).toBe(
+      true,
+    );
+  });
+
+  it('rejects paths that only resolve through the * 404 leaf', () => {
+    expect(matchRestorableWorkspaceRoute('/app/deep/garbage')).toBe(false);
+    expect(matchRestorableWorkspaceRoute('/app/accounting/not-a-page')).toBe(
+      false,
+    );
+  });
+
+  it('rejects paths outside /app', () => {
+    expect(matchRestorableWorkspaceRoute('/login')).toBe(false);
+  });
+});

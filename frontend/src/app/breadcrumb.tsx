@@ -2,6 +2,7 @@ import { ChevronLeft } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { t } from '@/lib/i18n';
 import { navigationSections } from './navigation';
+import { useWorkspace } from './workspace/workspace-context';
 
 export interface BreadcrumbItem {
   to: string;
@@ -37,6 +38,7 @@ export function breadcrumbItemsFor(pathname: string): BreadcrumbItem[] {
  */
 export function AppBreadcrumb() {
   const { pathname } = useLocation();
+  const workspace = useWorkspace();
   const items = breadcrumbItemsFor(pathname);
   if (items.length < 2) return null;
 
@@ -63,6 +65,13 @@ export function AppBreadcrumb() {
               ) : (
                 <Link
                   to={item.to}
+                  onClick={(event) => {
+                    // ADR-0054: a breadcrumb parent opens (reuses) a window;
+                    // the outer URL only mirrors the active window.
+                    if (workspace === null) return;
+                    event.preventDefault();
+                    workspace.open(item.to);
+                  }}
                   className="rounded-control hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-brand"
                 >
                   {item.label}

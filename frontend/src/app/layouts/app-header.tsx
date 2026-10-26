@@ -21,6 +21,7 @@ import {
   type RefObject,
 } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useWorkspace } from '../workspace/workspace-context';
 import { FinancialContextSwitcher } from '@/features/accounting/context/financial-context-switcher';
 import { useSession } from '@/features/auth/use-session';
 import { OrganizationSwitcher } from '@/features/organization/organization-switcher';
@@ -70,6 +71,10 @@ export function AppHeader({
   const timeZone = useTimeZone();
   const appearance = useAppearance();
   const navigate = useNavigate();
+  const workspace = useWorkspace();
+  // ADR-0054 (§4.6): scope switchers are blocked while unsaved changes live
+  // in any window — the switch would reset the whole workspace.
+  const hasDirtyWindows = workspace?.hasDirtyWindows ?? false;
 
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -155,9 +160,15 @@ export function AppHeader({
     (to: string) => {
       setSearchQuery('');
       setMobileSearchOpen(false);
+      // ADR-0054 (§4.8): Enter/click on a search result opens a NEW window —
+      // search is an explicit "take me there" intent, never a silent reuse.
+      if (workspace !== null) {
+        workspace.open(to, { intent: 'new' });
+        return;
+      }
       navigate(to);
     },
-    [navigate],
+    [navigate, workspace],
   );
 
   const today = todayBusinessDay(timeZone);
@@ -200,6 +211,11 @@ export function AppHeader({
           <Link
             to="/app"
             aria-label={t.app.name}
+            onClick={(event) => {
+              if (workspace === null) return;
+              event.preventDefault();
+              workspace.open('/app');
+            }}
             className="flex min-w-0 items-center gap-2 rounded-control focus-visible:outline-2 focus-visible:outline-brand"
           >
             <span
@@ -347,8 +363,16 @@ export function AppHeader({
               className="flex min-w-0 shrink items-center gap-2"
               data-testid="header-slot-organization"
             >
-              <OrganizationSwitcher compact />
-              {isOrganizationReady && <FinancialContextSwitcher compact />}
+              <OrganizationSwitcher
+                compact
+                scopeChangeBlocked={hasDirtyWindows}
+              />
+              {isOrganizationReady && (
+                <FinancialContextSwitcher
+                  compact
+                  scopeChangeBlocked={hasDirtyWindows}
+                />
+              )}
             </div>
           )}
 
@@ -501,7 +525,8 @@ export function AppHeader({
                     data-testid="profile-menu-open-profile"
                     onSelect={() => {
                       setProfileOpen(false);
-                      navigate('/app/profile');
+                      if (workspace !== null) workspace.open('/app/profile');
+                      else navigate('/app/profile');
                     }}
                   >
                     {t.app.viewProfile}
@@ -511,7 +536,8 @@ export function AppHeader({
                     data-testid="profile-menu-change-password"
                     onSelect={() => {
                       setProfileOpen(false);
-                      navigate('/app/profile');
+                      if (workspace !== null) workspace.open('/app/profile');
+                      else navigate('/app/profile');
                     }}
                   >
                     {t.profile.passwordSection}

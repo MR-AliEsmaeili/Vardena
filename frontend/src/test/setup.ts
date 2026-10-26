@@ -21,11 +21,18 @@ afterEach(() => {
   try {
     localStorage.removeItem('vardena:appearance:v1');
     localStorage.removeItem('vardena:sidebar:v1');
+    // Workspace keys (ADR-0054, standards §15): the window-list snapshot and
+    // the module-tone assignment must not leak between tests.
+    localStorage.removeItem('vardena:module-tones:v1');
+    sessionStorage.removeItem('vardena:workspace:v1');
   } catch {
     // ignore storage-less environments
   }
   document.documentElement.setAttribute('data-theme', 'light');
   document.documentElement.setAttribute('data-font-scale', 'default');
+  // applyModuleTones writes inline custom properties on <html>; drop them so
+  // a tone test never bleeds into the next suite.
+  document.documentElement.removeAttribute('style');
 });
 
 // jsdom does not implement `matchMedia`, which Tailwind-driven components may

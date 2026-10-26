@@ -1,6 +1,7 @@
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { SessionProvider } from '@/features/auth/session-context';
+import { clearWorkspaceOnSessionEnd } from './workspace/workspace-context';
 import { OrganizationProvider } from '@/features/organization/organization-context';
 import { AppearanceProvider } from '@/lib/appearance-provider';
 import { GlobalRequestIndicator } from '@/ui/patterns/request-activity';
@@ -26,7 +27,7 @@ export function AppProviders({ children, queryClient }: AppProvidersProps) {
   return (
     <AppearanceProvider>
       <QueryClientProvider client={client}>
-        <SessionProvider>
+        <SessionProvider onSessionEnd={clearWorkspaceOnSessionEnd}>
           <OrganizationProvider>
             <ToastProvider>
               {children}

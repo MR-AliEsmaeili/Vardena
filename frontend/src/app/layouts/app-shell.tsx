@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Outlet } from 'react-router-dom';
 import { useLicenseState } from '@/features/licensing/use-license-state';
 import { useOrganization } from '@/features/organization/use-organization';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
@@ -7,7 +6,11 @@ import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
 import { persistSidebarState, readSidebarState } from '@/lib/sidebar-state';
 import { AppBreadcrumb } from '../breadcrumb';
-import { ActiveWindowsBar } from './active-windows-bar';
+import { matchWorkspaceRoute } from '../routes/workspace-route-tree';
+import { WorkspaceProvider } from '../workspace/workspace-context';
+import { WorkspaceScopeReset } from '../workspace/workspace-scope-reset';
+import { WorkspaceDock } from '../workspace/workspace-dock';
+import { WorkspaceWindowHost } from '../workspace/workspace-host';
 import { AppHeader } from './app-header';
 import { PageBackButton } from './page-back-button';
 import { AppSidebar } from './app-sidebar';
@@ -30,6 +33,13 @@ const NAVIGATION_ID = 'app-navigation';
  *   opened form gets the full width.
  * - Bootstrap pipeline:
  *   `session → LicenseGate → OrganizationGate → FinancialContextGate → workspace`
+ *
+ * ADR-0054: the shell hosts the multi-window workspace — `WorkspaceProvider`
+ * owns the bounded window state, `WorkspaceDock` is always visible (D-1, even
+ * with one window), and `WorkspaceWindowHost` renders every open window under
+ * its own `MemoryRouter` (one active, the rest mounted-but-hidden). The
+ * shell no longer renders an `<Outlet />`; the browser URL mirrors the active
+ * window only.
  */
 export function AppShell() {
   const license = useLicenseState();
@@ -154,57 +164,63 @@ export function AppShell() {
         {t.app.skipToContent}
       </a>
 
-      <AppHeader
-        navigationId={NAVIGATION_ID}
-        mobileOpen={mobileOpen}
-        onToggleMobileMenu={() =>
-          mobileOpen ? closeMobile(false) : setMobileOpen(true)
-        }
-        mobileToggleRef={mobileToggleRef}
-        licenseActive={licenseActive}
-        isOrganizationReady={isOrganizationReady}
-        isWorkspaceReady={isWorkspaceReady}
-      />
+      <WorkspaceProvider
+        ready={isWorkspaceReady}
+        isKnownRoute={matchWorkspaceRoute}
+      >
+        <WorkspaceScopeReset />
 
-      {isWorkspaceReady && <ActiveWindowsBar />}
+        <AppHeader
+          navigationId={NAVIGATION_ID}
+          mobileOpen={mobileOpen}
+          onToggleMobileMenu={() =>
+            mobileOpen ? closeMobile(false) : setMobileOpen(true)
+          }
+          mobileToggleRef={mobileToggleRef}
+          licenseActive={licenseActive}
+          isOrganizationReady={isOrganizationReady}
+          isWorkspaceReady={isWorkspaceReady}
+        />
 
-      <LicenseGate>
-        {isWorkspaceReady ? (
-          <div className="flex w-full items-start">
-            <AppSidebar
-              navigationId={NAVIGATION_ID}
-              navigationRef={navigationRef}
-              collapsed={sidebarState.collapsed}
-              collapsedGroups={sidebarState.collapsedGroups}
-              onToggleGroup={toggleGroup}
-              onToggleCollapsed={toggleSidebar}
-              onExpandGroup={expandGroupFromRail}
-              mobileOpen={mobileOpen}
-              onCloseMobile={closeMobile}
-              onNavigate={handleSidebarNavigate}
-            />
+        <LicenseGate>
+          {isWorkspaceReady ? (
+            <div className="flex w-full items-start">
+              <AppSidebar
+                navigationId={NAVIGATION_ID}
+                navigationRef={navigationRef}
+                collapsed={sidebarState.collapsed}
+                collapsedGroups={sidebarState.collapsedGroups}
+                onToggleGroup={toggleGroup}
+                onToggleCollapsed={toggleSidebar}
+                onExpandGroup={expandGroupFromRail}
+                mobileOpen={mobileOpen}
+                onCloseMobile={closeMobile}
+                onNavigate={handleSidebarNavigate}
+              />
 
-            <main
-              id="main-content"
-              className="min-w-0 flex-1 space-y-4 px-3 py-4 sm:px-5 sm:py-5 lg:px-6"
-            >
-              <AppBreadcrumb />
-              <PageBackButton />
-              <Outlet />
-            </main>
-          </div>
-        ) : (
-          <BootstrapScreen>
-            {!isOrganizationReady ? (
-              <OrganizationGate />
-            ) : !permissions.loaded ? (
-              <ResolvingState label={t.app.loading} />
-            ) : (
-              <FinancialContextGate />
-            )}
-          </BootstrapScreen>
-        )}
-      </LicenseGate>
+              <main
+                id="main-content"
+                className="min-w-0 flex-1 space-y-4 px-3 py-4 sm:px-5 sm:py-5 lg:px-6"
+              >
+                <WorkspaceDock />
+                <AppBreadcrumb />
+                <PageBackButton />
+                <WorkspaceWindowHost />
+              </main>
+            </div>
+          ) : (
+            <BootstrapScreen>
+              {!isOrganizationReady ? (
+                <OrganizationGate />
+              ) : !permissions.loaded ? (
+                <ResolvingState label={t.app.loading} />
+              ) : (
+                <FinancialContextGate />
+              )}
+            </BootstrapScreen>
+          )}
+        </LicenseGate>
+      </WorkspaceProvider>
     </div>
   );
 }

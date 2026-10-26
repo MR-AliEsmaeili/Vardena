@@ -29,6 +29,65 @@
         } catch (e) {}
       })();
     </script>
+    <script>
+      /*
+       * Module→tone assignment pre-paint (ADR-0054 §6.10·ب, D-3): applies the
+       * stored mapping before the first paint so a reload never flashes the
+       * default tones. Mirrors the runtime validator (lib/module-tones.ts)
+       * exactly and fails closed: version 1 only, the six known modules,
+       * tones from the same allowlist, no duplicates, no extra or missing
+       * keys — anything else leaves the stylesheet defaults in place. The
+       * indirection targets the -src- palette variables, which are never
+       * themselves remapped, so swapped pairs never form a circular var().
+       */
+      (function () {
+        try {
+          var raw = localStorage.getItem('vardena:module-tones:v1');
+          if (!raw) return;
+          var p = JSON.parse(raw);
+          if (!p || p.version !== 1 || !p.tones) return;
+          var allowed = [
+            'workspace',
+            'accounting',
+            'inventory',
+            'organization',
+            'licensing',
+            'admin',
+          ];
+          var parts = ['soft', 'line', 'ink', 'strong'];
+          var seen = {};
+          var count = 0;
+          for (var key in p.tones) {
+            if (Object.prototype.hasOwnProperty.call(p.tones, key)) count++;
+          }
+          if (count !== allowed.length) return;
+          /* Pass 1 — validate the WHOLE record before touching the DOM:
+             a rejected record must fall back to defaults entirely, never
+             partially. */
+          for (var i = 0; i < allowed.length; i++) {
+            var tone = p.tones[allowed[i]];
+            if (typeof tone !== 'string' || allowed.indexOf(tone) === -1) {
+              return;
+            }
+            if (seen[tone]) return;
+            seen[tone] = true;
+          }
+          /* Pass 2 — apply. */
+          var style = document.documentElement.style;
+          for (var m = 0; m < allowed.length; m++) {
+            var moduleId = allowed[m];
+            var assigned = p.tones[moduleId];
+            if (assigned === moduleId) continue;
+            for (var j = 0; j < parts.length; j++) {
+              style.setProperty(
+                '--color-tone-' + moduleId + '-' + parts[j],
+                'var(--color-tone-src-' + assigned + '-' + parts[j] + ')',
+              );
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

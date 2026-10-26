@@ -60,6 +60,17 @@
 | خطا / خطر (`danger`) | `--color-danger-soft` | `--color-danger-line` | `--color-danger-ink` (+ `--color-danger` و `--color-danger-strong` برای دکمۀ مخرب) |
 | اطلاع (`info`) | `--color-info-soft` | `--color-info-line` | `--color-info-ink` |
 
+### ۲.۴ تون‌های دامنه (Domain Tones) و تخصیص tone ماژول‌ها
+
+هر ماژول سامانه (میزکار، حسابداری، انبار، سازمان، مجوز، مدیریت) یک tone معنایی مستقل با چهار توکن `--color-tone-<module>-{soft,line,ink,strong}` در `frontend/src/styles/index.css` دارد؛ کلاس‌های Tailwind از همین توکن‌ها ساخته می‌شوند و نقشۀ کلاس‌ها در `src/ui/nav-glyph.tsx` (`NAV_TONE_TILE`) به‌صورت شمارش‌شده (enumerated) نگه داشته می‌شود — ساخت داینامیک کلاس (`bg-tone-${x}`) ممنوع است چون Tailwind کلاس ساخته‌شده در زمان اجرا را emit نمی‌کند.
+
+طبق تصمیم مالک (D-3 در [FDR-01](../../workspace-windows/FDR-01-workspace-windows.md)):
+
+- **هر ماژول tone مستقل دارد** و هیچ دو ماژولی هیچ‌وقت tone یکسان ندارند؛ tone خنثی/مشترک «workspace fallback» مجاز نیست. به همین دلیل `--color-tone-workspace-*` از خانوادۀ ایندیگو (مشترک با accounting) به خانوادۀ **اسلیت** تغییر کرد — فقط مقدار توکن، بدون تغییر نام توکن یا ویرایش کامپوننت‌ها (همه از قبل `tone-workspace-*` می‌خوانند).
+- **تخصیص toneها از تنظیمات پروفایل کاربری قابل تغییر است** (`/app/profile`، بخش «رنگ ماژول‌ها»): یک شبکۀ تخصیص که هر ماژول یکی از شش tone مصوب را می‌گیرد و هر tone دقیقاً یک بار مصرف می‌شود؛ انتخاب toneِ در اختیارِ ماژول دیگر، دو ماژول را **جابه‌جا (swap)** می‌کند تا یکتایی ساختاراً غیرقابل نقض باشد. رنگ آزاد (hex دلخواه) وجود ندارد.
+- اعمال در runtime با indirection از جنس `var()` انجام می‌شود (`--color-tone-<module>-<part>: var(--color-tone-<tone>-<part>)`) تا هر دو تم خودکار پیروی شوند و هیچ hex در JS نوشته نشود؛ نگاشت در کلید نسخه‌دار `vardena:module-tones:v1` (localStorage، allowlist شش‌تایی، fail-closed) ذخیره می‌شود و اسکریپت pre-paint در `index.html` پیش از اولین رنگ‌آمیزی اعمالش می‌کند.
+- رنگ هرگز تنها حامل معنا نیست: آیکون + عنوان + tooltip + `aria-label` در کنار tone همیشه حضور دارند (WCAG 1.4.1) و contrast AA در هر دو تم شرط پذیرش است.
+
 ---
 
 ## ۳) تایپوگرافی فارسی و سه سطح اندازه فونت

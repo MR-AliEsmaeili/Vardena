@@ -161,6 +161,7 @@ Route-level code splitting؛ هر route lazy.
 dangerouslySetInnerHTML ممنوع. استثنا فقط با sanitizer مرکزی + ADR.
 URL param نامعتبر است؛ ساخت لینک فقط با URLSearchParams؛ never در href خام.
 لیست سفید localStorage: theme، density، تنظیمات ستون. توکن و داده کسب‌وکار مطلقاً ممنوع(transport توکن: OQ-7). پیش‌نویس سند: فقط در حافظه/sessionStorage با تصمیم آگاهانه.
+کلیدهای نسخه‌دار پنجره‌های محیط کاری (ADR-0054 / FDR-01): `vardena:workspace:v1` در sessionStorage (فقط شناسۀ ناوبری پنجره‌ها — id، basePath، path، activeId؛ هرگز مقدار فرم/داده کسب‌وکار/توکن) و `vardena:module-tones:v1` در localStorage (تخصیص tone ماژول‌ها از allowlist شش‌تایی موجود؛ بدون رنگ آزاد). هر کلید تازه به تصمیم آگاهانۀ خودش نیاز دارد و تست‌های گارد (workspace-persistence، module-tones-storage) نگهبان این فهرست‌اند تا بی‌سروصدا widen نشود. محتوای فرم، داده کسب‌وکار و توکن در هیچ‌یک ذخیره نمی‌شود (W-08).
 Secret در bundle وجود ندارد — کلید هر سرویس ابری فقط سمت بکند.
 وابستگی: lockfile commit؛ npm audit در CI (high = fail)؛ کتابخانه جدید همیشه ADR.
 ۱۶) تست

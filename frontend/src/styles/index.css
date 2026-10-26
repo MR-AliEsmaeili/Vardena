@@ -87,34 +87,72 @@
 
   /* Navigation domain tones (sidebar glyph tiles).
    * Every domain owns one tint so the menu can be read by colour AND by
-   * icon+label; components only ever reference these tokens (no raw hex). */
-  --color-tone-workspace-soft: #eef2ff;
-  --color-tone-workspace-line: #c7d2fe;
-  --color-tone-workspace-ink: #4338ca;
-  --color-tone-accounting-soft: #eef2ff;
-  --color-tone-accounting-line: #c7d2fe;
-  --color-tone-accounting-ink: #4338ca;
-  --color-tone-inventory-soft: #ecfdf5;
-  --color-tone-inventory-line: #a7f3d0;
-  --color-tone-inventory-ink: #047857;
-  --color-tone-organization-soft: #fff7ed;
-  --color-tone-organization-line: #fed7aa;
-  --color-tone-organization-ink: #c2410c;
-  --color-tone-licensing-soft: #eff6ff;
-  --color-tone-licensing-line: #bfdbfe;
-  --color-tone-licensing-ink: #1d4ed8;
-  --color-tone-admin-soft: #fdf2f8;
-  --color-tone-admin-line: #fbcfe8;
-  --color-tone-admin-ink: #be185d;
+   * icon+label; components only ever reference these tokens (no raw hex).
+   * D-3 (FDR-01, workspace-windows bundle): no two modules may share a tone,
+   * so `workspace` moved from the indigo family (shared with `accounting`) to
+   * its own slate family — token VALUES only, names and consumers unchanged.
+   * Final values are fixed in visual review (O-01); AA contrast in both
+   * themes and distinctness from the five other tones are the acceptance
+   * condition.
+   *
+   * Two layers (spec §6.10·ب, cycle-safe): `-src-` variables hold the
+   * approved palette and are NEVER remapped at runtime; the module-facing
+   * variables alias them and are the ONLY ones `applyModuleTones` overrides
+   * (inline `var(--color-tone-src-<assigned>-<part>)`). Pointing module
+   * variables at each other instead would make a SWAP a circular `var()`
+   * reference — invalid at computed-value time — so the indirection always
+   * targets the source layer. Both themes follow through the aliases. */
+  /* Palette source — light */
+  --color-tone-src-workspace-soft: #f8fafc;
+  --color-tone-src-workspace-line: #cbd5e1;
+  --color-tone-src-workspace-ink: #475569;
+  --color-tone-src-accounting-soft: #eef2ff;
+  --color-tone-src-accounting-line: #c7d2fe;
+  --color-tone-src-accounting-ink: #4338ca;
+  --color-tone-src-inventory-soft: #ecfdf5;
+  --color-tone-src-inventory-line: #a7f3d0;
+  --color-tone-src-inventory-ink: #047857;
+  --color-tone-src-organization-soft: #fff7ed;
+  --color-tone-src-organization-line: #fed7aa;
+  --color-tone-src-organization-ink: #c2410c;
+  --color-tone-src-licensing-soft: #eff6ff;
+  --color-tone-src-licensing-line: #bfdbfe;
+  --color-tone-src-licensing-ink: #1d4ed8;
+  --color-tone-src-admin-soft: #fdf2f8;
+  --color-tone-src-admin-line: #fbcfe8;
+  --color-tone-src-admin-ink: #be185d;
+  --color-tone-src-workspace-strong: #64748b;
+  --color-tone-src-accounting-strong: #4f46e5;
+  --color-tone-src-inventory-strong: #059669;
+  --color-tone-src-organization-strong: #ea580c;
+  --color-tone-src-licensing-strong: #2563eb;
+  --color-tone-src-admin-strong: #db2777;
 
-  /* Saturated tone used by the ACTIVE glyph and the active marker. It stays
-   * dark in both themes so the white glyph keeps AA contrast. */
-  --color-tone-workspace-strong: #4f46e5;
-  --color-tone-accounting-strong: #4f46e5;
-  --color-tone-inventory-strong: #059669;
-  --color-tone-organization-strong: #ea580c;
-  --color-tone-licensing-strong: #2563eb;
-  --color-tone-admin-strong: #db2777;
+  /* Module-facing tokens — alias the source; remapped by D-3 */
+  --color-tone-workspace-soft: var(--color-tone-src-workspace-soft);
+  --color-tone-workspace-line: var(--color-tone-src-workspace-line);
+  --color-tone-workspace-ink: var(--color-tone-src-workspace-ink);
+  --color-tone-accounting-soft: var(--color-tone-src-accounting-soft);
+  --color-tone-accounting-line: var(--color-tone-src-accounting-line);
+  --color-tone-accounting-ink: var(--color-tone-src-accounting-ink);
+  --color-tone-inventory-soft: var(--color-tone-src-inventory-soft);
+  --color-tone-inventory-line: var(--color-tone-src-inventory-line);
+  --color-tone-inventory-ink: var(--color-tone-src-inventory-ink);
+  --color-tone-organization-soft: var(--color-tone-src-organization-soft);
+  --color-tone-organization-line: var(--color-tone-src-organization-line);
+  --color-tone-organization-ink: var(--color-tone-src-organization-ink);
+  --color-tone-licensing-soft: var(--color-tone-src-licensing-soft);
+  --color-tone-licensing-line: var(--color-tone-src-licensing-line);
+  --color-tone-licensing-ink: var(--color-tone-src-licensing-ink);
+  --color-tone-admin-soft: var(--color-tone-src-admin-soft);
+  --color-tone-admin-line: var(--color-tone-src-admin-line);
+  --color-tone-admin-ink: var(--color-tone-src-admin-ink);
+  --color-tone-workspace-strong: var(--color-tone-src-workspace-strong);
+  --color-tone-accounting-strong: var(--color-tone-src-accounting-strong);
+  --color-tone-inventory-strong: var(--color-tone-src-inventory-strong);
+  --color-tone-organization-strong: var(--color-tone-src-organization-strong);
+  --color-tone-licensing-strong: var(--color-tone-src-licensing-strong);
+  --color-tone-admin-strong: var(--color-tone-src-admin-strong);
 
   /* Shape */
   --radius-control: 0.5rem;
@@ -171,32 +209,128 @@
   --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.28), 0 1px 3px 0 rgb(0 0 0 / 0.36);
   --shadow-raised: 0 16px 36px -14px rgb(0 0 0 / 0.65);
 
-  /* Navigation domain tones — dark */
-  --color-tone-workspace-soft: #1e1b4b;
-  --color-tone-workspace-line: #3730a3;
-  --color-tone-workspace-ink: #c7d2fe;
-  --color-tone-accounting-soft: #1e1b4b;
-  --color-tone-accounting-line: #3730a3;
-  --color-tone-accounting-ink: #c7d2fe;
-  --color-tone-inventory-soft: #052e23;
-  --color-tone-inventory-line: #065f46;
-  --color-tone-inventory-ink: #6ee7b7;
-  --color-tone-organization-soft: #2e1a05;
-  --color-tone-organization-line: #7c2d12;
-  --color-tone-organization-ink: #fdba74;
-  --color-tone-licensing-soft: #0c1e3a;
-  --color-tone-licensing-line: #1e40af;
-  --color-tone-licensing-ink: #bfdbfe;
-  --color-tone-admin-soft: #2f0d18;
-  --color-tone-admin-line: #9d174d;
-  --color-tone-admin-ink: #fbcfe8;
+  /* Palette source — dark (workspace = slate family, D-3/O-01). Only the
+     -src- layer is redefined per theme; the module-facing aliases in @theme
+     follow automatically, including any D-3 re-assignment. */
+  --color-tone-src-workspace-soft: #1e293b;
+  --color-tone-src-workspace-line: #475569;
+  --color-tone-src-workspace-ink: #cbd5e1;
+  --color-tone-src-accounting-soft: #1e1b4b;
+  --color-tone-src-accounting-line: #3730a3;
+  --color-tone-src-accounting-ink: #c7d2fe;
+  --color-tone-src-inventory-soft: #052e23;
+  --color-tone-src-inventory-line: #065f46;
+  --color-tone-src-inventory-ink: #6ee7b7;
+  --color-tone-src-organization-soft: #2e1a05;
+  --color-tone-src-organization-line: #7c2d12;
+  --color-tone-src-organization-ink: #fdba74;
+  --color-tone-src-licensing-soft: #0c1e3a;
+  --color-tone-src-licensing-line: #1e40af;
+  --color-tone-src-licensing-ink: #bfdbfe;
+  --color-tone-src-admin-soft: #2f0d18;
+  --color-tone-src-admin-line: #9d174d;
+  --color-tone-src-admin-ink: #fbcfe8;
 
-  --color-tone-workspace-strong: #6366f1;
-  --color-tone-accounting-strong: #6366f1;
-  --color-tone-inventory-strong: #10b981;
-  --color-tone-organization-strong: #f97316;
-  --color-tone-licensing-strong: #3b82f6;
-  --color-tone-admin-strong: #ec4899;
+  --color-tone-src-workspace-strong: #94a3b8;
+  --color-tone-src-accounting-strong: #6366f1;
+  --color-tone-src-inventory-strong: #10b981;
+  --color-tone-src-organization-strong: #f97316;
+  --color-tone-src-licensing-strong: #3b82f6;
+  --color-tone-src-admin-strong: #ec4899;
+
+  /* Aliases re-declared per theme so nested `data-theme` previews
+     (profile §4.3) resolve against THIS element's source layer. The
+     runtime D-3 remap is an inline style on <html> and still wins there. */
+  --color-tone-workspace-soft: var(--color-tone-src-workspace-soft);
+  --color-tone-workspace-line: var(--color-tone-src-workspace-line);
+  --color-tone-workspace-ink: var(--color-tone-src-workspace-ink);
+  --color-tone-workspace-strong: var(--color-tone-src-workspace-strong);
+  --color-tone-accounting-soft: var(--color-tone-src-accounting-soft);
+  --color-tone-accounting-line: var(--color-tone-src-accounting-line);
+  --color-tone-accounting-ink: var(--color-tone-src-accounting-ink);
+  --color-tone-accounting-strong: var(--color-tone-src-accounting-strong);
+  --color-tone-inventory-soft: var(--color-tone-src-inventory-soft);
+  --color-tone-inventory-line: var(--color-tone-src-inventory-line);
+  --color-tone-inventory-ink: var(--color-tone-src-inventory-ink);
+  --color-tone-inventory-strong: var(--color-tone-src-inventory-strong);
+  --color-tone-organization-soft: var(--color-tone-src-organization-soft);
+  --color-tone-organization-line: var(--color-tone-src-organization-line);
+  --color-tone-organization-ink: var(--color-tone-src-organization-ink);
+  --color-tone-organization-strong: var(--color-tone-src-organization-strong);
+  --color-tone-licensing-soft: var(--color-tone-src-licensing-soft);
+  --color-tone-licensing-line: var(--color-tone-src-licensing-line);
+  --color-tone-licensing-ink: var(--color-tone-src-licensing-ink);
+  --color-tone-licensing-strong: var(--color-tone-src-licensing-strong);
+  --color-tone-admin-soft: var(--color-tone-src-admin-soft);
+  --color-tone-admin-line: var(--color-tone-src-admin-line);
+  --color-tone-admin-ink: var(--color-tone-src-admin-ink);
+  --color-tone-admin-strong: var(--color-tone-src-admin-strong);
+}
+/* Explicit light theme — mirrors the @theme defaults as a real
+   [data-theme='light'] rule. appearance.ts always sets the attribute, and
+   the profile tone preview (§4.3) nests BOTH themes side by side: without
+   this block a light preview inside a dark document would inherit the dark
+   source layer. Values are identical to the @theme declarations above. */
+[data-theme='light'] {
+  --color-canvas: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-sunken: #f8fafc;
+  --color-line: #e2e8f0;
+  --color-line-strong: #cbd5e1;
+
+  --color-ink: #0f172a;
+  --color-ink-muted: #475569;
+  --color-ink-subtle: #64748b;
+
+  --color-tone-src-workspace-soft: #f8fafc;
+  --color-tone-src-workspace-line: #cbd5e1;
+  --color-tone-src-workspace-ink: #475569;
+  --color-tone-src-accounting-soft: #eef2ff;
+  --color-tone-src-accounting-line: #c7d2fe;
+  --color-tone-src-accounting-ink: #4338ca;
+  --color-tone-src-inventory-soft: #ecfdf5;
+  --color-tone-src-inventory-line: #a7f3d0;
+  --color-tone-src-inventory-ink: #047857;
+  --color-tone-src-organization-soft: #fff7ed;
+  --color-tone-src-organization-line: #fed7aa;
+  --color-tone-src-organization-ink: #c2410c;
+  --color-tone-src-licensing-soft: #eff6ff;
+  --color-tone-src-licensing-line: #bfdbfe;
+  --color-tone-src-licensing-ink: #1d4ed8;
+  --color-tone-src-admin-soft: #fdf2f8;
+  --color-tone-src-admin-line: #fbcfe8;
+  --color-tone-src-admin-ink: #be185d;
+  --color-tone-src-workspace-strong: #64748b;
+  --color-tone-src-accounting-strong: #4f46e5;
+  --color-tone-src-inventory-strong: #059669;
+  --color-tone-src-organization-strong: #ea580c;
+  --color-tone-src-licensing-strong: #2563eb;
+  --color-tone-src-admin-strong: #db2777;
+
+  --color-tone-workspace-soft: var(--color-tone-src-workspace-soft);
+  --color-tone-workspace-line: var(--color-tone-src-workspace-line);
+  --color-tone-workspace-ink: var(--color-tone-src-workspace-ink);
+  --color-tone-workspace-strong: var(--color-tone-src-workspace-strong);
+  --color-tone-accounting-soft: var(--color-tone-src-accounting-soft);
+  --color-tone-accounting-line: var(--color-tone-src-accounting-line);
+  --color-tone-accounting-ink: var(--color-tone-src-accounting-ink);
+  --color-tone-accounting-strong: var(--color-tone-src-accounting-strong);
+  --color-tone-inventory-soft: var(--color-tone-src-inventory-soft);
+  --color-tone-inventory-line: var(--color-tone-src-inventory-line);
+  --color-tone-inventory-ink: var(--color-tone-src-inventory-ink);
+  --color-tone-inventory-strong: var(--color-tone-src-inventory-strong);
+  --color-tone-organization-soft: var(--color-tone-src-organization-soft);
+  --color-tone-organization-line: var(--color-tone-src-organization-line);
+  --color-tone-organization-ink: var(--color-tone-src-organization-ink);
+  --color-tone-organization-strong: var(--color-tone-src-organization-strong);
+  --color-tone-licensing-soft: var(--color-tone-src-licensing-soft);
+  --color-tone-licensing-line: var(--color-tone-src-licensing-line);
+  --color-tone-licensing-ink: var(--color-tone-src-licensing-ink);
+  --color-tone-licensing-strong: var(--color-tone-src-licensing-strong);
+  --color-tone-admin-soft: var(--color-tone-src-admin-soft);
+  --color-tone-admin-line: var(--color-tone-src-admin-line);
+  --color-tone-admin-ink: var(--color-tone-src-admin-ink);
+  --color-tone-admin-strong: var(--color-tone-src-admin-strong);
 }
 
 /* ──────────────────────────────────────────────────────────

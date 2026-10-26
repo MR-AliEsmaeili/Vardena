@@ -13,6 +13,7 @@ import { compareExactDecimals, sumExactDecimals } from '@/lib/decimal';
 import { exportRowsToExcelCsv, printCurrentSurface } from '@/lib/export-table';
 import { formatAmount, formatCount, formatDateOnly } from '@/lib/format';
 import { t } from '@/lib/i18n';
+import { useWorkspaceWindowDirty } from '@/app/workspace/workspace-context';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
@@ -298,6 +299,11 @@ function DocumentForm({
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [isDirty]);
+  // ADR-0054 (§4.7): the workspace dock shows this form's dirty
+  // state and guards window close — the page's own leave-confirm
+  // guards stay untouched (no double dialog: the dock dialog only
+  // runs from dock/reset flows).
+  useWorkspaceWindowDirty(isDirty);
 
   const cancelTarget =
     mode === 'edit' && document !== undefined
