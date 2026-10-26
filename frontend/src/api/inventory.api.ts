@@ -24,6 +24,7 @@ import type {
   PostInventoryMovementInput,
   PostInventoryTransferInput,
   RecalculateValuationInput,
+  ReverseInventoryMovementInput,
   RecalculationResult,
   UpdateInventoryDocumentInput,
 } from './contracts';
@@ -126,6 +127,19 @@ export function postInventoryMovement(
   body: PostInventoryMovementInput,
 ): Promise<InventoryMovement> {
   return apiPost<InventoryMovement>('/inventory/movements', body);
+}
+
+/** Reverse a single non-transfer movement; organization scope is query-only. */
+export function reverseInventoryMovement(
+  organizationId: string,
+  movementId: string,
+  body: ReverseInventoryMovementInput,
+): Promise<InventoryMovement> {
+  return apiPost<InventoryMovement, ReverseInventoryMovementInput>(
+    `/inventory/movements/${encodeURIComponent(movementId)}/reverse`,
+    body,
+    { params: { organizationId } },
+  );
 }
 
 /**

@@ -13,6 +13,7 @@ import {
   movementValuationStatusLabel,
 } from './inventory-labels';
 import type { InventoryReferences } from './use-inventory-references';
+import { MovementReversalAction } from './movement-reversal-action';
 
 /**
  * Movements-table columns.
@@ -32,7 +33,7 @@ export function movementsColumns(
     InventoryReferences,
     'itemById' | 'warehouseById' | 'unitById'
   >,
-  options: { showCost: boolean },
+  options: { showCost: boolean; canReverse?: boolean },
 ): ColumnDef<InventoryMovement, unknown>[] {
   const columns: ColumnDef<InventoryMovement, unknown>[] = [
     {
@@ -147,6 +148,14 @@ export function movementsColumns(
           <AmountCell value={row.original.totalCost} />
         ),
       meta: { align: 'end' },
+    });
+  }
+
+  if (options.canReverse) {
+    columns.push({
+      id: 'actions',
+      header: t.inventory.reverse,
+      cell: ({ row }) => <MovementReversalAction movement={row.original} />,
     });
   }
 

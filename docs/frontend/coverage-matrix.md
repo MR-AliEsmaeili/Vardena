@@ -1,7 +1,7 @@
 # ماتریس پوشش بک‌اند ↔ فرانت‌اند
 
 **وضعیت:** ACTIVE — ممیزی نقطه‌به‌نقطه
-**تاریخ ممیزی:** ۲۰۲۶-۱۰-۲۲؛ به‌روزرسانی ACC-03 و پیشرفت ACC-04/05: ۲۰۲۶-۱۰-۲۶
+**تاریخ ممیزی:** ۲۰۲۶-۱۰-۲۲؛ به‌روزرسانی ACC-03، ACC-04/05 و INV-01: ۲۰۲۶-۱۰-۲۶
 **مبنا:** `backend/src/modules/**/api/*.controller.ts` (۶۰ کنترلر) در برابر `frontend/src/app/router.tsx`، `frontend/src/api/*.api.ts` و هوک/صفحه‌های `frontend/src/features/**`.
 
 این سند فقط وضعیت را ثبت می‌کند؛ در این دور **هیچ endpoint، قرارداد یا قاعدۀ کسب‌وکار تغییر نکرده است**. هر جا «MISSING» است، یعنی UI وجود ندارد، نه اینکه بک‌اند ناقص باشد.
@@ -58,7 +58,7 @@
 | واحد | `units` (همان الگو) | `master-data/units/*` | **COMPLETE** |
 | انبار | `warehouses` (همان الگو) | `master-data/warehouses/*` | **COMPLETE** |
 | تبدیل واحد | `GET/POST /unit-conversions`, `GET /resolve`, `/:id` | فهرست + ایجاد نسخه | **PARTIAL** — `resolve` سطح UI ندارد (نسخه‌ها تغییرناپذیرند، ADR-0020 §۴) |
-| حرکات انبار | `GET/POST /inventory/movements`, `/:id`, `POST /:id/reverse` | `movements-page`, `movement-form-page` | **PARTIAL** — برگشت حرکت UI ندارد |
+| حرکات انبار | `GET/POST /inventory/movements`, `/:id`, `POST /:id/reverse` | `movements-page`, `movement-form-page`, `movement-reversal-dialog` | **PARTIAL** — برگشت تک‌گردش غیرانتقالی با مجوز، تاریخ و تأیید دو مرحله‌ای موجود است (INV-01)؛ نمایش جزئیات مستقل `GET /:id` هنوز UI ندارد؛ برگشت تک‌پای انتقال در بک‌اند ممنوع است |
 | کاردکس | `GET /inventory/kardex`, `/quantity` | `kardex-page` | **COMPLETE** |
 | اسناد عملیاتی | `business-documents` (list/detail/create/patch/delete/finalize/seal/cancel/posting) | `documents/*` | **COMPLETE** |
 | تراز/دسترس‌پذیری | `GET /inventory/balances`, `availability`, `availability-across-warehouses` | `balances-page`, `use-inventory-references` | **COMPLETE** |

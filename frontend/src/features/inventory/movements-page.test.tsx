@@ -1,3 +1,4 @@
+import { ApiError } from '@/api/errors';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -41,6 +42,7 @@ vi.mock('@/api/inventory.api', () => ({
   listInventoryValuationStates: vi.fn(),
   checkInventoryBackdate: vi.fn(),
   recalculateInventoryValuation: vi.fn(),
+  reverseInventoryMovement: vi.fn(),
 }));
 
 const identityApi = await import('@/api/identity.api');
@@ -341,5 +343,173 @@ describe('Movements list — user event sanity', () => {
         expect.anything(),
       ),
     );
+  });
+});
+
+describe('INV-01 movement reversal from the list', () => {
+  const reversePermissions = [
+    ...viewerPermissions,
+    PERMISSIONS.inventory.movementReverse,
+  ];
+
+  it('hides the action for sessions without Reverse and omits the column', async () => {
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: viewerPermissions,
+    });
+    vi.mocked(inventoryApi.listInventoryMovements).mockResolvedValue(
+      paginated([movementFixture()]),
+    );
+    renderList();
+    await screen.findByText(t.inventory.valuationStatuses.unvalued);
+    expect(
+      screen.queryByRole('button', { name: t.inventory.reverse }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows why transfer legs and reversal mirrors cannot be reversed', async () => {
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: reversePermissions,
+    });
+    vi.mocked(inventoryApi.listInventoryMovements).mockResolvedValue(
+      paginated([
+        movementFixture(),
+        movementFixture({
+          id: 'transfer-leg',
+          transferId: 'transfer-1',
+          movementType: 'transfer_out',
+        }),
+        movementFixture({
+          id: 'mirror',
+          reversalOfMovementId: 'mv-1',
+          movementType: 'reversal_out',
+        }),
+      ]),
+    );
+    renderList();
+    expect(
+      await screen.findByRole('button', { name: t.inventory.reverse }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(t.inventory.reverseNotAllowedTransfer),
+    ).toHaveAttribute('title', t.inventory.reverseNotAllowedTransfer);
+    expect(
+      screen.getByText(t.inventory.reverseNotAllowedAlreadyReversed),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('button', { name: t.inventory.reverse }),
+    ).toHaveLength(1);
+  });
+
+  it('confirms a reversal without moving organizationId into the body', async () => {
+    const user = userEvent.setup();
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: reversePermissions,
+    });
+    vi.mocked(inventoryApi.listInventoryMovements).mockResolvedValue(
+      paginated([movementFixture()]),
+    );
+    vi.mocked(inventoryApi.reverseInventoryMovement).mockResolvedValue(
+      movementFixture({
+        id: 'mirror',
+        movementType: 'reversal_out',
+        reversalOfMovementId: 'mv-1',
+      }),
+    );
+    renderList();
+    await user.click(
+      await screen.findByRole('button', { name: t.inventory.reverse }),
+    );
+    expect(inventoryApi.reverseInventoryMovement).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole('button', { name: t.inventory.reverseConfirm }),
+    );
+    await waitFor(() =>
+      expect(inventoryApi.reverseInventoryMovement).toHaveBeenCalledWith(
+        'org-1',
+        'mv-1',
+        expect.objectContaining({
+          operationKey: expect.any(String),
+          movementDate: expect.anything(),
+        }),
+      ),
+    );
+    const body = vi.mocked(inventoryApi.reverseInventoryMovement).mock
+      .calls[0]?.[2];
+    expect(body).not.toHaveProperty('organizationId');
+    expect(body).not.toHaveProperty('reason');
+    expect(body).not.toHaveProperty('backdateConfirmed');
+  });
+
+  it('uses two explicit backdating steps and keeps the same operation key on retry', async () => {
+    const user = userEvent.setup();
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: reversePermissions,
+    });
+    vi.mocked(inventoryApi.listInventoryMovements).mockResolvedValue(
+      paginated([movementFixture()]),
+    );
+    vi.mocked(inventoryApi.reverseInventoryMovement)
+      .mockRejectedValueOnce(
+        new ApiError({
+          code: 'BusinessRuleViolation',
+          message: 'refused',
+          status: 422,
+          details: {
+            code: 'inventory.backdated_document',
+            movementDate: '2026-10-26',
+            latestMovementDate: '2026-10-27',
+            affectedMovements: 2,
+            affectedValuedMovements: 1,
+            alreadyStale: false,
+            repricingChoices: ['recalculate', 'skip'],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        movementFixture({
+          id: 'mirror',
+          movementType: 'reversal_out',
+          reversalOfMovementId: 'mv-1',
+        }),
+      );
+    renderList();
+    await user.click(
+      await screen.findByRole('button', { name: t.inventory.reverse }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t.inventory.reverseConfirm }),
+    );
+    await user.click(
+      await screen.findByRole('button', {
+        name: t.inventory.backdateStep1Continue,
+      }),
+    );
+    expect(
+      screen.getByRole('radio', { name: t.inventory.backdateStep2Recalculate }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: t.inventory.backdateStep2Submit }),
+    ).toBeDisabled();
+    await user.click(
+      screen.getByRole('radio', { name: t.inventory.backdateStep2Skip }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t.inventory.backdateStep2Submit }),
+    );
+    await waitFor(() =>
+      expect(inventoryApi.reverseInventoryMovement).toHaveBeenCalledTimes(2),
+    );
+    const calls = vi.mocked(inventoryApi.reverseInventoryMovement).mock.calls;
+    expect(calls[0]?.[2].operationKey).toBe(calls[1]?.[2].operationKey);
+    expect(calls[1]?.[2]).toEqual({
+      operationKey: calls[0]?.[2].operationKey,
+      movementDate: calls[0]?.[2].movementDate,
+      backdateConfirmed: true,
+      repricing: 'skip',
+    });
   });
 });
