@@ -12,6 +12,7 @@ import { DocumentsPage } from '@/features/accounting/documents/documents-page';
 import { GeneralLedgerPage } from '@/features/accounting/general-ledger/general-ledger-page';
 import { AccountDetailPage } from '@/features/accounting/master-data/account-detail-page';
 import { AccountingPeriodsPage } from '@/features/accounting/master-data/accounting-periods-page';
+import { AccountingPeriodFormPage } from '@/features/accounting/master-data/accounting-period-form-page';
 import { AccountsPage } from '@/features/accounting/master-data/accounts-page';
 import { FinancialAreaFormPage } from '@/features/accounting/master-data/financial-area-form-page';
 import { FinancialAreasPage } from '@/features/accounting/master-data/financial-areas-page';
@@ -257,6 +258,18 @@ export function AppRoutes() {
               }
             >
               <Route path="periods" element={<AccountingPeriodsPage />} />
+            </Route>
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.accounting.accountingPeriodOpen]}
+                />
+              }
+            >
+              <Route
+                path="periods/new"
+                element={<AccountingPeriodFormPage />}
+              />
             </Route>
 
             <Route

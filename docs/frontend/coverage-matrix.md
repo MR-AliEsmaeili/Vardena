@@ -1,7 +1,7 @@
 # ماتریس پوشش بک‌اند ↔ فرانت‌اند
 
 **وضعیت:** ACTIVE — ممیزی نقطه‌به‌نقطه
-**تاریخ ممیزی:** ۲۰۲۶-۱۰-۲۲
+**تاریخ ممیزی:** ۲۰۲۶-۱۰-۲۲؛ به‌روزرسانی ACC-03: ۲۰۲۶-۱۰-۲۶
 **مبنا:** `backend/src/modules/**/api/*.controller.ts` (۶۰ کنترلر) در برابر `frontend/src/app/router.tsx`، `frontend/src/api/*.api.ts` و هوک/صفحه‌های `frontend/src/features/**`.
 
 این سند فقط وضعیت را ثبت می‌کند؛ در این دور **هیچ endpoint، قرارداد یا قاعدۀ کسب‌وکار تغییر نکرده است**. هر جا «MISSING» است، یعنی UI وجود ندارد، نه اینکه بک‌اند ناقص باشد.
@@ -32,7 +32,7 @@
 | حساب‌ها (master) | `GET /accounts`, `/:id`, `POST`, `PATCH`, `enable/disable`, `unlink-detail-group` | فهرست + جزئیات | **PARTIAL** — ایجاد/ویرایش/فعال‌سازی حساب و جداکردن گروه تفصیلی UI ندارد |
 | نواحی مالی | `GET /financial-areas`, `GET /:id`, `POST`, `PATCH`, `enable/disable` | فهرست + فرم ایجاد/ویرایش (`financial-area-form-page`) + اکشن‌های ردیف (ویرایش، تعیین پیش‌فرض، فعال/غیرفعال با تأیید) | **COMPLETE** — همه عملیات قرارداد با گیت مجوز دقیق هر endpoint (ACC-01) |
 | سال‌های مالی | `GET /fiscal-years`, `GET /:id`, `POST`, `PATCH`, `close/reopen/seal/unseal` | فهرست + فرم ایجاد/ویرایش + گذارهای چرخه عمر با دلیل اجباری و گیت مجوز دقیق | **COMPLETE** (ACC-02) |
-| دوره‌های حسابداری | `GET /accounting-periods`, `POST`, `close/reopen/seal` | فهرست | **PARTIAL** — چرخۀ عمر UI ندارد |
+| دوره‌های حسابداری | `GET /accounting-periods`, `POST`, `close/reopen/seal` | فهرست، فرم ایجاد (شناسهٔ دستی برای مجوز Open-only)، اکشن‌های گذار با دلیل و ماتریس وضعیت منطبق با بک‌اند | **COMPLETE** (ACC-03؛ `sealed → open` پس از رفع مهر سال نیز از UI ممکن است) |
 | تراز حساب‌ها (balances) | `GET /accounting/balances`, `/reconciliation`, `/:accountId`, `POST /rebuild` | ویجت داشبورد (`listAccountBalances`) | **PARTIAL** — صفحهٔ اختصاصی گزارش و بازسازی داخلی ندارد |
 | حرکات دفتر | `GET /accounting/ledger-movements` | — | **NOT_REQUIRED** — دفتر کل از endpoint گزارش خودش استفاده می‌کند؛ این مسیر مصرف مستقیم ندارد |
 | پیکربندی حساب‌داری | `GET/POST/PATCH/DELETE /accounting-configurations`, `:id/publish`, `active` | — | **MISSING** |
@@ -119,8 +119,8 @@
 
 | وضعیت | تعداد گروه |
 | ----- | ---------- |
-| COMPLETE | ۲۷ |
-| PARTIAL | ۱۰ |
+| COMPLETE | ۲۹ |
+| PARTIAL | ۸ |
 | MISSING | ۱۳ |
 | NOT_REQUIRED | ۳ |
 

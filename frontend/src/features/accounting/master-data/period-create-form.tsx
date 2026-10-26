@@ -1,10 +1,16 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { listAccountingPeriodsPage } from '@/api/accounting.api';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { createAccountingPeriod } from '@/api/accounting.api';
 import type { FiscalYear } from '@/api/contracts';
 import { queryKeys } from '@/api/query-keys';
+import { useCreateAccountingPeriodMutation } from './accounting-period-hooks';
+import { accountingPeriodErrorMessage } from './accounting-period-error-messages';
+import { formatDateOnly } from '@/lib/format';
+import { usePermissions } from '@/features/permissions/use-permissions';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { isBusinessDay, toBusinessDateInput } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
@@ -45,15 +51,19 @@ type Values = z.infer<typeof schema>;
 export function PeriodCreateForm({
   organizationId,
   fiscalYears,
+  initialFiscalYearId = '',
+  allowYearIdEntry = false,
 }: {
   organizationId: string;
   fiscalYears: readonly FiscalYear[];
+  initialFiscalYearId?: string;
+  /** Open-only principals may supply an in-scope year id without FiscalYear.View. */
+  allowYearIdEntry?: boolean;
 }) {
-  const queryClient = useQueryClient();
   const form = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: {
-      fiscalYearId: '',
+      fiscalYearId: initialFiscalYearId,
       sequence: 1,
       title: '',
       startDate: '',
@@ -61,23 +71,70 @@ export function PeriodCreateForm({
     },
     mode: 'onSubmit',
   });
-  const mutation = useMutation({
-    mutationFn: (values: Values) =>
-      createAccountingPeriod({
-        organizationId,
-        fiscalYearId: values.fiscalYearId,
+  const mutation = useCreateAccountingPeriodMutation(organizationId);
+  const permissions = usePermissions();
+  const fiscalYearId = form.watch('fiscalYearId');
+  const selectedYear = fiscalYears.find((year) => year.id === fiscalYearId);
+  const yearOpen = selectedYear?.status === 'open' && selectedYear.isActive;
+  const yearIdValid = /^[0-9A-HJKMNP-TV-Z]{26}$/i.test(fiscalYearId.trim());
+  const canSubmit = allowYearIdEntry ? yearIdValid : yearOpen;
+  const suggestion = useQuery({
+    queryKey: queryKeys.accounting.accountingPeriodList(organizationId, {
+      fiscalYearId,
+      page: 1,
+      pageSize: 1,
+      sort: 'sequence:desc',
+    }),
+    queryFn: ({ signal }) =>
+      listAccountingPeriodsPage(
+        {
+          organizationId,
+          fiscalYearId,
+          page: 1,
+          pageSize: 1,
+          sort: 'sequence:desc',
+        },
+        signal,
+      ),
+    enabled:
+      fiscalYearId !== '' &&
+      (yearOpen || (allowYearIdEntry && yearIdValid)) &&
+      permissions.has(PERMISSIONS.accounting.accountingPeriodView),
+  });
+  useEffect(() => {
+    if (suggestion.data && !form.getFieldState('sequence').isDirty) {
+      form.setValue('sequence', (suggestion.data.items[0]?.sequence ?? 0) + 1);
+    }
+  }, [suggestion.data, form]);
+  const submit = (values: Values) => {
+    if (allowYearIdEntry && !yearIdValid) {
+      form.setError('fiscalYearId', {
+        message: t.accountingPeriod.yearIdInvalid,
+      });
+      return;
+    }
+    if (!allowYearIdEntry && !yearOpen) return;
+    // A Create-only principal cannot read the year's dates or status. The
+    // backend checks both, as well as ownership, under the locked year row.
+    if (
+      selectedYear &&
+      (values.startDate < selectedYear.startDate ||
+        values.endDate > selectedYear.endDate)
+    ) {
+      form.setError('endDate', { message: t.accountingPeriod.outsideYear });
+      return;
+    }
+    mutation.mutate(
+      {
+        fiscalYearId: values.fiscalYearId.trim(),
         sequence: values.sequence,
         title: values.title.trim(),
         startDate: toBusinessDateInput(values.startDate),
         endDate: toBusinessDateInput(values.endDate),
-      }),
-    onSuccess: async () => {
-      form.reset();
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.accounting.all(organizationId),
-      });
-    },
-  });
+      },
+      { onSuccess: () => form.reset() },
+    );
+  };
   const errors = form.formState.errors;
   return (
     <Card>
@@ -89,31 +146,49 @@ export function PeriodCreateForm({
         <form
           className="space-y-4"
           noValidate
-          onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
+          onSubmit={form.handleSubmit(submit)}
         >
           <div className="grid gap-4 sm:grid-cols-3">
             <FormField
               id="period-fiscal-year"
               label={t.masterData.fiscalYear}
               required
-              error={errors.fiscalYearId?.message}
+              error={
+                errors.fiscalYearId?.message ??
+                (allowYearIdEntry && fiscalYearId !== '' && !yearIdValid
+                  ? t.accountingPeriod.yearIdInvalid
+                  : undefined)
+              }
+              hint={
+                allowYearIdEntry ? t.accountingPeriod.yearIdHint : undefined
+              }
             >
-              {(p) => (
-                <Select
-                  {...p}
-                  {...form.register('fiscalYearId')}
-                  disabled={mutation.isPending}
-                >
-                  <option value="">
-                    {t.masterData.selectFiscalYearOption}
-                  </option>
-                  {fiscalYears.map((y) => (
-                    <option key={y.id} value={y.id}>
-                      {y.code} — {y.title}
+              {(p) =>
+                allowYearIdEntry ? (
+                  <Input
+                    {...p}
+                    dir="ltr"
+                    maxLength={26}
+                    {...form.register('fiscalYearId')}
+                    disabled={mutation.isPending}
+                  />
+                ) : (
+                  <Select
+                    {...p}
+                    {...form.register('fiscalYearId')}
+                    disabled={mutation.isPending}
+                  >
+                    <option value="">
+                      {t.masterData.selectFiscalYearOption}
                     </option>
-                  ))}
-                </Select>
-              )}
+                    {fiscalYears.map((y) => (
+                      <option key={y.id} value={y.id}>
+                        {y.code} — {y.title}
+                      </option>
+                    ))}
+                  </Select>
+                )
+              }
             </FormField>
             <FormField
               id="period-sequence"
@@ -128,7 +203,7 @@ export function PeriodCreateForm({
                   min={1}
                   dir="ltr"
                   {...form.register('sequence', { valueAsNumber: true })}
-                  disabled={mutation.isPending}
+                  disabled={mutation.isPending || !canSubmit}
                 />
               )}
             </FormField>
@@ -142,11 +217,24 @@ export function PeriodCreateForm({
                 <Input
                   {...p}
                   {...form.register('title')}
-                  disabled={mutation.isPending}
+                  disabled={mutation.isPending || !canSubmit}
                 />
               )}
             </FormField>
           </div>
+          {selectedYear && (
+            <p className="text-sm text-ink-muted">
+              {yearOpen
+                ? `${t.accountingPeriod.yearRangeHint}: ${formatDateOnly(selectedYear.startDate)} — ${formatDateOnly(selectedYear.endDate)}`
+                : t.accountingPeriod.yearNotOpen}
+            </p>
+          )}
+          {suggestion.data && (
+            <p className="text-xs text-ink-muted">
+              {t.accountingPeriod.sequenceHint}:{' '}
+              {(suggestion.data.items[0]?.sequence ?? 0) + 1}
+            </p>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             {(['startDate', 'endDate'] as const).map((name) => (
               <FormField
@@ -170,7 +258,7 @@ export function PeriodCreateForm({
                         {...p}
                         value={field.value}
                         onValueChange={field.onChange}
-                        disabled={mutation.isPending}
+                        disabled={mutation.isPending || !canSubmit}
                       />
                     )}
                   />
@@ -178,7 +266,12 @@ export function PeriodCreateForm({
               </FormField>
             ))}
           </div>
-          {mutation.isError && <ApiErrorAlert error={mutation.error} />}
+          {mutation.isError && (
+            <ApiErrorAlert
+              error={mutation.error}
+              description={accountingPeriodErrorMessage(mutation.error)}
+            />
+          )}
           {mutation.isSuccess && (
             <output className="block text-sm text-success">
               {t.masterData.openPeriod}
@@ -186,7 +279,7 @@ export function PeriodCreateForm({
           )}
           <Button
             type="submit"
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || !canSubmit}
             loading={mutation.isPending}
           >
             {mutation.isPending
