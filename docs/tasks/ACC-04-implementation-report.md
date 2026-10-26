@@ -1,6 +1,6 @@
 # ACC-04 — Account administration
 
-**Date:** 2026-10-26 · **Status:** IMPLEMENTED; local verification complete, CI pending
+**Date:** 2026-10-26 · **Status:** IMPLEMENTED; local and PR CI verification passed
 
 ## Implemented
 
@@ -20,11 +20,11 @@
 
 ## Test execution matrix
 
-| Gate | Environment | Result |
-| --- | --- | --- |
-| Account administration and adjacent master-data/chart-tree tests | FAST-LOCAL | Passed: 127 tests across 22 files |
-| Full frontend unit suite | FAST-LOCAL | Passed: 813 tests across 122 files. An earlier run had two transient failures in unrelated shell/licensing suites; both isolated reruns and the subsequent full rerun passed. |
-| Typecheck, lint, format, production build, date-contract, design-token and documentation-link checks | FAST-LOCAL | Passed; 1,336 relative documentation links, 0 broken. Build emitted non-blocking dependency annotation and large-chunk warnings. |
-| Browser E2E, live DB and other CI-heavy checks | CI-HEAVY | Pending GitHub run on the pushed ACC-04 SHA |
+| Gate                                                                                                 | Environment | Result                                                                                                                                                                        |
+| ---------------------------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Account administration and adjacent master-data/chart-tree tests                                     | FAST-LOCAL  | Passed: 127 tests across 22 files                                                                                                                                             |
+| Full frontend unit suite                                                                             | FAST-LOCAL  | Passed: 813 tests across 122 files. An earlier run had two transient failures in unrelated shell/licensing suites; both isolated reruns and the subsequent full rerun passed. |
+| Typecheck, lint, format, production build, date-contract, design-token and documentation-link checks | FAST-LOCAL  | Passed; 1,336 relative documentation links, 0 broken. Build emitted non-blocking dependency annotation and large-chunk warnings.                                              |
+| Browser E2E, frontend CI, generated API client, docs, and aggregate gate                             | CI-HEAVY    | Passed on [PR #217](https://github.com/MR-AliEsmaeili/Vardena/pull/217), commit `7185f923`; backend checks were correctly not applicable because the backend was unchanged    |
 
 No heavy E2E/live-DB test was executed locally.
