@@ -30,6 +30,6 @@ The shared inventory invalidator refreshes movements, Kardex, stock balances, an
 | --- | --- | --- |
 | Focused unit/component tests (row permissions, transfer/mirror exclusions, exact scoped body, two-step backdating, stable key, 409 and 422 mapping, invalidation) | FAST-LOCAL | Passed on this checkpoint. |
 | Full typecheck/lint/format/unit/build/date-contract/doc-links | FAST-LOCAL | Passed: typecheck, lint, format:check, 758 unit tests / 108 files, build, date guard and 1,337 relative documentation links (0 broken). |
-| Browser E2E and any live DB tests | CI-HEAVY | Pending GitHub run for this branch; not verified yet. |
+| Browser E2E and applicable pipeline jobs | CI-HEAVY | GitHub run `40298057735` succeeded on checkpoint SHA `ef1df77`: docs, frontend, generated API client, browser E2E and ci-gate passed; backend and owner Windows jobs were classified as skipped. A later INV-03 commit needs its own CI check. |
 
 No heavy E2E/live-DB test was executed locally unless explicitly authorized.

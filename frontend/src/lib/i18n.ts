@@ -1903,6 +1903,28 @@ export const fa = {
       'هنوز نسخهٔ تبدیلی ثبت نشده است. اولین تبدیل را بسازید.',
     conversionsEmptyFiltered: 'برای فیلترهای انتخاب‌شده نسخهٔ تبدیلی یافت نشد.',
     conversionsLoadFailed: 'دریافت نسخه‌های تبدیل انجام نشد.',
+    resolveTitle: 'نرخ تبدیل مؤثر در تاریخ',
+    resolveSubtitle:
+      'بازه اعتبار نیمه‌باز است: تاریخ شروع شامل و تاریخ پایان خارج از بازه است.',
+    resolveItem: 'کالا (اختیاری)',
+    resolveGlobal: 'نسخه عمومی',
+    resolveFrom: 'واحد مبدأ',
+    resolveTo: 'واحد مقصد',
+    resolveAsOf: 'تاریخ بررسی',
+    resolveCheck: 'بررسی نرخ مؤثر',
+    resolveResult: 'نسخه مؤثر',
+    resolveFactor: 'ضریب',
+    resolveValidFrom: 'آغاز اعتبار',
+    resolveValidTo: 'پایان اعتبار (خارج از بازه)',
+    resolveOpenEnded: 'باز',
+    resolveEmptyTitle: 'نسخه‌ای پیدا نشد',
+    resolveEmptyBody:
+      'برای این روز هیچ نسخه تبدیلی پوشش نمی‌دهد؛ ضریب ۱:۱ فرض نکنید.',
+    resolveSameUnit: 'واحد مبدأ و مقصد باید متفاوت باشند.',
+    resolveFailed: 'دریافت نرخ مؤثر انجام نشد. دوباره تلاش کنید.',
+    resolveVersionId: 'شناسه نسخه',
+    resolveManualId:
+      'اگر فهرست واحدها یا کالاها در دسترس نیست، شناسه را وارد کنید.',
     conversionNoEditNote:
       'نسخه‌های تبدیل هرگز ویرایش نمی‌شوند؛ برای تغییر، یک نسخهٔ تاریخ‌دار جدید بسازید.',
 

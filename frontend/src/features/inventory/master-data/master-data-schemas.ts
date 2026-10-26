@@ -164,19 +164,28 @@ export type ItemFormValues = z.infer<typeof itemSchema>;
 
 const FACTOR_PATTERN = /^\d+(\.\d{1,6})?$/;
 
-export const unitConversionSchema = z.object({
-  scope: z.enum(['global', 'item']),
-  /** Required when scope = item. */
-  itemId: z.string(),
-  fromUnitId: z.string().min(1, t.inventoryMaster.fromUnitRequired),
-  toUnitId: z.string().min(1, t.inventoryMaster.toUnitRequired),
-  factor: z
-    .string()
-    .trim()
-    .min(1, t.inventoryMaster.factorRequired)
-    .regex(FACTOR_PATTERN, t.inventoryMaster.factorInvalid),
-  /** Jalali-first shared input: `''` = open-ended. */
-  validFrom: z.string().min(1, t.inventoryMaster.validFrom),
-  validTo: z.string(),
-});
+export const unitConversionSchema = z
+  .object({
+    scope: z.enum(['global', 'item']),
+    itemId: z.string(),
+    fromUnitId: z.string().min(1, t.inventoryMaster.fromUnitRequired),
+    toUnitId: z.string().min(1, t.inventoryMaster.toUnitRequired),
+    factor: z
+      .string()
+      .trim()
+      .min(1, t.inventoryMaster.factorRequired)
+      .regex(FACTOR_PATTERN, t.inventoryMaster.factorInvalid),
+    /** Jalali-first shared input: `''` = open-ended. */
+    validFrom: z.string().min(1, t.inventoryMaster.validFrom),
+    validTo: z.string(),
+  })
+  .superRefine((values, ctx) => {
+    if (values.scope === 'item' && values.itemId === '') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['itemId'],
+        message: t.inventoryMaster.conversionItemRequired,
+      });
+    }
+  });
 export type UnitConversionFormValues = z.infer<typeof unitConversionSchema>;

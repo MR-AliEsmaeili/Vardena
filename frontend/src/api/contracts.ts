@@ -1081,6 +1081,16 @@ export type InventoryUnitConversion = NullableString<
 
 export type InventoryUnitConversionListQuery =
   operations['UnitConversionsController_list_v1']['parameters']['query'];
+// Swagger models the BusinessDate query union as an untyped intersection;
+// the backend accepts the same shared BusinessDateInput as mutation dates.
+export type ResolveInventoryUnitConversionQuery = Omit<
+  operations['UnitConversionsController_resolve_v1']['parameters']['query'],
+  'asOf'
+> & { asOf: BusinessDateInput };
+export type ResolveInventoryUnitConversionResponse = Omit<
+  Schemas['ResolveUnitConversionResponseDto'],
+  'conversion'
+> & { conversion: InventoryUnitConversion | null };
 
 /**
  * `POST /unit-conversions` body. `validFrom`/`validTo` are BusinessDate

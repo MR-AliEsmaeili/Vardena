@@ -57,7 +57,7 @@
 | گروه کالا | `item-groups` (همان الگو) | `master-data/item-groups/*` | **COMPLETE** |
 | واحد | `units` (همان الگو) | `master-data/units/*` | **COMPLETE** |
 | انبار | `warehouses` (همان الگو) | `master-data/warehouses/*` | **COMPLETE** |
-| تبدیل واحد | `GET/POST /unit-conversions`, `GET /resolve`, `/:id` | فهرست + ایجاد نسخه | **PARTIAL** — `resolve` سطح UI ندارد (نسخه‌ها تغییرناپذیرند، ADR-0020 §۴) |
+| تبدیل واحد | `GET/POST /inventory/unit-conversions`, `GET /resolve`, `/:id` | فهرست + ایجاد نسخه + بخش درون‌صفحه‌ای resolve تاریخ‌دار (INV-03) | **PARTIAL** — حل نسخهٔ مؤثر و حالت بدون پوشش پیاده شده، اما جزئیات مستقل `GET /:id` هنوز UI ندارد؛ نسخه‌ها تغییرناپذیرند (ADR-0020 §۴) |
 | حرکات انبار | `GET/POST /inventory/movements`, `/:id`, `POST /:id/reverse` | `movements-page`, `movement-form-page`, `movement-reversal-dialog` | **PARTIAL** — برگشت تک‌گردش غیرانتقالی با مجوز، تاریخ و تأیید دو مرحله‌ای موجود است (INV-01)؛ نمایش جزئیات مستقل `GET /:id` هنوز UI ندارد؛ برگشت تک‌پای انتقال در بک‌اند ممنوع است |
 | کاردکس | `GET /inventory/kardex`, `/quantity` | `kardex-page` | **COMPLETE** |
 | اسناد عملیاتی | `business-documents` (list/detail/create/patch/delete/finalize/seal/cancel/posting) | `documents/*` | **COMPLETE** |

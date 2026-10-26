@@ -8,10 +8,12 @@ import type {
   CreateInventoryUnitConversionInput,
   InventoryUnitConversion,
   InventoryUnitConversionListQuery,
+  ResolveInventoryUnitConversionQuery,
 } from '@/api/contracts';
 import {
   createUnitConversion,
   listUnitConversions,
+  resolveUnitConversion,
 } from '@/api/inventory-master.api';
 import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
 import type { AdminListState } from '@/lib/use-admin-list-state';
@@ -111,5 +113,29 @@ export function useCreateUnitConversionMutation(
           () => undefined,
         );
     },
+  });
+}
+
+/** No read is sent for an incomplete or identity pair. */
+export function useResolveUnitConversion(
+  query: ResolveInventoryUnitConversionQuery | null,
+) {
+  const ready =
+    query !== null &&
+    query.fromUnitId !== '' &&
+    query.toUnitId !== '' &&
+    query.fromUnitId !== query.toUnitId &&
+    query.asOf !== '';
+  return useQuery({
+    queryKey: queryKeys.inventory.unitConversionResolve(
+      query?.organizationId ?? 'none',
+      query ?? {},
+    ),
+    queryFn: ({ signal }) =>
+      resolveUnitConversion(
+        query as ResolveInventoryUnitConversionQuery,
+        signal,
+      ),
+    enabled: ready,
   });
 }

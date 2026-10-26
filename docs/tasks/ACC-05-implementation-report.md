@@ -16,6 +16,6 @@
 | --- | --- | --- |
 | Account detail and mutation hooks | FAST-LOCAL | Passed focused Vitest; see PR/checkpoint output |
 | Frontend full typecheck/lint/format/test/build and docs/date guards | FAST-LOCAL | Passed: 749 tests / 106 files, build, date guard and 1,337 documentation links (0 broken) |
-| Browser E2E and live DB | CI-HEAVY | Checkpoint PR #213 CI passed at 3c75a83; final combined PR CI still pending |
+| Browser E2E and applicable pipeline jobs | CI-HEAVY | PR #213 passed at 3c75a83; draft combined PR #214 checkpoint run `40298057735` passed at `ef1df77` (docs/frontend/generated/browser E2E/ci-gate; backend and Windows skipped). Final combined PR CI remains pending. |
 
 No heavy E2E/live-DB test was executed locally unless explicitly authorized.

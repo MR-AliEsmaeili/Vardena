@@ -17,6 +17,7 @@ import { DataTable } from '@/ui/patterns/data-table';
 import { PageHeader } from '@/ui/patterns/page-header';
 import { Select } from '@/ui/select';
 import { useActiveItemOptions } from '../master-data-references';
+import { UnitConversionResolveSection } from './unit-conversion-resolve-page';
 import { MasterDataFilters } from '../master-data-ui';
 import {
   UNIT_CONVERSION_DEFAULT_SORT,
@@ -117,6 +118,8 @@ export function UnitConversionsPage() {
           </PermissionGate>
         }
       />
+
+      <UnitConversionResolveSection />
 
       <MasterDataFilters
         synchronizationKey={`${list.state.search}:${scope}:${itemId}`}
