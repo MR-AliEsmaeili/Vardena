@@ -1185,3 +1185,36 @@ export type InventoryItemWarehouseAvailability =
 
 export type InventoryItemWarehouseAvailabilityQuery =
   operations['InventoryBalancesController_availabilityAcrossWarehouses_v1']['parameters']['query'];
+
+// ---------------------------------------------------------------------------
+// Document Foundation — registered document types (DOC-01)
+// ---------------------------------------------------------------------------
+
+/**
+ * `DocumentTypeResponseDto`. Its `description` is an untyped nullable Swagger
+ * field (`Record<string, never> | null`), while the backend DTO declares
+ * `string | null`; refinement 1 in the file header restores that exact shape.
+ * Every other field (including the registry-owned code/module/name and the
+ * organization's `draftRequired`/`configured`) is taken verbatim from the
+ * generated schema — no UI-side type is invented.
+ */
+export type DocumentType = NullableString<
+  Schemas['DocumentTypeResponseDto'],
+  'description'
+>;
+
+/** `PUT /documents/types/:code/configuration` body — the ONLY writable field. */
+export type ConfigureDocumentTypeRequest = Schemas['ConfigureDocumentTypeDto'];
+
+/**
+ * `GET /documents/types` query.
+ *
+ * `sort` is removed on purpose: the DTO inherits it from `PageQueryDto`, but
+ * `DocumentTypesService.listDocumentTypes` ignores it and always walks the
+ * in-memory registry in registration order. Sending a sort the service does
+ * not consume would suggest an ordering the UI cannot deliver.
+ */
+export type DocumentTypeListQuery = Omit<
+  operations['DocumentTypesController_list_v1']['parameters']['query'],
+  'sort'
+>;

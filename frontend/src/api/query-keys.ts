@@ -575,6 +575,22 @@ export const queryKeys = {
     instances: (organizationId: string, filters: Record<string, unknown>) =>
       ['workflow', organizationId, 'instances', filters] as const,
   },
+
+  /**
+   * Document Foundation (`documents` root, DOC-01). The registry metadata is
+   * read-only but `draftRequired`/`configured` belong to ONE organization, so
+   * every key carries the organization id at index 1 like every other scoped
+   * read. `documentTypesPrefix` is a prefix of both the list and the detail
+   * key: one invalidation after a configuration write refreshes both.
+   */
+  documents: {
+    documentTypesPrefix: (organizationId: string) =>
+      ['documents', organizationId, 'document-types'] as const,
+    documentTypes: (organizationId: string, filters: Record<string, unknown>) =>
+      ['documents', organizationId, 'document-types', 'list', filters] as const,
+    documentType: (organizationId: string, code: string) =>
+      ['documents', organizationId, 'document-types', 'detail', code] as const,
+  },
 } as const;
 
 /**
@@ -586,6 +602,7 @@ const ORGANIZATION_SCOPED_ROOTS: readonly unknown[] = [
   'accounting',
   'inventory',
   'workflow',
+  'documents',
 ];
 
 /**

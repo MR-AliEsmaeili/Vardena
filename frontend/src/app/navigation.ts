@@ -396,6 +396,25 @@ export const navigationSections: readonly NavigationSection[] = [
     ],
   },
   {
+    /**
+     * Document Foundation (DOC-01). Uses an EXISTING `NavTone` and existing
+     * glyphs — no new tint is invented for a single configuration surface.
+     * The section disappears entirely without the exact registry View code.
+     */
+    id: 'documents-foundation',
+    label: t.nav.documentsFoundationGroup,
+    icon: FileStack,
+    tone: 'admin',
+    items: [
+      {
+        to: '/app/documents/types',
+        label: t.nav.documentTypes,
+        icon: FileSpreadsheet,
+        permissions: [PERMISSIONS.documents.documentTypeView],
+      },
+    ],
+  },
+  {
     id: 'admin',
     label: t.nav.admin,
     icon: ShieldCheck,
