@@ -1,7 +1,7 @@
 # ماتریس پوشش بک‌اند ↔ فرانت‌اند
 
 **وضعیت:** ACTIVE — ممیزی نقطه‌به‌نقطه
-**تاریخ ممیزی:** ۲۰۲۶-۱۰-۲۲؛ به‌روزرسانی ACC-03، ACC-04/05 و INV-01: ۲۰۲۶-۱۰-۲۶
+**تاریخ ممیزی:** ۲۰۲۶-۱۰-۲۲؛ به‌روزرسانی ACC-03، ACC-04/05، ACC-06 و INV-01: ۲۰۲۶-۱۰-۲۶
 **مبنا:** `backend/src/modules/**/api/*.controller.ts` (۶۰ کنترلر) در برابر `frontend/src/app/router.tsx`، `frontend/src/api/*.api.ts` و هوک/صفحه‌های `frontend/src/features/**`.
 
 این سند فقط وضعیت را ثبت می‌کند؛ در این دور **هیچ endpoint، قرارداد یا قاعدۀ کسب‌وکار تغییر نکرده است**. هر جا «MISSING» است، یعنی UI وجود ندارد، نه اینکه بک‌اند ناقص باشد.
@@ -35,7 +35,7 @@
 | دوره‌های حسابداری | `GET /accounting-periods`, `POST`, `close/reopen/seal` | فهرست، فرم ایجاد (شناسهٔ دستی برای مجوز Open-only)، اکشن‌های گذار با دلیل و ماتریس وضعیت منطبق با بک‌اند | **COMPLETE** (ACC-03؛ `sealed → open` پس از رفع مهر سال نیز از UI ممکن است) |
 | تراز حساب‌ها (balances) | `GET /accounting/balances`, `/reconciliation`, `/:accountId`, `POST /rebuild` | ویجت داشبورد (`listAccountBalances`) | **PARTIAL** — صفحهٔ اختصاصی گزارش و بازسازی داخلی ندارد |
 | حرکات دفتر | `GET /accounting/ledger-movements` | — | **NOT_REQUIRED** — دفتر کل از endpoint گزارش خودش استفاده می‌کند؛ این مسیر مصرف مستقیم ندارد |
-| پیکربندی حساب‌داری | `GET/POST/PATCH/DELETE /accounting-configurations`, `:id/publish`, `active` | — | **MISSING** |
+| پیکربندی حساب‌داری | `GET/POST/PATCH/DELETE /accounting-configurations`, `:id/publish`, `active` | `configuration-list-page`, `configuration-form-page` (+ `configuration-levels-editor`), `configuration-detail-page`, `configuration-actions` (انتشار/حذف با تأیید) | **COMPLETE** (ACC-06؛ گیت مجوز دقیق View/Configure، ماتریس وضعیت DRAFT/ACTIVE/SUPERSEDED، `pattern` فقط نمایش مقدار سرور، `effectiveFrom` به‌صورت Instant) |
 | الگوهای دفتر پایه | `base-chart-templates`, `base-chart-template-versions`, `base-chart-adoptions` (پیش‌نمایش/پذیرش) | — | **MISSING** |
 | ساختارهای کدینگ | `coding-structures` (+`active`, `publish`) | — | **MISSING** |
 | ساختارهای تفصیلی | `detail-structures` (+`active`, `publish`) | — | **MISSING** |

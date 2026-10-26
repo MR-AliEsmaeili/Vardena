@@ -39,6 +39,7 @@ import type {
   ReverseAccountingDocumentInput,
   TrialBalanceQuery,
   TrialBalanceRow,
+  UpdateAccountingConfigurationRequest,
   UpdateAccountingDocumentInput,
   UpdateFinancialAreaRequest,
   UpdateFiscalYearRequest,
@@ -451,6 +452,49 @@ export function publishAccountingConfiguration(
   return apiPost<AccountingConfiguration, Record<string, never>>(
     `/accounting-configurations/${encodeURIComponent(id)}/publish`,
     {},
+    { params: { organizationId } },
+  );
+}
+
+export function getAccountingConfiguration(
+  organizationId: string,
+  configurationId: string,
+  signal?: AbortSignal,
+): Promise<AccountingConfiguration> {
+  return apiGet<AccountingConfiguration>(
+    `/accounting-configurations/${encodeURIComponent(configurationId)}`,
+    {
+      params: { organizationId },
+      ...(signal ? { signal } : {}),
+    },
+  );
+}
+
+/**
+ * Edits a DRAFT version. The backend rejects `ACTIVE`/`SUPERSEDED` with
+ * `422 BusinessRuleViolation`, and `code` is not part of the update contract —
+ * sending it would be an invented parameter, so the caller never does.
+ */
+export function updateAccountingConfiguration(
+  organizationId: string,
+  configurationId: string,
+  body: UpdateAccountingConfigurationRequest,
+): Promise<AccountingConfiguration> {
+  return apiPatch<
+    AccountingConfiguration,
+    UpdateAccountingConfigurationRequest
+  >(`/accounting-configurations/${encodeURIComponent(configurationId)}`, body, {
+    params: { organizationId },
+  });
+}
+
+/** Deletes a DRAFT version; the backend answers `204 No Content`. */
+export function deleteAccountingConfiguration(
+  organizationId: string,
+  configurationId: string,
+): Promise<void> {
+  return apiDelete<void>(
+    `/accounting-configurations/${encodeURIComponent(configurationId)}`,
     { params: { organizationId } },
   );
 }
