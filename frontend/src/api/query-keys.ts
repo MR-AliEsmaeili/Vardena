@@ -470,6 +470,17 @@ export const queryKeys = {
       ] as const,
     unitConversionPrefix: (organizationId: string) =>
       ['inventory', organizationId, 'unit-conversions'] as const,
+    unitConversionResolve: (
+      organizationId: string,
+      query: Record<string, unknown>,
+    ) =>
+      [
+        'inventory',
+        organizationId,
+        'unit-conversions',
+        'resolve',
+        query,
+      ] as const,
   },
 
   workflow: {

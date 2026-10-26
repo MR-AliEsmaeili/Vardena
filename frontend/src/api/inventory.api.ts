@@ -24,6 +24,7 @@ import type {
   PostInventoryMovementInput,
   PostInventoryTransferInput,
   RecalculateValuationInput,
+  ReverseInventoryMovementInput,
   RecalculationResult,
   UpdateInventoryDocumentInput,
 } from './contracts';
@@ -48,12 +49,12 @@ export const INVENTORY_MAX_PAGE_SIZE = 500;
 // Reference reads (master data for the pickers)
 // ---------------------------------------------------------------------------
 
-/** Active warehouses of the organization (`GET /warehouses`). */
+/** Active warehouses of the organization (`GET /inventory/warehouses`). */
 export function listInventoryWarehouses(
   query: Omit<InventoryWarehouseListQuery, 'isActive' | 'page' | 'pageSize'>,
   signal?: AbortSignal,
 ): Promise<Paginated<InventoryWarehouse>> {
-  return apiGet<Paginated<InventoryWarehouse>>('/warehouses', {
+  return apiGet<Paginated<InventoryWarehouse>>('/inventory/warehouses', {
     params: cleanParams({
       page: 1,
       pageSize: INVENTORY_MAX_PAGE_SIZE,
@@ -64,7 +65,7 @@ export function listInventoryWarehouses(
   });
 }
 
-/** Active stockable items (`GET /items`) — only they may enter stock. */
+/** Active stockable items (`GET /inventory/items`) — only they may enter stock. */
 export function listInventoryItems(
   query: Omit<
     InventoryItemListQuery,
@@ -72,7 +73,7 @@ export function listInventoryItems(
   >,
   signal?: AbortSignal,
 ): Promise<Paginated<InventoryItem>> {
-  return apiGet<Paginated<InventoryItem>>('/items', {
+  return apiGet<Paginated<InventoryItem>>('/inventory/items', {
     params: cleanParams({
       page: 1,
       pageSize: INVENTORY_MAX_PAGE_SIZE,
@@ -84,12 +85,12 @@ export function listInventoryItems(
   });
 }
 
-/** Active units of the organization (`GET /units`). */
+/** Active units of the organization (`GET /inventory/units`). */
 export function listInventoryUnits(
   query: Omit<InventoryUnitListQuery, 'isActive' | 'page' | 'pageSize'>,
   signal?: AbortSignal,
 ): Promise<Paginated<InventoryUnit>> {
-  return apiGet<Paginated<InventoryUnit>>('/units', {
+  return apiGet<Paginated<InventoryUnit>>('/inventory/units', {
     params: cleanParams({
       page: 1,
       pageSize: INVENTORY_MAX_PAGE_SIZE,
@@ -126,6 +127,19 @@ export function postInventoryMovement(
   body: PostInventoryMovementInput,
 ): Promise<InventoryMovement> {
   return apiPost<InventoryMovement>('/inventory/movements', body);
+}
+
+/** Reverse a single non-transfer movement; organization scope is query-only. */
+export function reverseInventoryMovement(
+  organizationId: string,
+  movementId: string,
+  body: ReverseInventoryMovementInput,
+): Promise<InventoryMovement> {
+  return apiPost<InventoryMovement, ReverseInventoryMovementInput>(
+    `/inventory/movements/${encodeURIComponent(movementId)}/reverse`,
+    body,
+    { params: { organizationId } },
+  );
 }
 
 /**

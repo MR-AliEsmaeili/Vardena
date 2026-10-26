@@ -40,6 +40,8 @@ export interface BackdateDialogsProps {
    * step — nothing is posted, nothing is defaulted).
    */
   onDecide: (decision: BackdateDecision) => void;
+  /** Write-only operators may confirm skip but cannot request recalculation. */
+  canRecalculate?: boolean;
 }
 
 export function BackdateDialogs({
@@ -47,6 +49,7 @@ export function BackdateDialogs({
   loading,
   error,
   onDecide,
+  canRecalculate = true,
 }: BackdateDialogsProps): ReactElement {
   const [state, setState] = useState<{
     assessment: BackdateAssessment;
@@ -97,9 +100,17 @@ export function BackdateDialogs({
           error={error}
           // No decision, no submit: the primary action stays disabled until
           // the operator explicitly picked one of the two answers.
-          confirmDisabled={state.repricing === null}
+          confirmDisabled={
+            state.repricing === null ||
+            (state.repricing === 'recalculate' && !canRecalculate)
+          }
           onConfirm={() => {
-            if (state.repricing === null || loading) return;
+            if (
+              state.repricing === null ||
+              (state.repricing === 'recalculate' && !canRecalculate) ||
+              loading
+            )
+              return;
             onDecide({
               backdateConfirmed: true,
               repricing: state.repricing,
@@ -120,7 +131,7 @@ export function BackdateDialogs({
                 onChange={() =>
                   setState({ ...state, repricing: 'recalculate' })
                 }
-                disabled={loading}
+                disabled={loading || !canRecalculate}
                 className="mt-1"
               />
               <span>{t.inventory.backdateStep2Recalculate}</span>
@@ -137,6 +148,11 @@ export function BackdateDialogs({
               />
               <span>{t.inventory.backdateStep2Skip}</span>
             </label>
+            {!canRecalculate && (
+              <p className="text-xs text-ink-muted">
+                {t.inventory.errors.recalculatePermissionForReverse}
+              </p>
+            )}
           </fieldset>
         </ConfirmDialog>
       )}

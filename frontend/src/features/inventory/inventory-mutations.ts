@@ -9,11 +9,13 @@ import type {
   PostInventoryMovementInput,
   PostInventoryTransferInput,
   RecalculationResult,
+  ReverseInventoryMovementInput,
 } from '@/api/contracts';
 import {
   postInventoryMovement,
   postInventoryTransfer,
   recalculateInventoryValuation,
+  reverseInventoryMovement,
 } from '@/api/inventory.api';
 import { queryKeys } from '@/api/query-keys';
 
@@ -82,6 +84,33 @@ export function usePostMovementMutation(
         ...values,
       }),
     onSuccess: () => invalidate(),
+  });
+}
+
+export interface ReverseMovementVariables {
+  movementId: string;
+  values: Omit<ReverseInventoryMovementInput, 'operationKey'>;
+  operationKey: string;
+}
+
+export function useReverseMovementMutation(
+  organizationId: string,
+): UseMutationResult<InventoryMovement, Error, ReverseMovementVariables> {
+  const invalidate = useInventoryReadsInvalidation(organizationId);
+  return useMutation({
+    mutationKey: ['inventory', organizationId, 'movements', 'reverse'],
+    mutationFn: ({
+      movementId,
+      values,
+      operationKey,
+    }: ReverseMovementVariables) =>
+      reverseInventoryMovement(organizationId, movementId, {
+        operationKey,
+        ...values,
+      }),
+    // The shared invalidator includes valuation states for every affected
+    // item/warehouse filter; there is no key-specific detail query yet.
+    onSuccess: invalidate,
   });
 }
 

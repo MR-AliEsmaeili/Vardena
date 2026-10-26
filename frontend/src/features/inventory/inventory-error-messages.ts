@@ -21,6 +21,7 @@ import { t } from '@/lib/i18n';
  */
 
 export type InventoryOperation =
+  | 'reverseMovement'
   | 'postMovement'
   | 'postTransfer'
   | 'recalculate'
@@ -30,6 +31,7 @@ export type InventoryOperation =
 
 const OPERATION_FAILURE: Record<InventoryOperation, string> = {
   postMovement: t.inventory.errors.postFailed,
+  reverseMovement: t.inventory.errors.reverseFailed,
   postTransfer: t.inventory.errors.postFailed,
   recalculate: t.inventory.errors.recalculateFailed,
   loadMovements: t.inventory.movementsLoadFailed,
@@ -90,6 +92,12 @@ function businessRuleMessage(
   if (!isRecord(details)) return t.inventory.errors.generic;
 
   const subcode = details['code'];
+  if (subcode === 'inventory.reversal.accounting_posted') {
+    return t.inventory.errors.reversalAccountingPosted;
+  }
+  if (subcode === 'inventory.reversal_date_before_original') {
+    return t.inventory.errors.reversalDateBeforeOriginal;
+  }
   if (subcode === 'inventory.insufficient_stock') {
     // The measured quantities (base-unit decimal strings) enrich the
     // canonical copy: چه شد + چه کنید، with real numbers.
@@ -147,19 +155,34 @@ export function inventoryErrorMessage(
         message:
           operation === 'recalculate'
             ? t.inventory.errors.recalculatePermission
-            : t.errors.forbidden,
+            : operation === 'reverseMovement'
+              ? t.inventory.errors.recalculatePermissionForReverse
+              : t.errors.forbidden,
       };
     case 'EntityNotFound':
       return { message: t.errors.notFound };
-    case 'Conflict':
-      // 409: the operationKey was already used with a different intent —
-      // nothing was applied; the recovery is to re-check the posted state.
+    case 'Conflict': {
+      // The backend emits a structured subcode for transfer legs, but the
+      // already-reversed rejection currently has NO subcode. Match that exact
+      // known phrase ONLY to classify it; never render server English copy.
+      const detailCode = isRecord(apiError.details)
+        ? apiError.details['code']
+        : undefined;
+      const message =
+        operation === 'reverseMovement'
+          ? detailCode === 'inventory.transfer.reverse_pair_required'
+            ? t.inventory.errors.transferReversePairRequired
+            : apiError.message === 'The movement has already been reversed.'
+              ? t.inventory.errors.alreadyReversed
+              : t.inventory.errors.operationKeyConflict
+          : t.inventory.errors.operationKeyConflict;
       return {
-        message: t.inventory.errors.operationKeyConflict,
+        message,
         ...(apiError.correlationId !== undefined
           ? { correlationId: apiError.correlationId }
           : {}),
       };
+    }
     case 'BusinessRuleViolation':
       return {
         message: businessRuleMessage(operation, apiError.details),

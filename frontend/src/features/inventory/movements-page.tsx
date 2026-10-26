@@ -41,9 +41,10 @@ export function MovementsPage() {
   const movementsQuery = useMovementsList(organizationId, state);
 
   const showCost = permissions.has(PERMISSIONS.inventory.valuationView);
+  const canReverse = permissions.has(PERMISSIONS.inventory.movementReverse);
   const columns = useMemo(
-    () => movementsColumns(references, { showCost }),
-    [references, showCost],
+    () => movementsColumns(references, { showCost, canReverse }),
+    [references, showCost, canReverse],
   );
 
   if (organizationId === null) {

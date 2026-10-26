@@ -1437,6 +1437,20 @@ export const fa = {
     valuationSubtitle:
       'وضعیت ارزش موجودی هر کالا در هر انبار؛ کارفهرست حسابداری انبار.',
     movementsTitle: 'گردش‌های انبار',
+    reverse: 'برگشت گردش',
+    reverseTitle: 'برگشت گردش انبار',
+    reverseBody:
+      'گردش اصلی بدون تغییر باقی می‌ماند و یک گردش معکوس ثبت می‌شود.',
+    reverseDate: 'تاریخ برگشت',
+    reverseDateHint: 'تاریخ برگشت نمی‌تواند پیش از تاریخ گردش اصلی باشد.',
+    reverseDateInvalid: 'تاریخ معتبر در روز گردش اصلی یا پس از آن وارد کنید.',
+    reverseConfirm: 'ثبت برگشت',
+    reversing: 'در حال ثبت برگشت…',
+    reversed: 'گردش معکوس ثبت شد.',
+    reverseNotAllowedTransfer:
+      'برگشت تک‌پای انتقال مجاز نیست؛ انتقال باید جفت برگردد.',
+    reverseNotAllowedAlreadyReversed: 'این ردیف خودش یک گردش معکوس است.',
+    repricingChoiceLabel: 'روش قیمت‌گذاری دوباره',
     movementsSubtitle: 'تاریخچۀ گردش‌های ثبت‌شده انبار سازمان.',
     kardexTitle: 'کاردکس',
     kardexSubtitle: 'گردش کمیت و موجودی جاری یک کالا در یک انبار.',
@@ -1616,6 +1630,17 @@ export const fa = {
         'ثبت مستقیم قیمت تمام‌شده فقط برای رسید انبار ممکن است؛ ارزش صادره از روش قیمت‌گذاری محاسبه می‌شود.',
       operationKeyConflict:
         'این درخواست قبلاً با اطلاعات دیگری ثبت شده است. اطلاعات را تازه‌سازی کنید و عملیات را بررسی کنید.',
+      alreadyReversed:
+        'این گردش قبلاً برگشت خورده است. فهرست را تازه‌سازی کنید.',
+      transferReversePairRequired:
+        'گردش انتقال را نمی‌توان به‌تنهایی برگرداند؛ انتقال باید جفت برگردد.',
+      reversalAccountingPosted:
+        'سند مالک این گردش به حسابداری ارسال شده و برگشت مستقیم مجاز نیست.',
+      reversalDateBeforeOriginal:
+        'تاریخ برگشت پیش از تاریخ گردش اصلی است. تاریخ را اصلاح کنید.',
+      reverseFailed: 'برگشت گردش انجام نشد. وضعیت را بررسی و دوباره تلاش کنید.',
+      recalculatePermissionForReverse:
+        'برای بازمحاسبه، مجوز قیمت‌گذاری مجدد لازم است؛ گزینهٔ «انجام نشود» را انتخاب کنید یا با مدیر تماس بگیرید.',
       recalculatePermission:
         'این عملیات نیاز به مجوز «قیمت‌گذاری مجدد» ارزش موجودی دارد.',
       recalculateFailed: 'قیمت‌گذاری مجدد انجام نشد.',
@@ -1878,6 +1903,28 @@ export const fa = {
       'هنوز نسخهٔ تبدیلی ثبت نشده است. اولین تبدیل را بسازید.',
     conversionsEmptyFiltered: 'برای فیلترهای انتخاب‌شده نسخهٔ تبدیلی یافت نشد.',
     conversionsLoadFailed: 'دریافت نسخه‌های تبدیل انجام نشد.',
+    resolveTitle: 'نرخ تبدیل مؤثر در تاریخ',
+    resolveSubtitle:
+      'بازه اعتبار نیمه‌باز است: تاریخ شروع شامل و تاریخ پایان خارج از بازه است.',
+    resolveItem: 'کالا (اختیاری)',
+    resolveGlobal: 'نسخه عمومی',
+    resolveFrom: 'واحد مبدأ',
+    resolveTo: 'واحد مقصد',
+    resolveAsOf: 'تاریخ بررسی',
+    resolveCheck: 'بررسی نرخ مؤثر',
+    resolveResult: 'نسخه مؤثر',
+    resolveFactor: 'ضریب',
+    resolveValidFrom: 'آغاز اعتبار',
+    resolveValidTo: 'پایان اعتبار (خارج از بازه)',
+    resolveOpenEnded: 'باز',
+    resolveEmptyTitle: 'نسخه‌ای پیدا نشد',
+    resolveEmptyBody:
+      'برای این روز هیچ نسخه تبدیلی پوشش نمی‌دهد؛ ضریب ۱:۱ فرض نکنید.',
+    resolveSameUnit: 'واحد مبدأ و مقصد باید متفاوت باشند.',
+    resolveFailed: 'دریافت نرخ مؤثر انجام نشد. دوباره تلاش کنید.',
+    resolveVersionId: 'شناسه نسخه',
+    resolveManualId:
+      'اگر فهرست واحدها یا کالاها در دسترس نیست، شناسه را وارد کنید.',
     conversionNoEditNote:
       'نسخه‌های تبدیل هرگز ویرایش نمی‌شوند؛ برای تغییر، یک نسخهٔ تاریخ‌دار جدید بسازید.',
 

@@ -249,6 +249,35 @@ describe('Account administration and destructive unlink', () => {
     );
   });
 
+  it('refreshes the detail to the unlinked server state after success', async () => {
+    const user = userEvent.setup();
+    grant(PERMISSIONS.accounting.accountUnlinkDetailGroup);
+    vi.mocked(accountingApi.getAccount)
+      .mockResolvedValueOnce({ ...postableAccount, detailGroupId: 'group-1' })
+      .mockResolvedValue({ ...postableAccount, detailGroupId: null });
+    vi.mocked(accountingApi.unlinkAccountDetailGroup).mockResolvedValue({
+      ...postableAccount,
+      detailGroupId: null,
+    });
+    renderDetail();
+    await user.click(
+      await screen.findByRole('button', { name: t.accountAdmin.unlink }),
+    );
+    await user.click(
+      screen.getByRole('checkbox', { name: t.accountAdmin.unlinkAcknowledge }),
+    );
+    await user.click(
+      screen.getAllByRole('button', { name: t.accountAdmin.unlink }).at(-1)!,
+    );
+    await screen.findByText(t.accountAdmin.unlinkSuccess);
+    await waitFor(() =>
+      expect(screen.getByText(t.accountAdmin.groupNone)).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole('button', { name: t.accountAdmin.unlink }),
+    ).not.toBeInTheDocument();
+  });
+
   it('keeps the destructive dialog open after a backend refusal', async () => {
     const user = userEvent.setup();
     grant(PERMISSIONS.accounting.accountUnlinkDetailGroup);

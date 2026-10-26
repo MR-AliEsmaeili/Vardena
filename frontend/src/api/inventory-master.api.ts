@@ -17,6 +17,8 @@ import type {
   InventoryUnit,
   InventoryUnitConversion,
   InventoryUnitConversionListQuery,
+  ResolveInventoryUnitConversionQuery,
+  ResolveInventoryUnitConversionResponse,
   InventoryUnitListQuery,
   InventoryWarehouse,
   InventoryWarehouseListQuery,
@@ -54,7 +56,7 @@ export function listWarehousesAdmin(
   query: InventoryWarehouseListQuery,
   signal?: AbortSignal,
 ): Promise<Paginated<InventoryWarehouse>> {
-  return apiGet<Paginated<InventoryWarehouse>>('/warehouses', {
+  return apiGet<Paginated<InventoryWarehouse>>('/inventory/warehouses', {
     params: cleanParams(query),
     ...(signal ? { signal } : {}),
   });
@@ -66,7 +68,7 @@ export function getWarehouseAdmin(
   signal?: AbortSignal,
 ): Promise<InventoryWarehouse> {
   return apiGet<InventoryWarehouse>(
-    `/warehouses/${encodeURIComponent(warehouseId)}`,
+    `/inventory/warehouses/${encodeURIComponent(warehouseId)}`,
     {
       params: { organizationId },
       ...(signal ? { signal } : {}),
@@ -78,7 +80,7 @@ export function createWarehouse(
   body: CreateInventoryWarehouseInput,
 ): Promise<InventoryWarehouse> {
   return apiPost<InventoryWarehouse, CreateInventoryWarehouseInput>(
-    '/warehouses',
+    '/inventory/warehouses',
     body,
   );
 }
@@ -89,7 +91,7 @@ export function updateWarehouse(
   body: UpdateInventoryWarehouseInput,
 ): Promise<InventoryWarehouse> {
   return apiPatch<InventoryWarehouse, UpdateInventoryWarehouseInput>(
-    `/warehouses/${encodeURIComponent(warehouseId)}`,
+    `/inventory/warehouses/${encodeURIComponent(warehouseId)}`,
     body,
     { params: { organizationId } },
   );
@@ -102,7 +104,7 @@ export function setWarehouseActive(
   action: 'enable' | 'disable',
 ): Promise<InventoryWarehouse> {
   return apiPost<InventoryWarehouse>(
-    `/warehouses/${encodeURIComponent(warehouseId)}/${action}`,
+    `/inventory/warehouses/${encodeURIComponent(warehouseId)}/${action}`,
     undefined,
     { params: { organizationId } },
   );
@@ -116,7 +118,7 @@ export function listUnitsAdmin(
   query: InventoryUnitListQuery,
   signal?: AbortSignal,
 ): Promise<Paginated<InventoryUnit>> {
-  return apiGet<Paginated<InventoryUnit>>('/units', {
+  return apiGet<Paginated<InventoryUnit>>('/inventory/units', {
     params: cleanParams(query),
     ...(signal ? { signal } : {}),
   });
@@ -127,16 +129,22 @@ export function getUnitAdmin(
   unitId: string,
   signal?: AbortSignal,
 ): Promise<InventoryUnit> {
-  return apiGet<InventoryUnit>(`/units/${encodeURIComponent(unitId)}`, {
-    params: { organizationId },
-    ...(signal ? { signal } : {}),
-  });
+  return apiGet<InventoryUnit>(
+    `/inventory/units/${encodeURIComponent(unitId)}`,
+    {
+      params: { organizationId },
+      ...(signal ? { signal } : {}),
+    },
+  );
 }
 
 export function createUnit(
   body: CreateInventoryUnitInput,
 ): Promise<InventoryUnit> {
-  return apiPost<InventoryUnit, CreateInventoryUnitInput>('/units', body);
+  return apiPost<InventoryUnit, CreateInventoryUnitInput>(
+    '/inventory/units',
+    body,
+  );
 }
 
 export function updateUnit(
@@ -145,7 +153,7 @@ export function updateUnit(
   body: UpdateInventoryUnitInput,
 ): Promise<InventoryUnit> {
   return apiPatch<InventoryUnit, UpdateInventoryUnitInput>(
-    `/units/${encodeURIComponent(unitId)}`,
+    `/inventory/units/${encodeURIComponent(unitId)}`,
     body,
     { params: { organizationId } },
   );
@@ -157,7 +165,7 @@ export function setUnitActive(
   action: 'enable' | 'disable',
 ): Promise<InventoryUnit> {
   return apiPost<InventoryUnit>(
-    `/units/${encodeURIComponent(unitId)}/${action}`,
+    `/inventory/units/${encodeURIComponent(unitId)}/${action}`,
     undefined,
     { params: { organizationId } },
   );
@@ -171,7 +179,7 @@ export function listItemGroupsAdmin(
   query: InventoryItemGroupListQuery,
   signal?: AbortSignal,
 ): Promise<Paginated<InventoryItemGroup>> {
-  return apiGet<Paginated<InventoryItemGroup>>('/item-groups', {
+  return apiGet<Paginated<InventoryItemGroup>>('/inventory/item-groups', {
     params: cleanParams(query),
     ...(signal ? { signal } : {}),
   });
@@ -183,7 +191,7 @@ export function getItemGroupAdmin(
   signal?: AbortSignal,
 ): Promise<InventoryItemGroup> {
   return apiGet<InventoryItemGroup>(
-    `/item-groups/${encodeURIComponent(itemGroupId)}`,
+    `/inventory/item-groups/${encodeURIComponent(itemGroupId)}`,
     {
       params: { organizationId },
       ...(signal ? { signal } : {}),
@@ -195,7 +203,7 @@ export function createItemGroup(
   body: CreateInventoryItemGroupInput,
 ): Promise<InventoryItemGroup> {
   return apiPost<InventoryItemGroup, CreateInventoryItemGroupInput>(
-    '/item-groups',
+    '/inventory/item-groups',
     body,
   );
 }
@@ -206,7 +214,7 @@ export function updateItemGroup(
   body: UpdateInventoryItemGroupInput,
 ): Promise<InventoryItemGroup> {
   return apiPatch<InventoryItemGroup, UpdateInventoryItemGroupInput>(
-    `/item-groups/${encodeURIComponent(itemGroupId)}`,
+    `/inventory/item-groups/${encodeURIComponent(itemGroupId)}`,
     body,
     { params: { organizationId } },
   );
@@ -218,7 +226,7 @@ export function setItemGroupActive(
   action: 'enable' | 'disable',
 ): Promise<InventoryItemGroup> {
   return apiPost<InventoryItemGroup>(
-    `/item-groups/${encodeURIComponent(itemGroupId)}/${action}`,
+    `/inventory/item-groups/${encodeURIComponent(itemGroupId)}/${action}`,
     undefined,
     { params: { organizationId } },
   );
@@ -232,7 +240,7 @@ export function listItemsAdmin(
   query: InventoryItemListQuery,
   signal?: AbortSignal,
 ): Promise<Paginated<InventoryItem>> {
-  return apiGet<Paginated<InventoryItem>>('/items', {
+  return apiGet<Paginated<InventoryItem>>('/inventory/items', {
     params: cleanParams(query),
     ...(signal ? { signal } : {}),
   });
@@ -243,16 +251,22 @@ export function getItemAdmin(
   itemId: string,
   signal?: AbortSignal,
 ): Promise<InventoryItem> {
-  return apiGet<InventoryItem>(`/items/${encodeURIComponent(itemId)}`, {
-    params: { organizationId },
-    ...(signal ? { signal } : {}),
-  });
+  return apiGet<InventoryItem>(
+    `/inventory/items/${encodeURIComponent(itemId)}`,
+    {
+      params: { organizationId },
+      ...(signal ? { signal } : {}),
+    },
+  );
 }
 
 export function createItem(
   body: CreateInventoryItemInput,
 ): Promise<InventoryItem> {
-  return apiPost<InventoryItem, CreateInventoryItemInput>('/items', body);
+  return apiPost<InventoryItem, CreateInventoryItemInput>(
+    '/inventory/items',
+    body,
+  );
 }
 
 export function updateItem(
@@ -261,7 +275,7 @@ export function updateItem(
   body: UpdateInventoryItemInput,
 ): Promise<InventoryItem> {
   return apiPatch<InventoryItem, UpdateInventoryItemInput>(
-    `/items/${encodeURIComponent(itemId)}`,
+    `/inventory/items/${encodeURIComponent(itemId)}`,
     body,
     { params: { organizationId } },
   );
@@ -273,7 +287,7 @@ export function setItemActive(
   action: 'enable' | 'disable',
 ): Promise<InventoryItem> {
   return apiPost<InventoryItem>(
-    `/items/${encodeURIComponent(itemId)}/${action}`,
+    `/inventory/items/${encodeURIComponent(itemId)}/${action}`,
     undefined,
     { params: { organizationId } },
   );
@@ -287,18 +301,32 @@ export function listUnitConversions(
   query: InventoryUnitConversionListQuery,
   signal?: AbortSignal,
 ): Promise<Paginated<InventoryUnitConversion>> {
-  return apiGet<Paginated<InventoryUnitConversion>>('/unit-conversions', {
-    params: cleanParams(query),
-    ...(signal ? { signal } : {}),
-  });
+  return apiGet<Paginated<InventoryUnitConversion>>(
+    '/inventory/unit-conversions',
+    {
+      params: cleanParams(query),
+      ...(signal ? { signal } : {}),
+    },
+  );
 }
 
 export function createUnitConversion(
   body: CreateInventoryUnitConversionInput,
 ): Promise<InventoryUnitConversion> {
   return apiPost<InventoryUnitConversion, CreateInventoryUnitConversionInput>(
-    '/unit-conversions',
+    '/inventory/unit-conversions',
     body,
+  );
+}
+
+/** Backend-selected effective version, item-specific before global. */
+export function resolveUnitConversion(
+  query: ResolveInventoryUnitConversionQuery,
+  signal?: AbortSignal,
+): Promise<ResolveInventoryUnitConversionResponse> {
+  return apiGet<ResolveInventoryUnitConversionResponse>(
+    '/inventory/unit-conversions/resolve',
+    { params: cleanParams(query), ...(signal ? { signal } : {}) },
   );
 }
 
