@@ -300,6 +300,24 @@ export function WorkspaceProvider({
     writer.schedule(serializeWorkspace(state));
   }, [ready, state, writer]);
   useEffect(() => () => writer.cancel(), [writer]);
+  /*
+   * The writer is idle-debounced; a refresh or tab close can happen BEFORE
+   * the queued callback runs and would silently lose the window list (D-6).
+   * `pagehide`/hidden-`visibilitychange` flush the pending snapshot
+   * synchronously — sessionStorage writes are legal in both handlers.
+   */
+  useEffect(() => {
+    const onPageHide = () => writer.flush();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') writer.flush();
+    };
+    window.addEventListener('pagehide', onPageHide);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [writer]);
 
   /* ---- Browser URL mirrors the active window (`replace` only, W-07) ---- */
   const outerLocation = useLocation();

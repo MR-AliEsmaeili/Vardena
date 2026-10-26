@@ -253,6 +253,44 @@ describe('persistence (§6.10·الف)', () => {
     expect(parsed.activeId).toBe(captured!.state.activeId);
   });
 
+  it('flushes the queued snapshot on pagehide — a quick refresh keeps the list (D-6)', () => {
+    renderProvider();
+    act(() => {
+      captured!.open('/app/quick-refresh');
+    });
+    // Still queued in the idle callback — nothing stored yet.
+    expect(sessionStorage.getItem(WORKSPACE_STORAGE_KEY)).toBeNull();
+    // Unloading flushes synchronously.
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    const raw = sessionStorage.getItem(WORKSPACE_STORAGE_KEY);
+    expect(raw).not.toBeNull();
+    const parsed = JSON.parse(raw!) as {
+      windows: { basePath: string }[];
+    };
+    expect(parsed.windows.map((w) => w.basePath)).toContain(
+      '/app/quick-refresh',
+    );
+    // The hidden-visibility path flushes too.
+    act(() => {
+      captured!.open('/app/hidden-flush');
+    });
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'hidden',
+      configurable: true,
+    });
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    const rawHidden = sessionStorage.getItem(WORKSPACE_STORAGE_KEY);
+    expect(rawHidden).toContain('/app/hidden-flush');
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'visible',
+      configurable: true,
+    });
+  });
+
   it('writes nothing while the shell is not ready', async () => {
     renderProvider({ ready: false });
     await settle();

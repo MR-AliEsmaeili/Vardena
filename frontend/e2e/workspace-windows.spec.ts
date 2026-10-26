@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { t } from '../src/lib/i18n';
 import { installApiStub } from './fixtures/api';
 
@@ -15,13 +15,13 @@ const TONES_KEY = 'vardena:module-tones:v1';
 
 /** The ACTIVE window's panel — hidden siblings stay in the DOM (keep-alive),
  *  so page-level getByTestId would match more than one element. */
-function activePanel(page: import('@playwright/test').Page) {
+function activePanel(page: Page) {
   return page.locator(
     'section[data-testid="workspace-window"][data-active="true"]',
   );
 }
 
-function tabPaths(page: import('@playwright/test').Page) {
+function tabPaths(page: Page) {
   return page
     .getByTestId('workspace-tab')
     .evaluateAll((elements) =>
@@ -29,6 +29,21 @@ function tabPaths(page: import('@playwright/test').Page) {
         (element) => (element as HTMLElement).dataset['windowPath'] ?? '',
       ),
     );
+}
+
+/**
+ * The persistence writer is idle-debounced and flushes on pagehide; before a
+ * full navigation wait for the snapshot to actually exist, so the next load's
+ * restore (D-6) is deterministic instead of racing the idle callback.
+ */
+async function expectSnapshotPersisted(page: Page) {
+  await expect
+    .poll(async () =>
+      page.evaluate(([key]) => window.sessionStorage.getItem(key), [
+        WORKSPACE_KEY,
+      ] as const),
+    )
+    .not.toBeNull();
 }
 
 /** Twelve real, stubbed routes — exactly the hard cap (D-2). */
@@ -68,6 +83,7 @@ test.describe('workspace windows — dock, restore, cap', () => {
   }) => {
     await page.goto('/app/inventory/items');
     await expect(activePanel(page).getByTestId('items-page')).toBeVisible();
+    await expectSnapshotPersisted(page);
 
     // A second address (full navigation) appends its own window next to the
     // restored one — the deep link never REPLACES the session's list.
@@ -95,12 +111,16 @@ test.describe('workspace windows — dock, restore, cap', () => {
     page,
   }) => {
     await page.goto('/app/inventory/items');
+    await expectSnapshotPersisted(page);
     await page.goto('/app/admin/users');
+    await expect(page.getByTestId('workspace-tab')).toHaveCount(2);
 
     // Activate the items window and give it page-local state (a filter).
     await page.getByTestId('workspace-tab').first().click();
     await page.waitForURL('**/app/inventory/items');
-    await activePanel(page).getByLabel(t.inventoryMaster.code).fill('0002');
+    await activePanel(page)
+      .getByRole('textbox', { name: t.inventoryMaster.code, exact: true })
+      .fill('0002');
     await expect(
       activePanel(page).getByRole('link', { name: 'ITM-0002' }),
     ).toBeVisible();
@@ -114,7 +134,10 @@ test.describe('workspace windows — dock, restore, cap', () => {
     await page.getByTestId('workspace-tab').first().click();
     await page.waitForURL('**/app/inventory/items');
     await expect(
-      activePanel(page).getByLabel(t.inventoryMaster.code),
+      activePanel(page).getByRole('textbox', {
+        name: t.inventoryMaster.code,
+        exact: true,
+      }),
     ).toHaveValue('0002');
     await expect(
       activePanel(page).getByRole('link', { name: 'ITM-0002' }),
@@ -124,9 +147,10 @@ test.describe('workspace windows — dock, restore, cap', () => {
   test('the cap dialog blocks a 13th window and never auto-closes (D-2)', async ({
     page,
   }) => {
-    await page.goto('/app');
-    // Seed a full 12-window snapshot (paths the strict restore accepts).
-    await page.evaluate(
+    // Seed a full 12-window snapshot BEFORE the app boots (paths the strict
+    // restore accepts). addInitScript avoids racing the boot's own persistence
+    // write, which would overwrite a post-load seed.
+    await page.addInitScript(
       ([key, paths]) => {
         const windows = paths.map((path, index) => ({
           id: `e2e-window-${String(index).padStart(4, '0')}`,
@@ -145,7 +169,8 @@ test.describe('workspace windows — dock, restore, cap', () => {
       [WORKSPACE_KEY, CAP_PATHS] as const,
     );
 
-    // A 13th address hits the cap: dialog instead of a silent eviction.
+    // The first (and only) navigation is already the 13th address: the cap
+    // must answer with a dialog instead of a silent eviction.
     await page.goto('/app/licensing/devices');
     await expect(page.getByTestId('workspace-dock')).toBeVisible();
     await expect(page.getByTestId('workspace-tab')).toHaveCount(12);
@@ -167,7 +192,9 @@ test.describe('workspace windows — dock, restore, cap', () => {
     await page.goto('/app/inventory/items/new');
     const form = activePanel(page).getByTestId('item-form');
     await expect(form).toBeVisible();
-    await activePanel(page).getByLabel(t.inventoryMaster.code).fill('0001');
+    await activePanel(page)
+      .getByRole('textbox', { name: t.inventoryMaster.code, exact: true })
+      .fill('0001');
 
     // Closing now must be held: dialog first, window untouched on cancel.
     await page.getByTestId('workspace-tab-close').click();
@@ -195,6 +222,7 @@ test.describe('workspace windows — shortcuts (§4.8)', () => {
   test.beforeEach(async ({ page }) => {
     await installApiStub(page);
     await page.goto('/app/inventory/items');
+    await expectSnapshotPersisted(page);
     await page.goto('/app/admin/users');
     await expect(page.getByTestId('workspace-tab')).toHaveCount(2);
   });
