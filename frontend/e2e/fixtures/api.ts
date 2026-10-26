@@ -105,7 +105,7 @@ export async function installApiStub(
       await json(route, paginated(seed.roles, url));
       return;
     }
-    if (path === '/items') {
+    if (path === '/inventory/items') {
       const groupId = url.searchParams.get('itemGroupId');
       const items =
         groupId === null || groupId === ''
@@ -114,7 +114,7 @@ export async function installApiStub(
       await json(route, paginated(items, url));
       return;
     }
-    if (path === '/item-groups') {
+    if (path === '/inventory/item-groups') {
       await json(route, paginated(seed.itemGroups, url));
       return;
     }
