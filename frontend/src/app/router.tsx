@@ -16,6 +16,9 @@ import { AccountCreatePage } from '@/features/accounting/master-data/account-cre
 import { AccountingPeriodsPage } from '@/features/accounting/master-data/accounting-periods-page';
 import { AccountingPeriodFormPage } from '@/features/accounting/master-data/accounting-period-form-page';
 import { AccountsPage } from '@/features/accounting/master-data/accounts-page';
+import { ConfigurationDetailPage } from '@/features/accounting/configuration/configuration-detail-page';
+import { ConfigurationFormPage } from '@/features/accounting/configuration/configuration-form-page';
+import { ConfigurationListPage } from '@/features/accounting/configuration/configuration-list-page';
 import { FinancialAreaFormPage } from '@/features/accounting/master-data/financial-area-form-page';
 import { FinancialAreasPage } from '@/features/accounting/master-data/financial-areas-page';
 import { FiscalYearsPage } from '@/features/accounting/master-data/fiscal-years-page';
@@ -271,6 +274,61 @@ export function AppRoutes() {
               <Route
                 path="periods/new"
                 element={<AccountingPeriodFormPage />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[
+                    PERMISSIONS.accounting.accountingConfigurationView,
+                  ]}
+                />
+              }
+            >
+              <Route
+                path="configurations"
+                element={<ConfigurationListPage />}
+              />
+              <Route
+                path="configurations/:configurationId"
+                element={<ConfigurationDetailPage />}
+              />
+              <Route
+                element={
+                  <RequirePermission
+                    permissions={[
+                      PERMISSIONS.accounting.accountingConfigurationConfigure,
+                    ]}
+                  />
+                }
+              >
+                <Route
+                  path="configurations/:configurationId/edit"
+                  element={<ConfigurationFormPage mode="edit" />}
+                />
+              </Route>
+            </Route>
+
+            {/*
+              `POST /accounting-configurations` enforces exactly
+              `Accounting.AccountingConfiguration.Configure` and does not
+              require `.View`, so the create route is a SIBLING of the
+              View-gated group (ACC-06) — a Configure-only principal is never
+              blocked here.
+            */}
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[
+                    PERMISSIONS.accounting.accountingConfigurationConfigure,
+                  ]}
+                />
+              }
+            >
+              <Route
+                path="configurations/new"
+                element={<ConfigurationFormPage mode="create" />}
               />
             </Route>
 

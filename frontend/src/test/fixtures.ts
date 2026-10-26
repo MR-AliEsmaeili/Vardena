@@ -1,5 +1,6 @@
 import type {
   AccountBalance,
+  AccountingConfiguration,
   Branch,
   AccountStatement,
   AccountingDocument,
@@ -244,6 +245,52 @@ export const testFiscalYear: FiscalYear = {
   createdAt: '2026-01-01T08:00:00.000Z',
   updatedAt: '2026-01-01T08:00:00.000Z',
 } as FiscalYear;
+
+/**
+ * One accounting-configuration version (ACC-06). The level shape is the server
+ * response shape, `pattern` is the server-computed summary (`digits joined with
+ * ' + '`), and timestamps are real ISO UTC instants.
+ */
+export const testAccountingConfiguration: AccountingConfiguration = {
+  id: 'config-1',
+  organizationId: 'org-1',
+  code: 'DEFAULT',
+  name: 'پیکربندی اصلی',
+  versionNumber: 1,
+  status: 'DRAFT',
+  effectiveFrom: '2026-03-20T20:30:00.000Z',
+  operationallyUsedAt: null,
+  isOperationallyUsed: false,
+  pattern: '2 + 2 + 4',
+  levels: [
+    {
+      id: 'config-level-1',
+      levelIndex: 1,
+      title: 'گروه',
+      digitLength: 2,
+      defaultIsPostable: false,
+      levelKind: 'group',
+    },
+    {
+      id: 'config-level-2',
+      levelIndex: 2,
+      title: 'کل',
+      digitLength: 2,
+      defaultIsPostable: false,
+      levelKind: 'general',
+    },
+    {
+      id: 'config-level-3',
+      levelIndex: 3,
+      title: 'معین',
+      digitLength: 4,
+      defaultIsPostable: true,
+      levelKind: null,
+    },
+  ],
+  createdAt: '2026-03-01T08:00:00.000Z',
+  updatedAt: '2026-03-01T08:00:00.000Z',
+};
 
 export function paginated<TItem>(items: TItem[]): Paginated<TItem> {
   return { items, total: items.length, page: 1, pageSize: 100 };

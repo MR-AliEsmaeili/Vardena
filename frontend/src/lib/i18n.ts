@@ -2161,6 +2161,108 @@ export const fa = {
     setupPartialFailure:
       'برخی گام‌ها انجام نشد. وضعیت واقعی سرور دوباره خوانده می‌شود؛ فقط گام‌های باقی‌مانده قابل تلاش دوباره‌اند.',
   },
+  // Accounting-configuration administration (ACC-06). One namespace for the
+  // whole surface: list, version form, level editor, detail and the
+  // publish/delete confirmations. The domain term stays «پیکربندی حسابداری»
+  // and the version lifecycle keeps the backend's own words
+  // (DRAFT/ACTIVE/SUPERSEDED).
+  accountingConfig: {
+    title: 'پیکربندی حسابداری',
+    subtitle:
+      'نسخه‌های پیکربندی، شکل کد حساب (تعداد سطح، طول هر سطح و پیش‌فرض قابلیت ثبت) را تعیین می‌کنند و پیش‌نیاز ایجاد حساب هستند.',
+    nav: 'پیکربندی حسابداری',
+    newVersion: 'نسخهٔ جدید',
+    createTitle: 'ایجاد نسخهٔ پیکربندی',
+    editTitle: 'ویرایش نسخهٔ پیکربندی',
+    code: 'کد پیکربندی',
+    name: 'نام نسخه',
+    effectiveFrom: 'تاریخ لازم‌الاجرا',
+    effectiveFromHint:
+      'اختیاری؛ این فیلد یک لحظهٔ زمانی (Instant) است و ابتدای روز انتخابی در منطقهٔ زمانی سازمان ثبت می‌شود.',
+    status: 'وضعیت',
+    versionNumber: 'شمارهٔ نسخه',
+    pattern: 'الگوی کد',
+    patternPreview: 'پیش‌نمایش الگو (مقدار قطعی از سرور می‌آید)',
+    levels: 'سطوح کد حساب',
+    levelIndex: 'سطح',
+    levelTitle: 'عنوان سطح',
+    digitLength: 'تعداد ارقام',
+    defaultPostable: 'پیش‌فرض قابل ثبت',
+    levelKind: 'نوع سطح',
+    levelKindNone: 'بدون نوع',
+    levelKindGroup: 'گروه',
+    levelKindGeneral: 'کل',
+    levelKindSubsidiary: 'معین',
+    levelKindDetail: 'تفصیلی',
+    addLevel: 'افزودن سطح',
+    removeLevel: 'حذف سطح آخر',
+    levelsHint:
+      'سطوح پیوسته‌اند (۱ تا n) و فقط از انتها حذف می‌شوند؛ حذف از میانه، شکاف در شمارهٔ سطح می‌سازد.',
+    publish: 'انتشار',
+    publishTitle: 'انتشار نسخهٔ پیکربندی',
+    publishBody:
+      'نسخهٔ فعال فعلی (در صورت وجود) به SUPERSEDED منتقل می‌شود و این نسخه شکل کد حساب را تعیین می‌کند. حساب‌های موجود تغییر نمی‌کنند.',
+    publishConfirm: 'انتشار نسخه',
+    publishing: 'در حال انتشار…',
+    published: 'نسخهٔ پیکربندی منتشر شد.',
+    delete: 'حذف',
+    deleteTitle: 'حذف نسخهٔ پیش‌نویس',
+    deleteBody:
+      'این حذف برگشت‌ناپذیر است: نسخهٔ پیش‌نویس و سطوح آن برای همیشه حذف می‌شوند.',
+    deleteConfirm: 'حذف نسخه',
+    deleting: 'در حال حذف…',
+    deleted: 'نسخهٔ پیش‌نویس حذف شد.',
+    operationallyUsed: 'در حال استفاده',
+    operationallyUsedHint:
+      'این نسخه در عملیات واقعی استفاده شده است و حذف نمی‌شود.',
+    readOnlyPublished:
+      'نسخهٔ منتشرشده (یا جایگزین‌شده) قابل ویرایش نیست؛ نسخهٔ جدید بسازید.',
+    noConfiguration: 'هنوز پیکربندی حسابداری ندارید.',
+    noResults: 'نسخه‌ای با این فیلترها یافت نشد.',
+    emptyAction: 'ساخت نخستین نسخه',
+    view: 'مشاهده',
+    edit: 'ویرایش',
+    actions: 'عملیات',
+    backToList: 'بازگشت به فهرست پیکربندی‌ها',
+    detailTitle: 'جزئیات نسخهٔ پیکربندی',
+    createdAt: 'زمان ایجاد',
+    updatedAt: 'آخرین به‌روزرسانی',
+    save: 'ذخیره',
+    saving: 'در حال ذخیره…',
+    created: 'نسخهٔ پیش‌نویس پیکربندی ایجاد شد.',
+    updated: 'نسخهٔ پیکربندی به‌روزرسانی شد.',
+    loadFailed: 'دریافت پیکربندی حسابداری انجام نشد. دوباره تلاش کنید.',
+    saveFailed: 'ذخیرهٔ پیکربندی انجام نشد. دوباره تلاش کنید.',
+    publishFailed: 'انتشار پیکربندی انجام نشد. دوباره تلاش کنید.',
+    deleteFailed: 'حذف پیکربندی انجام نشد. دوباره تلاش کنید.',
+    levelContinuity: 'شمارهٔ سطوح باید از ۱ و بدون شکاف باشد.',
+    digitLengthInvalid: 'تعداد ارقام هر سطح باید عددی بین ۱ تا ۳۲ باشد.',
+    levelTitleRequired: 'عنوان سطح الزامی است.',
+    levelKindTooLong: 'نوع سطح نباید بیش از ۲۰ نویسه باشد.',
+    codeRequired: 'کد پیکربندی الزامی است.',
+    nameRequired: 'نام نسخه الزامی است.',
+    effectiveFromInvalid:
+      'این روز در منطقهٔ زمانی سازمان قابل تبدیل به لحظهٔ زمانی معتبر نیست؛ روز دیگری انتخاب کنید.',
+    totalLengthInvalid:
+      'مجموع ارقام سطوح نباید از ۳۲ رقم (طول کد حساب) بیشتر باشد.',
+    statusNames: {
+      DRAFT: 'پیش‌نویس',
+      ACTIVE: 'فعال',
+      SUPERSEDED: 'جایگزین‌شده',
+    },
+    // Mapped by the stable error CODE of the normalized envelope; the backend
+    // raises no `accounting.configuration.*` family, so `BusinessRuleViolation`
+    // is disambiguated by the operation that failed.
+    errorCodes: {
+      notDraft:
+        'فقط نسخهٔ پیش‌نویس قابل تغییر یا انتشار است. فهرست را تازه‌سازی کنید.',
+      deleteRefused:
+        'این نسخه پیش‌نویس نیست یا در عملیات واقعی استفاده شده و حذف نمی‌شود.',
+      versionConflict:
+        'نسخهٔ هم‌زمان دیگری ایجاد شد. فهرست را تازه‌سازی و دوباره تلاش کنید.',
+      validation: 'اطلاعات ارسالی پذیرفته نشد. سطوح و فیلدها را بررسی کنید.',
+    },
+  },
   fiscalYear: {
     new: 'سال مالی جدید',
     edit: 'ویرایش',

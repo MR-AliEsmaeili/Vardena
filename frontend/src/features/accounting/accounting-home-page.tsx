@@ -7,6 +7,7 @@ import {
   Receipt,
   Scale,
   ScrollText,
+  Settings2,
   TableProperties,
   type LucideIcon,
 } from 'lucide-react';
@@ -104,6 +105,13 @@ const MASTER_SURFACES: readonly AccountingSurface[] = [
     description: t.masterData.periodsDescription,
     icon: CalendarDays,
     permission: PERMISSIONS.accounting.accountingPeriodView,
+  },
+  {
+    to: '/app/accounting/configurations',
+    label: t.accountingConfig.nav,
+    description: t.accountingConfig.subtitle,
+    icon: Settings2,
+    permission: PERMISSIONS.accounting.accountingConfigurationView,
   },
 ];
 

@@ -278,6 +278,34 @@ export const queryKeys = {
         'drafts',
       ] as const,
 
+    /** Every configuration query of one organization (ACC-06 invalidation root). */
+    accountingConfigurationPrefix: (organizationId: string) =>
+      ['accounting', organizationId, 'accounting-configurations'] as const,
+
+    accountingConfigurationList: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+    ) =>
+      [
+        'accounting',
+        organizationId,
+        'accounting-configurations',
+        'list',
+        filters,
+      ] as const,
+
+    accountingConfigurationDetail: (
+      organizationId: string,
+      configurationId: string,
+    ) =>
+      [
+        'accounting',
+        organizationId,
+        'accounting-configurations',
+        'detail',
+        configurationId,
+      ] as const,
+
     chartTree: (organizationId: string) =>
       ['accounting', organizationId, 'chart-tree'] as const,
 

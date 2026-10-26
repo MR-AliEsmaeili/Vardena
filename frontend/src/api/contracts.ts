@@ -605,10 +605,46 @@ export type CodingStructureVersion =
   Schemas['CodingStructureVersionResponseDto'];
 export type CreateCodingStructureRequest =
   Schemas['CreateCodingStructureVersionDto'];
-export type AccountingConfiguration =
-  Schemas['AccountingConfigurationResponseDto'];
-export type CreateAccountingConfigurationRequest =
-  Schemas['CreateAccountingConfigurationDto'];
+/**
+ * Accounting configuration (ACC-06) — `AccountingConfigurationsController`.
+ *
+ * Refinement 1 of this file's header applies: the generated document renders
+ * every untyped nullable `date-time` (`effectiveFrom`, `operationallyUsedAt`)
+ * and the free-form `levelKind` label as `Record<string, never> | null`, while
+ * the backend DTO declares them `string | null` (an ISO UTC instant and a
+ * ≤20-character label respectively). The refinements below restore exactly the
+ * declared TypeScript type and add no wire semantic.
+ *
+ * `pattern` stays a server-computed read-only summary: it is never derived,
+ * stored or re-formatted here.
+ */
+export type AccountingConfigurationLevel = NullableString<
+  Schemas['AccountingConfigurationLevelResponseDto'],
+  'levelKind'
+>;
+export type AccountingConfiguration = NullableString<
+  Omit<Schemas['AccountingConfigurationResponseDto'], 'levels'> & {
+    levels: AccountingConfigurationLevel[];
+  },
+  'effectiveFrom' | 'operationallyUsedAt'
+>;
+export type AccountingConfigurationLevelInput = OptionalNullableString<
+  Schemas['AccountingConfigurationLevelInputDto'],
+  'levelKind'
+>;
+export type CreateAccountingConfigurationRequest = OptionalNullableString<
+  Omit<Schemas['CreateAccountingConfigurationDto'], 'levels'> & {
+    levels: AccountingConfigurationLevelInput[];
+  },
+  'effectiveFrom'
+>;
+/** `PATCH /accounting-configurations/:id` — `code` is deliberately absent. */
+export type UpdateAccountingConfigurationRequest = OptionalNullableString<
+  Omit<Schemas['UpdateAccountingConfigurationDto'], 'levels'> & {
+    levels?: AccountingConfigurationLevelInput[];
+  },
+  'effectiveFrom'
+>;
 export type CodingStructureListQuery =
   operations['CodingStructuresController_list_v1']['parameters']['query'];
 export type AccountingConfigurationListQuery =
