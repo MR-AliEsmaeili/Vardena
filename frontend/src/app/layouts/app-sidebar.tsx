@@ -222,7 +222,7 @@ export function AppSidebar({
                         <li key={item.to}>
                           <Tooltip
                             content={item.label}
-                            side="end"
+                            side="left"
                             enabled={isIconOnly}
                             className="w-full"
                           >

@@ -104,7 +104,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div
-        className="pointer-events-none fixed bottom-4 start-4 flex w-[min(24rem,calc(100vw_-_2rem))] flex-col gap-2"
+        className="pointer-events-none fixed bottom-4 end-4 z-[70] flex w-[min(24rem,calc(100vw_-_2rem))] flex-col gap-2"
         aria-label={t.toasts.regionLabel}
       >
         {toasts.map((toast) => (

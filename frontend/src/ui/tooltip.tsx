@@ -12,8 +12,8 @@ import { cn } from '@/lib/utils';
 export interface TooltipProps {
   /** Text shown inside the tooltip bubble. */
   content: string;
-  /** Placement in logical RTL coordinates (`end` = inline-end, i.e., left of the sidebar in RTL). */
-  side?: 'top' | 'bottom' | 'end';
+  /** Placement; `left` is a physical side for controls such as the collapsed RTL sidebar. */
+  side?: 'top' | 'bottom' | 'end' | 'left';
   /** When false, renders children without showing a tooltip bubble. */
   enabled?: boolean;
   className?: string;
@@ -57,7 +57,7 @@ export function Tooltip({
     const anchor = anchorRef.current;
     if (anchor === null) return;
     const rect = anchor.getBoundingClientRect();
-    if (side === 'end') {
+    if (side === 'end' || side === 'left') {
       setPosition({
         top: rect.top + rect.height / 2,
         left: rect.left - GAP_PX,

@@ -7,7 +7,9 @@ import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
 import { persistSidebarState, readSidebarState } from '@/lib/sidebar-state';
 import { AppBreadcrumb } from '../breadcrumb';
+import { ActiveWindowsBar } from './active-windows-bar';
 import { AppHeader } from './app-header';
+import { PageBackButton } from './page-back-button';
 import { AppSidebar } from './app-sidebar';
 import { BootstrapScreen, ResolvingState } from './bootstrap-states';
 import { FinancialContextGate } from './financial-context-gate';
@@ -164,6 +166,8 @@ export function AppShell() {
         isWorkspaceReady={isWorkspaceReady}
       />
 
+      {isWorkspaceReady && <ActiveWindowsBar />}
+
       <LicenseGate>
         {isWorkspaceReady ? (
           <div className="flex w-full items-start">
@@ -185,6 +189,7 @@ export function AppShell() {
               className="min-w-0 flex-1 space-y-4 px-3 py-4 sm:px-5 sm:py-5 lg:px-6"
             >
               <AppBreadcrumb />
+              <PageBackButton />
               <Outlet />
             </main>
           </div>

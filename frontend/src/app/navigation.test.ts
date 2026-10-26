@@ -137,15 +137,17 @@ describe('visibleNavigationSections', () => {
     const visible = visibleNavigationSections(
       checks([PERMISSIONS.accounting.documentView]),
     );
-    const accounting = visible.find((section) => section.id === 'accounting');
+    const accounting = visible.find(
+      (section) => section.id === 'accounting-documents',
+    );
 
     expect(accounting).toBeDefined();
     expect(accounting?.items.map((item) => item.to)).toEqual([
       '/app/accounting/documents',
       '/app/accounting/document-lines',
     ]);
-    // The domain header survives even though most of its entries are hidden.
-    expect(accounting?.label).toBe(navigationSections[1]?.label);
+    // The matching category header survives, while the other accounting groups remain permission-filtered.
+    expect(accounting?.label).toBe(t.nav.accountingDocumentsGroup);
     expect(accounting?.tone).toBe('accounting');
   });
 
@@ -171,7 +173,7 @@ describe('visibleNavigationSections', () => {
 
     expect(
       visible
-        .find((section) => section.id === 'accounting')
+        .find((section) => section.id === 'accounting-documents')
         ?.items.map((item) => item.label),
     ).toEqual([t.nav.documents, t.nav.accountingDocumentLines]);
   });

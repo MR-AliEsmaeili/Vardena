@@ -123,17 +123,61 @@ export const navigationSections: readonly NavigationSection[] = [
   },
   {
     id: 'accounting',
-    label: t.nav.accounting,
-    icon: BookOpenCheck,
+    label: t.nav.accountingCoding,
+    icon: ListTree,
     tone: 'accounting',
     items: [
       {
         to: '/app/accounting',
         label: t.accounting.title,
-        icon: BookOpenCheck,
+        icon: ListTree,
         end: true,
         hubOnly: true,
       },
+      {
+        to: '/app/accounting/chart',
+        label: t.nav.chartTree,
+        icon: ListTree,
+        permissions: [PERMISSIONS.accounting.accountView],
+      },
+      {
+        to: '/app/accounting/accounts',
+        label: t.masterData.accounts,
+        icon: List,
+        permissions: [PERMISSIONS.accounting.accountView],
+      },
+      {
+        to: '/app/accounting/configurations',
+        label: t.accountingConfig.nav,
+        icon: Settings2,
+        permissions: [PERMISSIONS.accounting.accountingConfigurationView],
+      },
+      {
+        to: '/app/accounting/coding-structures',
+        label: t.nav.codingStructures,
+        icon: FolderTree,
+        permissions: [PERMISSIONS.accounting.codingStructureView],
+      },
+      {
+        to: '/app/accounting/detail-structures',
+        label: t.nav.detailStructures,
+        icon: FolderTree,
+        permissions: [PERMISSIONS.accounting.detailStructureView],
+      },
+      {
+        to: '/app/accounting/details',
+        label: t.nav.details,
+        icon: Contact,
+        permissions: [PERMISSIONS.accounting.detailView],
+      },
+    ],
+  },
+  {
+    id: 'accounting-documents',
+    label: t.nav.accountingDocumentsGroup,
+    icon: Receipt,
+    tone: 'accounting',
+    items: [
       {
         to: '/app/accounting/documents',
         label: t.nav.documents,
@@ -146,6 +190,14 @@ export const navigationSections: readonly NavigationSection[] = [
         icon: TableProperties,
         permissions: [PERMISSIONS.accounting.documentView],
       },
+    ],
+  },
+  {
+    id: 'accounting-reports',
+    label: t.nav.accountingReportsGroup,
+    icon: ScrollText,
+    tone: 'accounting',
+    items: [
       {
         to: '/app/accounting/account-statements',
         label: t.nav.accountStatements,
@@ -164,18 +216,14 @@ export const navigationSections: readonly NavigationSection[] = [
         icon: Scale,
         permissions: [PERMISSIONS.accounting.trialBalanceView],
       },
-      {
-        to: '/app/accounting/chart',
-        label: t.nav.chartTree,
-        icon: ListTree,
-        permissions: [PERMISSIONS.accounting.accountView],
-      },
-      {
-        to: '/app/accounting/accounts',
-        label: t.masterData.accounts,
-        icon: List,
-        permissions: [PERMISSIONS.accounting.accountView],
-      },
+    ],
+  },
+  {
+    id: 'accounting-settings',
+    label: t.nav.accountingSettingsGroup,
+    icon: Settings2,
+    tone: 'accounting',
+    items: [
       {
         to: '/app/accounting/financial-areas',
         label: t.masterData.financialAreas,
@@ -193,12 +241,6 @@ export const navigationSections: readonly NavigationSection[] = [
         label: t.masterData.periods,
         icon: CalendarDays,
         permissions: [PERMISSIONS.accounting.accountingPeriodView],
-      },
-      {
-        to: '/app/accounting/configurations',
-        label: t.accountingConfig.nav,
-        icon: Settings2,
-        permissions: [PERMISSIONS.accounting.accountingConfigurationView],
       },
     ],
   },

@@ -605,6 +605,18 @@ export type CodingStructureVersion =
   Schemas['CodingStructureVersionResponseDto'];
 export type CreateCodingStructureRequest =
   Schemas['CreateCodingStructureVersionDto'];
+export type UpdateCodingStructureRequest =
+  Schemas['UpdateCodingStructureVersionDto'];
+export type DetailStructureVersion = NullableString<
+  Schemas['DetailStructureVersionResponseDto'],
+  'title'
+>;
+export type CreateDetailStructureRequest =
+  Schemas['CreateDetailStructureVersionDto'];
+export type UpdateDetailStructureRequest =
+  Schemas['UpdateDetailStructureVersionDto'];
+export type DetailStructureListQuery =
+  operations['DetailStructuresController_list_v1']['parameters']['query'];
 /**
  * Accounting configuration (ACC-06) — `AccountingConfigurationsController`.
  *
@@ -780,6 +792,14 @@ export type ReverseAccountingDocumentInput = Omit<
 /** Detail record of a detail group (`DetailResponseDto`). */
 export type AccountingDetailListQuery =
   operations['DetailsController_list_v1']['parameters']['query'];
+export type CreateDetailRequest = OptionalNullableString<
+  Schemas['CreateDetailDto'],
+  'parentId'
+>;
+export type UpdateDetailRequest = OptionalNullableString<
+  Schemas['UpdateDetailDto'],
+  'parentId'
+>;
 export type AccountingDetail = NullableString<
   Schemas['DetailResponseDto'],
   'parentId'

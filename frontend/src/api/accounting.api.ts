@@ -9,6 +9,8 @@ import type {
   AccountListQuery,
   AccountingDetail,
   AccountingDetailListQuery,
+  CreateDetailRequest,
+  UpdateDetailRequest,
   AccountingDocument,
   AccountingDocumentLineInput,
   AccountingDocumentListQuery,
@@ -26,6 +28,11 @@ import type {
   CreateAccountingPeriodRequest,
   TransitionAccountingPeriodRequest,
   CreateCodingStructureRequest,
+  CreateDetailStructureRequest,
+  DetailStructureListQuery,
+  DetailStructureVersion,
+  UpdateCodingStructureRequest,
+  UpdateDetailStructureRequest,
   CreateFinancialAreaRequest,
   CreateFiscalYearRequest,
   DocumentTransitionInput,
@@ -416,6 +423,92 @@ export function unlinkAccountDetailGroup(
   );
 }
 
+export function getCodingStructure(
+  organizationId: string,
+  structureId: string,
+  signal?: AbortSignal,
+): Promise<CodingStructureVersion> {
+  return apiGet<CodingStructureVersion>(
+    `/coding-structures/${encodeURIComponent(structureId)}`,
+    { params: { organizationId }, ...(signal ? { signal } : {}) },
+  );
+}
+
+export function updateCodingStructureVersion(
+  organizationId: string,
+  structureId: string,
+  body: UpdateCodingStructureRequest,
+): Promise<CodingStructureVersion> {
+  return apiPatch<CodingStructureVersion, UpdateCodingStructureRequest>(
+    `/coding-structures/${encodeURIComponent(structureId)}`,
+    body,
+    { params: { organizationId } },
+  );
+}
+
+export function listDetailStructures(
+  query: DetailStructureListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<DetailStructureVersion>> {
+  return apiGet<Paginated<DetailStructureVersion>>('/detail-structures', {
+    params: cleanParams({ ...query }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+export function getActiveDetailStructure(
+  organizationId: string,
+  signal?: AbortSignal,
+): Promise<DetailStructureVersion | null> {
+  return apiGet<DetailStructureVersion | null>('/detail-structures/active', {
+    params: { organizationId },
+    ...(signal ? { signal } : {}),
+  });
+}
+
+export function getDetailStructure(
+  organizationId: string,
+  structureId: string,
+  signal?: AbortSignal,
+): Promise<DetailStructureVersion> {
+  return apiGet<DetailStructureVersion>(
+    `/detail-structures/${encodeURIComponent(structureId)}`,
+    { params: { organizationId }, ...(signal ? { signal } : {}) },
+  );
+}
+
+export function createDetailStructureVersion(
+  body: CreateDetailStructureRequest,
+): Promise<DetailStructureVersion> {
+  return apiPost<DetailStructureVersion, CreateDetailStructureRequest>(
+    '/detail-structures',
+    body,
+  );
+}
+
+export function updateDetailStructureVersion(
+  organizationId: string,
+  structureId: string,
+  body: UpdateDetailStructureRequest,
+): Promise<DetailStructureVersion> {
+  return apiPatch<DetailStructureVersion, UpdateDetailStructureRequest>(
+    `/detail-structures/${encodeURIComponent(structureId)}`,
+    body,
+    { params: { organizationId } },
+  );
+}
+
+export function publishDetailStructureVersion(
+  organizationId: string,
+  structureId: string,
+): Promise<DetailStructureVersion> {
+  return apiPost<DetailStructureVersion>(
+    `/detail-structures/${encodeURIComponent(structureId)}/publish`,
+    undefined,
+    { params: { organizationId } },
+  );
+}
+
 export function createCodingStructureVersion(
   body: CreateCodingStructureRequest,
 ): Promise<CodingStructureVersion> {
@@ -429,9 +522,9 @@ export function publishCodingStructureVersion(
   organizationId: string,
   id: string,
 ): Promise<CodingStructureVersion> {
-  return apiPost<CodingStructureVersion, Record<string, never>>(
+  return apiPost<CodingStructureVersion>(
     `/coding-structures/${encodeURIComponent(id)}/publish`,
-    {},
+    undefined,
     { params: { organizationId } },
   );
 }
@@ -791,6 +884,57 @@ export function deleteAccountingDocument(
 }
 
 export type AccountingDetailRecord = AccountingDetail;
+
+/** Full administration list; the document picker continues using its narrower read below. */
+export function listDetails(
+  query: AccountingDetailListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<AccountingDetail>> {
+  return apiGet<Paginated<AccountingDetail>>('/details', {
+    params: cleanParams({ ...query }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+export function createDetail(
+  body: CreateDetailRequest,
+): Promise<AccountingDetail> {
+  return apiPost<AccountingDetail, CreateDetailRequest>('/details', body);
+}
+
+export function updateDetail(
+  organizationId: string,
+  detailId: string,
+  body: UpdateDetailRequest,
+): Promise<AccountingDetail> {
+  return apiPatch<AccountingDetail, UpdateDetailRequest>(
+    `/details/${encodeURIComponent(detailId)}`,
+    body,
+    { params: { organizationId } },
+  );
+}
+
+export function enableDetail(
+  organizationId: string,
+  detailId: string,
+): Promise<AccountingDetail> {
+  return apiPost<AccountingDetail>(
+    `/details/${encodeURIComponent(detailId)}/enable`,
+    undefined,
+    { params: { organizationId } },
+  );
+}
+
+export function disableDetail(
+  organizationId: string,
+  detailId: string,
+): Promise<AccountingDetail> {
+  return apiPost<AccountingDetail>(
+    `/details/${encodeURIComponent(detailId)}/disable`,
+    undefined,
+    { params: { organizationId } },
+  );
+}
 
 /**
  * Postable detail options for a line's detail picker (server-filtered by the

@@ -1,7 +1,7 @@
 # ماتریس پوشش بک‌اند ↔ فرانت‌اند
 
 **وضعیت:** ACTIVE — ممیزی نقطه‌به‌نقطه
-**تاریخ ممیزی:** ۲۰۲۶-۱۰-۲۲؛ به‌روزرسانی ACC-03، ACC-04/05، ACC-06 و INV-01: ۲۰۲۶-۱۰-۲۶
+**تاریخ ممیزی:** ۲۰۲۶-۱۰-۲۶؛ به‌روزرسانی ACC-07/08/09 و نوارهای کار: ۲۰۲۶-۱۰-۲۶
 **مبنا:** `backend/src/modules/**/api/*.controller.ts` (۶۰ کنترلر) در برابر `frontend/src/app/router.tsx`، `frontend/src/api/*.api.ts` و هوک/صفحه‌های `frontend/src/features/**`.
 
 این سند فقط وضعیت را ثبت می‌کند؛ در این دور **هیچ endpoint، قرارداد یا قاعدۀ کسب‌وکار تغییر نکرده است**. هر جا «MISSING» است، یعنی UI وجود ندارد، نه اینکه بک‌اند ناقص باشد.
@@ -37,9 +37,9 @@
 | حرکات دفتر | `GET /accounting/ledger-movements` | — | **NOT_REQUIRED** — دفتر کل از endpoint گزارش خودش استفاده می‌کند؛ این مسیر مصرف مستقیم ندارد |
 | پیکربندی حساب‌داری | `GET/POST/PATCH/DELETE /accounting-configurations`, `:id/publish`, `active` | `configuration-list-page`, `configuration-form-page` (+ `configuration-levels-editor`), `configuration-detail-page`, `configuration-actions` (انتشار/حذف با تأیید) | **COMPLETE** (ACC-06؛ گیت مجوز دقیق View/Configure، ماتریس وضعیت DRAFT/ACTIVE/SUPERSEDED، `pattern` فقط نمایش مقدار سرور، `effectiveFrom` به‌صورت Instant) |
 | الگوهای دفتر پایه | `base-chart-templates`, `base-chart-template-versions`, `base-chart-adoptions` (پیش‌نمایش/پذیرش) | — | **MISSING** |
-| ساختارهای کدینگ | `coding-structures` (+`active`, `publish`) | — | **MISSING** |
-| ساختارهای تفصیلی | `detail-structures` (+`active`, `publish`) | — | **MISSING** |
-| تفصیلی‌ها | `GET /details`, `/:id`, `POST`, `PATCH`, `enable/disable` | فقط خواندن در فرم کالا/حساب | **PARTIAL** |
+| ساختارهای کدینگ | `coding-structures` (+`active`, `publish`) | فهرست نسخه‌ها با pagination/فیلتر URL، ایجاد/ویرایش پیش‌نویس، جزئیات سطوح، انتشار تأییدشده | **COMPLETE** (ACC-07؛ کد تغییرناپذیر، pattern از سرور، انتشار بدون body) |
+| ساختارهای تفصیلی | `detail-structures` (+`active`, `publish`) | فهرست نسخه‌ها، فرم سطوح مجزا از ساختار کدینگ، جزئیات و شمارش تفصیلی‌های متصل، انتشار تأییدشده | **COMPLETE** (ACC-08؛ DTO بدون `code`/`defaultIsPostable`/`levelKind`؛ backend `GET /active` مقدار `null` را برمی‌گرداند) |
+| تفصیلی‌ها | `GET /details`, `/:id`, `POST`, `PATCH`, `enable/disable` | مدیریت جدولی با فیلتر URL، والد‌یابی و لینک زیرشاخه، ایجاد/ویرایش، فعال/غیرفعال با تأیید | **COMPLETE** (ACC-09؛ کد در ویرایش تغییرناپذیر؛ DELETE در بک‌اند وجود ندارد و در UI جعل نشده؛ `listPostableDetails` دست‌نخورده است) |
 
 ## ۲) اسناد پایه — `backend/src/modules/documents`
 
