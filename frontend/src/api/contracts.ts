@@ -578,7 +578,10 @@ export type TransitionAccountingPeriodRequest =
   Schemas['TransitionAccountingPeriodDto'];
 export type Account = NullableString<
   Schemas['AccountResponseDto'],
-  'parentId' | 'codingStructureVersionId' | 'accountingConfigurationId'
+  | 'parentId'
+  | 'codingStructureVersionId'
+  | 'accountingConfigurationId'
+  | 'detailGroupId'
 >;
 
 export type FinancialAreaListQuery =
@@ -593,6 +596,11 @@ export type CreateAccountRequest = OptionalNullableString<
   Schemas['CreateAccountDto'],
   'parentId' | 'detailGroupId'
 >;
+export type UpdateAccountRequest = OptionalNullableString<
+  Schemas['UpdateAccountDto'],
+  'parentId' | 'detailGroupId'
+>;
+export type UnlinkAccountDetailGroupRequest = Schemas['UnlinkDetailGroupDto'];
 export type CodingStructureVersion =
   Schemas['CodingStructureVersionResponseDto'];
 export type CreateCodingStructureRequest =
@@ -734,6 +742,8 @@ export type ReverseAccountingDocumentInput = Omit<
 > & { documentDate?: BusinessDateInput };
 
 /** Detail record of a detail group (`DetailResponseDto`). */
+export type AccountingDetailListQuery =
+  operations['DetailsController_list_v1']['parameters']['query'];
 export type AccountingDetail = NullableString<
   Schemas['DetailResponseDto'],
   'parentId'

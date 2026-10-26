@@ -1,10 +1,17 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
-import { createAccount } from '@/api/accounting.api';
+import {
+  createAccount,
+  listDetailGroups,
+  MAX_PAGE_SIZE,
+} from '@/api/accounting.api';
 import type { Account } from '@/api/contracts';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
+import { usePermissions } from '@/features/permissions/use-permissions';
+import { useState } from 'react';
 import { queryKeys } from '@/api/query-keys';
 import { formatCount } from '@/lib/format';
 import { t } from '@/lib/i18n';
@@ -60,6 +67,7 @@ function buildSchema(
        * picker.
        */
       postability: z.enum(['DEFAULT', 'YES', 'NO']),
+      detailGroupId: z.string(),
     })
     .superRefine((values, ctx) => {
       if (values.parentId !== '' && !parentsById.has(values.parentId)) {
@@ -129,6 +137,24 @@ export function AccountCreateForm({
   organizationId: string;
 }) {
   const queryClient = useQueryClient();
+  const permissions = usePermissions();
+  const canViewDetails = permissions.has(PERMISSIONS.accounting.detailView);
+  const [groupSearch, setGroupSearch] = useState('');
+  const groups = useQuery({
+    queryKey: queryKeys.accounting.detailGroupList(organizationId, groupSearch),
+    queryFn: ({ signal }) =>
+      listDetailGroups(
+        {
+          organizationId,
+          page: 1,
+          pageSize: MAX_PAGE_SIZE,
+          isActive: true,
+          ...(groupSearch ? { search: groupSearch } : {}),
+        },
+        signal,
+      ),
+    enabled: canViewDetails,
+  });
   const configurationQuery = useActiveAccountingConfiguration(organizationId);
   const parentsQuery = useAccountParentCandidates(organizationId);
 
@@ -158,6 +184,7 @@ export function AccountCreateForm({
       accountNature: 'DUAL',
       accountType: 'BALANCE_SHEET',
       postability: 'DEFAULT',
+      detailGroupId: '',
     },
     mode: 'onSubmit',
   });
@@ -188,15 +215,23 @@ export function AccountCreateForm({
         parentId: values.parentId === '' ? null : values.parentId,
         accountNature: values.accountNature,
         accountType: values.accountType,
+        ...(canViewDetails && values.detailGroupId !== ''
+          ? { detailGroupId: values.detailGroupId }
+          : {}),
         ...(values.postability === 'DEFAULT'
           ? {}
           : { isPostable: values.postability === 'YES' }),
       }),
     onSuccess: async () => {
       form.reset();
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.accounting.all(organizationId),
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.accounting.accountPrefix(organizationId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.accounting.chartTree(organizationId),
+        }),
+      ]);
     },
   });
   const errors = form.formState.errors;
@@ -245,6 +280,13 @@ export function AccountCreateForm({
                 <p>{t.masterData.chartNotReadyForAccount}</p>
               </AlertBody>
             </Alert>
+          )}
+          {canViewDetails && groups.isError && (
+            <ApiErrorAlert
+              error={groups.error}
+              description={t.accountAdmin.groupLoadFailed}
+              onRetry={() => void groups.refetch()}
+            />
           )}
           {parentsQuery.isError && (
             <ApiErrorAlert
@@ -337,6 +379,34 @@ export function AccountCreateForm({
                 </Select>
               )}
             </FormField>
+            {canViewDetails && (
+              <FormField
+                id="account-create-group"
+                label={t.masterData.detailGroup}
+              >
+                {(props) => (
+                  <>
+                    <Input
+                      aria-label={t.accountAdmin.groupSearch}
+                      value={groupSearch}
+                      onChange={(event) => setGroupSearch(event.target.value)}
+                    />
+                    <Select
+                      {...props}
+                      {...form.register('detailGroupId')}
+                      disabled={fieldsDisabled || groups.isPending}
+                    >
+                      <option value="">{t.accountAdmin.groupNone}</option>
+                      {groups.data?.items.map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.code} — {group.title}
+                        </option>
+                      ))}
+                    </Select>
+                  </>
+                )}
+              </FormField>
+            )}
             <FormField
               id="account-postability"
               label={t.masterData.postableMode}

@@ -8,6 +8,7 @@ import type {
   AccountStatementQuery,
   AccountListQuery,
   AccountingDetail,
+  AccountingDetailListQuery,
   AccountingDocument,
   AccountingDocumentLineInput,
   AccountingDocumentListQuery,
@@ -18,6 +19,8 @@ import type {
   CodingStructureListQuery,
   CodingStructureVersion,
   CreateAccountRequest,
+  UpdateAccountRequest,
+  UnlinkAccountDetailGroupRequest,
   CreateAccountingConfigurationRequest,
   CreateAccountingDocumentInput,
   CreateAccountingPeriodRequest,
@@ -360,6 +363,56 @@ export function createAccountingPeriod(
 
 export function createAccount(body: CreateAccountRequest): Promise<Account> {
   return apiPost<Account, CreateAccountRequest>('/accounts', body);
+}
+
+export function updateAccount(
+  organizationId: string,
+  accountId: string,
+  body: UpdateAccountRequest,
+): Promise<Account> {
+  return apiPatch<Account, UpdateAccountRequest>(
+    `/accounts/${encodeURIComponent(accountId)}`,
+    body,
+    { params: { organizationId } },
+  );
+}
+
+export function enableAccount(
+  organizationId: string,
+  accountId: string,
+): Promise<Account> {
+  return apiPost<Account>(
+    `/accounts/${encodeURIComponent(accountId)}/enable`,
+    undefined,
+    {
+      params: { organizationId },
+    },
+  );
+}
+
+export function disableAccount(
+  organizationId: string,
+  accountId: string,
+): Promise<Account> {
+  return apiPost<Account>(
+    `/accounts/${encodeURIComponent(accountId)}/disable`,
+    undefined,
+    {
+      params: { organizationId },
+    },
+  );
+}
+
+export function unlinkAccountDetailGroup(
+  organizationId: string,
+  accountId: string,
+  body: UnlinkAccountDetailGroupRequest,
+): Promise<Account> {
+  return apiPost<Account, UnlinkAccountDetailGroupRequest>(
+    `/accounts/${encodeURIComponent(accountId)}/unlink-detail-group`,
+    body,
+    { params: { organizationId } },
+  );
 }
 
 export function createCodingStructureVersion(
@@ -714,6 +767,17 @@ export function listPostableDetails(
       pageSize: 50,
       sort: 'code:asc',
     }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+/** Server-filtered detail-group candidates (level 1 only). */
+export function listDetailGroups(
+  query: AccountingDetailListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<AccountingDetail>> {
+  return apiGet<Paginated<AccountingDetail>>('/details', {
+    params: cleanParams({ ...query, level: 1 }),
     ...(signal ? { signal } : {}),
   });
 }

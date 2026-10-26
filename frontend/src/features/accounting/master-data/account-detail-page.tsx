@@ -1,3 +1,8 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { getDetailRecord } from '@/api/accounting.api';
+import { queryKeys } from '@/api/query-keys';
+import { usePermissions } from '@/features/permissions/use-permissions';
 import { Link, useParams } from 'react-router-dom';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { PermissionGate } from '@/features/permissions/permission-gate';
@@ -10,6 +15,8 @@ import { PageHeader } from '@/ui/patterns/page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { Definition, DefinitionList } from './master-data-ui';
 import { useAccountDetail } from './master-data-hooks';
+import { AccountRowActions } from './account-row-actions';
+import { AccountUnlinkDetailGroupDialog } from './account-unlink-detail-group-dialog';
 
 const natureLabels = {
   DEBIT: t.masterData.natureDebit,
@@ -25,6 +32,8 @@ const typeLabels = {
 export function AccountDetailPage() {
   const organizationId = useOrganizationId();
   const { accountId } = useParams();
+  const [unlinkOpen, setUnlinkOpen] = useState(false);
+  const permissions = usePermissions();
   const query = useAccountDetail(organizationId, accountId);
   // The parent is resolved to its code/title — a raw parent ULID tells an
   // operator nothing about where this account sits in the coding tree.
@@ -32,6 +41,23 @@ export function AccountDetailPage() {
     organizationId,
     query.data?.parentId ?? undefined,
   );
+  const detailGroupId = query.data?.detailGroupId;
+  const groupQuery = useQuery({
+    queryKey: queryKeys.accounting.detailRecord(
+      organizationId ?? 'none',
+      detailGroupId ?? 'none',
+    ),
+    queryFn: ({ signal }) =>
+      getDetailRecord(
+        organizationId as string,
+        detailGroupId as string,
+        signal,
+      ),
+    enabled:
+      organizationId !== null &&
+      detailGroupId != null &&
+      permissions.has(PERMISSIONS.accounting.detailView),
+  });
   if (query.isPending) return <LoadingState rows={7} />;
   if (query.isError)
     return (
@@ -49,21 +75,49 @@ export function AccountDetailPage() {
         title={t.masterData.accountDetail}
         description={`${account.code} — ${account.title}`}
         actions={
-          account.isPostable ? (
-            <PermissionGate
-              permission={PERMISSIONS.accounting.accountStatementView}
-            >
-              <Button asChild variant="outline" size="sm">
-                <Link
-                  to={`/app/accounting/account-statements?accountId=${encodeURIComponent(account.id)}`}
+          <div className="flex flex-wrap items-center gap-2">
+            <AccountRowActions account={account} />
+            {account.detailGroupId !== null &&
+              permissions.has(
+                PERMISSIONS.accounting.accountUnlinkDetailGroup,
+              ) && (
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  onClick={() => setUnlinkOpen(true)}
                 >
-                  {t.masterData.viewStatement}
-                </Link>
-              </Button>
-            </PermissionGate>
-          ) : undefined
+                  {t.accountAdmin.unlink}
+                </Button>
+              )}
+            {account.isPostable && (
+              <PermissionGate
+                permission={PERMISSIONS.accounting.accountStatementView}
+              >
+                <Button asChild variant="outline" size="sm">
+                  <Link
+                    to={`/app/accounting/account-statements?accountId=${encodeURIComponent(account.id)}`}
+                  >
+                    {t.masterData.viewStatement}
+                  </Link>
+                </Button>
+              </PermissionGate>
+            )}
+          </div>
         }
       />
+      {unlinkOpen &&
+        organizationId !== null &&
+        account.detailGroupId !== null && (
+          <AccountUnlinkDetailGroupDialog
+            organizationId={organizationId}
+            accountId={account.id}
+            groupName={
+              groupQuery.data?.title ?? t.accountAdmin.groupUnavailable
+            }
+            onClose={() => setUnlinkOpen(false)}
+          />
+        )}
       <DefinitionList>
         <Definition label={t.masterData.fullCode}>
           <span dir="ltr" className="code">
@@ -110,6 +164,14 @@ export function AccountDetailPage() {
               ? t.masterData.postable
               : t.masterData.aggregate}
           </Badge>
+        </Definition>
+        <Definition label={t.masterData.detailGroup}>
+          {account.detailGroupId === null
+            ? t.accountAdmin.groupNone
+            : (groupQuery.data?.title ??
+              (groupQuery.isPending
+                ? t.app.loading
+                : t.accountAdmin.groupUnavailable))}
         </Definition>
         <Definition label={t.masterData.status}>
           <Badge variant={account.isActive ? 'success' : 'neutral'}>

@@ -11,6 +11,8 @@ import { AccountingDocumentLinesPage } from '@/features/accounting/documents/doc
 import { DocumentsPage } from '@/features/accounting/documents/documents-page';
 import { GeneralLedgerPage } from '@/features/accounting/general-ledger/general-ledger-page';
 import { AccountDetailPage } from '@/features/accounting/master-data/account-detail-page';
+import { AccountEditPage } from '@/features/accounting/master-data/account-edit-page';
+import { AccountCreatePage } from '@/features/accounting/master-data/account-create-page';
 import { AccountingPeriodsPage } from '@/features/accounting/master-data/accounting-periods-page';
 import { AccountingPeriodFormPage } from '@/features/accounting/master-data/accounting-period-form-page';
 import { AccountsPage } from '@/features/accounting/master-data/accounts-page';
@@ -285,6 +287,28 @@ export function AppRoutes() {
                 path="accounts/:accountId"
                 element={<AccountDetailPage />}
               />
+              <Route
+                element={
+                  <RequirePermission
+                    permissions={[PERMISSIONS.accounting.accountEdit]}
+                  />
+                }
+              >
+                <Route
+                  path="accounts/:accountId/edit"
+                  element={<AccountEditPage />}
+                />
+              </Route>
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.accounting.accountCreate]}
+                />
+              }
+            >
+              <Route path="accounts/new" element={<AccountCreatePage />} />
             </Route>
 
             <Route

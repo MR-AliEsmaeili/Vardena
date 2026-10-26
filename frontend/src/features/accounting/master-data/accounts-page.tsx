@@ -1,11 +1,11 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import { Link, useSearchParams } from 'react-router-dom';
+import { Button } from '@/ui/button';
 import type { Account } from '@/api/contracts';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { formatCount } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
-import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { DataTable } from '@/ui/patterns/data-table';
@@ -16,6 +16,7 @@ import { ChartSetupForm } from './chart-setup-form';
 import { PermissionGate } from '@/features/permissions/permission-gate';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { useAccountList } from './master-data-hooks';
+import { AccountRowActions } from './account-row-actions';
 import { useMasterDataQuery } from './use-master-data-query';
 
 const natureLabels: Record<Account['accountNature'], string> = {
@@ -73,15 +74,7 @@ const columns: ColumnDef<Account, unknown>[] = [
   {
     id: 'action',
     header: t.masterData.view,
-    cell: ({ row }) => (
-      <Button asChild variant="ghost" size="sm">
-        <Link
-          to={`/app/accounting/accounts/${encodeURIComponent(row.original.id)}`}
-        >
-          {t.masterData.view}
-        </Link>
-      </Button>
-    ),
+    cell: ({ row }) => <AccountRowActions account={row.original} />,
   },
 ];
 
@@ -105,6 +98,15 @@ export function AccountsPage() {
       <PageHeader
         title={t.masterData.accounts}
         description={t.masterData.accountsDescription}
+        actions={
+          <PermissionGate permission={PERMISSIONS.accounting.accountCreate}>
+            <Button asChild size="sm">
+              <Link to="/app/accounting/accounts/new">
+                {t.masterData.createAccount}
+              </Link>
+            </Button>
+          </PermissionGate>
+        }
       />
       {/* ChartSetupForm gates each step internally: completing setup needs
           BOTH CodingStructure.Configure and AccountingConfiguration.Configure,

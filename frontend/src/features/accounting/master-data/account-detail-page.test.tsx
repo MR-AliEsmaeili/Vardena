@@ -1,4 +1,5 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Account } from '@/api/contracts';
@@ -18,7 +19,13 @@ vi.mock('@/api/organization.api', () => ({
   listMyOrganizations: vi.fn(),
   MAX_PAGE_SIZE: 500,
 }));
-vi.mock('@/api/accounting.api', () => ({ getAccount: vi.fn() }));
+vi.mock('@/api/accounting.api', () => ({
+  getAccount: vi.fn(),
+  getDetailRecord: vi.fn(),
+  unlinkAccountDetailGroup: vi.fn(),
+  enableAccount: vi.fn(),
+  disableAccount: vi.fn(),
+}));
 
 const identityApi = await import('@/api/identity.api');
 const organizationApi = await import('@/api/organization.api');
@@ -158,5 +165,142 @@ describe('Account Detail full/local code + parent resolution', () => {
     const parentLink = await screen.findByRole('link', { name: /101/ });
     expect(parentLink).toHaveTextContent('دارایی ثابت');
     expect(screen.queryByText('acc-parent')).not.toBeInTheDocument();
+  });
+});
+
+describe('Account administration and destructive unlink', () => {
+  function grant(...codes: string[]) {
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [
+        'Organization.Organization.View',
+        PERMISSIONS.accounting.accountView,
+        ...codes,
+      ],
+    });
+  }
+
+  it('does not offer unlink on an unlinked account even with permission', async () => {
+    grant(PERMISSIONS.accounting.accountUnlinkDetailGroup);
+    renderDetail();
+    await screen.findByRole('heading', { name: t.masterData.accountDetail });
+    expect(
+      screen.queryByRole('button', { name: t.accountAdmin.unlink }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not offer unlink on a linked account without permission', async () => {
+    grant();
+    vi.mocked(accountingApi.getAccount).mockResolvedValue({
+      ...postableAccount,
+      detailGroupId: 'group-1',
+    });
+    renderDetail();
+    await screen.findByRole('heading', { name: t.masterData.accountDetail });
+    expect(
+      screen.queryByRole('button', { name: t.accountAdmin.unlink }),
+    ).not.toBeInTheDocument();
+    expect(accountingApi.getDetailRecord).not.toHaveBeenCalled();
+  });
+
+  it('requires the acknowledgement and sends exactly confirmUnlink true', async () => {
+    const user = userEvent.setup();
+    grant(
+      PERMISSIONS.accounting.accountUnlinkDetailGroup,
+      PERMISSIONS.accounting.detailView,
+    );
+    vi.mocked(accountingApi.getAccount).mockResolvedValue({
+      ...postableAccount,
+      detailGroupId: 'group-1',
+    });
+    vi.mocked(accountingApi.getDetailRecord).mockResolvedValue({
+      id: 'group-1',
+      title: 'گروه بانک',
+    } as never);
+    vi.mocked(accountingApi.unlinkAccountDetailGroup).mockResolvedValue({
+      ...postableAccount,
+      detailGroupId: null,
+    });
+    renderDetail();
+    await screen.findByRole('button', { name: t.accountAdmin.unlink });
+    await screen.findByText('گروه بانک');
+    await user.click(
+      screen.getByRole('button', { name: t.accountAdmin.unlink }),
+    );
+    expect(screen.getByText(t.accountAdmin.unlinkWarning)).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+    // There are two identically labelled controls; the dialog submit is the last one.
+    const submits = screen.getAllByRole('button', {
+      name: t.accountAdmin.unlink,
+    });
+    expect(submits.at(-1)).toBeDisabled();
+    expect(accountingApi.unlinkAccountDetailGroup).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole('checkbox', { name: t.accountAdmin.unlinkAcknowledge }),
+    );
+    await user.click(submits.at(-1)!);
+    await waitFor(() =>
+      expect(accountingApi.unlinkAccountDetailGroup).toHaveBeenCalledWith(
+        'org-1',
+        'acc-1',
+        { confirmUnlink: true },
+      ),
+    );
+  });
+
+  it('keeps the destructive dialog open after a backend refusal', async () => {
+    const user = userEvent.setup();
+    grant(PERMISSIONS.accounting.accountUnlinkDetailGroup);
+    vi.mocked(accountingApi.getAccount).mockResolvedValue({
+      ...postableAccount,
+      detailGroupId: 'group-1',
+    });
+    vi.mocked(accountingApi.unlinkAccountDetailGroup).mockRejectedValue(
+      new Error('backend refused'),
+    );
+    renderDetail();
+    await user.click(
+      await screen.findByRole('button', { name: t.accountAdmin.unlink }),
+    );
+    await user.click(
+      screen.getByRole('checkbox', { name: t.accountAdmin.unlinkAcknowledge }),
+    );
+    await user.click(
+      screen.getAllByRole('button', { name: t.accountAdmin.unlink }).at(-1)!,
+    );
+    expect(
+      await screen.findByText(t.accountAdmin.unlinkFailed),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('offers edit only with Edit and confirms disable before sending', async () => {
+    const user = userEvent.setup();
+    grant(
+      PERMISSIONS.accounting.accountEdit,
+      PERMISSIONS.accounting.accountDisable,
+    );
+    vi.mocked(accountingApi.disableAccount).mockResolvedValue({
+      ...postableAccount,
+      isActive: false,
+    });
+    renderDetail();
+    expect(
+      await screen.findByRole('link', { name: t.accountAdmin.edit }),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', { name: t.accountAdmin.disable }),
+    );
+    expect(accountingApi.disableAccount).not.toHaveBeenCalled();
+    await user.click(
+      screen.getAllByRole('button', { name: t.accountAdmin.disable }).at(-1)!,
+    );
+    await waitFor(() =>
+      expect(accountingApi.disableAccount).toHaveBeenCalledWith(
+        'org-1',
+        'acc-1',
+      ),
+    );
   });
 });

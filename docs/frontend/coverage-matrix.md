@@ -1,7 +1,7 @@
 # ماتریس پوشش بک‌اند ↔ فرانت‌اند
 
 **وضعیت:** ACTIVE — ممیزی نقطه‌به‌نقطه
-**تاریخ ممیزی:** ۲۰۲۶-۱۰-۲۲؛ به‌روزرسانی ACC-03: ۲۰۲۶-۱۰-۲۶
+**تاریخ ممیزی:** ۲۰۲۶-۱۰-۲۲؛ به‌روزرسانی ACC-03 و پیشرفت ACC-04/05: ۲۰۲۶-۱۰-۲۶
 **مبنا:** `backend/src/modules/**/api/*.controller.ts` (۶۰ کنترلر) در برابر `frontend/src/app/router.tsx`، `frontend/src/api/*.api.ts` و هوک/صفحه‌های `frontend/src/features/**`.
 
 این سند فقط وضعیت را ثبت می‌کند؛ در این دور **هیچ endpoint، قرارداد یا قاعدۀ کسب‌وکار تغییر نکرده است**. هر جا «MISSING» است، یعنی UI وجود ندارد، نه اینکه بک‌اند ناقص باشد.
@@ -29,7 +29,7 @@
 | صورت حساب | `GET /accounting/account-statements` | `account-statement-page` | **COMPLETE** |
 | دفتر کل | `GET /accounting/general-ledger` | `general-ledger-page` | **COMPLETE** |
 | تراز آزمایشی | `GET /accounting/trial-balance` | `trial-balance-page` | **COMPLETE** |
-| حساب‌ها (master) | `GET /accounts`, `/:id`, `POST`, `PATCH`, `enable/disable`, `unlink-detail-group` | فهرست + جزئیات | **PARTIAL** — ایجاد/ویرایش/فعال‌سازی حساب و جداکردن گروه تفصیلی UI ندارد |
+| حساب‌ها (master) | `GET /accounts`, `/:id`, `POST`, `PATCH`, `enable/disable`, `unlink-detail-group` | فهرست + جزئیات + فرم ایجاد/ویرایش + تأیید فعال‌سازی/جداکردن گروه | **PARTIAL** — ACC-04/05 UI و تست‌های متمرکز افزوده شد؛ راهنمای پیکربندی و انتخابگر تفصیلی/ساختار فعال در گرو ACC-06/08/09، OQ-95 و راستی‌آزمایی نهایی است |
 | نواحی مالی | `GET /financial-areas`, `GET /:id`, `POST`, `PATCH`, `enable/disable` | فهرست + فرم ایجاد/ویرایش (`financial-area-form-page`) + اکشن‌های ردیف (ویرایش، تعیین پیش‌فرض، فعال/غیرفعال با تأیید) | **COMPLETE** — همه عملیات قرارداد با گیت مجوز دقیق هر endpoint (ACC-01) |
 | سال‌های مالی | `GET /fiscal-years`, `GET /:id`, `POST`, `PATCH`, `close/reopen/seal/unseal` | فهرست + فرم ایجاد/ویرایش + گذارهای چرخه عمر با دلیل اجباری و گیت مجوز دقیق | **COMPLETE** (ACC-02) |
 | دوره‌های حسابداری | `GET /accounting-periods`, `POST`, `close/reopen/seal` | فهرست، فرم ایجاد (شناسهٔ دستی برای مجوز Open-only)، اکشن‌های گذار با دلیل و ماتریس وضعیت منطبق با بک‌اند | **COMPLETE** (ACC-03؛ `sealed → open` پس از رفع مهر سال نیز از UI ممکن است) |

@@ -250,6 +250,9 @@ export const queryKeys = {
         filters,
       ] as const,
 
+    accountPrefix: (organizationId: string) =>
+      ['accounting', organizationId, 'accounts'] as const,
+
     accountList: (organizationId: string, filters: Record<string, unknown>) =>
       ['accounting', organizationId, 'accounts', 'list', filters] as const,
 
@@ -327,6 +330,9 @@ export const queryKeys = {
 
     postableDetails: (organizationId: string, search: string) =>
       ['accounting', organizationId, 'details', 'postable', search] as const,
+
+    detailGroupList: (organizationId: string, search: string) =>
+      ['accounting', organizationId, 'detail-groups', search] as const,
 
     detailRecord: (organizationId: string, detailId: string) =>
       ['accounting', organizationId, 'details', 'detail', detailId] as const,
