@@ -128,6 +128,10 @@ export const PERMISSIONS = {
     accountingPeriodReopen: 'Accounting.AccountingPeriod.Reopen',
     accountingPeriodSeal: 'Accounting.AccountingPeriod.Seal',
     accountCreate: 'Accounting.Account.Create',
+    accountEdit: 'Accounting.Account.Edit',
+    accountEnable: 'Accounting.Account.Enable',
+    accountDisable: 'Accounting.Account.Disable',
+    accountUnlinkDetailGroup: 'Accounting.Account.UnlinkDetailGroup',
     codingStructureConfigure: 'Accounting.CodingStructure.Configure',
     accountingConfigurationView: 'Accounting.AccountingConfiguration.View',
     accountingConfigurationConfigure:
