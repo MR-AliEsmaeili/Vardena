@@ -115,10 +115,15 @@ export function AccountsPage() {
         <ChartSetupForm organizationId={organizationId} />
       )}
       {organizationId !== null && (
-        <PermissionGate permission={PERMISSIONS.accounting.accountCreate}>
-          {/* The form loads its own eligible-parent candidates (active
-              aggregate accounts) — the grid's current page must never
-              decide which parents exist. */}
+        <PermissionGate
+          permission={[
+            PERMISSIONS.accounting.accountCreate,
+            PERMISSIONS.accounting.accountingConfigurationView,
+          ]}
+        >
+          {/* The form loads eligible parents and the active coding structure;
+              without the independent read grants, the Create-only route offers
+              the contract-safe root-code form instead. */}
           <AccountCreateForm organizationId={organizationId} />
         </PermissionGate>
       )}

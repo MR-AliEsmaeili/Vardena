@@ -22,6 +22,8 @@ import { MovementFormPage } from '@/features/inventory/movement-form-page';
 import { UsersPage } from '@/features/administration/users/users-page';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { DashboardRoute } from './dashboard-route';
+import { DocumentTypeDetailPage } from '@/features/documents/document-types/document-type-detail-page';
+import { DocumentTypesPage } from '@/features/documents/document-types/document-types-page';
 import { NotFoundPage } from './not-found-page';
 import { RequirePermission } from './require-permission';
 import {
@@ -83,11 +85,13 @@ function inventory(routes: readonly RouteObject[]): {
 }
 
 describe('tree inventory — verbatim extraction snapshot (§10.3)', () => {
-  it('has exactly the pre-extraction number of leaf routes and permission gates', () => {
-    // The whole /app subtree as it stood in router.tsx at extraction time:
-    // 99 leaf routes behind 72 RequirePermission gates (+ the pathless
-    // shells). Update ONLY together with a deliberate route change.
-    expect(inventory(WORKSPACE_ROUTES)).toEqual({ leaves: 99, gates: 72 });
+  it('has exactly the expected number of leaf routes and permission gates', () => {
+    // The whole /app subtree as it stood in router.tsx at extraction time
+    // (99 leaves / 72 gates) PLUS the DOC-01 document-types block merged
+    // from main afterwards (+3 leaves, +1 gate): 102 leaf routes behind 73
+    // RequirePermission gates (+ the pathless shells). Update ONLY together
+    // with a deliberate route change.
+    expect(inventory(WORKSPACE_ROUTES)).toEqual({ leaves: 102, gates: 73 });
   });
 
   it('is rooted at /app with a single top-level route object', () => {
@@ -113,6 +117,16 @@ describe('leaf parity — same component as the old inline tree', () => {
   it('resolves unmatched /app paths to the in-tree 404', () => {
     expect(leafType('/app/deep/garbage')).toBe(NotFoundPage);
     expect(leafType('/app/accounting/not-a-page')).toBe(NotFoundPage);
+  });
+
+  it('resolves the DOC-01 document-types surfaces', () => {
+    expect(leafType('/app/documents/types')).toBe(DocumentTypesPage);
+    expect(leafType('/app/documents/types/some-code')).toBe(
+      DocumentTypeDetailPage,
+    );
+    expect(gatePermissions('/app/documents/types')).toContain(
+      PERMISSIONS.documents.documentTypeView,
+    );
   });
 
   it('does not match outside /app', () => {
@@ -174,6 +188,9 @@ describe('matchRestorableWorkspaceRoute — strict restore predicate (FDR-01 §3
     expect(matchRestorableWorkspaceRoute('/app/accounting/documents/new')).toBe(
       true,
     );
+    // The DOC-01 index redirect and its leaves are restorable too.
+    expect(matchRestorableWorkspaceRoute('/app/documents')).toBe(true);
+    expect(matchRestorableWorkspaceRoute('/app/documents/types')).toBe(true);
   });
 
   it('rejects paths that only resolve through the * 404 leaf', () => {

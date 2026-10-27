@@ -881,6 +881,8 @@ export const fa = {
     openWindow: 'باز کردن پنجرهٔ {window}',
     closeWindow: 'بستن پنجرهٔ {window}',
     documents: 'اسناد حسابداری',
+    documentsFoundationGroup: 'اسناد پایه',
+    documentTypes: 'انواع سند',
     accountingDocumentLines: 'ردیف‌های اسناد حسابداری',
     chartTree: 'درخت حساب‌ها',
     accountStatements: 'گردش حساب',
@@ -2096,6 +2098,10 @@ export const fa = {
     codeImmutable: 'کد حساب پس از ایجاد قابل تغییر نیست.',
     rootOnlyHint:
       'بدون دسترسی مشاهدهٔ حساب‌ها و پیکربندی، فقط می‌توانید حساب ریشه با کد کامل بسازید؛ شکل کد را بک‌اند بررسی می‌کند.',
+    parentSearch: 'جست‌وجوی حساب والد',
+    configureAccounting: 'رفتن به پیکربندی حسابداری',
+    noActiveDetailStructure:
+      'ساختار تفصیلی فعالی وجود ندارد؛ حساب بدون گروه تفصیلی ذخیره می‌شود.',
     groupNone: 'بدون گروه تفصیلی',
     groupSelect: 'انتخاب گروه تفصیلی',
     groupSearch: 'جست‌وجوی گروه تفصیلی',
@@ -2563,6 +2569,75 @@ export const fa = {
     fiscalYearSwitcher: 'تغییر سال مالی',
     currentArea: 'حوزه مالی جاری',
     currentFiscalYear: 'سال مالی جاری',
+  },
+  /**
+   * Document Foundation — registered document types (DOC-01).
+   *
+   * Kept OUT of the existing `documents` namespace: that one belongs to
+   * accounting vouchers. The registry itself is backend code, so the only
+   * writable label here is the organization's `draftRequired` setting.
+   */
+  documentTypes: {
+    title: 'انواع سند',
+    subtitle:
+      'فهرست انواع سند ثبت‌شده در سامانه و پیکربندی پیش‌نویس اجباری هر نوع برای سازمان شما.',
+    registryNote:
+      'انواع سند از رجیستری کد ماژول‌ها در بکاند می‌آیند و در این صفحه ساخته یا حذف نمی‌شوند.',
+    searchLabel: 'جستوجو در کد، ماژول یا نام',
+    searchPlaceholder: 'بخشی از کد، ماژول یا نام نوع سند',
+    code: 'کد نوع سند',
+    module: 'ماژول',
+    name: 'نام',
+    description: 'توضیح',
+    noDescription: 'توضیحی برای این نوع سند ثبت نشده است.',
+    draftCapable: 'پشتیبانی از پیشنویس',
+    draftNotCapable: 'بدون فاز پیشنویس',
+    entryStates: 'وضعیت‌های ورود سند',
+    deletablePhases: 'فازهای قابل حذف',
+    draftRequired: 'پیشنویس اجباری',
+    configured: 'پیکربندی‌شده',
+    notConfigured: 'پیکربندی نشده است',
+    actions: 'عملیات',
+    view: 'مشاهده',
+    backToList: 'بازگشت به فهرست انواع سند',
+    detailTitle: 'جزئیات نوع سند',
+    configuration: 'پیکربندی سازمان',
+    configurationHint:
+      'این تنظیم فقط برای سازمان فعلی اعمال می‌شود و می‌تواند دوباره تغییر کند.',
+    draftRequiredHint:
+      'در صورت فعال بودن، سندهای این نوع پیش از صدور باید از فاز پیشنویس عبور کنند.',
+    draftNotCapableHint:
+      'این نوع سند فاز پیشنویس ندارد؛ پیشنویس اجباری برای آن قابل تنظیم نیست.',
+    noConfigurePermission:
+      'برای تغییر پیکربندی، مجوز پیکربندی نوع سند لازم است.',
+    save: 'ذخیرهٔ پیکربندی',
+    saving: 'در حال ذخیره…',
+    saved: 'پیکربندی نوع سند ذخیره شد.',
+    savedValue: 'مقدار ثبت‌شده در سرور',
+    loadFailed: 'دریافت اطلاعات نوع سند انجام نشد. دوباره تلاش کنید.',
+    saveFailed: 'ذخیرهٔ پیکربندی انجام نشد. دوباره تلاش کنید.',
+    emptyTitle: 'نوع سندی یافت نشد',
+    emptyBody:
+      'هیچ نوع سندی در رجیستری بکاند ثبت نشده است. انواع سند توسط ماژول‌ها تعریف می‌شوند، نه از این صفحه.',
+    noResults: 'نوع سندی با این جستوجو یافت نشد. عبارت دیگری امتحان کنید.',
+    listSeparator: '، ',
+    stateNames: {
+      temporary: 'موقت',
+      final: 'قطعی',
+    },
+    phaseNames: {
+      draft: 'پیشنویس',
+      temporary: 'موقت',
+      final: 'قطعی',
+    },
+    // Mapped from the stable kernel error code + failed operation.
+    errors: {
+      notFound: 'نوع سند موردنظر در رجیستری بکاند یافت نشد.',
+      draftNotSupported:
+        'این نوع سند فاز پیشنویس ندارد؛ نمی‌توان پیشنویس اجباری را برای آن فعال کرد.',
+      validation:
+        'اطلاعات ارسالی پذیرفته نشد. مقدار پیشنویس اجباری را بررسی کنید.',
+    },
   },
   filters: {
     title: 'فیلترها',

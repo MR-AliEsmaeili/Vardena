@@ -25,6 +25,7 @@ vi.mock('@/api/accounting.api', () => ({
   getAccount: vi.fn(),
   listAccounts: vi.fn(),
   getActiveAccountingConfiguration: vi.fn(),
+  getActiveDetailStructure: vi.fn(),
   listDetailGroups: vi.fn(),
   createAccount: vi.fn(),
   updateAccount: vi.fn(),
@@ -140,6 +141,72 @@ describe('Account create/edit (backend-owned code)', () => {
           parentId: null,
         },
       ),
+    );
+  });
+
+  it('edits a detail group only from the active detail structure', async () => {
+    grant(
+      PERMISSIONS.accounting.accountView,
+      PERMISSIONS.accounting.accountEdit,
+      PERMISSIONS.accounting.detailView,
+      PERMISSIONS.accounting.detailStructureView,
+    );
+    const user = userEvent.setup();
+    vi.mocked(accountingApi.getActiveDetailStructure).mockResolvedValue({
+      id: 'detail-structure-active',
+    } as never);
+    vi.mocked(accountingApi.listDetailGroups).mockResolvedValue({
+      items: [
+        {
+          id: 'group-active',
+          code: '01',
+          title: 'گروه بانک',
+          level: 1,
+          detailStructureVersionId: 'detail-structure-active',
+          parentId: null,
+          isPostable: false,
+          isActive: true,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 50,
+    } as never);
+    vi.mocked(accountingApi.updateAccount).mockResolvedValue(account);
+    renderWithProviders(
+      <Routes>
+        <Route path="/app/accounting/accounts/:accountId" element={<div />} />
+        <Route
+          path="/app/accounting/accounts/:accountId/edit"
+          element={<AccountEditPage />}
+        />
+      </Routes>,
+      { initialEntries: ['/app/accounting/accounts/acc-1/edit'] },
+    );
+    await screen.findByRole('option', { name: /گروه بانک/ });
+    await user.selectOptions(
+      screen.getByLabelText(t.masterData.detailGroup),
+      'group-active',
+    );
+    await user.click(screen.getByRole('button', { name: t.accountAdmin.save }));
+    await waitFor(() =>
+      expect(accountingApi.updateAccount).toHaveBeenCalledWith(
+        testOrganization.id,
+        account.id,
+        expect.objectContaining({ detailGroupId: 'group-active' }),
+      ),
+    );
+    expect(accountingApi.updateAccount).toHaveBeenCalledWith(
+      testOrganization.id,
+      account.id,
+      expect.not.objectContaining({ code: expect.anything() }),
+    );
+    expect(accountingApi.listDetailGroups).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: testOrganization.id,
+        detailStructureVersionId: 'detail-structure-active',
+      }),
+      expect.any(AbortSignal),
     );
   });
 });

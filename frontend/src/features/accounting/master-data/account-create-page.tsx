@@ -1,9 +1,6 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { createAccount } from '@/api/accounting.api';
-import { queryKeys } from '@/api/query-keys';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
@@ -18,6 +15,7 @@ import { PageHeader } from '@/ui/patterns/page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import { AccountCreateForm } from './account-create-form';
+import { useCreateAccountMutation } from './account-admin-hooks';
 
 /** A Create-only operator can POST a root without Account.View or Configuration.View.
  * The backend checks the full code against the active structure. The richer
@@ -53,33 +51,12 @@ export function AccountCreatePage() {
 }
 
 function AccountRootCreateForm({ organizationId }: { organizationId: string }) {
-  const client = useQueryClient();
   const { showToast } = useToast();
   const form = useForm<RootValues>({
     resolver: zodResolver(rootSchema),
     defaultValues: { code: '', title: '', accountNature: 'DUAL' },
   });
-  const mutation = useMutation({
-    mutationFn: (values: RootValues) =>
-      createAccount({
-        organizationId,
-        code: values.code.trim(),
-        title: values.title.trim(),
-        accountNature: values.accountNature,
-      }),
-    onSuccess: async () => {
-      form.reset();
-      await Promise.all([
-        client.invalidateQueries({
-          queryKey: queryKeys.accounting.accountPrefix(organizationId),
-        }),
-        client.invalidateQueries({
-          queryKey: queryKeys.accounting.chartTree(organizationId),
-        }),
-      ]);
-      showToast({ kind: 'success', message: t.masterData.accountCreated });
-    },
-  });
+  const mutation = useCreateAccountMutation(organizationId);
   return (
     <Card>
       <CardContent>
@@ -87,7 +64,24 @@ function AccountRootCreateForm({ organizationId }: { organizationId: string }) {
           noValidate
           className="space-y-4"
           onSubmit={form.handleSubmit((values) => {
-            if (!mutation.isPending) mutation.mutate(values);
+            if (mutation.isPending) return;
+            mutation.mutate(
+              {
+                organizationId,
+                code: values.code.trim(),
+                title: values.title.trim(),
+                accountNature: values.accountNature,
+              },
+              {
+                onSuccess: () => {
+                  form.reset();
+                  showToast({
+                    kind: 'success',
+                    message: t.masterData.accountCreated,
+                  });
+                },
+              },
+            );
           })}
         >
           <p className="text-sm text-ink-muted">

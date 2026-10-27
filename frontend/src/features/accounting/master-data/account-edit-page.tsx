@@ -1,12 +1,10 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router-dom';
 import { z } from 'zod';
-import { listDetailGroups, MAX_PAGE_SIZE } from '@/api/accounting.api';
-import type { Account } from '@/api/contracts';
-import { queryKeys } from '@/api/query-keys';
+import type { Account, AccountingDetail } from '@/api/contracts';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
@@ -20,7 +18,11 @@ import { FormField } from '@/ui/patterns/form-field';
 import { PageHeader } from '@/ui/patterns/page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
-import { useUpdateAccountMutation } from './account-admin-hooks';
+import {
+  useAccountDetailGroupCandidates,
+  useUpdateAccountMutation,
+} from './account-admin-hooks';
+import { AccountParentPicker } from './account-parent-picker';
 import {
   useAccountDetail,
   useAccountParentCandidates,
@@ -55,27 +57,27 @@ function AccountEditForm({ account }: { account: Account }) {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const permissions = usePermissions();
-  const parentQuery = useAccountParentCandidates(account.organizationId);
-  const canViewDetails = permissions.has(PERMISSIONS.accounting.detailView);
+  const [parentSearch, setParentSearch] = useState('');
+  const [selectedParentRecord, setSelectedParentRecord] =
+    useState<Account | null>(null);
+  const debouncedParentSearch = useDebouncedValue(parentSearch);
+  const parentQuery = useAccountParentCandidates(
+    account.organizationId,
+    debouncedParentSearch,
+  );
+  const canChooseDetailGroup =
+    permissions.has(PERMISSIONS.accounting.detailView) &&
+    permissions.has(PERMISSIONS.accounting.detailStructureView);
   const [groupSearch, setGroupSearch] = useState('');
-  const groups = useQuery({
-    queryKey: queryKeys.accounting.detailGroupList(
+  const [selectedDetailGroupRecord, setSelectedDetailGroupRecord] =
+    useState<AccountingDetail | null>(null);
+  const debouncedGroupSearch = useDebouncedValue(groupSearch);
+  const { activeStructure: detailStructureQuery, groups } =
+    useAccountDetailGroupCandidates(
       account.organizationId,
-      groupSearch,
-    ),
-    queryFn: ({ signal }) =>
-      listDetailGroups(
-        {
-          organizationId: account.organizationId,
-          isActive: true,
-          page: 1,
-          pageSize: MAX_PAGE_SIZE,
-          ...(groupSearch ? { search: groupSearch } : {}),
-        },
-        signal,
-      ),
-    enabled: canViewDetails,
-  });
+      debouncedGroupSearch,
+      canChooseDetailGroup,
+    );
   const mutation = useUpdateAccountMutation(account.organizationId, account.id);
   const form = useForm<Values>({
     resolver: zodResolver(schema),
@@ -88,17 +90,46 @@ function AccountEditForm({ account }: { account: Account }) {
       isPostable: account.isPostable,
     },
   });
+  const detailGroupField = form.register('detailGroupId');
   const [failure, setFailure] = useState(false);
   const parents =
     parentQuery.data?.items.filter(
       (candidate) => candidate.id !== account.id,
     ) ?? [];
+  const activeDetailGroups = useMemo(() => {
+    const candidates = groups.data?.items ?? [];
+    const selected = selectedDetailGroupRecord;
+    if (
+      selected !== null &&
+      selected.isActive &&
+      selected.detailStructureVersionId === detailStructureQuery.data?.id &&
+      !candidates.some((candidate) => candidate.id === selected.id)
+    ) {
+      return [selected, ...candidates];
+    }
+    return candidates;
+  }, [
+    detailStructureQuery.data?.id,
+    groups.data?.items,
+    selectedDetailGroupRecord,
+  ]);
+  const currentParentId = form.watch('parentId') ?? '';
   const currentParentInList =
-    account.parentId === null ||
-    parents.some((parent) => parent.id === account.parentId);
+    currentParentId === '' ||
+    parents.some((parent) => parent.id === currentParentId);
+  const parentFallback = currentParentInList
+    ? null
+    : selectedParentRecord?.id === currentParentId
+      ? {
+          id: selectedParentRecord.id,
+          label: `${selectedParentRecord.code} — ${selectedParentRecord.title}`,
+        }
+      : currentParentId === account.parentId && account.parentId !== null
+        ? { id: account.parentId, label: t.accountAdmin.parentUnchanged }
+        : null;
   const currentGroupInList =
     account.detailGroupId === null ||
-    groups.data?.items.some((group) => group.id === account.detailGroupId);
+    activeDetailGroups.some((group) => group.id === account.detailGroupId);
   return (
     <div className="space-y-4">
       <PageHeader
@@ -121,7 +152,10 @@ function AccountEditForm({ account }: { account: Account }) {
                   accountType: values.accountType,
                   isPostable: values.isPostable,
                   parentId: values.parentId || null,
-                  ...(canViewDetails && values.detailGroupId !== ''
+                  ...(canChooseDetailGroup &&
+                  activeDetailGroups.some(
+                    (group) => group.id === values.detailGroupId,
+                  )
                     ? { detailGroupId: values.detailGroupId }
                     : {}),
                 },
@@ -185,28 +219,26 @@ function AccountEditForm({ account }: { account: Account }) {
                   </Select>
                 )}
               </FormField>
-              <FormField
+              <AccountParentPicker
                 id="account-edit-parent"
-                label={t.masterData.parentAccount}
+                value={form.watch('parentId')}
+                candidates={parents}
+                search={parentSearch}
+                onSearchChange={setParentSearch}
+                onChange={(parentId) => {
+                  setSelectedParentRecord(
+                    parents.find((parent) => parent.id === parentId) ?? null,
+                  );
+                  form.setValue('parentId', parentId, {
+                    shouldDirty: true,
+                    shouldTouch: true,
+                  });
+                }}
+                disabled={parentQuery.isPending}
                 error={form.formState.errors.parentId?.message}
-              >
-                {(props) => (
-                  <Select {...props} {...form.register('parentId')}>
-                    <option value="">{t.masterData.rootParent}</option>
-                    {!currentParentInList && (
-                      <option value={account.parentId ?? ''}>
-                        {t.accountAdmin.parentUnchanged}
-                      </option>
-                    )}
-                    {parents.map((parent) => (
-                      <option key={parent.id} value={parent.id}>
-                        {parent.code} — {parent.title}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </FormField>
-              {canViewDetails && (
+                fallback={parentFallback}
+              />
+              {canChooseDetailGroup && (
                 <FormField
                   id="account-edit-group"
                   label={t.masterData.detailGroup}
@@ -218,21 +250,45 @@ function AccountEditForm({ account }: { account: Account }) {
                         value={groupSearch}
                         onChange={(event) => setGroupSearch(event.target.value)}
                       />
-                      <Select {...props} {...form.register('detailGroupId')}>
+                      <Select
+                        {...props}
+                        {...detailGroupField}
+                        onChange={(event) => {
+                          void detailGroupField.onChange(event);
+                          const selectedId = event.target.value;
+                          setSelectedDetailGroupRecord(
+                            activeDetailGroups.find(
+                              (group) => group.id === selectedId,
+                            ) ?? null,
+                          );
+                        }}
+                        disabled={
+                          detailStructureQuery.isPending ||
+                          detailStructureQuery.data === null ||
+                          groups.isPending
+                        }
+                      >
                         {account.detailGroupId === null && (
                           <option value="">{t.accountAdmin.groupNone}</option>
                         )}
-                        {!currentGroupInList && (
-                          <option value={account.detailGroupId ?? ''}>
-                            {t.accountAdmin.groupUnchanged}
-                          </option>
-                        )}
-                        {groups.data?.items.map((group) => (
+                        {!currentGroupInList &&
+                          account.detailGroupId !== null && (
+                            <option value={account.detailGroupId}>
+                              {t.accountAdmin.groupUnchanged}
+                            </option>
+                          )}
+                        {activeDetailGroups.map((group) => (
                           <option key={group.id} value={group.id}>
                             {group.code} — {group.title}
                           </option>
                         ))}
                       </Select>
+                      {detailStructureQuery.isSuccess &&
+                        detailStructureQuery.data === null && (
+                          <p className="text-xs text-ink-muted">
+                            {t.accountAdmin.noActiveDetailStructure}
+                          </p>
+                        )}
                     </>
                   )}
                 </FormField>
@@ -248,7 +304,14 @@ function AccountEditForm({ account }: { account: Account }) {
                 onRetry={() => void parentQuery.refetch()}
               />
             )}
-            {groups.isError && canViewDetails && (
+            {canChooseDetailGroup && detailStructureQuery.isError && (
+              <ApiErrorAlert
+                error={detailStructureQuery.error}
+                description={t.accountAdmin.groupLoadFailed}
+                onRetry={() => void detailStructureQuery.refetch()}
+              />
+            )}
+            {groups.isError && canChooseDetailGroup && (
               <ApiErrorAlert
                 error={groups.error}
                 description={t.accountAdmin.groupLoadFailed}
@@ -263,11 +326,7 @@ function AccountEditForm({ account }: { account: Account }) {
             )}
             <Button
               type="submit"
-              disabled={
-                mutation.isPending ||
-                parentQuery.isPending ||
-                (canViewDetails && groups.isPending)
-              }
+              disabled={mutation.isPending || parentQuery.isPending}
               loading={mutation.isPending}
             >
               {t.accountAdmin.save}
