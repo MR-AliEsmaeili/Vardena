@@ -117,7 +117,9 @@ test.describe('workspace windows — dock, restore, cap', () => {
 
     // Activate the items window and give it page-local state (a filter).
     await page.getByTestId('workspace-tab').first().click();
-    await expect(page).toHaveURL('**/app/inventory/items', { timeout: 10000 });
+    await expect(page).toHaveURL(/\/app\/inventory\/items$/, {
+      timeout: 10000,
+    });
     await activePanel(page).getByLabel(t.inventoryMaster.code).fill('0002');
     await expect(
       activePanel(page).getByRole('link', { name: 'ITM-0002' }),
@@ -126,11 +128,13 @@ test.describe('workspace windows — dock, restore, cap', () => {
     // Switch away and back — the filter and the grid state survived because
     // the hidden window stayed mounted.
     await page.getByTestId('workspace-tab').nth(1).click();
-    await expect(page).toHaveURL('**/app/admin/users', { timeout: 10000 });
+    await expect(page).toHaveURL(/\/app\/admin\/users$/, { timeout: 10000 });
     await expect(activePanel(page).getByTestId('users-page')).toBeVisible();
 
     await page.getByTestId('workspace-tab').first().click();
-    await expect(page).toHaveURL('**/app/inventory/items', { timeout: 10000 });
+    await expect(page).toHaveURL(/\/app\/inventory\/items$/, {
+      timeout: 10000,
+    });
     await expect(
       activePanel(page).getByLabel(t.inventoryMaster.code),
     ).toHaveValue('0002');
@@ -177,7 +181,7 @@ test.describe('workspace windows — dock, restore, cap', () => {
     // Choosing an existing window dismisses the dialog and activates it.
     await page.getByTestId('workspace-cap-dialog-window').nth(1).click();
     await expect(page.getByText(t.workspace.capDialogTitle)).toHaveCount(0);
-    await expect(page).toHaveURL('**/app/admin/users', { timeout: 10000 });
+    await expect(page).toHaveURL(/\/app\/admin\/users$/, { timeout: 10000 });
     await expect(page.getByTestId('workspace-tab')).toHaveCount(12);
   });
 
@@ -221,11 +225,13 @@ test.describe('workspace windows — shortcuts (§4.8)', () => {
    * proved the chain works end-to-end in the real browser (activation, URL
    * mirror and clean close all land within ~2s of the synthetic event).
    *
-   * URL assertions use the polling `toHaveURL` matcher instead of
-   * `waitForURL`: the mirror navigates with `history.replaceState`, and by the
-   * time the assertion runs the URL has usually ALREADY changed — waitForURL's
+   * URL assertions use the polling `toHaveURL` matcher with a REGEX pattern:
+   * the mirror navigates with `history.replaceState`, and by the time the
+   * assertion runs the URL has usually ALREADY changed — waitForURL's
    * navigation-event subscription then waits for a same-document navigation
-   * that already happened and times out, while toHaveURL simply polls.
+   * that already happened and times out, while toHaveURL simply polls. A
+   * regex (never a double-star glob string!) is required: toHaveURL resolves
+   * glob strings against the baseURL into a literal, unmatchable URL.
    */
   function sendShortcut(page: Page, key: string) {
     return page.evaluate((shortcutKey) => {
@@ -257,14 +263,18 @@ test.describe('workspace windows — shortcuts (§4.8)', () => {
       'true',
       { timeout: 5000 },
     );
-    await expect(page).toHaveURL('**/app/inventory/items', { timeout: 10000 });
+    await expect(page).toHaveURL(/\/app\/inventory\/items$/, {
+      timeout: 10000,
+    });
 
     // RTL: next window (ArrowLeft) → users, then Alt+W on that CLEAN window
     // closes it immediately (no dialog) and the mirror falls back to items.
     await sendShortcut(page, 'ArrowLeft');
-    await expect(page).toHaveURL('**/app/admin/users', { timeout: 10000 });
+    await expect(page).toHaveURL(/\/app\/admin\/users$/, { timeout: 10000 });
     await sendShortcut(page, 'w');
-    await expect(page).toHaveURL('**/app/inventory/items', { timeout: 10000 });
+    await expect(page).toHaveURL(/\/app\/inventory\/items$/, {
+      timeout: 10000,
+    });
     await expect(page.getByTestId('workspace-tab')).toHaveCount(1);
   });
 
@@ -276,21 +286,25 @@ test.describe('workspace windows — shortcuts (§4.8)', () => {
       'true',
       { timeout: 5000 },
     );
-    await expect(page).toHaveURL('**/app/inventory/items', { timeout: 10000 });
+    await expect(page).toHaveURL(/\/app\/inventory\/items$/, {
+      timeout: 10000,
+    });
     await sendShortcut(page, 'ArrowRight'); // wraps to the last
     await expect(page.getByTestId('workspace-tab').nth(1)).toHaveAttribute(
       'aria-selected',
       'true',
       { timeout: 5000 },
     );
-    await expect(page).toHaveURL('**/app/admin/users', { timeout: 10000 });
+    await expect(page).toHaveURL(/\/app\/admin\/users$/, { timeout: 10000 });
     await sendShortcut(page, 'ArrowLeft'); // wraps to the first
     await expect(page.getByTestId('workspace-tab').first()).toHaveAttribute(
       'aria-selected',
       'true',
       { timeout: 5000 },
     );
-    await expect(page).toHaveURL('**/app/inventory/items', { timeout: 10000 });
+    await expect(page).toHaveURL(/\/app\/inventory\/items$/, {
+      timeout: 10000,
+    });
   });
 });
 
