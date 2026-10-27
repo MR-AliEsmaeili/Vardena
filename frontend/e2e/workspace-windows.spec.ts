@@ -264,31 +264,50 @@ test.describe('workspace windows — shortcuts (§4.8)', () => {
   test('Alt+1 jumps to the first window, Alt+W closes the active one', async ({
     page,
   }) => {
-    await installKeydownSpy(page);
-    await sendShortcut(page, '1');
-    expect(
-      await readKeydownSpy(page),
-      'the synthetic keydown must reach window-level listeners',
-    ).toBeGreaterThan(0);
-    await expect(
-      page.getByTestId('workspace-tab').first(),
-      'Alt+1 must select the first tab',
-    ).toHaveAttribute('aria-selected', 'true', { timeout: 5000 });
-    await page.waitForURL('**/app/inventory/items', { timeout: 10000 });
-
-    // Alt+W on a CLEAN window closes it immediately (no dialog).
-    await sendShortcut(page, 'ArrowLeft'); // RTL: next → users
-    await expect(
-      page.getByTestId('workspace-tab').nth(1),
-      'Alt+ArrowLeft must select the second tab',
-    ).toHaveAttribute('aria-selected', 'true', { timeout: 5000 });
-    await page.waitForURL('**/app/admin/users', { timeout: 10000 });
-    await sendShortcut(page, 'w');
-    await expect(
-      page.getByTestId('workspace-tab'),
-      'Alt+W must close the active clean window',
-    ).toHaveCount(1, { timeout: 5000 });
-    await page.waitForURL('**/app/inventory/items', { timeout: 10000 });
+    // TEMPORARY DIAGNOSTIC: capture the full before/after picture around the
+    // synthetic shortcut in ONE atomic evaluate and fail loudly with the data
+    // (URL, per-tab aria-selected + paths, persisted snapshot).
+    const diag = await page.evaluate(async () => {
+      const read = () => ({
+        url: window.location.pathname + window.location.search,
+        tabs: Array.from(
+          document.querySelectorAll<HTMLElement>(
+            '[data-testid="workspace-tab"]',
+          ),
+        ).map((element) => ({
+          path: element.dataset['windowPath'] ?? '',
+          selected: element.getAttribute('aria-selected'),
+        })),
+        dockDensity:
+          document
+            .querySelector('[data-testid="workspace-dock"]')
+            ?.getAttribute('data-density') ?? 'no-dock',
+        snapshot: window.sessionStorage.getItem('vardena:workspace:v1'),
+      });
+      const before = read();
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: '1',
+          altKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const afterShortcut = read();
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'w',
+          altKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const afterClose = read();
+      return { before, afterShortcut, afterClose };
+    });
+    throw new Error(`DIAG ${JSON.stringify(diag)}`);
   });
 
   test('Alt+Arrow cycles windows in RTL order', async ({ page }) => {
