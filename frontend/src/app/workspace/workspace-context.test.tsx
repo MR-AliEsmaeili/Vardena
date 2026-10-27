@@ -152,6 +152,45 @@ describe('open() — synchronous OpenResult (§4.5)', () => {
   });
 });
 
+describe('initial cap reconciliation (§4.5 step 5, D-2)', () => {
+  function seedSnapshot(count: number) {
+    const windows = Array.from({ length: count }, (_, index) => ({
+      id: `seed-window-${String(index).padStart(4, '0')}`,
+      basePath: `/app/w${index}`,
+      path: `/app/w${index}`,
+    }));
+    sessionStorage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({ version: 1, windows, activeId: windows[0]!.id }),
+    );
+  }
+
+  it('opens the cap dialog when the initial deep link cannot be appended', () => {
+    seedSnapshot(MAX_WINDOWS);
+    renderProvider({ initialEntries: ['/app/overflow-deep-link'] });
+    expect(captured!.state.windows).toHaveLength(MAX_WINDOWS);
+    expect(captured!.capDialogOpen).toBe(true);
+  });
+
+  it('appends silently while the restored list has room', () => {
+    seedSnapshot(MAX_WINDOWS - 1);
+    renderProvider({ initialEntries: ['/app/extra-deep-link'] });
+    expect(captured!.state.windows).toHaveLength(MAX_WINDOWS);
+    expect(captured!.capDialogOpen).toBe(false);
+    expect(captured!.state.activeId).toBe(
+      captured!.state.windows[MAX_WINDOWS - 1]!.id,
+    );
+  });
+
+  it('stays quiet when the deep link matches a restored window', () => {
+    seedSnapshot(MAX_WINDOWS);
+    renderProvider({ initialEntries: ['/app/w3'] });
+    expect(captured!.capDialogOpen).toBe(false);
+    expect(captured!.state.activeId).toBe('seed-window-0003');
+    expect(captured!.state.windows).toHaveLength(MAX_WINDOWS);
+  });
+});
+
 describe('dirty close pipeline (§4.7)', () => {
   it('requestClose holds a dirty window; close releases it', () => {
     renderProvider();

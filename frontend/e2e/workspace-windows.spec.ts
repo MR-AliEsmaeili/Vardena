@@ -118,9 +118,7 @@ test.describe('workspace windows — dock, restore, cap', () => {
     // Activate the items window and give it page-local state (a filter).
     await page.getByTestId('workspace-tab').first().click();
     await page.waitForURL('**/app/inventory/items');
-    await activePanel(page)
-      .getByRole('textbox', { name: t.inventoryMaster.code, exact: true })
-      .fill('0002');
+    await activePanel(page).getByLabel(t.inventoryMaster.code).fill('0002');
     await expect(
       activePanel(page).getByRole('link', { name: 'ITM-0002' }),
     ).toBeVisible();
@@ -134,10 +132,7 @@ test.describe('workspace windows — dock, restore, cap', () => {
     await page.getByTestId('workspace-tab').first().click();
     await page.waitForURL('**/app/inventory/items');
     await expect(
-      activePanel(page).getByRole('textbox', {
-        name: t.inventoryMaster.code,
-        exact: true,
-      }),
+      activePanel(page).getByLabel(t.inventoryMaster.code),
     ).toHaveValue('0002');
     await expect(
       activePanel(page).getByRole('link', { name: 'ITM-0002' }),
@@ -219,6 +214,26 @@ test.describe('workspace windows — dock, restore, cap', () => {
 });
 
 test.describe('workspace windows — shortcuts (§4.8)', () => {
+  /**
+   * The dock handler is a plain `window` keydown listener (§4.8). Dispatching
+   * the bubbling, cancelable KeyboardEvent exercises the exact chain the jsdom
+   * unit tests cover (listener → resolver → provider → URL mirror) and stays
+   * deterministic in headless runs, where trusted Alt-combinations can be
+   * consumed before they reach the page.
+   */
+  function sendShortcut(page: Page, key: string) {
+    return page.evaluate((shortcutKey) => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: shortcutKey,
+          altKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    }, key);
+  }
+
   test.beforeEach(async ({ page }) => {
     await installApiStub(page);
     await page.goto('/app/inventory/items');
@@ -230,24 +245,25 @@ test.describe('workspace windows — shortcuts (§4.8)', () => {
   test('Alt+1 jumps to the first window, Alt+W closes the active one', async ({
     page,
   }) => {
-    await page.keyboard.press('Alt+1');
+    await sendShortcut(page, '1');
     await page.waitForURL('**/app/inventory/items');
 
     // Alt+W on a CLEAN window closes it immediately (no dialog).
-    await page.keyboard.press('Alt+ArrowLeft'); // RTL: next → users
+    // RTL: next → users
+    await sendShortcut(page, 'ArrowLeft');
     await page.waitForURL('**/app/admin/users');
-    await page.keyboard.press('Alt+w');
+    await sendShortcut(page, 'w');
     await page.waitForURL('**/app/inventory/items');
     await expect(page.getByTestId('workspace-tab')).toHaveCount(1);
   });
 
   test('Alt+Arrow cycles windows in RTL order', async ({ page }) => {
     // Active is the second (users). ArrowRight = previous in RTL.
-    await page.keyboard.press('Alt+ArrowRight');
+    await sendShortcut(page, 'ArrowRight');
     await page.waitForURL('**/app/inventory/items');
-    await page.keyboard.press('Alt+ArrowRight'); // wraps to the last
+    await sendShortcut(page, 'ArrowRight'); // wraps to the last
     await page.waitForURL('**/app/admin/users');
-    await page.keyboard.press('Alt+ArrowLeft'); // wraps to the first
+    await sendShortcut(page, 'ArrowLeft'); // wraps to the first
     await page.waitForURL('**/app/inventory/items');
   });
 });

@@ -49,6 +49,7 @@ import {
   freshWorkspaceState,
   generateWindowId,
   workspaceReducer,
+  MAX_WINDOWS,
   type OpenIntent,
   type OpenResult,
   type WindowId,
@@ -176,7 +177,19 @@ export function WorkspaceProvider({
   // touching refs during render (react-hooks compiler rule).
   const [scroll] = useState(() => new WindowScrollMemory());
 
-  const [capDialogOpen, setCapDialogOpen] = useState(false);
+  const [capDialogOpen, setCapDialogOpen] = useState<boolean>(() => {
+    /*
+     * An initial deep link that hit the cap — the restored list was FULL and
+     * the URL matched none of it — could not be opened. Surface the cap
+     * dialog instead of swallowing the link silently (§4.5 step 5, D-2).
+     */
+    const { pathname } = initialLocation;
+    if (!pathname.startsWith('/app')) return false;
+    return (
+      state.windows.length >= MAX_WINDOWS &&
+      !state.windows.some((window) => window.basePath === pathname)
+    );
+  });
 
   const [writer] = useState(() => new WorkspacePersistenceWriter());
 
