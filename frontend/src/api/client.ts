@@ -297,6 +297,25 @@ export async function apiPost<TResponse, TBody = unknown>(
   return response.data;
 }
 
+/**
+ * PUT helper: normalized errors, typed payload.
+ *
+ * The Document Foundation's configuration endpoint is an idempotent `PUT`
+ * (`PUT /documents/types/:code/configuration`); it needs the same single
+ * Axios instance, error normalization and request-activity tracking as every
+ * other write, not a direct `apiClient.put` from a feature.
+ */
+export async function apiPut<TResponse, TBody = unknown>(
+  url: string,
+  body?: TBody,
+  config?: AxiosRequestConfig,
+): Promise<TResponse> {
+  const response = await runTrackedRequest(config, (requestConfig) =>
+    apiClient.put<TResponse>(url, body, requestConfig),
+  );
+  return response.data;
+}
+
 /** DELETE helper: normalized errors, typed payload. */
 export async function apiDelete<TResponse>(
   url: string,

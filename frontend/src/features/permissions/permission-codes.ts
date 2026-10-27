@@ -7,6 +7,7 @@
  * - `backend/src/modules/organization/domain/organization-permissions.ts`
  * - `backend/src/modules/inventory/domain/inventory-permissions.ts`
  *   and `inventory-core-permissions.ts` / `inventory-valuation-permissions.ts`
+ * - `backend/src/modules/documents/domain/document-permissions.ts`
  *
  * No wildcard, no superuser, no invented code: an entry that no backend
  * endpoint enforces must not exist here either. These checks are UX only —
@@ -220,6 +221,17 @@ export const PERMISSIONS = {
   workflow: {
     instanceView: 'Workflow.Instance.View',
   },
+  /**
+   * Document Foundation (`document-permissions.ts`, DOC-01). Only the two
+   * codes this task's UI consumes are registered here: DOC-02/DOC-03 add
+   * their own numbering-series and relation codes when those surfaces exist.
+   * There is deliberately no generic `Document.*` code — the backend has no
+   * such permission and no `POST /documents` endpoint.
+   */
+  documents: {
+    documentTypeView: 'Document.DocumentType.View',
+    documentTypeConfigure: 'Document.DocumentType.Configure',
+  },
 } as const;
 
 export type PermissionCode =
@@ -229,4 +241,5 @@ export type PermissionCode =
   | (typeof PERMISSIONS.rbac)[keyof typeof PERMISSIONS.rbac]
   | (typeof PERMISSIONS.accounting)[keyof typeof PERMISSIONS.accounting]
   | (typeof PERMISSIONS.inventory)[keyof typeof PERMISSIONS.inventory]
-  | (typeof PERMISSIONS.workflow)[keyof typeof PERMISSIONS.workflow];
+  | (typeof PERMISSIONS.workflow)[keyof typeof PERMISSIONS.workflow]
+  | (typeof PERMISSIONS.documents)[keyof typeof PERMISSIONS.documents];

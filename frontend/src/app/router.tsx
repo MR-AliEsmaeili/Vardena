@@ -69,6 +69,8 @@ import {
 } from '@/features/inventory/master-data/warehouses/warehouse-form-page';
 import { WarehousesPage } from '@/features/inventory/master-data/warehouses/warehouses-page';
 import { ClientDevicesPage } from '@/features/licensing/client-devices-page';
+import { DocumentTypeDetailPage } from '@/features/documents/document-types/document-type-detail-page';
+import { DocumentTypesPage } from '@/features/documents/document-types/document-types-page';
 import { KardexPage } from '@/features/inventory/kardex-page';
 import { MovementFormPage } from '@/features/inventory/movement-form-page';
 import { MovementsPage } from '@/features/inventory/movements-page';
@@ -1035,6 +1037,27 @@ export function AppRoutes() {
             }
           >
             <Route index element={<ClientDevicesPage />} />
+          </Route>
+
+          {/*
+            Document Foundation (DOC-01). Both surfaces are reads of the
+            backend's CODE registry plus the organization's configuration;
+            the single write (`PUT …/configuration`) lives on the detail page.
+            There is no create/delete route: the controller has no POST/DELETE.
+          */}
+          <Route path="documents">
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.documents.documentTypeView]}
+                />
+              }
+            >
+              {/* A bare /app/documents must not render an empty shell. */}
+              <Route index element={<Navigate to="types" replace />} />
+              <Route path="types" element={<DocumentTypesPage />} />
+              <Route path="types/:code" element={<DocumentTypeDetailPage />} />
+            </Route>
           </Route>
 
           {/*
