@@ -1,4 +1,5 @@
 import { ArrowLeft, type LucideIcon } from 'lucide-react';
+import type { MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -20,6 +21,12 @@ export interface WorkspaceCardGridProps {
   groups: readonly WorkspaceCardGroup[];
   /** Compact variant omits secondary description and action label for dense dashboard quick-access. */
   compact?: boolean;
+  /**
+   * ADR-0054: when provided, card links open a WORKSPACE WINDOW instead of
+   * navigating the outer router (the dashboard passes this from the
+   * workspace context — the shared ui layer itself stays passive).
+   */
+  onNavigate?: (to: string) => void;
 }
 
 /**
@@ -32,9 +39,16 @@ export interface WorkspaceCardGridProps {
 export function WorkspaceCardGrid({
   groups,
   compact = false,
+  onNavigate,
 }: WorkspaceCardGridProps) {
   const nonEmpty = groups.filter((group) => group.items.length > 0);
   if (nonEmpty.length === 0) return null;
+
+  const intercept = (to: string) => (event: MouseEvent<HTMLAnchorElement>) => {
+    if (onNavigate === undefined) return;
+    event.preventDefault();
+    onNavigate(to);
+  };
 
   return (
     <div className="space-y-5" data-testid="workspace-card-grid">
@@ -62,6 +76,7 @@ export function WorkspaceCardGrid({
                 <Link
                   key={item.to}
                   to={item.to}
+                  onClick={intercept(item.to)}
                   aria-label={`${t.home.openSection}: ${item.label}`}
                   data-testid={`workspace-card-${group.id}-${item.to}`}
                   className="action-press group flex flex-col items-center justify-center gap-2.5 rounded-card border border-line bg-surface px-3 py-4 text-center shadow-card transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-brand/50 hover:bg-sunken hover:shadow-raised"
@@ -92,6 +107,7 @@ export function WorkspaceCardGrid({
                   )}
                   <Link
                     to={item.to}
+                    onClick={intercept(item.to)}
                     className="mt-auto inline-flex items-center gap-1 rounded-control border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:bg-sunken"
                   >
                     {t.home.openSection}

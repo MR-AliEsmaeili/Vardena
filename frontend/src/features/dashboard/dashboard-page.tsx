@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { SortingState } from '@tanstack/react-table';
 import {
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { LicenseStatusCard } from '@/features/licensing/license-status-card';
 import { useOrganizationId } from '@/features/organization/use-organization';
+import { useWorkspace } from '@/app/workspace/workspace-context';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { useQuery } from '@tanstack/react-query';
@@ -157,6 +158,17 @@ export function DashboardPage(): ReactElement {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
+
+  // ADR-0054: quick-access cards open workspace windows (reuse by basePath;
+  // `/new` targets always create). Outside the provider (isolated tests,
+  // home-page) the cards keep their native links.
+  const workspace = useWorkspace();
+  const handleCardNavigate = useCallback(
+    (to: string) => {
+      workspace?.open(to);
+    },
+    [workspace],
+  );
 
   const quickAccessGroups = useMemo<WorkspaceCardGroup[]>(() => {
     if (!permissions.loaded) return [];
@@ -311,7 +323,11 @@ export function DashboardPage(): ReactElement {
           aria-label={t.workspace.quickAccessTitle}
           className="space-y-3"
         >
-          <WorkspaceCardGrid groups={quickAccessGroups} compact />
+          <WorkspaceCardGrid
+            groups={quickAccessGroups}
+            compact
+            onNavigate={handleCardNavigate}
+          />
         </section>
       )}
 

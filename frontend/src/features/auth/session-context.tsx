@@ -62,7 +62,19 @@ export const SessionContext = createContext<SessionContextValue | null>(null);
  * session exists and are used for UX gating only — the backend authorizes
  * every request regardless (AR-21).
  */
-export function SessionProvider({ children }: { children: ReactNode }) {
+export function SessionProvider({
+  children,
+  onSessionEnd,
+}: {
+  children: ReactNode;
+  /**
+   * Invoked when the session ends server-side (a 401 on any request) or on
+   * explicit logout. The app layer wires device-local workspace cleanup here
+   * (ADR-0054 §6.10) — this module stays unaware of workspace storage,
+   * keeping the features → app layering intact.
+   */
+  onSessionEnd?: () => void;
+}) {
   const queryClient = useQueryClient();
   const [sessionExpired, setSessionExpired] = useState(false);
 
@@ -101,9 +113,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setSessionExpired(true);
       queryClient.clear();
       queryClient.setQueryData(queryKeys.session(), null);
+      onSessionEnd?.();
     });
     return () => setUnauthorizedHandler(null);
-  }, [queryClient]);
+  }, [queryClient, onSessionEnd]);
 
   const loginMutation = useMutation({
     mutationFn: (credentials: LoginRequest) => identityApi.login(credentials),
@@ -140,6 +153,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setSessionExpired(false);
       queryClient.clear();
       queryClient.setQueryData(queryKeys.session(), null);
+      onSessionEnd?.();
     },
   });
 

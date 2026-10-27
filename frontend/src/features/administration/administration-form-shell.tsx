@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { t } from '@/lib/i18n';
+import { useWorkspaceWindowDirty } from '@/app/workspace/workspace-context';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
 import { Button } from '@/ui/button';
 import { Card, CardContent } from '@/ui/card';
@@ -63,6 +64,11 @@ export function AdministrationFormShell({
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [isDirty]);
+  // ADR-0054 (§4.7): the workspace dock shows this form's dirty
+  // state and guards window close — the page's own leave-confirm
+  // guards stay untouched (no double dialog: the dock dialog only
+  // runs from dock/reset flows).
+  useWorkspaceWindowDirty(isDirty);
 
   const leave = () => {
     if (isDirty) setConfirmLeave(true);

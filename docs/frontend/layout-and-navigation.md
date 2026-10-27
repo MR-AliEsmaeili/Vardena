@@ -18,11 +18,22 @@
   ← LicenseGate (GET /license/current)
   ← OrganizationGate (GET /organizations/mine)
   ← FinancialContextGate (حوزه مالی و سال مالی برای نشست‌های دارای مجوز حسابداری)
-  ← محیط کاری اصلی (AppSidebar + <main id="main-content">)
+  ← WorkspaceProvider (پنجره‌های محیط کاری — ADR-0054)
+  ← محیط کاری اصلی (AppSidebar + <main id="main-content"> شامل Dock + AppBreadcrumb + WorkspaceWindowHost)
 ```
 
 - لینک پرش دسترس‌پذیری (`رفتن به محتوای اصلی`) نخستین عنصر قابل فوکوس صفحه است و به `#main-content` اشاره می‌کند.
 - در صورت تغییر سازمان فعال، تمام کلیدهای کش وابسته به سازمان قبلی در TanStack Query بلافاصله پاک‌سازی می‌شوند تا هیچ داده بین‌سازمانی حتی برای کسری از ثانیه نمایش نیابد.
+
+### ۱.۱ پنجره‌های فعال و داک محیط کاری (ADR-0054)
+
+زیر هدر و در ستون محیط کاری (داخل `<main id="main-content">`، بالای `AppBreadcrumb`) نوار باریک «پنجره‌های فعال» (Dock) قرار دارد؛ مشخصات کامل، قواعد رفتاری (W-rules) و معماری آن در بندل طراحی [workspace-windows](../../workspace-windows/README.md) است. خلاصۀ مالکیت‌ها:
+
+- هر پنجره یک بستر مسیر مستقل با `MemoryRouter`، state فرم، فیلتر و اسکرول خودش است؛ پنجره‌های فعال‌شده mounted می‌مانند (keep-alive) و فقط پنجرۀ فعال دیده می‌شود (`hidden` + `inert` + `aria-hidden` برای بقیه).
+- `WorkspaceProvider` (یک بار، بعد از همهٔ gates) state محدود پنجره‌ها را با `useReducer` + Context نگه می‌دارد؛ هیچ global store یا وابستگی تازه‌ای وجود ندارد و `WorkspaceWindowHost` جای `<Outlet />` قبلی پوسته را می‌گیرد.
+- زیردرخت کامل مسیرهای `/app` در `src/app/routes/workspace-route-tree.tsx` مشترک است؛ `router.tsx` فقط پوستۀ `/app → AppShell` را نگه می‌دارد و هر پنجره همان درخت را رندر می‌کند. `RequireAuth` بیرون و همهٔ `RequirePermission`ها دست‌نخورده داخل درخت می‌مانند (مرجع امنیت بک‌اند است، AR-21).
+- URL مرورگر فقط آینهٔ پنجرۀ فعال است (`replace`)؛ لیست پنجره‌ها پس از refresh از کلید نسخه‌دار `vardena:workspace:v1` (sessionStorage) بازیابی می‌شود — فقط مسیرها، هرگز محتوای فرم ذخیره‌نشده.
+- تغییر سازمان یا زمینۀ مالی در حالی‌که پنجرۀ dirty باز است مسدود می‌شود (Switcher هدر `disabled` + tooltip دلیل) و در حالت تمیز `workspace.reset()` پنجره‌ها را بازنشانی می‌کند.
 
 ---
 
@@ -101,5 +112,7 @@
 ## ۶) مدیریت دسترسی و Routeها (`src/app/router.tsx`)
 
 - `RequireAuth`: محافظ تمام مسیرهای `/app/*`؛ نشست غیرمعتبر به `/login` با حفظ مسیر بازگشت امن (`safeReturnPath`) و نشست دارای `mustChangePassword = true` به `/change-password` هدایت می‌شود.
+- زیردرخت مسیرهای `/app` (همۀ Routeها به‌جز پوسته) در `src/app/routes/workspace-route-tree.tsx` زندگی می‌کند و هم توسط `router.tsx` (برای تطبیق URL مرورگر) و هم توسط هر پنجرۀ داک (زیر `MemoryRouter` خودش) رندر می‌شود؛ تست parity (`workspace-route-tree.test.tsx`) تضمین می‌کند هیچ مسیری گم یا اضافه نشود.
+- چون react-router دو `<Router>` تو در تو را مجاز نمی‌داند، هر پنجرۀ داک داخل یک «جزیرۀ context» قرار می‌گیرد (`WindowRouterIsland` در `workspace-host.tsx`): سه context داخلی روتر (`UNSAFE_LocationContext`، `UNSAFE_RouteContext` و `UNSAFE_DataRouterContext`) پیش از `MemoryRouter` پنجره بازنشانی می‌شوند تا زیردرخت پنجره فقط روتر خودش را ببیند. این انحراف مستند از صادرات پایدار خود فریم‌ورک استفاده می‌کند و تست یکپارچۀ درخت واقعی در `workspace-host.test.tsx` صحت آن را تضمین می‌کند.
 - `RequirePermission`: هر مسیر عملیاتی یا گزارشی دقیقاً با کد مجوز متناظر در کنترلر بک‌اند محافظت می‌شود (مثلاً مسیر ایجاد سند `/app/accounting/documents/new` فقط `Accounting.Document.Create` می‌خواهد و به `View` وابسته نیست).
 - کنترل مجوز در فرانت‌اند صرفاً برای تجربه کاربری است (AR-21)؛ مرجع نهایی امنیت و مجوزها بک‌اند است.

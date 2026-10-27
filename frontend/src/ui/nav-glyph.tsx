@@ -72,6 +72,51 @@ export const NAV_TONE_TILE: Record<NavTone, NavToneStyles> = {
     marker: 'bg-tone-admin-strong',
   },
 };
+/**
+ * Source-palette twin of `NAV_TONE_TILE` (D-3, spec §6.10·ب): reads the
+ * `-src-` variables, which the runtime module→tone remap NEVER touches.
+ * Use this map to display a TONE ITSELF (the profile assignment grid and
+ * its dual-theme preview); use `NAV_TONE_TILE` to display a MODULE (which
+ * follows the user's assignment automatically through the aliased tokens).
+ */
+export const NAV_TONE_SRC_TILE: Record<NavTone, NavToneStyles> = {
+  workspace: {
+    idle: 'bg-tone-src-workspace-soft text-tone-src-workspace-ink ring-tone-src-workspace-line/70',
+    active: 'bg-tone-src-workspace-strong text-white ring-white/25',
+    icon: 'text-tone-src-workspace-ink',
+    marker: 'bg-tone-src-workspace-strong',
+  },
+  accounting: {
+    idle: 'bg-tone-src-accounting-soft text-tone-src-accounting-ink ring-tone-src-accounting-line/70',
+    active: 'bg-tone-src-accounting-strong text-white ring-white/25',
+    icon: 'text-tone-src-accounting-ink',
+    marker: 'bg-tone-src-accounting-strong',
+  },
+  inventory: {
+    idle: 'bg-tone-src-inventory-soft text-tone-src-inventory-ink ring-tone-src-inventory-line/70',
+    active: 'bg-tone-src-inventory-strong text-white ring-white/25',
+    icon: 'text-tone-src-inventory-ink',
+    marker: 'bg-tone-src-inventory-strong',
+  },
+  organization: {
+    idle: 'bg-tone-src-organization-soft text-tone-src-organization-ink ring-tone-src-organization-line/70',
+    active: 'bg-tone-src-organization-strong text-white ring-white/25',
+    icon: 'text-tone-src-organization-ink',
+    marker: 'bg-tone-src-organization-strong',
+  },
+  licensing: {
+    idle: 'bg-tone-src-licensing-soft text-tone-src-licensing-ink ring-tone-src-licensing-line/70',
+    active: 'bg-tone-src-licensing-strong text-white ring-white/25',
+    icon: 'text-tone-src-licensing-ink',
+    marker: 'bg-tone-src-licensing-strong',
+  },
+  admin: {
+    idle: 'bg-tone-src-admin-soft text-tone-src-admin-ink ring-tone-src-admin-line/70',
+    active: 'bg-tone-src-admin-strong text-white ring-white/25',
+    icon: 'text-tone-src-admin-ink',
+    marker: 'bg-tone-src-admin-strong',
+  },
+};
 
 const glyphVariants = cva(
   'relative inline-flex shrink-0 items-center justify-center rounded-glyph ring-1 ring-inset transition-[background-color,color,box-shadow,transform] duration-200 ease-out motion-reduce:transition-none',

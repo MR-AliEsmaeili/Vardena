@@ -14,6 +14,7 @@ import { queryKeys } from '@/api/query-keys';
 import { useOrganization } from '@/features/organization/use-organization';
 import { isBusinessDay } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
+import { useWorkspaceWindowDirty } from '@/app/workspace/workspace-context';
 import { Button } from '@/ui/button';
 import { Card, CardContent } from '@/ui/card';
 import { Input } from '@/ui/input';
@@ -228,6 +229,11 @@ function FiscalYearForm({
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [dirty]);
+  // ADR-0054 (§4.7): the workspace dock shows this form's dirty
+  // state and guards window close — the page's own leave-confirm
+  // guards stay untouched (no double dialog: the dock dialog only
+  // runs from dock/reset flows).
+  useWorkspaceWindowDirty(dirty);
 
   const leave = () => {
     if (dirty) setConfirmLeave(true);

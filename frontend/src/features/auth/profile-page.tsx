@@ -10,6 +10,8 @@ import { queryKeys } from '@/api/query-keys';
 import { useOrganization } from '@/features/organization/use-organization';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
+import { useWorkspaceWindowTitle } from '@/app/workspace/workspace-context';
+import { ModuleTonesSection } from './module-tones-section';
 import { FONT_SCALES } from '@/lib/appearance';
 import { formatDateTimeWithZone } from '@/lib/format';
 import { t } from '@/lib/i18n';
@@ -101,6 +103,9 @@ function applyPasswordServerIssues(
  * Plus browser-persisted theme & 3-level font scale (`vardena:appearance:v1`).
  */
 export function ProfilePage() {
+  // Window-tab title override (§6.6): «حساب کاربری» instead of the derived
+  // path-based fallback.
+  useWorkspaceWindowTitle(t.app.profile);
   const session = useSession();
   const permissions = usePermissions();
   const { organization } = useOrganization();
@@ -452,6 +457,9 @@ export function ProfilePage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Module tone assignment (D-3, ADR-0054 §4.3) */}
+        <ModuleTonesSection />
 
         {/* Session & Secure Logout */}
         <Card>

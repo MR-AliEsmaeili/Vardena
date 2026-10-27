@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { RefObject } from 'react';
+import type { MouseEvent, RefObject } from 'react';
 import { NavLink } from 'react-router-dom';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { NavGlyph, NAV_TONE_TILE } from '@/ui/nav-glyph';
 import { Tooltip } from '@/ui/tooltip';
 import { visibleNavigationSections } from '../navigation';
+import { useWorkspace } from '../workspace/workspace-context';
 
 export interface AppSidebarProps {
   navigationId: string;
@@ -50,6 +51,7 @@ export function AppSidebar({
   onNavigate,
 }: AppSidebarProps) {
   const permissions = usePermissions();
+  const workspace = useWorkspace();
   const isIconOnly = collapsed && !mobileOpen;
 
   const visibleSections = visibleNavigationSections(permissions);
@@ -57,6 +59,43 @@ export function AppSidebar({
   const handleSelect = () => {
     onCloseMobile(false);
     onNavigate();
+  };
+
+  /**
+   * ADR-0054: sidebar links open WORKSPACE WINDOWS, not outer-router
+   * navigations (the outer URL only mirrors the active window). Plain click
+   * → `open(to)` (reuse by basePath or create); Ctrl/Cmd+click and middle
+   * click → a NEW window on the same path (D-9). Outside the provider
+   * (isolated sidebar tests) the native NavLink behavior is preserved.
+   */
+  const handleLinkClick = (
+    event: MouseEvent<HTMLAnchorElement>,
+    to: string,
+  ) => {
+    if (workspace === null) {
+      handleSelect();
+      return;
+    }
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      workspace.open(to, { intent: 'new' });
+      handleSelect();
+      return;
+    }
+    if (event.button !== 0 || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    workspace.open(to);
+    handleSelect();
+  };
+
+  const handleLinkMouseDown = (
+    event: MouseEvent<HTMLAnchorElement>,
+    to: string,
+  ) => {
+    if (event.button !== 1 || workspace === null) return;
+    event.preventDefault();
+    workspace.open(to, { intent: 'new' });
+    handleSelect();
   };
 
   return (
@@ -229,7 +268,12 @@ export function AppSidebar({
                             <NavLink
                               to={item.to}
                               end={item.end ?? false}
-                              onClick={handleSelect}
+                              onClick={(event) =>
+                                handleLinkClick(event, item.to)
+                              }
+                              onMouseDown={(event) =>
+                                handleLinkMouseDown(event, item.to)
+                              }
                               className={({ isActive }) =>
                                 cn(
                                   'group relative flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-[0.8125rem] transition-[background-color,color] duration-150',
