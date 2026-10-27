@@ -14,10 +14,13 @@
 > all nine form surfaces (closing the movement/transfer `beforeunload` gap),
 > scope-switch reset, the per-window error boundary, and the limited
 > Alt-shortcut set. No new dependency, no backend contract change. All light
-> gates ran green locally (996 unit tests incl. 189 new workspace tests,
-> lint 0/0, typecheck, format, build, token guard, date contract, owner
-> isolation, docs links); the new `e2e/workspace-windows.spec.ts` and every
-> heavy suite run in CI. Details in §60.
+> gates ran green locally (996 unit tests at branch time — 1035 after merging
+> `main`'s DOC-01 work; incl. 189+ new workspace tests, lint 0/0, typecheck,
+> format, build, token guard, date contract, owner isolation, docs links);
+> the new `e2e/workspace-windows.spec.ts` and every heavy suite ran in CI —
+> **CI run 40463181896 is green** (docs, classify, frontend, frontend-e2e
+> and ci-gate pass; backend jobs correctly skipped) and PR #219 is CLEAN.
+> Details in §60.
 
 > **OQ-88 / OD-LIC-06 renewal protocol and persistence, 2026-10-19 (unmerged
 > implementation for review):** starting `main` =
@@ -3223,3 +3226,4 @@ in PR #115 (`1e3d407fd3f08650e0e70353f96b277e80ef03fd`).
 - **Bugs the new tests caught and fixed before review:** the persistence writer never cleared the key on `schedule(null)` and `flush()` left the queued idle handle alive; jsdom hands back `undefined` (not `null`) for `document.scrollingElement`; the dock `…` menu trigger had no `onClick` (unreachable menu) and lacked `aria-expanded/haspopup`; roving-tabindex arrows moved relative to the ACTIVE window instead of the FOCUSED tab; the provider read `window.location` instead of the router location for the initial window; and the router island needed the RouteContext/DataRouterContext resets or every window rendered EMPTY (the outer `/app` layout match made `useRoutes` strip the base twice).
 - **No new dependency** (react-router's own exports, existing UI primitives); **no backend change**; no signed/licensing surface touched.
 - **Verification (local, light gates):** `oxlint .` → **0 warnings 0 errors**; `tsc --noEmit` → clean; `prettier --check` → clean; `vitest run` → **996/996**; `vite build` → success (dist CSS carries the src+alias tone layers in both themes); `scripts/check-frontend-design-tokens.mjs` → PASS (496 files); `scripts/check-date-contract.py` → PASS; `scripts/check-owner-isolation.py --artifact frontend/dist` → PASS; `scripts/check-docs-links.py` → PASS. **CI-only (heavy):** the backend suites, docker/owner jobs, and the Playwright `frontend-e2e` job including the new `e2e/workspace-windows.spec.ts` (dock always visible, deep-link append + refresh restore, keep-alive + URL mirror, seeded 12-window cap dialog, dirty-close guard through the real item form, Alt+1/Alt+W/Alt+Arrow cycling, and the tone re-assignment → reload → reset cycle).
+- **CI follow-up to green (final):** merged `origin/main` (PR #218, DOC-01) mid-review — DOC-01's document-types routes were ported into the extracted tree (route inventory now **102 leaves / 73 RequirePermission gates**, with new parity assertions for `/app/documents…`), and its own routing tests pass against the windowed architecture. The new e2e spec then drove three APP fixes, each pinned by a unit test: (1) the debounced snapshot was lost on fast navigation → **pagehide/visibilitychange flush** in the persistence writer; (2) an initial deep link that hit the 12-window cap was swallowed silently → **lazy `capDialogOpen` initializer** in the provider (§4.5 step 5); (3) the URL-mirror loop-breaker could be poisoned by a fast second shortcut while the router's location still lagged the `replaceState`d browser URL → the equality branch now records `lastSyncedRef` **exactly once** (`??=`), never overwriting an in-flight marker. Test-side hardening: the e2e specs dispatch shortcuts as synthetic bubbling `KeyboardEvent`s and assert URLs with **regex `toHaveURL`** (string globs are resolved against the baseURL into unmatchable literals, and `waitForURL`'s navigation subscription misses same-document navigations that already landed); DOC-01's routing tests wrap their query-mock assertions in `waitFor` (the windowed shell mounts pages behind async gates, exposing a commit-vs-effect race). **Final: local suite 1035/1035; CI run 40463181896 — docs, classify, frontend, frontend-e2e, ci-gate all green, backend jobs legitimately skipped; PR #219 mergeable (CLEAN).**
