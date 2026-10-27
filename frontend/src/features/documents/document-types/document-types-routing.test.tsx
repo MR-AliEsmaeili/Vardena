@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppRoutes } from '@/app/router';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
@@ -162,9 +162,14 @@ describe('document-type routes', () => {
     expect(
       screen.queryByText(t.permissions.forbiddenTitle),
     ).not.toBeInTheDocument();
-    expect(documentsApi.listDocumentTypes).toHaveBeenCalledWith(
-      expect.objectContaining({ organizationId: testOrganization.id }),
-      expect.anything(),
+    // The windowed shell mounts this page only after its async gates settle,
+    // so the query effect can fire just AFTER findBy* observed the commit —
+    // poll instead of asserting synchronously.
+    await waitFor(() =>
+      expect(documentsApi.listDocumentTypes).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: testOrganization.id }),
+        expect.anything(),
+      ),
     );
   });
 
@@ -199,10 +204,12 @@ describe('document-type routes', () => {
         `${t.documentTypes.detailTitle} — inventory_receipt`,
       ),
     ).toBeInTheDocument();
-    expect(documentsApi.getDocumentType).toHaveBeenCalledWith(
-      testOrganization.id,
-      'inventory_receipt',
-      expect.anything(),
+    await waitFor(() =>
+      expect(documentsApi.getDocumentType).toHaveBeenCalledWith(
+        testOrganization.id,
+        'inventory_receipt',
+        expect.anything(),
+      ),
     );
   });
 
@@ -219,7 +226,9 @@ describe('document-type routes', () => {
     expect(
       await screen.findByRole('heading', { name: t.documentTypes.title }),
     ).toBeInTheDocument();
-    expect(documentsApi.listDocumentTypes).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(documentsApi.listDocumentTypes).toHaveBeenCalled(),
+    );
   });
 
   it('registers no create/delete destination for document types', () => {

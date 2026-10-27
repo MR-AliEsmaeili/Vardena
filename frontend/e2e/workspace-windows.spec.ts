@@ -270,6 +270,14 @@ test.describe('workspace windows — shortcuts (§4.8)', () => {
     // RTL: next window (ArrowLeft) → users, then Alt+W on that CLEAN window
     // closes it immediately (no dialog) and the mirror falls back to items.
     await sendShortcut(page, 'ArrowLeft');
+    await expect(
+      page.getByTestId('workspace-dock'),
+      'the dock must stay mounted (ready must not flip) after Alt+1',
+    ).toBeVisible({ timeout: 5000 });
+    await expect(
+      page.getByTestId('workspace-tab').nth(1),
+      'ArrowLeft (RTL next) must select the users tab',
+    ).toHaveAttribute('aria-selected', 'true', { timeout: 5000 });
     await expect(page).toHaveURL(/\/app\/admin\/users$/, { timeout: 10000 });
     await sendShortcut(page, 'w');
     await expect(page).toHaveURL(/\/app\/inventory\/items$/, {
