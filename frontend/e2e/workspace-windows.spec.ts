@@ -217,9 +217,7 @@ test.describe('workspace windows — shortcuts (§4.8)', () => {
   /**
    * The dock handler is a plain `window` keydown listener (§4.8). Dispatching
    * the bubbling, cancelable KeyboardEvent exercises the exact chain the jsdom
-   * unit tests cover (listener → resolver → provider → URL mirror) and stays
-   * deterministic in headless runs, where trusted Alt-combinations can be
-   * consumed before they reach the page.
+   * unit tests cover (listener → resolver → provider → URL mirror).
    */
   function sendShortcut(page: Page, key: string) {
     return page.evaluate((shortcutKey) => {
@@ -234,6 +232,27 @@ test.describe('workspace windows — shortcuts (§4.8)', () => {
     }, key);
   }
 
+  /** Counts every keydown that reaches `window` (capture phase). */
+  async function installKeydownSpy(page: Page) {
+    await page.evaluate(() => {
+      const scope = window as unknown as Record<string, number>;
+      scope['__keydownSpy'] = 0;
+      window.addEventListener(
+        'keydown',
+        () => {
+          scope['__keydownSpy'] = (scope['__keydownSpy'] ?? 0) + 1;
+        },
+        true,
+      );
+    });
+  }
+
+  function readKeydownSpy(page: Page) {
+    return page.evaluate(
+      () => (window as unknown as Record<string, number>)['__keydownSpy'] ?? -1,
+    );
+  }
+
   test.beforeEach(async ({ page }) => {
     await installApiStub(page);
     await page.goto('/app/inventory/items');
@@ -245,26 +264,58 @@ test.describe('workspace windows — shortcuts (§4.8)', () => {
   test('Alt+1 jumps to the first window, Alt+W closes the active one', async ({
     page,
   }) => {
+    await installKeydownSpy(page);
     await sendShortcut(page, '1');
-    await page.waitForURL('**/app/inventory/items');
+    expect(
+      await readKeydownSpy(page),
+      'the synthetic keydown must reach window-level listeners',
+    ).toBeGreaterThan(0);
+    await expect(
+      page.getByTestId('workspace-tab').first(),
+      'Alt+1 must select the first tab',
+    ).toHaveAttribute('aria-selected', 'true', { timeout: 5000 });
+    await page.waitForURL('**/app/inventory/items', { timeout: 10000 });
 
     // Alt+W on a CLEAN window closes it immediately (no dialog).
-    // RTL: next → users
-    await sendShortcut(page, 'ArrowLeft');
-    await page.waitForURL('**/app/admin/users');
+    await sendShortcut(page, 'ArrowLeft'); // RTL: next → users
+    await expect(
+      page.getByTestId('workspace-tab').nth(1),
+      'Alt+ArrowLeft must select the second tab',
+    ).toHaveAttribute('aria-selected', 'true', { timeout: 5000 });
+    await page.waitForURL('**/app/admin/users', { timeout: 10000 });
     await sendShortcut(page, 'w');
-    await page.waitForURL('**/app/inventory/items');
-    await expect(page.getByTestId('workspace-tab')).toHaveCount(1);
+    await expect(
+      page.getByTestId('workspace-tab'),
+      'Alt+W must close the active clean window',
+    ).toHaveCount(1, { timeout: 5000 });
+    await page.waitForURL('**/app/inventory/items', { timeout: 10000 });
   });
 
   test('Alt+Arrow cycles windows in RTL order', async ({ page }) => {
+    await installKeydownSpy(page);
     // Active is the second (users). ArrowRight = previous in RTL.
     await sendShortcut(page, 'ArrowRight');
-    await page.waitForURL('**/app/inventory/items');
+    expect(
+      await readKeydownSpy(page),
+      'the synthetic keydown must reach window-level listeners',
+    ).toBeGreaterThan(0);
+    await expect(
+      page.getByTestId('workspace-tab').first(),
+      'ArrowRight (RTL previous) must select the first tab',
+    ).toHaveAttribute('aria-selected', 'true', { timeout: 5000 });
+    await page.waitForURL('**/app/inventory/items', { timeout: 10000 });
     await sendShortcut(page, 'ArrowRight'); // wraps to the last
-    await page.waitForURL('**/app/admin/users');
+    await expect(
+      page.getByTestId('workspace-tab').nth(1),
+      'wrapping backwards must select the last tab',
+    ).toHaveAttribute('aria-selected', 'true', { timeout: 5000 });
+    await page.waitForURL('**/app/admin/users', { timeout: 10000 });
     await sendShortcut(page, 'ArrowLeft'); // wraps to the first
-    await page.waitForURL('**/app/inventory/items');
+    await expect(
+      page.getByTestId('workspace-tab').first(),
+      'wrapping forwards must select the first tab',
+    ).toHaveAttribute('aria-selected', 'true', { timeout: 5000 });
+    await page.waitForURL('**/app/inventory/items', { timeout: 10000 });
   });
 });
 
