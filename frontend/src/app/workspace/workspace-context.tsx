@@ -341,7 +341,18 @@ export function WorkspaceProvider({
     if (activePath === null) return;
     const current = `${outerLocation.pathname}${outerLocation.search}${outerLocation.hash}`;
     if (current === activePath) {
-      lastSyncedRef.current = activePath;
+      /*
+       * Record the agreement EXACTLY ONCE (the boot/deep-link case, so an
+       * external navigation away is never fought). Re-recording on every
+       * equal render is wrong: the mirror navigates with `replaceState`, so
+       * the browser URL leads and `outerLocation` can lag a render behind it
+       * (its flush queues behind the heavy activation render). A fast second
+       * shortcut then lands INSIDE that window: this branch sees the STALE
+       * location equal the new activePath, poisons `lastSyncedRef` without
+       * navigating, and when the real location arrives the loop-breaker
+       * below suppresses the sync forever — the URL stays on the old window.
+       */
+      lastSyncedRef.current ??= activePath;
       return;
     }
     // Loop-breaker: a URL this sync already produced is never re-synced.

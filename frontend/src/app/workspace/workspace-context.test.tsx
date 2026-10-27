@@ -391,6 +391,33 @@ describe('browser URL mirror (§6.5, W-07)', () => {
     renderProvider({ ready: false });
     expect(screen.getByTestId('outer-location')).toHaveTextContent('/app');
   });
+
+  it('a rapid activation burst lands the mirror on the last window', () => {
+    renderProvider();
+    act(() => {
+      captured!.open('/app/accounting/documents');
+    });
+    act(() => {
+      captured!.open('/app/inventory/items');
+    });
+    const [homeId, docsId, itemsId] = captured!.state.windows.map(
+      (workspaceWindow) => workspaceWindow.id,
+    );
+    // Three activations in ONE act() burst — a single render carries the last
+    // one, and the mirror must still end on it (the equality branch must not
+    // strand `lastSyncedRef` on a stale path and block the sync).
+    act(() => {
+      captured!.activate(homeId!);
+      captured!.activate(docsId!);
+      captured!.activate(itemsId!);
+    });
+    expect(screen.getByTestId('outer-location')).toHaveTextContent(
+      '/app/inventory/items',
+    );
+    // …and later syncs keep working — the loop-breaker was never poisoned.
+    act(() => captured!.activate(homeId!));
+    expect(screen.getByTestId('outer-location')).toHaveTextContent('/app');
+  });
 });
 
 describe('scope reset watcher (W-06, §6.8)', () => {
