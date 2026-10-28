@@ -8,6 +8,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/ui/card';
 import { DataTable } from '@/ui/patterns/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { AmountCell } from '@/ui/patterns/amount-cell';
+import { UnavailableState } from '@/ui/patterns/states';
 import { formatDateOnly, formatDateOnlyCanonical } from '@/lib/format';
 
 /**
@@ -166,10 +167,8 @@ export function DocumentsTable({
     <Card>
       <CardHeader className="flex-row items-start justify-between gap-2">
         <div>
-          <CardTitle className="text-sm font-bold">
-            {t.dashboard.documentsSectionLabel}
-          </CardTitle>
-          <CardDescription className="text-[11px]">
+          <CardTitle>{t.dashboard.documentsSectionLabel}</CardTitle>
+          <CardDescription>
             {hasFilter
               ? t.dashboard.documentsFilteredEmptyBody
               : t.dashboard.documentsSubtitle}
@@ -177,9 +176,10 @@ export function DocumentsTable({
         </div>
       </CardHeader>
       {!isPermitted ? (
-        <p className="m-4 rounded-card border border-dashed border-line-strong bg-surface px-6 py-6 text-center text-xs text-ink-subtle">
-          {t.dashboard.noPermission}
-        </p>
+        <UnavailableState
+          description={t.dashboard.noPermission}
+          className="m-4"
+        />
       ) : (
         <DataTable
           columns={columns}

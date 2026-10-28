@@ -85,6 +85,33 @@ export function EmptyState({
   );
 }
 
+/**
+ * "Unavailable" notice — a section the user cannot open yet (missing
+ * permission) or that has no scope to act on (e.g. no financial area). One
+ * shared pattern replaces the hand-copied dashed boxes (standards.md §2
+ * «الگوی واحد»). Unlike `EmptyState` there is no CTA: the recovery path is
+ * gaining access or scope, not creating a record.
+ */
+export function UnavailableState({
+  description,
+  className,
+}: {
+  description: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'rounded-card border border-dashed border-line-strong bg-surface px-6 py-6 text-center text-xs text-ink-subtle',
+        className,
+      )}
+      data-testid="unavailable-state"
+    >
+      {description}
+    </div>
+  );
+}
+
 /** Terminal error block with a mandatory recovery affordance. */
 export function ErrorState({
   title = t.errors.title,

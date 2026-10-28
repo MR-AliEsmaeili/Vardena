@@ -5,6 +5,7 @@ import { Badge } from '@/ui/badge';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/ui/card';
 import { Skeleton } from '@/ui/skeleton';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
+import { UnavailableState } from '@/ui/patterns/states';
 import { buildTurnoverSeries } from '../lib/chart-series';
 import { formatAmount } from '@/lib/format';
 import { aggregateKpis, topAccountsByTurnover } from '../lib/kpis';
@@ -52,8 +53,8 @@ function ChartCard({
     <Card>
       <CardHeader className="flex-row items-start justify-between gap-2">
         <div>
-          <CardTitle className="text-sm font-bold">{title}</CardTitle>
-          <CardDescription className="text-[11px]">{subtitle}</CardDescription>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{subtitle}</CardDescription>
         </div>
         {badge}
       </CardHeader>
@@ -77,12 +78,13 @@ export function ChartsSection({
 }): ReactElement {
   if (!isPermitted || scopeMissing) {
     return (
-      <div
-        className="rounded-lg border border-dashed border-line-strong bg-surface px-6 py-6 text-center text-xs text-ink-subtle"
-        aria-label={t.dashboard.chartsSectionLabel}
-      >
-        {scopeMissing ? t.dashboard.scopeMissing : t.dashboard.noPermission}
-      </div>
+      <section aria-label={t.dashboard.chartsSectionLabel}>
+        <UnavailableState
+          description={
+            scopeMissing ? t.dashboard.scopeMissing : t.dashboard.noPermission
+          }
+        />
+      </section>
     );
   }
 

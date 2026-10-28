@@ -5,7 +5,7 @@ import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/ui/card';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
-import { EmptyState } from '@/ui/patterns/states';
+import { EmptyState, UnavailableState } from '@/ui/patterns/states';
 import { formatCount, formatDateTime, formatQuantity } from '@/lib/format';
 
 export function WorkflowWidget({
@@ -25,9 +25,7 @@ export function WorkflowWidget({
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="text-sm font-bold">
-          {t.dashboard.approvalsTitle}
-        </CardTitle>
+        <CardTitle>{t.dashboard.approvalsTitle}</CardTitle>
         {!isLoading && count > 0 && (
           <Badge variant="warning" className="num">
             {formatCount(count)} {t.dashboard.approvalsBadge}
@@ -36,9 +34,7 @@ export function WorkflowWidget({
       </CardHeader>
       <div className="px-4 pb-3 pt-2">
         {!isPermitted ? (
-          <p className="rounded-card border border-dashed border-line-strong bg-surface px-6 py-6 text-center text-xs text-ink-subtle">
-            {t.dashboard.noPermission}
-          </p>
+          <UnavailableState description={t.dashboard.noPermission} />
         ) : isLoading ? (
           <ul className="space-y-3" aria-busy="true">
             {[0, 1, 2].map((index) => (
@@ -120,18 +116,12 @@ export function InventoryAlertWidget({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-bold">
-          {t.dashboard.inventoryTitle}
-        </CardTitle>
-        <CardDescription className="text-[0.6875rem]">
-          {t.dashboard.inventorySubtitle}
-        </CardDescription>
+        <CardTitle>{t.dashboard.inventoryTitle}</CardTitle>
+        <CardDescription>{t.dashboard.inventorySubtitle}</CardDescription>
       </CardHeader>
       <div className="px-4 pb-3 pt-2">
         {!isPermitted ? (
-          <p className="rounded-card border border-dashed border-line-strong bg-surface px-6 py-6 text-center text-xs text-ink-subtle">
-            {t.dashboard.noPermission}
-          </p>
+          <UnavailableState description={t.dashboard.noPermission} />
         ) : isLoading ? (
           <ul className="space-y-3" aria-busy="true">
             {[0, 1, 2].map((index) => (
@@ -221,17 +211,17 @@ export function PeriodStatusWidget({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-bold">
-          {t.dashboard.periodTitle}
-        </CardTitle>
+        <CardTitle>{t.dashboard.periodTitle}</CardTitle>
       </CardHeader>
       <div className="px-4 pb-3 pt-2">
         {!isPermitted || scopeMissing ? (
-          <p className="rounded-card border border-dashed border-line-strong bg-surface px-6 py-6 text-center text-xs text-ink-subtle">
-            {scopeMissing
-              ? t.dashboard.scopeMissingShort
-              : t.dashboard.noPermission}
-          </p>
+          <UnavailableState
+            description={
+              scopeMissing
+                ? t.dashboard.scopeMissingShort
+                : t.dashboard.noPermission
+            }
+          />
         ) : isLoading ? (
           <div className="space-y-2" aria-busy="true">
             {[0, 1, 2].map((index) => (
