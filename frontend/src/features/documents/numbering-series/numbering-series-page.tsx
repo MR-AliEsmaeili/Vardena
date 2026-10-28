@@ -13,9 +13,7 @@ import { DataTable } from '@/ui/patterns/data-table';
 import { FilterBar, FilterField } from '@/ui/patterns/filter-bar';
 import { PageHeader } from '@/ui/patterns/page-header';
 import { Select } from '@/ui/select';
-import {
-  useDocumentTypes,
-} from '../document-types/use-document-types';
+import { useDocumentTypes } from '../document-types/use-document-types';
 import { numberingSeriesErrorMessage } from './numbering-series-error-messages';
 import {
   useNumberingSeries,
@@ -28,7 +26,9 @@ export function numberingSeriesDetailPath(seriesId: string): string {
   return `${NUMBERING_SERIES_PATH}/${encodeURIComponent(seriesId)}`;
 }
 
-function createColumns(timeZone: string): ColumnDef<NumberingSeries, unknown>[] {
+function createColumns(
+  timeZone: string,
+): ColumnDef<NumberingSeries, unknown>[] {
   return [
     {
       accessorKey: 'documentType',
@@ -130,8 +130,7 @@ export function NumberingSeriesPage() {
     search: '',
   });
 
-  const hasActiveFilter =
-    state.documentType !== '' || state.isActive !== '';
+  const hasActiveFilter = state.documentType !== '' || state.isActive !== '';
 
   const apply = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -243,7 +242,10 @@ export function NumberingSeriesPage() {
             state.update({ pageSize, page: null }),
         }}
       />
-      <p className="text-xs text-ink-subtle" data-testid="numbering-series-no-delete-note">
+      <p
+        className="text-xs text-ink-subtle"
+        data-testid="numbering-series-no-delete-note"
+      >
         {t.numberingSeries.noDeleteNote}
       </p>
     </div>

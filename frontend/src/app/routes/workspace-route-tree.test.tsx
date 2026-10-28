@@ -157,9 +157,9 @@ describe('leaf parity — same component as the old inline tree', () => {
     expect(leafType('/app/documents/numbering-series/new')).toBe(
       NumberingSeriesFormPage,
     );
-    expect(leafType('/app/documents/numbering-series/some-series-id/edit')).toBe(
-      NumberingSeriesFormPage,
-    );
+    expect(
+      leafType('/app/documents/numbering-series/some-series-id/edit'),
+    ).toBe(NumberingSeriesFormPage);
     expect(gatePermissions('/app/documents/numbering-series')).toContain(
       PERMISSIONS.documents.numberingSeriesView,
     );

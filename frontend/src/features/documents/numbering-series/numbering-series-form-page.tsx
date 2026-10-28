@@ -55,14 +55,11 @@ const createSchema = z.object({
       (v) => v === '' || /^\d+$/.test(v),
       t.numberingSeries.errorCodes.validationFailed,
     )
-    .refine(
-      (v) => {
-        if (v === '') return true;
-        const n = Number(v);
-        return Number.isInteger(n) && n >= 0 && n <= 32;
-      },
-      t.numberingSeries.widthHint,
-    ),
+    .refine((v) => {
+      if (v === '') return true;
+      const n = Number(v);
+      return Number.isInteger(n) && n >= 0 && n <= 32;
+    }, t.numberingSeries.widthHint),
   reusePolicy: z.enum(['never', 'recycle']),
 });
 
@@ -81,14 +78,11 @@ const editSchema = z.object({
       (v) => v === '' || /^\d+$/.test(v),
       t.numberingSeries.errorCodes.validationFailed,
     )
-    .refine(
-      (v) => {
-        if (v === '') return true;
-        const n = Number(v);
-        return Number.isInteger(n) && n >= 0 && n <= 32;
-      },
-      t.numberingSeries.widthHint,
-    ),
+    .refine((v) => {
+      if (v === '') return true;
+      const n = Number(v);
+      return Number.isInteger(n) && n >= 0 && n <= 32;
+    }, t.numberingSeries.widthHint),
   reusePolicy: z.enum(['never', 'recycle']),
   isActive: z.boolean(),
 });
@@ -122,10 +116,7 @@ export function NumberingSeriesFormPage({
           <ApiErrorAlert
             error={detailQuery.error}
             title={t.table.errorTitle}
-            description={numberingSeriesErrorMessage(
-              'load',
-              detailQuery.error,
-            )}
+            description={numberingSeriesErrorMessage('load', detailQuery.error)}
             onRetry={() => void detailQuery.refetch()}
           />
         </div>
@@ -187,8 +178,7 @@ function NumberingSeriesCreateForm({
   const onSubmit = form.handleSubmit((values) => {
     if (submitting) return;
     setSubmitFailure(null);
-    const widthValue =
-      values.width === '' ? undefined : Number(values.width);
+    const widthValue = values.width === '' ? undefined : Number(values.width);
     const body: CreateNumberingSeriesRequest = {
       organizationId,
       documentType: values.documentType.trim(),
@@ -204,7 +194,9 @@ function NumberingSeriesCreateForm({
     mutation.mutate(body, {
       onSuccess: (created) => {
         showToast({ kind: 'success', message: t.numberingSeries.saved });
-        navigate(`/app/documents/numbering-series/${encodeURIComponent(created.id)}`);
+        navigate(
+          `/app/documents/numbering-series/${encodeURIComponent(created.id)}`,
+        );
       },
       onError: (error) => {
         const normalized = normalizeApiError(error);
@@ -253,7 +245,9 @@ function NumberingSeriesCreateForm({
                     disabled={submitting}
                     data-testid="numbering-series-document-type-input"
                   >
-                    <option value="">{t.numberingSeries.documentTypePlaceholder}</option>
+                    <option value="">
+                      {t.numberingSeries.documentTypePlaceholder}
+                    </option>
                     {(docTypesQuery.data?.items ?? []).map((dt) => (
                       <option key={dt.code} value={dt.code}>
                         {dt.code}
@@ -354,8 +348,12 @@ function NumberingSeriesCreateForm({
                     disabled={submitting}
                     data-testid="numbering-series-reuse-policy-input"
                   >
-                    <option value="never">{t.numberingSeries.reuseNever}</option>
-                    <option value="recycle">{t.numberingSeries.reuseRecycle}</option>
+                    <option value="never">
+                      {t.numberingSeries.reuseNever}
+                    </option>
+                    <option value="recycle">
+                      {t.numberingSeries.reuseRecycle}
+                    </option>
                   </Select>
                 )}
               </FormField>
@@ -435,8 +433,7 @@ function NumberingSeriesEditForm({
   const onSubmit = form.handleSubmit((values) => {
     if (submitting) return;
     setSubmitFailure(null);
-    const widthValue =
-      values.width === '' ? undefined : Number(values.width);
+    const widthValue = values.width === '' ? undefined : Number(values.width);
     const body: UpdateNumberingSeriesRequest = {
       name: values.name.trim(),
       strategy: 'monotonic',
@@ -447,7 +444,9 @@ function NumberingSeriesEditForm({
     mutation.mutate(body, {
       onSuccess: () => {
         showToast({ kind: 'success', message: t.numberingSeries.saved });
-        navigate(`/app/documents/numbering-series/${encodeURIComponent(seriesId)}`);
+        navigate(
+          `/app/documents/numbering-series/${encodeURIComponent(seriesId)}`,
+        );
       },
       onError: (error) => {
         const normalized = normalizeApiError(error);
@@ -590,8 +589,12 @@ function NumberingSeriesEditForm({
                     disabled={submitting}
                     data-testid="numbering-series-reuse-policy-input"
                   >
-                    <option value="never">{t.numberingSeries.reuseNever}</option>
-                    <option value="recycle">{t.numberingSeries.reuseRecycle}</option>
+                    <option value="never">
+                      {t.numberingSeries.reuseNever}
+                    </option>
+                    <option value="recycle">
+                      {t.numberingSeries.reuseRecycle}
+                    </option>
                   </Select>
                 )}
               </FormField>
@@ -617,7 +620,9 @@ function NumberingSeriesEditForm({
                       data-testid="numbering-series-is-active-input"
                     >
                       <option value="true">{t.numberingSeries.active}</option>
-                      <option value="false">{t.numberingSeries.inactive}</option>
+                      <option value="false">
+                        {t.numberingSeries.inactive}
+                      </option>
                     </Select>
                   )}
                 />

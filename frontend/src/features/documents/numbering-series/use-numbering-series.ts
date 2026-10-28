@@ -58,11 +58,7 @@ export function useNumberingSeriesListState(): NumberingSeriesListState & {
     setParams((current) => {
       const next = new URLSearchParams(current);
       for (const [key, value] of Object.entries(values)) {
-        if (
-          value === null ||
-          value === '' ||
-          (key === 'page' && value === 1)
-        ) {
+        if (value === null || value === '' || (key === 'page' && value === 1)) {
           next.delete(key);
         } else {
           next.set(key, String(value));
@@ -148,10 +144,9 @@ export function useNumberingSeries(
   state: NumberingSeriesListState,
 ) {
   return useQuery<Paginated<NumberingSeries>, Error>({
-    queryKey: queryKeys.documents.numberingSeries(
-      organizationId ?? 'none',
-      { ...state },
-    ),
+    queryKey: queryKeys.documents.numberingSeries(organizationId ?? 'none', {
+      ...state,
+    }),
     queryFn: ({ signal }) => {
       if (organizationId === null) {
         throw new Error(
@@ -206,25 +201,16 @@ export function useNumberingSeriesDetail(
 export function useCreateNumberingSeriesMutation(organizationId: string) {
   const queryClient = useQueryClient();
   return useMutation<NumberingSeries, Error, CreateNumberingSeriesRequest>({
-    mutationKey: [
-      'documents',
-      organizationId,
-      'numbering-series',
-      'create',
-    ],
+    mutationKey: ['documents', organizationId, 'numbering-series', 'create'],
     mutationFn: (body) => createNumberingSeries(body),
     onSuccess: (saved) => {
       queryClient.setQueryData(
-        queryKeys.documents.numberingSeriesDetail(
-          organizationId,
-          saved.id,
-        ),
+        queryKeys.documents.numberingSeriesDetail(organizationId, saved.id),
         saved,
       );
       void queryClient
         .invalidateQueries({
-          queryKey:
-            queryKeys.documents.numberingSeriesPrefix(organizationId),
+          queryKey: queryKeys.documents.numberingSeriesPrefix(organizationId),
         })
         .then(
           () => undefined,
@@ -247,8 +233,7 @@ export function useUpdateNumberingSeriesMutation(
       'update',
       seriesId,
     ],
-    mutationFn: (body) =>
-      updateNumberingSeries(organizationId, seriesId, body),
+    mutationFn: (body) => updateNumberingSeries(organizationId, seriesId, body),
     onSuccess: (saved) => {
       queryClient.setQueryData(
         queryKeys.documents.numberingSeriesDetail(organizationId, seriesId),
@@ -256,8 +241,7 @@ export function useUpdateNumberingSeriesMutation(
       );
       void queryClient
         .invalidateQueries({
-          queryKey:
-            queryKeys.documents.numberingSeriesPrefix(organizationId),
+          queryKey: queryKeys.documents.numberingSeriesPrefix(organizationId),
         })
         .then(
           () => undefined,

@@ -1024,10 +1024,7 @@ export const workspaceRouteTree: ReactElement = (
           />
         }
       >
-        <Route
-          path="numbering-series"
-          element={<NumberingSeriesPage />}
-        />
+        <Route path="numbering-series" element={<NumberingSeriesPage />} />
         <Route
           path="numbering-series/:seriesId"
           element={<NumberingSeriesDetailPage />}

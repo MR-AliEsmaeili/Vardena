@@ -12,15 +12,15 @@ function apiError(code: ApiErrorCode): ApiError {
 
 describe('numberingSeriesErrorMessage (DOC-02)', () => {
   it('maps PermissionDenied and EntityNotFound correctly', () => {
-    expect(numberingSeriesErrorMessage('load', apiError('PermissionDenied'))).toBe(
-      t.errors.forbidden,
-    );
-    expect(numberingSeriesErrorMessage('load', apiError('EntityNotFound'))).toBe(
-      t.numberingSeries.errorCodes.notFound,
-    );
-    expect(numberingSeriesErrorMessage('save', apiError('EntityNotFound'))).toBe(
-      t.numberingSeries.errorCodes.unknownDocumentType,
-    );
+    expect(
+      numberingSeriesErrorMessage('load', apiError('PermissionDenied')),
+    ).toBe(t.errors.forbidden);
+    expect(
+      numberingSeriesErrorMessage('load', apiError('EntityNotFound')),
+    ).toBe(t.numberingSeries.errorCodes.notFound);
+    expect(
+      numberingSeriesErrorMessage('save', apiError('EntityNotFound')),
+    ).toBe(t.numberingSeries.errorCodes.unknownDocumentType);
   });
 
   it('maps Conflict to duplicateSeries regardless of operation', () => {
@@ -60,8 +60,8 @@ describe('numberingAllocationErrorMessage', () => {
     expect(numberingAllocationErrorMessage(apiError('EntityNotFound'))).toBe(
       t.numberingSeries.errorCodes.notFound,
     );
-    expect(
-      numberingAllocationErrorMessage(new Error('generic')),
-    ).toBe(t.numberingSeries.allocationsLoadFailed);
+    expect(numberingAllocationErrorMessage(new Error('generic'))).toBe(
+      t.numberingSeries.allocationsLoadFailed,
+    );
   });
 });

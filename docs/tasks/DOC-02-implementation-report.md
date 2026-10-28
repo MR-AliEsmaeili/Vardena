@@ -17,13 +17,13 @@
 
 منبع حقیقت: `backend/src/modules/documents/api/numbering-series.controller.ts` و DTOهای آن، به‌همراه `document-type-registration.ts` (رجیستری).
 
-| متد | مسیر | مجوز دقیق | نکات قرارداد |
-| --- | --- | --- | --- |
-| GET | `/documents/numbering-series` | `Document.NumberingSeries.View` | `organizationId` + `page`/`pageSize` + فیلتر `documentType`/`isActive` + مرتب‌سازی `name`/`createdAt`/`updatedAt`؛ صفحه‌بندی سرور |
-| POST | `/documents/numbering-series` | `Document.NumberingSeries.Create` | `organizationId`، `documentType` (≤۶۴ و باید در رجیستری باشد وگرنه ۴۰۴)، `scopeKey?` (≤۶۴، `""` = سری پیش‌فرض، توکن مبهم)، `name` (۱..۲۰۰)، `strategy` (فقط `monotonic`)، `width` (۰..۳۲، padding نمایشی)، `reusePolicy` (`never`/`recycle` بی‌اثر در این نسخه)؛ یکتایی `(organizationId, documentType, scopeKey)` مستقل از `isActive` → ۴۰۹ |
-| GET | `/documents/numbering-series/:id` | `.View` | `organizationId` در query |
-| PATCH | `/documents/numbering-series/:id` | `Document.NumberingSeries.Edit` | whitelist فقط `name`/`strategy`/`width`/`reusePolicy`/`isActive`؛ ارسال `scopeKey`/`documentType`/`lastValue`/`organizationId` → `400`؛ `lastValue` فقط خواندنی است |
-| GET | `/documents/numbering-series/:id/allocations` | `Document.Numbering.View` | ledger فقط‌خواندنی و append-only؛ فیلتر `referenceModule`/`referenceDocumentType`/`referenceDocumentId` + مرتب‌سازی `number`/`createdAt` + صفحه‌بندی؛ هیچ endpoint تخصیص/حذف دستی وجود ندارد |
+| متد   | مسیر                                          | مجوز دقیق                         | نکات قرارداد                                                                                                                                                                                                                                                                                                                                 |
+| ----- | --------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET   | `/documents/numbering-series`                 | `Document.NumberingSeries.View`   | `organizationId` + `page`/`pageSize` + فیلتر `documentType`/`isActive` + مرتب‌سازی `name`/`createdAt`/`updatedAt`؛ صفحه‌بندی سرور                                                                                                                                                                                                            |
+| POST  | `/documents/numbering-series`                 | `Document.NumberingSeries.Create` | `organizationId`، `documentType` (≤۶۴ و باید در رجیستری باشد وگرنه ۴۰۴)، `scopeKey?` (≤۶۴، `""` = سری پیش‌فرض، توکن مبهم)، `name` (۱..۲۰۰)، `strategy` (فقط `monotonic`)، `width` (۰..۳۲، padding نمایشی)، `reusePolicy` (`never`/`recycle` بی‌اثر در این نسخه)؛ یکتایی `(organizationId, documentType, scopeKey)` مستقل از `isActive` → ۴۰۹ |
+| GET   | `/documents/numbering-series/:id`             | `.View`                           | `organizationId` در query                                                                                                                                                                                                                                                                                                                    |
+| PATCH | `/documents/numbering-series/:id`             | `Document.NumberingSeries.Edit`   | whitelist فقط `name`/`strategy`/`width`/`reusePolicy`/`isActive`؛ ارسال `scopeKey`/`documentType`/`lastValue`/`organizationId` → `400`؛ `lastValue` فقط خواندنی است                                                                                                                                                                          |
+| GET   | `/documents/numbering-series/:id/allocations` | `Document.Numbering.View`         | ledger فقط‌خواندنی و append-only؛ فیلتر `referenceModule`/`referenceDocumentType`/`referenceDocumentId` + مرتب‌سازی `number`/`createdAt` + صفحه‌بندی؛ هیچ endpoint تخصیص/حذف دستی وجود ندارد                                                                                                                                                 |
 
 شواهد کلیدی از کد فعلی:
 
@@ -85,24 +85,24 @@
 
 ### تست‌های جدید در این PR
 
-| فایل / سوئیت | پوشش |
-| --- | --- |
-| `src/app/routes/workspace-route-tree.test.tsx` — به‌روزرسانی inventory + افزوده‌شدن `resolves the DOC-02 numbering-series surfaces` (۵ assertion) | ۴ leaf جدید + ۳ gate جدید، leafType و gatePermissions برای `/numbering-series`، `/new` (Create)، `/:id` (View)، `/:id/edit` (View+Edit)؛ تمام ۱۷ تست سبز |
-| (موجود) `src/api/documents.api.test.ts` — گسترش‌یافته در همین شاخه برای ۵ تابع شماره‌گذاری (URL/متد/بدنه، encode `seriesId`/`scopeKey`، عدم ارسال `sort` نامعتبر، ۴۰۹) | — |
-| (موجود) `src/features/documents/numbering-series/*` — تست‌های صفحه/فرم/جزئیات (۴ حالت، فیلتر URL، ۴۰۹ دقیق، documentType از `listDocumentTypes` بدون hardcode، رشته‌ماندن `lastValue`/`number`) | — |
+| فایل / سوئیت                                                                                                                                                                                    | پوشش                                                                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/app/routes/workspace-route-tree.test.tsx` — به‌روزرسانی inventory + افزوده‌شدن `resolves the DOC-02 numbering-series surfaces` (۵ assertion)                                               | ۴ leaf جدید + ۳ gate جدید، leafType و gatePermissions برای `/numbering-series`، `/new` (Create)، `/:id` (View)، `/:id/edit` (View+Edit)؛ تمام ۱۷ تست سبز |
+| (موجود) `src/api/documents.api.test.ts` — گسترش‌یافته در همین شاخه برای ۵ تابع شماره‌گذاری (URL/متد/بدنه، encode `seriesId`/`scopeKey`، عدم ارسال `sort` نامعتبر، ۴۰۹)                          | —                                                                                                                                                        |
+| (موجود) `src/features/documents/numbering-series/*` — تست‌های صفحه/فرم/جزئیات (۴ حالت، فیلتر URL، ۴۰۹ دقیق، documentType از `listDocumentTypes` بدون hardcode، رشته‌ماندن `lastValue`/`number`) | —                                                                                                                                                        |
 
 **جمع جدید قابل‌شمارش در تست‌های موجود:** ۱ سوئیت جدید + به‌روزرسانی inventory.
 
 ### ماتریس اجرای تست (طبق `docs/testing/test-execution-policy.md`)
 
-| دروازه | محیط | نتیجه |
-| --- | --- | --- |
-| `typecheck` (`tsc --noEmit`) | FAST-LOCAL | سبز (۰ خطا) |
-| `lint` (`oxlint`) | FAST-LOCAL | سبز (۰ خطا/هشدار روی ۵۱۴ فایل، ۱۹۱ rule) |
-| `format:check` | FAST-LOCAL | سبز (در CI نیز) |
-| واحد فرانت‌اند (`vitest run`) | FAST-LOCAL | **۱۷/۱۷ تست workspace-route-tree سبز**؛ کل سوئیت در CI-HEAVY به‌صورت کامل اجرا می‌شود |
-| `build` تولیدی | FAST-LOCAL | سبز (فقط هشدارهای بالادستی ازپیش‌موجود zod/چانک) |
-| مرورگر E2E / Playwright، jobهای CI-HEAVY و `ci-gate` | CI-HEAVY | طبق policy فقط در GitHub CI؛ نتیجهٔ SHA نهایی در توضیحات PR ثبت می‌شود |
+| دروازه                                               | محیط       | نتیجه                                                                                 |
+| ---------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------- |
+| `typecheck` (`tsc --noEmit`)                         | FAST-LOCAL | سبز (۰ خطا)                                                                           |
+| `lint` (`oxlint`)                                    | FAST-LOCAL | سبز (۰ خطا/هشدار روی ۵۱۴ فایل، ۱۹۱ rule)                                              |
+| `format:check`                                       | FAST-LOCAL | سبز (در CI نیز)                                                                       |
+| واحد فرانت‌اند (`vitest run`)                        | FAST-LOCAL | **۱۷/۱۷ تست workspace-route-tree سبز**؛ کل سوئیت در CI-HEAVY به‌صورت کامل اجرا می‌شود |
+| `build` تولیدی                                       | FAST-LOCAL | سبز (فقط هشدارهای بالادستی ازپیش‌موجود zod/چانک)                                      |
+| مرورگر E2E / Playwright، jobهای CI-HEAVY و `ci-gate` | CI-HEAVY   | طبق policy فقط در GitHub CI؛ نتیجهٔ SHA نهایی در توضیحات PR ثبت می‌شود                |
 
 هیچ تست سنگین، E2E یا پایگاه‌دادهٔ زنده‌ای به‌صورت محلی اجرا نشد.
 

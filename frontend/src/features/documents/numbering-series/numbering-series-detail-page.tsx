@@ -15,10 +15,7 @@ import { DataTable } from '@/ui/patterns/data-table';
 import { FilterBar, FilterField } from '@/ui/patterns/filter-bar';
 import { PageHeader } from '@/ui/patterns/page-header';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
-import {
-  Definition,
-  DefinitionList,
-} from '@/ui/patterns/definition-list';
+import { Definition, DefinitionList } from '@/ui/patterns/definition-list';
 import { LoadingState } from '@/ui/patterns/states';
 import { Select } from '@/ui/select';
 import {
@@ -50,18 +47,14 @@ function allocationColumns(
       accessorKey: 'referenceModule',
       header: t.numberingSeries.referenceModule,
       cell: ({ row }) => (
-        <span dir="ltr">
-          {row.original.referenceModule ?? '—'}
-        </span>
+        <span dir="ltr">{row.original.referenceModule ?? '—'}</span>
       ),
     },
     {
       accessorKey: 'referenceDocumentType',
       header: t.numberingSeries.referenceDocumentType,
       cell: ({ row }) => (
-        <span dir="ltr">
-          {row.original.referenceDocumentType ?? '—'}
-        </span>
+        <span dir="ltr">{row.original.referenceDocumentType ?? '—'}</span>
       ),
     },
     {
@@ -138,7 +131,11 @@ export function NumberingSeriesDetailPage() {
             <PermissionGate
               permission={PERMISSIONS.documents.numberingSeriesEdit}
             >
-              <Button asChild size="sm" data-testid="numbering-series-edit-button">
+              <Button
+                asChild
+                size="sm"
+                data-testid="numbering-series-edit-button"
+              >
                 <Link
                   to={`/app/documents/numbering-series/${encodeURIComponent(series.id)}/edit`}
                 >
@@ -165,7 +162,9 @@ export function NumberingSeriesDetailPage() {
                   : series.scopeKey}
               </span>
             </Definition>
-            <Definition label={t.numberingSeries.name}>{series.name}</Definition>
+            <Definition label={t.numberingSeries.name}>
+              {series.name}
+            </Definition>
             <Definition label={t.numberingSeries.lastValue}>
               <span dir="ltr" className="num">
                 {series.lastValue}
@@ -201,8 +200,12 @@ export function NumberingSeriesDetailPage() {
         </CardContent>
       </Card>
 
-      <p className="text-xs text-ink-subtle" data-testid="numbering-series-detail-notes">
-        {t.numberingSeries.scopeKeyReadOnlyHint} — {t.numberingSeries.noDeleteNote}
+      <p
+        className="text-xs text-ink-subtle"
+        data-testid="numbering-series-detail-notes"
+      >
+        {t.numberingSeries.scopeKeyReadOnlyHint} —{' '}
+        {t.numberingSeries.noDeleteNote}
       </p>
 
       <PermissionGate
@@ -256,18 +259,23 @@ function NumberingAllocationsSection({
       referenceDocumentType: String(
         data.get('referenceDocumentType') ?? '',
       ).trim(),
-      referenceDocumentId: String(
-        data.get('referenceDocumentId') ?? '',
-      ).trim(),
+      referenceDocumentId: String(data.get('referenceDocumentId') ?? '').trim(),
       sort: String(data.get('sort') ?? '').trim(),
       page: null,
     });
   };
 
   return (
-    <div className="space-y-3" data-testid="numbering-series-allocations-section">
-      <h2 className="text-sm font-semibold">{t.numberingSeries.allocationsTitle}</h2>
-      <p className="text-xs text-ink-subtle">{t.numberingSeries.allocationsSubtitle}</p>
+    <div
+      className="space-y-3"
+      data-testid="numbering-series-allocations-section"
+    >
+      <h2 className="text-sm font-semibold">
+        {t.numberingSeries.allocationsTitle}
+      </h2>
+      <p className="text-xs text-ink-subtle">
+        {t.numberingSeries.allocationsSubtitle}
+      </p>
 
       <FilterBar
         key={`${state.referenceModule}:${state.referenceDocumentType}:${state.referenceDocumentId}:${state.sort}`}
@@ -315,10 +323,18 @@ function NumberingAllocationsSection({
             defaultValue={state.sort}
             data-testid="allocation-sort-filter"
           >
-            <option value="number:asc">{t.numberingSeries.sortNumberAsc}</option>
-            <option value="number:desc">{t.numberingSeries.sortNumberDesc}</option>
-            <option value="createdAt:asc">{t.numberingSeries.sortCreatedAtAsc}</option>
-            <option value="createdAt:desc">{t.numberingSeries.sortCreatedAtDesc}</option>
+            <option value="number:asc">
+              {t.numberingSeries.sortNumberAsc}
+            </option>
+            <option value="number:desc">
+              {t.numberingSeries.sortNumberDesc}
+            </option>
+            <option value="createdAt:asc">
+              {t.numberingSeries.sortCreatedAtAsc}
+            </option>
+            <option value="createdAt:desc">
+              {t.numberingSeries.sortCreatedAtDesc}
+            </option>
           </Select>
         </FilterField>
       </FilterBar>
@@ -357,7 +373,10 @@ function NumberingAllocationsSection({
         }}
       />
 
-      <p className="text-xs text-ink-subtle" data-testid="allocations-read-only-note">
+      <p
+        className="text-xs text-ink-subtle"
+        data-testid="allocations-read-only-note"
+      >
         {t.numberingSeries.allocationsReadOnlyNote}
       </p>
     </div>

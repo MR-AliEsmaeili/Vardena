@@ -37,10 +37,7 @@ export function numberingSeriesErrorMessage(
   if (apiError.code === 'Conflict') {
     return t.numberingSeries.errorCodes.duplicateSeries;
   }
-  if (
-    apiError.code === 'ValidationFailed' ||
-    apiError.code === 'BadRequest'
-  ) {
+  if (apiError.code === 'ValidationFailed' || apiError.code === 'BadRequest') {
     return t.numberingSeries.errorCodes.validationFailed;
   }
   return operation === 'save'

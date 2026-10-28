@@ -599,9 +599,22 @@ export const queryKeys = {
     numberingSeries: (
       organizationId: string,
       filters: Record<string, unknown>,
-    ) => ['documents', organizationId, 'numbering-series', 'list', filters] as const,
+    ) =>
+      [
+        'documents',
+        organizationId,
+        'numbering-series',
+        'list',
+        filters,
+      ] as const,
     numberingSeriesDetail: (organizationId: string, seriesId: string) =>
-      ['documents', organizationId, 'numbering-series', 'detail', seriesId] as const,
+      [
+        'documents',
+        organizationId,
+        'numbering-series',
+        'detail',
+        seriesId,
+      ] as const,
     numberingAllocations: (
       organizationId: string,
       seriesId: string,
