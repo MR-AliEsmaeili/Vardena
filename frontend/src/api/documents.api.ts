@@ -1,9 +1,15 @@
-import { apiGet, apiPut, cleanParams } from './client';
+import { apiGet, apiPatch, apiPost, apiPut, cleanParams } from './client';
 import type {
   ConfigureDocumentTypeRequest,
+  CreateNumberingSeriesRequest,
   DocumentType,
   DocumentTypeListQuery,
+  NumberingAllocation,
+  NumberingAllocationListQuery,
+  NumberingSeries,
+  NumberingSeriesListQuery,
   Paginated,
+  UpdateNumberingSeriesRequest,
 } from './contracts';
 
 /**
@@ -58,5 +64,79 @@ export function configureDocumentType(
     `${BASE_PATH}/${encodeURIComponent(code)}/configuration`,
     body,
     { params: { organizationId } },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Numbering series & allocations (DOC-02)
+// ---------------------------------------------------------------------------
+
+const NUMBERING_SERIES_PATH = '/documents/numbering-series';
+
+export function listNumberingSeries(
+  query: NumberingSeriesListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<NumberingSeries>> {
+  return apiGet<Paginated<NumberingSeries>>(NUMBERING_SERIES_PATH, {
+    params: cleanParams({ ...query }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+export function createNumberingSeries(
+  body: CreateNumberingSeriesRequest,
+): Promise<NumberingSeries> {
+  return apiPost<NumberingSeries, CreateNumberingSeriesRequest>(
+    NUMBERING_SERIES_PATH,
+    body,
+  );
+}
+
+export function getNumberingSeries(
+  organizationId: string,
+  seriesId: string,
+  signal?: AbortSignal,
+): Promise<NumberingSeries> {
+  return apiGet<NumberingSeries>(
+    `${NUMBERING_SERIES_PATH}/${encodeURIComponent(seriesId)}`,
+    {
+      params: { organizationId },
+      ...(signal ? { signal } : {}),
+    },
+  );
+}
+
+export function updateNumberingSeries(
+  organizationId: string,
+  seriesId: string,
+  body: UpdateNumberingSeriesRequest,
+): Promise<NumberingSeries> {
+  return apiPatch<NumberingSeries, UpdateNumberingSeriesRequest>(
+    `${NUMBERING_SERIES_PATH}/${encodeURIComponent(seriesId)}`,
+    body,
+    { params: { organizationId } },
+  );
+}
+
+/**
+ * Read-only ledger of numbers allocated from one series (DOC-02 §3).
+ *
+ * `seriesId` is the path param; `organizationId` is the required scope.
+ * Remaining filters (`documentType`, `referenceModule`, …) are the ledger's
+ * own narrow query — allocation is append-only and has no write endpoint.
+ */
+export function listNumberingAllocations(
+  organizationId: string,
+  seriesId: string,
+  query: NumberingAllocationListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<NumberingAllocation>> {
+  void organizationId;
+  return apiGet<Paginated<NumberingAllocation>>(
+    `${NUMBERING_SERIES_PATH}/${encodeURIComponent(seriesId)}/allocations`,
+    {
+      params: cleanParams({ ...query }),
+      ...(signal ? { signal } : {}),
+    },
   );
 }

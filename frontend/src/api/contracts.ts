@@ -1218,3 +1218,69 @@ export type DocumentTypeListQuery = Omit<
   operations['DocumentTypesController_list_v1']['parameters']['query'],
   'sort'
 >;
+
+// ---------------------------------------------------------------------------
+// Document Foundation — numbering series (DOC-02)
+// ---------------------------------------------------------------------------
+
+/** One numbering series (`NumberingSeriesResponseDto`). */
+export type NumberingSeries = Schemas['NumberingSeriesResponseDto'];
+
+/**
+ * One numbering ledger allocation (`NumberingAllocationResponseDto`).
+ *
+ * The backend declares `referenceModule`, `referenceDocumentType` and
+ * `referenceDocumentId` as `string | null`; the generated file renders them as
+ * `Record<string, never> | null` (refinement 1).
+ */
+export type NumberingAllocation = NullableString<
+  Schemas['NumberingAllocationResponseDto'],
+  'referenceModule' | 'referenceDocumentType' | 'referenceDocumentId'
+>;
+
+/** `GET /documents/numbering-series` query (`ListNumberingSeriesQueryDto`). */
+export type NumberingSeriesListQuery =
+  operations['NumberingSeriesController_list_v1']['parameters']['query'];
+
+/**
+ * `GET /documents/numbering-series/:id/allocations` query
+ * (`ListNumberingAllocationsQueryDto`). `seriesId` is the path param — the
+ * query copy is optional and is ignored by the controller (it overwrites it
+ * with the path value).
+ */
+export type NumberingAllocationListQuery =
+  operations['NumberingSeriesController_allocations_v1']['parameters']['query'];
+
+/**
+ * `POST /documents/numbering-series` body (`CreateNumberingSeriesDto`).
+ *
+ * Narrow manual shape: the generated `CreateNumberingSeriesDto` renders
+ * `strategy`, `width` and `reusePolicy` as required while the backend DTO
+ * marks them optional (`strategy?`, `width?`, `reusePolicy?`) with server
+ * defaults. This alias preserves the backend optionality and the exact
+ * string-literal unions instead of widening them or inventing a new field.
+ */
+export interface CreateNumberingSeriesRequest {
+  organizationId: string;
+  documentType: string;
+  scopeKey?: string;
+  name: string;
+  strategy?: 'monotonic';
+  width?: number;
+  reusePolicy?: 'never' | 'recycle';
+}
+
+/**
+ * `PATCH /documents/numbering-series/:id` body (`UpdateNumberingSeriesDto`).
+ *
+ * Only `name`, `strategy`, `width`, `reusePolicy` and `isActive` are
+ * writable; `scopeKey`, `documentType`, `lastValue` and `organizationId` are
+ * never sent in the patch (backend whitelist → 400).
+ */
+export interface UpdateNumberingSeriesRequest {
+  name?: string;
+  strategy?: 'monotonic';
+  width?: number;
+  reusePolicy?: 'never' | 'recycle';
+  isActive?: boolean;
+}

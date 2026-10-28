@@ -24,6 +24,9 @@ import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { DashboardRoute } from './dashboard-route';
 import { DocumentTypeDetailPage } from '@/features/documents/document-types/document-type-detail-page';
 import { DocumentTypesPage } from '@/features/documents/document-types/document-types-page';
+import { NumberingSeriesPage } from '@/features/documents/numbering-series/numbering-series-page';
+import { NumberingSeriesDetailPage } from '@/features/documents/numbering-series/numbering-series-detail-page';
+import { NumberingSeriesFormPage } from '@/features/documents/numbering-series/numbering-series-form-page';
 import { NotFoundPage } from './not-found-page';
 import { RequirePermission } from './require-permission';
 import {
@@ -62,6 +65,20 @@ function gatePermissions(pathname: string): readonly string[] | null {
   return null;
 }
 
+function allGatePermissions(pathname: string): readonly string[] {
+  const perms: string[] = [];
+  for (const match of chainFor(pathname)) {
+    const element = elementOf(match.route);
+    if (
+      element?.type === RequirePermission &&
+      element.props?.permissions !== undefined
+    ) {
+      perms.push(...element.props.permissions);
+    }
+  }
+  return perms;
+}
+
 function inventory(routes: readonly RouteObject[]): {
   leaves: number;
   gates: number;
@@ -88,10 +105,11 @@ describe('tree inventory — verbatim extraction snapshot (§10.3)', () => {
   it('has exactly the expected number of leaf routes and permission gates', () => {
     // The whole /app subtree as it stood in router.tsx at extraction time
     // (99 leaves / 72 gates) PLUS the DOC-01 document-types block merged
-    // from main afterwards (+3 leaves, +1 gate): 102 leaf routes behind 73
-    // RequirePermission gates (+ the pathless shells). Update ONLY together
-    // with a deliberate route change.
-    expect(inventory(WORKSPACE_ROUTES)).toEqual({ leaves: 102, gates: 73 });
+    // from main afterwards (+3 leaves, +1 gate) PLUS DOC-02 numbering-series
+    // (+4 leaves, +3 gates): 106 leaf routes behind 76 RequirePermission gates
+    // (+ the pathless shells). Update ONLY together with a deliberate route
+    // change.
+    expect(inventory(WORKSPACE_ROUTES)).toEqual({ leaves: 106, gates: 76 });
   });
 
   it('is rooted at /app with a single top-level route object', () => {
@@ -127,6 +145,33 @@ describe('leaf parity — same component as the old inline tree', () => {
     expect(gatePermissions('/app/documents/types')).toContain(
       PERMISSIONS.documents.documentTypeView,
     );
+  });
+
+  it('resolves the DOC-02 numbering-series surfaces (View sibling Create / View+Edit)', () => {
+    expect(leafType('/app/documents/numbering-series')).toBe(
+      NumberingSeriesPage,
+    );
+    expect(leafType('/app/documents/numbering-series/some-series-id')).toBe(
+      NumberingSeriesDetailPage,
+    );
+    expect(leafType('/app/documents/numbering-series/new')).toBe(
+      NumberingSeriesFormPage,
+    );
+    expect(
+      leafType('/app/documents/numbering-series/some-series-id/edit'),
+    ).toBe(NumberingSeriesFormPage);
+    expect(gatePermissions('/app/documents/numbering-series')).toContain(
+      PERMISSIONS.documents.numberingSeriesView,
+    );
+    expect(gatePermissions('/app/documents/numbering-series/new')).toContain(
+      PERMISSIONS.documents.numberingSeriesCreate,
+    );
+    // Edit sits behind View+Edit (the edit screen first reads the record).
+    const editPerms = allGatePermissions(
+      '/app/documents/numbering-series/some-series-id/edit',
+    );
+    expect(editPerms).toContain(PERMISSIONS.documents.numberingSeriesView);
+    expect(editPerms).toContain(PERMISSIONS.documents.numberingSeriesEdit);
   });
 
   it('does not match outside /app', () => {

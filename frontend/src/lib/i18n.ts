@@ -883,6 +883,7 @@ export const fa = {
     documents: 'اسناد حسابداری',
     documentsFoundationGroup: 'اسناد پایه',
     documentTypes: 'انواع سند',
+    numberingSeries: 'سری‌های شماره‌گذاری',
     accountingDocumentLines: 'ردیف‌های اسناد حسابداری',
     chartTree: 'درخت حساب‌ها',
     accountStatements: 'گردش حساب',
@@ -2637,6 +2638,111 @@ export const fa = {
         'این نوع سند فاز پیشنویس ندارد؛ نمی‌توان پیشنویس اجباری را برای آن فعال کرد.',
       validation:
         'اطلاعات ارسالی پذیرفته نشد. مقدار پیشنویس اجباری را بررسی کنید.',
+    },
+  },
+  numberingSeries: {
+    title: 'سری‌های شماره‌گذاری',
+    subtitle:
+      'پیکربندی سری‌های شماره‌گذاری به ازای نوع سند و محدوده، و مشاهدهٔ شماره‌های تخصیص‌یافتهٔ هر سری (فقط‌خواندنی).',
+    registryNote:
+      'سری‌ها به ازای سه‌گانهٔ (سازمان، نوع سند، کلید محدوده) یکتا هستند؛ تخصیص شماره فقط در تراکنش ثبت سندِ ماژولِ مالک انجام می‌شود و endpoint مستقل ندارد.',
+    newSeries: 'سری جدید',
+    editSeries: 'ویرایش سری',
+    detailTitle: 'جزئیات سری شماره‌گذاری',
+    backToList: 'بازگشت به فهرست سری‌ها',
+    view: 'مشاهده',
+    actions: 'عملیات',
+    documentType: 'نوع سند',
+    documentTypePlaceholder: 'انتخاب نوع سند',
+    documentTypeHint:
+      'نوع سند باید در رجیستری ثبت شده باشد؛ فهرست از سرویس انواع سند خوانده می‌شود و hardcode ندارد.',
+    scopeKey: 'کلید محدوده',
+    scopeKeyPlaceholder: 'خالی = سری پیش‌فرض',
+    scopeKeyDefault: 'پیش‌فرض',
+    scopeKeyHint:
+      'برای اسناد حسابداری مقدار شناسهٔ ناحیهٔ مالی با حروف کوچک است؛ برای اسناد انبار و درخواست کالا خالی بگذارید. عملاً یک توکن مبهم است.',
+    scopeKeyReadOnlyHint:
+      'کلید محدوده پس از ایجاد تغییرناپذیر است (whitelist بک‌اند → ۴۰۰).',
+    name: 'نام سری',
+    namePlaceholder: 'مثلاً سری پیش‌فرض رسید انبار',
+    strategy: 'راهبرد شماره‌گذاری',
+    strategyMonotonic: 'تزایدی (monotonic)',
+    strategyHint:
+      'تنها راهبرد پیاده‌سازی‌شده monotonic است؛ مقدار دیگری نفرستید.',
+    width: 'پهنای صفرگذاری',
+    widthPlaceholder: '۰ تا ۳۲ (۰ = بدون صفرگذاری)',
+    widthHint:
+      'فقط صفر اضافه می‌کند و شماره را هرگز نمی‌بُرد؛ نمایش با صفرهای پیشوند است.',
+    reusePolicy: 'سیاست بازاستفاده',
+    reuseNever: 'هرگز (never)',
+    reuseRecycle: 'بازیافت (recycle)',
+    reuseInertNote:
+      'مقدار recycle در قرارداد ثبت شده ولی در نسخهٔ فعلی بی‌اثر است و وعدهٔ بازاستفاده نمی‌دهد (بک‌اند یادداشت کرده).',
+    lastValue: 'آخرین شمارهٔ تخصیص‌یافته',
+    isActive: 'فعال',
+    isActiveHint:
+      'غیرفعال کردن فقط تخصیص‌های جدید را می‌بندد؛ شماره‌های صادرشده معتبر می‌مانند.',
+    active: 'فعال',
+    inactive: 'غیرفعال',
+    allStatuses: 'همه وضعیت‌ها',
+    createdAt: 'زمان ایجاد',
+    updatedAt: 'آخرین به‌روزرسانی',
+    save: 'ذخیره',
+    saving: 'در حال ذخیره…',
+    saved: 'سری شماره‌گذاری ذخیره شد.',
+    createTitle: 'ایجاد سری شماره‌گذاری',
+    editTitle: 'ویرایش سری شماره‌گذاری',
+    loadFailed: 'دریافت سری‌های شماره‌گذاری انجام نشد. دوباره تلاش کنید.',
+    detailLoadFailed: 'دریافت جزئیات سری انجام نشد. دوباره تلاش کنید.',
+    saveFailed: 'ذخیرهٔ سری انجام نشد. دوباره تلاش کنید.',
+    emptyTitle: 'سری شماره‌گذاری ندارید',
+    emptyBody:
+      'برای این سازمان هنوز سری شماره‌گذاری تعریف نشده است. نخستین سری را برای نوع سندِ موردنظر بسازید.',
+    emptyBodyFiltered: 'با فیلتر فعلی سری‌ای یافت نشد. فیلتر را تغییر دهید.',
+    noDocumentTypes:
+      'نوع سندی در رجیستری یافت نشد؛ ابتدا انواع سند را بررسی کنید.',
+    allocations: 'شماره‌های تخصیص‌یافته',
+    allocationsTitle: 'شماره‌های تخصیص‌یافته',
+    allocationsSubtitle:
+      'این فهرست فقط‌خواندنی است؛ حذف/ویرایش/تخصیص دستی شماره endpoint ندارد (append-only).',
+    detailSubtitle:
+      'اطلاعات سری و فهرست شماره‌های تخصیص‌یافته (فقط‌خواندنی؛ history پاک نمی‌شود).',
+    edit: 'ویرایش',
+    allocationsEmpty: 'هنوز شماره‌ای از این سری تخصیص نیافته است.',
+    allocationsEmptyFiltered:
+      'با فیلتر فعلی شماره‌ای یافت نشد. فیلتر را تغییر دهید.',
+    allocationsEmptyHint:
+      'شماره‌ها با ثبت سندِ واقعی در ماژولِ مالک تخصیص می‌یابند؛ این صفحه فقط آن‌ها را نمایش می‌دهد.',
+    allocationsReadOnlyNote:
+      'این فهرست فقط‌خواندنی و به‌صورت افزایشی است؛ حذف یا ویرایش دستی شماره پشتیبانی نمی‌شود.',
+    noAllocationsPermission:
+      'برای مشاهدهٔ شماره‌های تخصیص‌یافته به مجوز «Document.Numbering.View» نیاز دارید.',
+    noDeleteNote:
+      'سری‌ها و تخصیص‌ها حذف‌شدنی نیستند؛ مدل append-only است و history پاک نمی‌شود.',
+    number: 'شماره',
+    allocationNumber: 'شماره',
+    referenceModule: 'ماژول مرجع',
+    referenceDocumentType: 'نوع سند مرجع',
+    referenceDocumentId: 'شناسهٔ سند مرجع',
+    allocatedAt: 'زمان تخصیص',
+    sort: 'مرتب‌سازی',
+    sortNumberAsc: 'شماره — صعودی',
+    sortNumberDesc: 'شماره — نزولی',
+    sortCreatedAtAsc: 'زمان تخصیص — صعودی',
+    sortCreatedAtDesc: 'زمان تخصیص — نزولی',
+    filterDocumentType: 'فیلتر بر اساس نوع سند',
+    filterIsActive: 'وضعیت فعال',
+    filterReferenceModule: 'ماژول مرجع',
+    filterReferenceDocumentType: 'نوع سند مرجع',
+    filterReferenceDocumentId: 'شناسهٔ سند',
+    allocationsLoadFailed: 'دریافت تخصیص‌ها انجام نشد.',
+    errorCodes: {
+      duplicateSeries:
+        'برای این سازمان، نوع سند و کلید محدوده سری دیگری وجود دارد (isActive مهم نیست).',
+      unknownDocumentType: 'نوع سند ناشناس است (در رجیستری یافت نشد).',
+      validationFailed: 'اطلاعات ارسالی پذیرفته نشد.',
+      notFound: 'سری موردنظر یافت نشد یا به سازمان دیگری تعلق دارد.',
+      scopeImmutable: 'کلید محدوده و نوع سند پس از ایجاد تغییرناپذیرند.',
     },
   },
   filters: {

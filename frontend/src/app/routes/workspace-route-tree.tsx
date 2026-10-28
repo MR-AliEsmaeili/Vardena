@@ -76,6 +76,9 @@ import { WarehousesPage } from '@/features/inventory/master-data/warehouses/ware
 import { ClientDevicesPage } from '@/features/licensing/client-devices-page';
 import { DocumentTypeDetailPage } from '@/features/documents/document-types/document-type-detail-page';
 import { DocumentTypesPage } from '@/features/documents/document-types/document-types-page';
+import { NumberingSeriesPage } from '@/features/documents/numbering-series/numbering-series-page';
+import { NumberingSeriesDetailPage } from '@/features/documents/numbering-series/numbering-series-detail-page';
+import { NumberingSeriesFormPage } from '@/features/documents/numbering-series/numbering-series-form-page';
 import { KardexPage } from '@/features/inventory/kardex-page';
 import { MovementFormPage } from '@/features/inventory/movement-form-page';
 import { MovementsPage } from '@/features/inventory/movements-page';
@@ -991,10 +994,14 @@ export const workspaceRouteTree: ReactElement = (
     </Route>
 
     {/*
-      Document Foundation (DOC-01). Both surfaces are reads of the
-      backend's CODE registry plus the organization's configuration;
-      the single write (`PUT …/configuration`) lives on the detail page.
-      There is no create/delete route: the controller has no POST/DELETE.
+      Document Foundation (DOC-01 + DOC-02). `document-types` are a read of
+      the CODE registry (`GET /document-types`, `PUT …/configuration`);
+      there is no POST/DELETE. `numbering-series` are the persistent
+      counter records (`NumberingSeriesController`), paged and organization
+      scoped, with a read-only allocation ledger. Gates use the EXACT
+      backend codes: `View` for reads, `Create` as a sibling (so a
+      Create-only principal is not blocked by a View gate), and
+      `View+Edit` for edits (the edit screen first reads the record).
     */}
     <Route path="documents">
       <Route
@@ -1008,6 +1015,47 @@ export const workspaceRouteTree: ReactElement = (
         <Route index element={<Navigate to="types" replace />} />
         <Route path="types" element={<DocumentTypesPage />} />
         <Route path="types/:code" element={<DocumentTypeDetailPage />} />
+      </Route>
+
+      <Route
+        element={
+          <RequirePermission
+            permissions={[PERMISSIONS.documents.numberingSeriesView]}
+          />
+        }
+      >
+        <Route path="numbering-series" element={<NumberingSeriesPage />} />
+        <Route
+          path="numbering-series/:seriesId"
+          element={<NumberingSeriesDetailPage />}
+        />
+        <Route
+          element={
+            <RequirePermission
+              permissions={[
+                PERMISSIONS.documents.numberingSeriesView,
+                PERMISSIONS.documents.numberingSeriesEdit,
+              ]}
+            />
+          }
+        >
+          <Route
+            path="numbering-series/:seriesId/edit"
+            element={<NumberingSeriesFormPage mode="edit" />}
+          />
+        </Route>
+      </Route>
+      <Route
+        element={
+          <RequirePermission
+            permissions={[PERMISSIONS.documents.numberingSeriesCreate]}
+          />
+        }
+      >
+        <Route
+          path="numbering-series/new"
+          element={<NumberingSeriesFormPage mode="create" />}
+        />
       </Route>
     </Route>
 
