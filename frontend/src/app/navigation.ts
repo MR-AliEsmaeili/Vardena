@@ -27,6 +27,7 @@ import {
   UserCog,
   Users,
   Warehouse,
+  ClipboardList,
   type LucideIcon,
 } from 'lucide-react';
 import { t } from '@/lib/i18n';
@@ -297,6 +298,12 @@ export const navigationSections: readonly NavigationSection[] = [
         label: t.inventoryMaster.balances,
         icon: Boxes,
         permissions: [PERMISSIONS.inventory.balanceView],
+      },
+      {
+        to: '/app/inventory/reservations',
+        label: t.reservations.title,
+        icon: ClipboardList,
+        permissions: [PERMISSIONS.inventory.reservationView],
       },
       {
         to: '/app/inventory/items',

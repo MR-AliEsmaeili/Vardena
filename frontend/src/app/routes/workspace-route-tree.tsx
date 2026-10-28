@@ -81,6 +81,9 @@ import { MovementFormPage } from '@/features/inventory/movement-form-page';
 import { MovementsPage } from '@/features/inventory/movements-page';
 import { ValuationStatesPage } from '@/features/inventory/valuation-states-page';
 import { TransferFormPage } from '@/features/inventory/transfer-form-page';
+import { ReservationFormPage } from '@/features/inventory/reservations/reservation-form-page';
+import { ReservationDetailPage } from '@/features/inventory/reservations/reservation-detail-page';
+import { ReservationsPage } from '@/features/inventory/reservations/reservations-page';
 import { BranchDetailPage } from '@/features/organization/admin/branches/branch-detail-page';
 import {
   BranchCreatePage,
@@ -978,6 +981,34 @@ export const workspaceRouteTree: ReactElement = (
         }
       >
         <Route path="balances" element={<BalancesPage />} />
+      </Route>
+
+      <Route
+        element={
+          <RequirePermission
+            permissions={[PERMISSIONS.inventory.reservationView]}
+          />
+        }
+      >
+        <Route path="reservations" element={<ReservationsPage />} />
+        <Route
+          path="reservations/:reservationId"
+          element={<ReservationDetailPage />}
+        />
+      </Route>
+
+      {/* `POST /inventory/reservations` enforces exactly
+        `Inventory.Reservation.Create` and does not require `.View`, so the
+        create route is a SIBLING of the View-gated group — a Create-only
+        principal is never blocked here (INV-08). */}
+      <Route
+        element={
+          <RequirePermission
+            permissions={[PERMISSIONS.inventory.reservationCreate]}
+          />
+        }
+      >
+        <Route path="reservations/new" element={<ReservationFormPage />} />
       </Route>
     </Route>
 

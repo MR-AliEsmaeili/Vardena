@@ -66,7 +66,7 @@
 | ارزشیابی | `valuation/methods`, `methods/resolve`, `states`, `states/current`, `backdate-check`, `movements/:id/cost`, `recalculations` | `valuation-states-page`, `movement-form-page` (backdate) | **PARTIAL** — روش‌های ارزشیابی و ثبت بهای یک حرکت UI ندارد |
 | انتقال بین انبار | `POST /inventory/transfers` | `transfer-form-page` | **PARTIAL** — ثبت انتقال هست؛ endpoint فهرست انتقال وجود ندارد (نه UI) |
 | درخواست کالا | `material-requests` (list/detail/events/lines/submit/approve/reject/return/reverse/cancel) | — | **MISSING** |
-| رزرو موجودی | `reservations` (list/detail/create/release) | — | **MISSING** |
+| رزرو موجودی | `reservations` (list/detail/create/release) | فهرست + جزئیات + ایجاد با گیت مجوز دقیق هر endpoint؛ آزادسازی رزروهای فعال (`active → released`، ترمینال); رزروهای `material_request_line` فقط‌خواندنی و از INV-07 مدیریت می‌شوند | **COMPLETE** (INV-08) |
 | اجرای قیمت‌گذاری | `pricing/runs`, `runs/reverse`, `runs/:id` | — | **MISSING** |
 
 ## ۴) مجوز نصب — `backend/src/modules/licensing`

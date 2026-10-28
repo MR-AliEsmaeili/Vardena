@@ -569,6 +569,24 @@ export const queryKeys = {
         'resolve',
         query,
       ] as const,
+
+    /** Reservations list of one organization (mutation invalidation scope). */
+    reservations: (organizationId: string, filters: Record<string, unknown>) =>
+      ['inventory', organizationId, 'reservations', 'list', filters] as const,
+
+    /** Every reservations read of one organization. */
+    reservationsPrefix: (organizationId: string) =>
+      ['inventory', organizationId, 'reservations'] as const,
+
+    /** One reservation detail. */
+    reservation: (organizationId: string, reservationId: string) =>
+      [
+        'inventory',
+        organizationId,
+        'reservations',
+        'detail',
+        reservationId,
+      ] as const,
   },
 
   workflow: {

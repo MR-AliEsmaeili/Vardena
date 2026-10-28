@@ -2052,6 +2052,73 @@ export const fa = {
     seeKardex: 'کاردکس',
     totalRows: 'ردیف',
   },
+
+  /**
+   * Reservations (INV-08). Reservations have no BusinessDate field and the UI
+   * never sends a date — keys here stay free of date/time copy.
+   */
+  reservations: {
+    title: 'رزرو موجودی',
+    subtitle:
+      'رزرو، «ادعای نرم» روی موجودی انبار است؛ ثبت، مشاهده و آزادسازی رزرو. رزرو خروجی را کم نمی‌کند؛ فقط مقدار رزروشده را بالا می‌برد.',
+    newReservation: 'رزرو جدید',
+    newReservationDescription:
+      'مقدار کالا را در یک انبار به صورت موقت رزرو می‌کند؛ مقدار رزروشده در موجودی در دسترس تأثیری دارد.',
+    created: 'رزرو ثبت شد.',
+    status: 'وضعیت',
+    statuses: {
+      active: 'فعال',
+      released: 'آزادشده',
+    },
+    item: 'کالا',
+    warehouse: 'انبار',
+    quantity: 'مقدار',
+    unit: 'واحد',
+    baseQuantity: 'مقدار پایه',
+    baseUnit: 'واحد مبنا',
+    conversionFactor: 'ضریب تبدیل',
+    reason: 'دلیل',
+    reference: 'ارجاع',
+    referenceMaterialRequest: 'درخواست کالا',
+    referenceTypeLabel: 'نوع ارجاع',
+    referenceIdLabel: 'شناسه ارجاع',
+    operationKey: 'کلید عملیات',
+    createdAt: 'ایجاد',
+    updatedAt: 'آخرین تغییر',
+    releasedAt: 'آزادسازی',
+    releasedBy: 'آزادشدهٔ توسط',
+    release: 'آزادسازی',
+    releaseConfirmTitle: 'تأیید آزادسازی رزرو',
+    releaseConfirmBody:
+      'این رزرو آزاد می‌شود و مقدار رزروشده به مقدار در دسترس بازمی‌گردد.',
+    releaseSuccess: 'رزرو آزاد شد.',
+    releasedAlready: 'این رزرو قبلاً آزاد شده است.',
+    materialRequestOwnedTitle: 'رزرو مربوط به درخواست کالا',
+    materialRequestOwnedBody:
+      'این رزرو از سطر یک درخواست کالا ایجاد شده و فقط با لغو یا برگشت تأیید همان درخواست آزاد می‌شود؛ آزادسازی مستقیم مجاز نیست.',
+    openMaterialRequest: 'باز کردن درخواست کالا',
+    referencePairHint:
+      'نوع ارجاع و شناسه ارجاع باید با هم پر شوند یا هر دو خالی بمانند.',
+    emptyTitle: 'رزروی ثبت نشده است',
+    emptyBody:
+      'ابتدا یک رزرو بسازید؛ رزروهای فعال و آزادشدهٔ این سازمان در اینجا نمایش داده می‌شوند.',
+    loadFailed: 'دریافت رزروها انجام نشد. دوباره تلاش کنید.',
+    saveFailed: 'ذخیره رزرو انجام نشد. دوباره تلاش کنید.',
+    errors: {
+      insufficientStock: 'موجودی ناکافی است.',
+      operationKeyReused:
+        'این کلید عملیات قبلاً با یک درخواست دیگر استفاده شده است. درخواست اصلی را دوباره تلاش کنید یا کلیدی جدید می‌سازید.',
+      referencePairHint:
+        'نوع ارجاع و شناسه ارجاع باید با هم پر شوند یا هر دو خالی بمانند.',
+      materialRequestOwnedBody:
+        'این رزرو از درخواست کالا آمده است و آزادسازی مستقیم مجاز نیست.',
+      releasedAlready:
+        'این رزرو قبلاً آزاد شده است؛ آزادسازی دوباره امکان‌پذیر نیست.',
+      businessRule: 'سامانه این عملیات را نپذیرفت؛ وضعیت رزرو را بررسی کنید.',
+      forbidden: 'برای این عملیات مجوز لازم را ندارید.',
+      saveFailed: 'عملیات انجام نشد. دوباره تلاش کنید.',
+    },
+  },
   accountingPeriod: {
     back: 'بازگشت',
     new: 'دورهٔ جدید',

@@ -345,3 +345,111 @@ export function cancelInventoryDocument(
     vardenaRequestActivity: { message: 'processing' },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Reservations (ADR-0022, `InventoryReservationsController`).
+//
+// Soft claims on availability: lifecycle ACTIVE → RELEASED (terminal), and the
+// `operationKey` travels inside the body so a manual retry replays the stored
+// operation instead of applying it twice. No BusinessDate field exists — the
+// claim applies to stock now and the backend resolves the unit conversion on
+// the organization's current business day. Quantities stay decimal strings end
+// to end; the UI never converts or rounds them.
+// ---------------------------------------------------------------------------
+
+export interface ListInventoryReservationsQuery {
+  organizationId: string;
+  warehouseId?: string;
+  itemId?: string;
+  status?: 'active' | 'released';
+  page?: number;
+  pageSize?: number;
+  sort?: string;
+}
+
+export interface CreateReservationInput {
+  organizationId: string;
+  operationKey: string;
+  warehouseId: string;
+  itemId: string;
+  quantity: string;
+  unitId: string;
+  reason?: string;
+  referenceType?: string;
+  referenceId?: string;
+}
+
+export interface InventoryReservation {
+  id: string;
+  organizationId: string;
+  branchId: string | null;
+  warehouseId: string;
+  itemId: string;
+  quantity: string;
+  enteredUnitId: string;
+  baseQuantity: string;
+  baseUnitId: string;
+  conversionFactor: string;
+  status: 'active' | 'released';
+  referenceType: string | null;
+  referenceId: string | null;
+  reason: string | null;
+  operationKey: string;
+  releasedAt: string | null;
+  releasedBy: string | null;
+  releaseOperationKey: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReleaseReservationInput {
+  organizationId: string;
+  reservationId: string;
+  operationKey: string;
+}
+
+/** Reservations list (`GET /inventory/reservations`). */
+export function listReservations(
+  query: ListInventoryReservationsQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<InventoryReservation>> {
+  return apiGet<Paginated<InventoryReservation>>('/inventory/reservations', {
+    params: cleanParams({ ...query }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+/** One reservation (`GET /inventory/reservations/:id`). */
+export function getReservation(
+  organizationId: string,
+  reservationId: string,
+  signal?: AbortSignal,
+): Promise<InventoryReservation> {
+  return apiGet<InventoryReservation>(
+    `/inventory/reservations/${encodeURIComponent(reservationId)}`,
+    {
+      params: cleanParams({ organizationId }),
+      ...(signal ? { signal } : {}),
+    },
+  );
+}
+
+/** Claim stock (`POST /inventory/reservations`). */
+export function createReservation(
+  body: CreateReservationInput,
+): Promise<InventoryReservation> {
+  return apiPost<InventoryReservation>('/inventory/reservations', body);
+}
+
+/** Release a claim (`POST /inventory/reservations/:id/release`). */
+export function releaseReservation(
+  organizationId: string,
+  reservationId: string,
+  body: { operationKey: string },
+): Promise<InventoryReservation> {
+  return apiPost<InventoryReservation>(
+    `/inventory/reservations/${encodeURIComponent(reservationId)}/release`,
+    body,
+    { params: cleanParams({ organizationId }) },
+  );
+}

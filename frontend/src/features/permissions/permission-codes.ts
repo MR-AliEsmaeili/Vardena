@@ -217,6 +217,12 @@ export const PERMISSIONS = {
     valuationView: 'Inventory.Valuation.View',
     valuationAssignCost: 'Inventory.Valuation.AssignCost',
     valuationRecalculate: 'Inventory.Valuation.Recalculate',
+
+    // Reservations (`inventory-core-permissions.ts`). Lifecycle is
+    // `active → released` (terminal): View/read, Create/claim, Release/free.
+    reservationView: 'Inventory.Reservation.View',
+    reservationCreate: 'Inventory.Reservation.Create',
+    reservationRelease: 'Inventory.Reservation.Release',
   },
   workflow: {
     instanceView: 'Workflow.Instance.View',

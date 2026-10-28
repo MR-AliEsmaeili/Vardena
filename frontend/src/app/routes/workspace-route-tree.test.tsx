@@ -91,7 +91,7 @@ describe('tree inventory — verbatim extraction snapshot (§10.3)', () => {
     // from main afterwards (+3 leaves, +1 gate): 102 leaf routes behind 73
     // RequirePermission gates (+ the pathless shells). Update ONLY together
     // with a deliberate route change.
-    expect(inventory(WORKSPACE_ROUTES)).toEqual({ leaves: 102, gates: 73 });
+    expect(inventory(WORKSPACE_ROUTES)).toEqual({ leaves: 105, gates: 75 });
   });
 
   it('is rooted at /app with a single top-level route object', () => {

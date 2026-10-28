@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   ArrowUpFromLine,
   Boxes,
+  ClipboardList,
   FileSpreadsheet,
   FileStack,
   FolderTree,
@@ -53,6 +54,13 @@ const OPERATIONS_SURFACES: readonly InventorySurface[] = [
     description: t.inventory.newTransferDescription,
     icon: ArrowLeftRight,
     permission: PERMISSIONS.inventory.transferCreate,
+  },
+  {
+    to: '/app/inventory/reservations/new',
+    label: t.reservations.newReservation,
+    description: t.reservations.newReservationDescription,
+    icon: ClipboardList,
+    permission: PERMISSIONS.inventory.reservationCreate,
   },
   {
     to: '/app/inventory/documents',
