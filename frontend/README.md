@@ -118,6 +118,7 @@ rules, server-side ownership/authorization boundary, and OpenAPI regeneration.
 
 - [`../docs/frontend/standards.md`](../docs/frontend/standards.md) — official frontend rules & contracts
 - [`../docs/frontend/design-system.md`](../docs/frontend/design-system.md) — semantic design tokens, Light/Dark themes, 3-level font scales, typography, primitives & patterns
+- [`../docs/frontend/ui-ux-pro-max.md`](../docs/frontend/ui-ux-pro-max.md) — UI UX Pro Max design-intelligence skill (`.claude/skills/ui-ux-pro-max/`): when to use it, how to run it offline, and how its output maps onto Vardena tokens/rules
 - [`../docs/frontend/layout-and-navigation.md`](../docs/frontend/layout-and-navigation.md) — full-width RTL shell, collapsible sidebar, header RTL slots, profile/settings & workspace cards
 - [`../docs/frontend/operational-forms.md`](../docs/frontend/operational-forms.md) — 5-zone operational forms, collapsible header, virtualized Detail Grid, row context menu, exact summary & footer
 - [`../docs/frontend/tables-and-lists.md`](../docs/frontend/tables-and-lists.md) — server-backed tables, row selection, print/Excel CSV export, document lists & document-lines explorers
