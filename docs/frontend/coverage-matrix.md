@@ -1,7 +1,7 @@
 # ماتریس پوشش بک‌اند ↔ فرانت‌اند
 
 **وضعیت:** ACTIVE — ممیزی نقطه‌به‌نقطه
-**تاریخ ممیزی:** ۲۰۲۶-۱۰-۲۶؛ به‌روزرسانی ACC-04/07/08/09 و نوارهای کار: ۲۰۲۶-۱۰-۲۶؛ DOC-01: ۲۰۲۶-۱۰-۲۶
+**تاریخ ممیزی:** ۲۰۲۶-۱۰-۲۶؛ به‌روزرسانی ACC-04/07/08/09 و نوارهای کار: ۲۰۲۶-۱۰-۲۶؛ DOC-01: ۲۰۲۶-۱۰-۲۶؛ DOC-02: ۲۰۲۶-۱۰-۲۸
 **مبنا:** `backend/src/modules/**/api/*.controller.ts` (۶۰ کنترلر) در برابر `frontend/src/app/router.tsx`، `frontend/src/api/*.api.ts` و هوک/صفحه‌های `frontend/src/features/**`.
 
 این سند فقط وضعیت را ثبت می‌کند؛ در این دور **هیچ endpoint، قرارداد یا قاعدۀ کسب‌وکار تغییر نکرده است**. هر جا «MISSING» است، یعنی UI وجود ندارد، نه اینکه بک‌اند ناقص باشد.
@@ -46,7 +46,7 @@
 | گروه قرارداد | endpointها | سطح فرانت‌اند | وضعیت |
 | ------------ | ---------- | -------------- | ----- |
 | انواع سند | `GET /documents/types`, `/:code`, `PUT :code/configuration` | `document-types-page`, `document-type-detail-page`, `document-type-configuration-form` — فهرست رجیستری با جستوجو/صفحهبندی سرور، جزئیات کامل قرارداد، و پیکربندی فقط `draftRequired` با نمایش پاسخ سرور | **COMPLETE** (DOC-01؛ ساخت/حذف نوع سند در بکاند وجود ندارد و در UI هم جعل نشده است؛ `sort` ارسال نمیشود چون سرویس آن را نادیده میگیرد) |
-| سری‌های شماره‌گذاری | `GET/POST /documents/numbering-series`, `/:id`, `PATCH`, `:id/allocations` | — | **MISSING** |
+| سری‌های شماره‌گذاری | `GET/POST /documents/numbering-series`, `/:id`, `PATCH`, `:id/allocations` | `numbering-series-page` (فهرست صفحه‌بندی‌شده با فیلتر `documentType`/`isActive` از رجیستری + ۴ حالت)، `numbering-series-form-page` (ایجاد: `documentType` از `GET /types` بدون hardcode + `scopeKey` اختیاری + `name`/`width`/`reusePolicy`؛ ویرایش: `scopeKey`/`documentType` فقط‌خواندنی + `isActive` + whitelist `name`/`strategy`/`width`/`reusePolicy`/`isActive` + ۴۰۹ دقیق)، `numbering-series-detail-page` + جدول تخصیص‌های فقط‌خواندنی (صفحه‌بندی/فیلتر `reference*`/مرتب‌سازی `number`/`createdAt`، گیت `Document.Numbering.View`، بدون allocate/delete، `lastValue`/`number` رشتهٔ دقیق) — گیت‌ها `View` sibling `Create` / `:id/edit` `View+Edit`، `queryKeys` with `numberingSeriesPrefix+Detail+Allocations` invalidation | **COMPLETE** (DOC-02؛ یکتایی `(org, documentType, scopeKey)` بدون وابستگی به `isActive`، `scopeKey=""` پیش‌فرض مبهم، `width` padding فقط‌نمایشی، `reusePolicy=recycle` بی‌اثر در این نسخه، بدون حذف سری/تخصیص) |
 | روابط اسناد | `GET/POST /documents/relations`, `/:id`, `DELETE` | — | **MISSING** |
 
 ## ۳) موجودی — `backend/src/modules/inventory`
@@ -119,15 +119,15 @@
 
 | وضعیت | تعداد گروه |
 | ----- | ---------- |
-| COMPLETE | ۳۱ |
+| COMPLETE | ۳۲ |
 | PARTIAL | ۷ |
-| MISSING | ۱۲ |
+| MISSING | ۱۱ |
 | NOT_REQUIRED | ۳ |
 
 **اولویت‌های بعدی (به ترتیب ارزش کاربر):**
 
 1. **درخواست کالا / رزرو / قیمت‌گذاری** — قرارداد کامل بک‌اند موجود است و بدون UI قابلیت استفاده ندارد.
-2. **سری شمارهگذاری (DOC-02)** — انواع سند (DOC-01) اکنون UI دارد؛ پیکربندی واقعی شمارهگذاری در استقرار مشتری همچنان بدون صفحه است.
+2. **روابط اسناد (DOC-03)** — سری‌های شماره‌گذاری (DOC-02) اکنون کامل است؛ روابط بین‌اسنادی بدون صفحه است.
 3. **PARTIALهای موجودی** — جزئیات مستقل حرکت و تبدیل واحد، روش‌های ارزشیابی/ثبت بها و فهرست انتقال؛ هرکدام باید در دامنهٔ تسک مستقل بماند.
 4. **گردش کار** — نیازمند تصمیم مالک (BLOCKED از نظر محصول، نه فنی).
 

@@ -222,15 +222,19 @@ export const PERMISSIONS = {
     instanceView: 'Workflow.Instance.View',
   },
   /**
-   * Document Foundation (`document-permissions.ts`, DOC-01). Only the two
-   * codes this task's UI consumes are registered here: DOC-02/DOC-03 add
-   * their own numbering-series and relation codes when those surfaces exist.
-   * There is deliberately no generic `Document.*` code — the backend has no
-   * such permission and no `POST /documents` endpoint.
+   * Document Foundation (`document-permissions.ts`, DOC-01/DOC-02). The four
+   * additional codes below are the exact permissions
+   * `NumberingSeriesController` and the `GET :id/allocations` handler enforce
+   * (DOC-02): there is deliberately no generic `Document.*` code — the backend
+   * has no such permission and no `POST /documents` endpoint.
    */
   documents: {
     documentTypeView: 'Document.DocumentType.View',
     documentTypeConfigure: 'Document.DocumentType.Configure',
+    numberingSeriesView: 'Document.NumberingSeries.View',
+    numberingSeriesCreate: 'Document.NumberingSeries.Create',
+    numberingSeriesEdit: 'Document.NumberingSeries.Edit',
+    numberingAllocationView: 'Document.Numbering.View',
   },
 } as const;
 

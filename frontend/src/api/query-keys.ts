@@ -577,11 +577,14 @@ export const queryKeys = {
   },
 
   /**
-   * Document Foundation (`documents` root, DOC-01). The registry metadata is
-   * read-only but `draftRequired`/`configured` belong to ONE organization, so
-   * every key carries the organization id at index 1 like every other scoped
-   * read. `documentTypesPrefix` is a prefix of both the list and the detail
-   * key: one invalidation after a configuration write refreshes both.
+   * Document Foundation (`documents` root, DOC-01/DOC-02). The registry
+   * metadata is read-only but `draftRequired`/`configured` belong to ONE
+   * organization, so every key carries the organization id at index 1 like
+   * every other scoped read. `documentTypesPrefix` is a prefix of both the
+   * list and the detail key: one invalidation after a configuration write
+   * refreshes both. Numbering-series keys (DOC-02) follow the same rule —
+   * `numberingSeriesPrefix` covers the list and the detail, and
+   * `numberingAllocations` is scoped to one series within the organization.
    */
   documents: {
     documentTypesPrefix: (organizationId: string) =>
@@ -590,6 +593,28 @@ export const queryKeys = {
       ['documents', organizationId, 'document-types', 'list', filters] as const,
     documentType: (organizationId: string, code: string) =>
       ['documents', organizationId, 'document-types', 'detail', code] as const,
+
+    numberingSeriesPrefix: (organizationId: string) =>
+      ['documents', organizationId, 'numbering-series'] as const,
+    numberingSeries: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+    ) => ['documents', organizationId, 'numbering-series', 'list', filters] as const,
+    numberingSeriesDetail: (organizationId: string, seriesId: string) =>
+      ['documents', organizationId, 'numbering-series', 'detail', seriesId] as const,
+    numberingAllocations: (
+      organizationId: string,
+      seriesId: string,
+      filters: Record<string, unknown>,
+    ) =>
+      [
+        'documents',
+        organizationId,
+        'numbering-series',
+        seriesId,
+        'allocations',
+        filters,
+      ] as const,
   },
 } as const;
 
