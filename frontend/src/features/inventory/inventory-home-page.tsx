@@ -11,6 +11,7 @@ import {
   Ruler,
   Scale,
   ScrollText,
+  Settings2,
   Warehouse,
   type LucideIcon,
 } from 'lucide-react';
@@ -87,6 +88,13 @@ const OPERATIONS_SURFACES: readonly InventorySurface[] = [
     label: t.inventory.valuationTitle,
     description: t.inventory.valuationDescription,
     icon: Scale,
+    permission: PERMISSIONS.inventory.valuationView,
+  },
+  {
+    to: '/app/inventory/valuation-methods',
+    label: t.inventoryValuationMethods.title,
+    description: t.inventoryValuationMethods.description,
+    icon: Settings2,
     permission: PERMISSIONS.inventory.valuationView,
   },
 ];

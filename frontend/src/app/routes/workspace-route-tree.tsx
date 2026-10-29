@@ -83,6 +83,8 @@ import { KardexPage } from '@/features/inventory/kardex-page';
 import { MovementFormPage } from '@/features/inventory/movement-form-page';
 import { MovementsPage } from '@/features/inventory/movements-page';
 import { ValuationStatesPage } from '@/features/inventory/valuation-states-page';
+import { ValuationMethodFormPage } from '@/features/inventory/valuation-methods/valuation-method-form-page';
+import { ValuationMethodsPage } from '@/features/inventory/valuation-methods/valuation-methods-page';
 import { TransferFormPage } from '@/features/inventory/transfer-form-page';
 import { BranchDetailPage } from '@/features/organization/admin/branches/branch-detail-page';
 import {
@@ -798,6 +800,20 @@ export const workspaceRouteTree: ReactElement = (
         }
       >
         <Route path="valuation" element={<ValuationStatesPage />} />
+        <Route path="valuation-methods" element={<ValuationMethodsPage />} />
+      </Route>
+
+      <Route
+        element={
+          <RequirePermission
+            permissions={[PERMISSIONS.inventory.valuationConfigure]}
+          />
+        }
+      >
+        <Route
+          path="valuation-methods/new"
+          element={<ValuationMethodFormPage />}
+        />
       </Route>
 
       {/*

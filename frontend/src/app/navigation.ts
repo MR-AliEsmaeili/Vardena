@@ -293,6 +293,12 @@ export const navigationSections: readonly NavigationSection[] = [
         permissions: [PERMISSIONS.inventory.valuationView],
       },
       {
+        to: '/app/inventory/valuation-methods',
+        label: t.nav.inventoryValuationMethods,
+        icon: Settings2,
+        permissions: [PERMISSIONS.inventory.valuationView],
+      },
+      {
         to: '/app/inventory/balances',
         label: t.inventoryMaster.balances,
         icon: Boxes,

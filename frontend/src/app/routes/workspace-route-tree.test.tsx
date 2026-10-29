@@ -106,10 +106,10 @@ describe('tree inventory — verbatim extraction snapshot (§10.3)', () => {
     // The whole /app subtree as it stood in router.tsx at extraction time
     // (99 leaves / 72 gates) PLUS the DOC-01 document-types block merged
     // from main afterwards (+3 leaves, +1 gate) PLUS DOC-02 numbering-series
-    // (+4 leaves, +3 gates): 106 leaf routes behind 76 RequirePermission gates
-    // (+ the pathless shells). Update ONLY together with a deliberate route
-    // change.
-    expect(inventory(WORKSPACE_ROUTES)).toEqual({ leaves: 106, gates: 76 });
+    // (+4 leaves, +3 gates) PLUS INV-04 valuation-methods (+2 leaves, +1 gate):
+    // 108 leaf routes behind 77 RequirePermission gates (+ the pathless shells).
+    // Update ONLY together with a deliberate route change.
+    expect(inventory(WORKSPACE_ROUTES)).toEqual({ leaves: 108, gates: 77 });
   });
 
   it('is rooted at /app with a single top-level route object', () => {
@@ -202,6 +202,15 @@ describe('permission gates stayed inside the tree (§6.3 rule b, AR-21)', () => 
     expect(permissions!.length).toBeGreaterThan(0);
   });
 
+  it('inventory valuation-methods list requires Valuation.View and new requires only Valuation.Configure', () => {
+    expect(gatePermissions('/app/inventory/valuation-methods')).toEqual([
+      PERMISSIONS.inventory.valuationView,
+    ]);
+    expect(gatePermissions('/app/inventory/valuation-methods/new')).toEqual([
+      PERMISSIONS.inventory.valuationConfigure,
+    ]);
+  });
+
   it('the profile route needs no permission gate (session only)', () => {
     expect(gatePermissions('/app/profile')).toBeNull();
   });
@@ -236,6 +245,12 @@ describe('matchRestorableWorkspaceRoute — strict restore predicate (FDR-01 §3
     // The DOC-01 index redirect and its leaves are restorable too.
     expect(matchRestorableWorkspaceRoute('/app/documents')).toBe(true);
     expect(matchRestorableWorkspaceRoute('/app/documents/types')).toBe(true);
+    expect(
+      matchRestorableWorkspaceRoute('/app/inventory/valuation-methods'),
+    ).toBe(true);
+    expect(
+      matchRestorableWorkspaceRoute('/app/inventory/valuation-methods/new'),
+    ).toBe(true);
   });
 
   it('rejects paths that only resolve through the * 404 leaf', () => {

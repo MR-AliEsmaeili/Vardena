@@ -215,6 +215,7 @@ export const PERMISSIONS = {
 
     // Valuation workspace (`inventory-valuation-permissions.ts`).
     valuationView: 'Inventory.Valuation.View',
+    valuationConfigure: 'Inventory.Valuation.Configure',
     valuationAssignCost: 'Inventory.Valuation.AssignCost',
     valuationRecalculate: 'Inventory.Valuation.Recalculate',
   },

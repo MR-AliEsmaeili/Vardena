@@ -979,6 +979,64 @@ export type ValuationStateStatus =
 export type InventoryValuationStateListQuery =
   operations['InventoryValuationController_listStates_v1']['parameters']['query'];
 
+/** Known valuation methods (`VALUATION_METHODS`, ADR-0039 / INV-04). */
+export type ValuationMethod =
+  Schemas['ItemValuationMethodResponseDto']['method'];
+
+/**
+ * One effective-dated valuation-method version (`ItemValuationMethodResponseDto`).
+ * `validTo` and `note` are declared `string | null` in the backend DTO;
+ * `NullableString` restores that shape from Swagger's untyped nullable object.
+ */
+export type ItemValuationMethod = NullableString<
+  Schemas['ItemValuationMethodResponseDto'],
+  'validTo' | 'note'
+>;
+
+/**
+ * `GET /inventory/valuation/methods` query (`ListValuationMethodsQueryDto`).
+ * Swagger models the BusinessDate query union (`activeAt`) as an untyped
+ * intersection; re-typed with the canonical `YYYY-MM-DD` BusinessDate string.
+ */
+export type ValuationMethodListQuery = Omit<
+  operations['InventoryValuationController_listMethods_v1']['parameters']['query'],
+  'activeAt'
+> & { activeAt?: string };
+
+/**
+ * `GET /inventory/valuation/methods/resolve` query
+ * (`ResolveValuationMethodQueryDto`). `asOf` stays a canonical `YYYY-MM-DD`
+ * BusinessDate string on the query wire.
+ */
+export type ResolveValuationMethodQuery = Omit<
+  operations['InventoryValuationController_resolveMethod_v1']['parameters']['query'],
+  'asOf'
+> & { asOf: string };
+
+/**
+ * `GET /inventory/valuation/methods/resolve` response
+ * (`ResolvedValuationMethodResponseDto`). `source === 'default'` with
+ * `configurationId: null` is a normal success result when no version covers
+ * `asOf`.
+ */
+export type ResolvedValuationMethod = NullableString<
+  Schemas['ResolvedValuationMethodResponseDto'],
+  'configurationId' | 'validFrom' | 'validTo'
+>;
+
+/**
+ * `POST /inventory/valuation/methods` body (`ConfigureValuationMethodDto`).
+ * `validFrom`/`validTo` carry BusinessDate inputs (`YYYY-MM-DD`); a new
+ * version closes the previous open-ended version automatically.
+ */
+export type ConfigureValuationMethodInput = Omit<
+  Schemas['ConfigureValuationMethodDto'],
+  'validFrom' | 'validTo'
+> & {
+  validFrom?: BusinessDateInput;
+  validTo?: BusinessDateInput;
+};
+
 // ---------------------------------------------------------------------------
 // Inventory business documents (C-58) — Receipt / Issue / Transfer
 //
