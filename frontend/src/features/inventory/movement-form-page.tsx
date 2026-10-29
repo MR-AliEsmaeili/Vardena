@@ -26,7 +26,7 @@ import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
 import { FormField } from '@/ui/patterns/form-field';
 import { LoadingState } from '@/ui/patterns/states';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { Select } from '@/ui/select';
 import { useToast } from '@/ui/patterns/toast';
 import {
@@ -136,7 +136,7 @@ export function MovementFormPage(): ReactElement {
 
 function MovementFormHeader({ kind }: { kind: MovementFormKind }) {
   return (
-    <PageHeader
+    <FormPageHeader
       title={kind === 'receipt' ? t.inventory.newReceipt : t.inventory.newIssue}
       description={
         kind === 'receipt'

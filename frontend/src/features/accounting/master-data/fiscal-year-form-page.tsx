@@ -23,7 +23,7 @@ import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
 import { DateInput } from '@/ui/patterns/date-input';
 import { FormField } from '@/ui/patterns/form-field';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import { useFinancialAreas } from '../shared/use-accounting-references';
@@ -82,7 +82,7 @@ export function FiscalYearFormPage({ mode }: { mode: 'create' | 'edit' }) {
     if (detail.isError) {
       return (
         <div className="space-y-4">
-          <PageHeader title={t.fiscalYear.editTitle} />
+          <FormPageHeader title={t.fiscalYear.editTitle} />
           <ApiErrorAlert
             error={detail.error}
             title={t.table.errorTitle}
@@ -95,7 +95,7 @@ export function FiscalYearFormPage({ mode }: { mode: 'create' | 'edit' }) {
     if (detail.data.status === 'sealed') {
       return (
         <div className="space-y-4">
-          <PageHeader title={t.fiscalYear.editTitle} />
+          <FormPageHeader title={t.fiscalYear.editTitle} />
           <ApiErrorAlert
             error={new Error(t.fiscalYear.sealedEditUnavailable)}
             description={t.fiscalYear.sealedEditUnavailable}
@@ -276,7 +276,7 @@ function FiscalYearForm({
 
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={
           mode === 'create' ? t.fiscalYear.createTitle : t.fiscalYear.editTitle
         }

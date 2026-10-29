@@ -5,14 +5,12 @@ import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
 import { persistSidebarState, readSidebarState } from '@/lib/sidebar-state';
-import { AppBreadcrumb } from '../breadcrumb';
 import { matchWorkspaceRoute } from '../routes/workspace-route-tree';
 import { WorkspaceProvider } from '../workspace/workspace-context';
 import { WorkspaceScopeReset } from '../workspace/workspace-scope-reset';
 import { WorkspaceDock } from '../workspace/workspace-dock';
 import { WorkspaceWindowHost } from '../workspace/workspace-host';
 import { AppHeader } from './app-header';
-import { PageBackButton } from './page-back-button';
 import { AppSidebar } from './app-sidebar';
 import { BootstrapScreen, ResolvingState } from './bootstrap-states';
 import { FinancialContextGate } from './financial-context-gate';
@@ -33,6 +31,12 @@ const NAVIGATION_ID = 'app-navigation';
  *   opened form gets the full width.
  * - Bootstrap pipeline:
  *   `session → LicenseGate → OrganizationGate → FinancialContextGate → workspace`
+ *
+ * Page-level chrome (breadcrumb + the standalone back control) is intentionally
+ * NOT rendered here: inside the workspace the dock tab already names the screen
+ * and every form/detail page carries its own compact `FormPageHeader`, so the
+ * routed content starts immediately under the Open Windows bar
+ * (design-system.md §4).
  *
  * ADR-0054: the shell hosts the multi-window workspace — `WorkspaceProvider`
  * owns the bounded window state, `WorkspaceDock` is always visible (D-1, even
@@ -200,11 +204,9 @@ export function AppShell() {
 
               <main
                 id="main-content"
-                className="min-w-0 flex-1 space-y-4 px-3 py-4 sm:px-5 sm:py-5 lg:px-6"
+                className="min-w-0 flex-1 space-y-2 px-3 pt-2 pb-4 sm:px-5 lg:px-6"
               >
                 <WorkspaceDock />
-                <AppBreadcrumb />
-                <PageBackButton />
                 <WorkspaceWindowHost />
               </main>
             </div>

@@ -36,7 +36,7 @@ import {
   type SummaryRow,
 } from '@/ui/patterns/operational-form';
 import { LoadingState } from '@/ui/patterns/states';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { useToast } from '@/ui/patterns/toast';
 import { useFinancialAreas } from '../shared/use-accounting-references';
 import {
@@ -95,7 +95,7 @@ function DocumentFormPage({
     if (editQuery.error !== null) {
       return (
         <div className="space-y-4">
-          <PageHeader title={t.documents.editTitle} />
+          <FormPageHeader title={t.documents.editTitle} />
           <ApiErrorAlert
             error={editQuery.error}
             title={t.documents.loadDocumentFailed}
@@ -109,7 +109,7 @@ function DocumentFormPage({
     if (state === null || !isEditableDocumentState(state)) {
       return (
         <div className="space-y-4">
-          <PageHeader title={t.documents.editTitle} />
+          <FormPageHeader title={t.documents.editTitle} />
           <Alert variant="warning" role="alert">
             <AlertTitle>{t.documents.notEditableTitle}</AlertTitle>
             <AlertBody>
@@ -520,23 +520,21 @@ function DocumentForm({
   return (
     <FormProvider {...form}>
       <div className="space-y-4">
-        <PageHeader
+        <FormPageHeader
           title={
             mode === 'create' ? t.documents.createTitle : t.documents.editTitle
           }
           description={
-            mode === 'create' ? (
-              t.documents.createSubtitle
-            ) : (
-              <span className="flex flex-wrap items-center gap-2">
-                {editState !== null && (
-                  <Badge variant={documentStatePresentation[editState].variant}>
-                    {documentStatePresentation[editState].label}
-                  </Badge>
-                )}
-                <span className="text-xs">{t.documents.editSubtitle}</span>
-              </span>
-            )
+            mode === 'create'
+              ? t.documents.createSubtitle
+              : t.documents.editSubtitle
+          }
+          meta={
+            mode === 'edit' && editState !== null ? (
+              <Badge variant={documentStatePresentation[editState].variant}>
+                {documentStatePresentation[editState].label}
+              </Badge>
+            ) : null
           }
         />
 

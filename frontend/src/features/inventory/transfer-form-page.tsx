@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { Link } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
-import { ArrowRight } from 'lucide-react';
 import { normalizeApiError } from '@/api/errors';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
@@ -20,7 +18,7 @@ import { DateInput } from '@/ui/patterns/date-input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { FormField } from '@/ui/patterns/form-field';
 import { LoadingState } from '@/ui/patterns/states';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { Select } from '@/ui/select';
 import { useToast } from '@/ui/patterns/toast';
 import {
@@ -93,19 +91,17 @@ export function TransferFormPage(): ReactElement {
   );
 }
 
+/**
+ * `/app/inventory/transfers/new` has no list of its own, so the workflow
+ * parent is the movements screen — declared explicitly instead of letting the
+ * generic resolver fall back to the module hub.
+ */
 function TransferFormHeader() {
   return (
-    <PageHeader
+    <FormPageHeader
       title={t.inventory.newTransfer}
       description={t.inventory.newTransferDescription}
-      actions={
-        <Button asChild variant="outline" size="sm">
-          <Link to="/app/inventory/movements">
-            {t.inventory.movementsTitle}
-            <ArrowRight className="h-4 w-4" aria-hidden />
-          </Link>
-        </Button>
-      }
+      backTo="/app/inventory/movements"
     />
   );
 }

@@ -13,7 +13,7 @@ import { Input } from '@/ui/input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
 import { FormField } from '@/ui/patterns/form-field';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import {
@@ -75,7 +75,7 @@ export function FinancialAreaFormPage({
     if (query.isError) {
       return (
         <div className="space-y-4">
-          <PageHeader title={t.financialArea.editTitle} />
+          <FormPageHeader title={t.financialArea.editTitle} />
           <ApiErrorAlert
             error={query.error}
             title={t.table.errorTitle}
@@ -203,7 +203,7 @@ function FinancialAreaForm({
 
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={
           mode === 'create'
             ? t.financialArea.createTitle

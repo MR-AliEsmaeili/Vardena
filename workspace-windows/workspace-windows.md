@@ -444,7 +444,7 @@ windows
 | `app-header.tsx` — OrganizationSwitcher & Financial(Context) | مجاز به تعویض فقط اگر هیچ dirty؛ وگرنه `disabled` + tooltip دلیل (§۶.۸).                                                                                                       |
 | کارت میزکار و لینک‌های «new»                                 | `open(to)`؛ مقصد `/new` همیشه پنجرهٔ جدید؛ ناوبری عادی reuse.                                                                                                                  |
 | لینک‌های درون‌صفحه                                           | بدون تغییر؛ درون همان پنجره جلو می‌روند.                                                                                                                                       |
-| breadcrumb                                                   | بدون تغییر (خوان از Browser URL که آینهٔ پنجرهٔ فعال است).                                                                                                                     |
+| breadcrumb صفحه‌ای                                           | حذف شد (۲۰۲۶-۱۰-۲۹): نوار پنجره‌های فعال نام صفحه را می‌گوید و هر فرم/جزئیات سربرگ فشردهٔ خودش (`FormPageHeader`) را دارد؛ محتوا مستقیماً زیر داک شروع می‌شود.                                                                                                                     |
 
 اثر سایدبار: `AppSidebar` فقط با `WorkspaceNavLink` رندر می‌شود که `workspace.open(to)` را صدا می‌زند؛ `to` همان مسیر می‌ماند؛ `end` و active detection از `useLocation` (URL مرورگر) به‌عنوان آینهٔ پنجرهٔ فعال ادامه می‌یابد؛ permission فیلتر آیتم‌ها بدون تغییر از `visibleNavigationSections` می‌آید.
 

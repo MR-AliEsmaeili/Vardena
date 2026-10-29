@@ -11,7 +11,7 @@ import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { Definition, DefinitionList } from './master-data-ui';
 import { useAccountDetail } from './master-data-hooks';
@@ -71,7 +71,7 @@ export function AccountDetailPage() {
   const account = query.data;
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={t.masterData.accountDetail}
         description={`${account.code} — ${account.title}`}
         actions={

@@ -11,7 +11,7 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { FormField } from '@/ui/patterns/form-field';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import { AccountCreateForm } from './account-create-form';
@@ -34,7 +34,7 @@ export function AccountCreatePage() {
   if (organizationId === null) return <LoadingState rows={6} />;
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={t.masterData.createAccountTitle}
         description={t.masterData.createAccountBody}
       />

@@ -21,7 +21,7 @@ import { Input } from '@/ui/input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { DateInput } from '@/ui/patterns/date-input';
 import { FormField } from '@/ui/patterns/form-field';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import { configurationErrorMessage } from './configuration-error-messages';
@@ -88,7 +88,7 @@ export function ConfigurationFormPage({ mode }: { mode: 'create' | 'edit' }) {
   if (detail.isError) {
     return (
       <div className="space-y-4">
-        <PageHeader title={t.accountingConfig.editTitle} />
+        <FormPageHeader title={t.accountingConfig.editTitle} />
         <ApiErrorAlert
           error={detail.error}
           title={t.table.errorTitle}
@@ -232,7 +232,7 @@ function ConfigurationForm({
 
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={
           mode === 'create'
             ? t.accountingConfig.createTitle

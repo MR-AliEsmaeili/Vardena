@@ -71,6 +71,8 @@ export interface WindowRuntime {
   basePath: string;
   path: string;
   dirty: boolean;
+  /** The window this one was opened from, while that window was active. */
+  openedFrom: string | null;
 }
 
 export interface WorkspaceActions {

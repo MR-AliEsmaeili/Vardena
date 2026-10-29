@@ -30,7 +30,7 @@ import { Select } from '@/ui/select';
 import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
 import { DataTable } from '@/ui/patterns/data-table';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import { Definition, DefinitionList } from '../administration-ui';
@@ -64,7 +64,7 @@ export function RoleDetailPage(): ReactElement {
   if (query.isError) {
     return (
       <div className="space-y-4">
-        <PageHeader title={t.rolesAdmin.roleDetail} />
+        <FormPageHeader title={t.rolesAdmin.roleDetail} />
         <ApiErrorAlert
           error={query.error}
           title={t.table.errorTitle}
@@ -80,7 +80,7 @@ export function RoleDetailPage(): ReactElement {
 
   return (
     <div className="space-y-4" data-testid="role-detail-page">
-      <PageHeader
+      <FormPageHeader
         title={t.rolesAdmin.roleDetail}
         description={t.rolesAdmin.subtitle}
         actions={

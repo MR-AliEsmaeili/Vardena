@@ -10,7 +10,7 @@ import { formatDateTimeWithZone } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import {
@@ -78,7 +78,7 @@ export function ItemDetailPage() {
   if (query.isError) {
     return (
       <div className="space-y-4">
-        <PageHeader title={t.inventoryMaster.items} />
+        <FormPageHeader title={t.inventoryMaster.items} />
         <ApiErrorAlert
           error={query.error}
           title={t.table.errorTitle}
@@ -100,7 +100,7 @@ export function ItemDetailPage() {
 
   return (
     <div className="space-y-4" data-testid="item-detail-page">
-      <PageHeader
+      <FormPageHeader
         title={item.name}
         description={`${item.code} — ${
           t.inventoryMaster.itemKinds[
@@ -194,7 +194,7 @@ export function ItemDetailPage() {
           </Definition>
         )}
         {item.description !== null && (
-          <Definition label={t.inventoryMaster.description}>
+          <Definition label={t.inventoryMaster.description} span>
             {item.description}
           </Definition>
         )}

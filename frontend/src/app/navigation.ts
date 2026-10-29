@@ -45,9 +45,9 @@ export interface NavigationItem {
   /** Match exact path only when marking active. */
   end?: boolean;
   /**
-   * True when the route exists as a domain landing hub for breadcrumbs and
-   * direct URL navigation, without repeating the section header as a child
-   * item inside the sidebar.
+   * True when the route exists as a domain landing hub for direct URL
+   * navigation, without repeating the section header as a child item inside
+   * the sidebar.
    */
   hubOnly?: boolean;
 }

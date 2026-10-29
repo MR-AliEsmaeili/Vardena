@@ -7,7 +7,7 @@ import { formatDateTimeWithZone } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import {
@@ -35,7 +35,7 @@ export function UnitDetailPage() {
   if (query.isError) {
     return (
       <div className="space-y-4">
-        <PageHeader title={t.inventoryMaster.units} />
+        <FormPageHeader title={t.inventoryMaster.units} />
         <ApiErrorAlert
           error={query.error}
           title={t.table.errorTitle}
@@ -51,7 +51,7 @@ export function UnitDetailPage() {
 
   return (
     <div className="space-y-4" data-testid="unit-detail-page">
-      <PageHeader
+      <FormPageHeader
         title={unit.name}
         description={`${t.inventoryMaster.unitSymbol}: ${unit.symbol ?? t.app.none}`}
         actions={

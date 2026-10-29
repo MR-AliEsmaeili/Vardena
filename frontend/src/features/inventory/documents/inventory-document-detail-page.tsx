@@ -1,6 +1,5 @@
 import type { ReactElement } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
 import type { InventoryDocument } from '@/api/contracts';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
@@ -11,11 +10,10 @@ import {
 } from '@/lib/format';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
 import { Badge } from '@/ui/badge';
-import { Button } from '@/ui/button';
 import { Card } from '@/ui/card';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { EmptyState, LoadingState } from '@/ui/patterns/states';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { useInventoryReferences } from '../use-inventory-references';
 import { DocumentLifecycleActions } from './document-lifecycle-actions';
 import { DocumentLinesTable } from './document-lines-table';
@@ -73,7 +71,7 @@ export function InventoryDocumentDetailPage(): ReactElement {
 
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={`${documentKindLabel(document.kind)} — ${
           document.number ?? t.inventoryDocuments.numberNotAllocated
         }`}
@@ -85,12 +83,6 @@ export function InventoryDocumentDetailPage(): ReactElement {
               document={document}
               onDeleted={() => navigate('/app/inventory/documents')}
             />
-            <Button asChild variant="outline" size="sm">
-              <Link to="/app/inventory/documents">
-                {t.inventoryDocuments.backToList}
-                <ArrowRight className="h-4 w-4" aria-hidden />
-              </Link>
-            </Button>
           </>
         }
       />
@@ -112,7 +104,7 @@ export function InventoryDocumentDetailPage(): ReactElement {
 
 function DetailHeader() {
   return (
-    <PageHeader
+    <FormPageHeader
       title={t.inventoryDocuments.detailTitle}
       description={t.inventoryDocuments.subtitle}
     />

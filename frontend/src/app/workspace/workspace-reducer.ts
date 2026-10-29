@@ -47,6 +47,14 @@ export interface WorkspaceWindow {
   mountPath: string | null;
   /** Explicit title set by the page itself (e.g. 404, profile). */
   titleOverride: string | null;
+  /**
+   * Runtime only: the `basePath` of the window this one was opened FROM while
+   * that window was active (the list a record was opened from). Back in the
+   * shared form header uses it to return to that exact parent — filters
+   * intact — and only while it is still open. Navigation metadata only; it is
+   * never persisted (workspace-persistence stores id/basePath/path/activeId).
+   */
+  openedFrom: string | null;
 }
 
 export interface WorkspaceState {
@@ -99,6 +107,7 @@ export function splitTargetPath(target: string): {
 export function createWorkspaceWindow(
   id: WindowId,
   target: string,
+  openedFrom: string | null = null,
 ): WorkspaceWindow {
   const { basePath, path } = splitTargetPath(target);
   return {
@@ -109,6 +118,7 @@ export function createWorkspaceWindow(
     mounted: false,
     mountPath: null,
     titleOverride: null,
+    openedFrom: openedFrom === basePath ? null : openedFrom,
   };
 }
 
@@ -173,8 +183,17 @@ export function computeOpen(
     return { state, result: { kind: 'capped', id: null } };
   }
 
-  // Step 6: create at the end of the array and activate.
-  const created = createWorkspaceWindow(id, target);
+  // Step 6: create at the end of the array and activate. The window that was
+  // active becomes this window's parent screen (a record opened from a list),
+  // unless the target IS that window's own path (a duplicate/refresh).
+  const active = state.windows.find((window) => window.id === state.activeId);
+  const created = createWorkspaceWindow(
+    id,
+    target,
+    active !== undefined && active.basePath !== basePath
+      ? active.basePath
+      : null,
+  );
   return {
     state: {
       ...state,
