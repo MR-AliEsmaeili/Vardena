@@ -26,11 +26,12 @@ export function ArtifactImport({
   const [error, setError] = useState<string | null>(null);
   return (
     <div className="space-y-2">
-      <label className="block text-sm font-semibold">
-        {label}
+      <label className="block space-y-1.5 text-sm font-semibold text-ink">
+        <span>{label}</span>
         <input
-          className="mt-1 block w-full text-sm"
+          className="block w-full cursor-pointer rounded-control border border-control-line bg-surface px-3 py-2 text-sm text-secondary file:me-3 file:rounded-control file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink hover:file:bg-line disabled:cursor-not-allowed disabled:opacity-60"
           type="file"
+          dir="ltr"
           accept="application/json,.json,.vlic,.txt"
           disabled={busy}
           onChange={async (event) => {

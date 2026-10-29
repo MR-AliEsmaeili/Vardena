@@ -9,6 +9,14 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  Info,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -135,6 +143,13 @@ const KIND_STYLES: Record<ToastKind, string> = {
   error: 'border-danger-line bg-danger-soft text-danger-ink',
 };
 
+const KIND_ICONS: Record<ToastKind, LucideIcon> = {
+  success: CheckCircle2,
+  info: Info,
+  warning: AlertTriangle,
+  error: AlertCircle,
+};
+
 function ToastCard({
   toast,
   onDismiss,
@@ -187,11 +202,13 @@ function ToastCard({
     }
   };
 
+  const StatusIcon = KIND_ICONS[toast.kind];
+
   return (
     <div
       role={role}
       className={cn(
-        'animate-rise-in pointer-events-auto flex items-start gap-2 rounded-md border p-3 text-sm shadow-card',
+        'animate-rise-in pointer-events-auto flex items-start gap-2.5 rounded-control border p-3 text-sm shadow-raised',
         KIND_STYLES[toast.kind],
       )}
     >
@@ -205,11 +222,12 @@ function ToastCard({
         onBlur={resumeTimer}
         onKeyDown={onKeyDown}
       >
+        <StatusIcon className="mt-1 h-4 w-4 shrink-0" aria-hidden />
         <p className="min-w-0 flex-1 leading-6">{toast.message}</p>
         {toast.action !== undefined && (
           <button
             type="button"
-            className="action-press shrink-0 rounded px-2 py-0.5 text-xs font-semibold underline underline-offset-2"
+            className="action-press shrink-0 rounded-control px-2 py-0.5 text-xs font-semibold underline underline-offset-2"
             onClick={() => {
               toast.action?.onAction();
               onDismiss();
@@ -220,11 +238,11 @@ function ToastCard({
         )}
         <button
           type="button"
-          className="action-press shrink-0 rounded px-1 py-0.5 text-xs font-semibold hover:bg-sunken"
+          className="action-press inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control hover:bg-surface/60"
           aria-label={t.toasts.dismiss}
           onClick={onDismiss}
         >
-          ✕
+          <X className="h-3.5 w-3.5" aria-hidden />
         </button>
       </div>
     </div>

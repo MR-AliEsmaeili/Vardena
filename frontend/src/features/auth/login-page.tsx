@@ -8,6 +8,7 @@ import { Alert, AlertBody } from '@/ui/alert';
 import { Button } from '@/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { Input } from '@/ui/input';
+import { PasswordInput } from '@/ui/password-input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { FormField } from '@/ui/patterns/form-field';
 import { FullPageLoading } from '@/ui/patterns/states';
@@ -144,9 +145,8 @@ export function LoginPage() {
                 required
               >
                 {(fieldProps) => (
-                  <Input
+                  <PasswordInput
                     {...fieldProps}
-                    type="password"
                     autoComplete="current-password"
                     dir="ltr"
                     disabled={session.isLoggingIn}

@@ -1,41 +1,163 @@
 @import 'tailwindcss';
 
 /*
- * Vardena application styles.
+ * Vardena Owner Licensing Console — Design System & Semantic Tokens.
  *
- * The product is Persian-first and RTL (`<html dir="rtl" lang="fa">` in
- * index.html). Layout uses Tailwind's logical utilities (`ms-*`, `me-*`,
- * `text-start`, `text-end`, `border-s`, …) so a single stylesheet serves RTL
- * without duplicated direction-specific pages.
+ * Persian-first RTL (`<html dir="rtl" lang="fa">` in index.html). Layout uses
+ * Tailwind logical utilities (`ms-*`, `me-*`, `ps-*`, `pe-*`, `text-start`,
+ * `text-end`, `border-s`, `border-e`) exclusively.
+ *
+ * Strictly isolated from the customer ERP frontend (ADR-0048) while sharing
+ * Vardena's Swiss-minimalist precision, self-hosted Vazirmatn typography, and
+ * WCAG AA contrast discipline across Light and Dark themes.
  */
 
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/Vazirmatn.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
-  --color-canvas: var(--color-slate-50);
-  --color-surface: var(--color-white);
-  --color-muted: var(--color-slate-100);
-  --color-line: var(--color-slate-200);
-  --color-control-line: var(--color-slate-300);
-  --color-subtle: var(--color-slate-400);
-  --color-muted-ink: var(--color-slate-500);
-  --color-secondary: var(--color-slate-600);
-  --color-ink: var(--color-slate-900);
-  --color-accent: var(--color-indigo-700);
-  --color-accent-strong: var(--color-indigo-800);
-  --color-accent-soft: var(--color-indigo-50);
-  --color-accent-line: var(--color-indigo-200);
-  --color-success: var(--color-emerald-800);
-  --color-success-soft: var(--color-emerald-50);
-  --color-success-line: var(--color-emerald-200);
-  --color-warning: var(--color-amber-900);
-  --color-warning-soft: var(--color-amber-50);
-  --color-warning-line: var(--color-amber-200);
-  --color-danger: var(--color-rose-800);
-  --color-danger-action: var(--color-rose-700);
-  --color-danger-soft: var(--color-rose-50);
-  --color-danger-line: var(--color-rose-200);
   --font-sans:
     'Vazirmatn', 'IRANSans', 'IRANYekan', 'Segoe UI', 'Tahoma', system-ui,
     sans-serif;
+
+  /* Surfaces — light (default) */
+  --color-canvas: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-muted: #f1f5f9;
+  --color-line: #e2e8f0;
+  --color-control-line: #cbd5e1;
+
+  /* Typography hierarchy — light (all >= 4.55:1 AA on surface/canvas) */
+  --color-ink: #0f172a;
+  --color-secondary: #334155;
+  --color-muted-ink: #475569;
+  --color-subtle: #64748b;
+
+  /* Sovereign Authority Accent (cobalt-indigo — distinct from customer ERP indigo) */
+  --color-accent: #1d4ed8;
+  --color-accent-strong: #1e40af;
+  --color-accent-soft: #eff6ff;
+  --color-accent-line: #bfdbfe;
+  --color-accent-ink: #1e3a8a;
+
+  /* Semantic statuses — soft surface / crisp border / AA ink */
+  --color-success: #065f46;
+  --color-success-soft: #ecfdf5;
+  --color-success-line: #a7f3d0;
+
+  --color-warning: #92400e;
+  --color-warning-soft: #fffbeb;
+  --color-warning-line: #fde68a;
+
+  --color-danger: #9f1239;
+  --color-danger-action: #e11d48;
+  --color-danger-action-strong: #be123c;
+  --color-danger-soft: #fff1f2;
+  --color-danger-line: #fecdd3;
+
+  --color-critical: #9f1239;
+  --color-critical-soft: #ffe4e6;
+  --color-critical-line: #fda4af;
+  --color-critical-ink: #881337;
+
+  --color-info: #075985;
+  --color-info-soft: #f0f9ff;
+  --color-info-line: #bae6fd;
+
+  /* Geometry & Elevation */
+  --radius-control: 0.5rem;
+  --radius-card: 0.75rem;
+  --shadow-card:
+    0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
+  --shadow-raised: 0 12px 32px -16px rgb(15 23 42 / 0.24);
+}
+
+[data-theme='dark'] {
+  --color-canvas: #0b1120;
+  --color-surface: #131c31;
+  --color-muted: #1b2640;
+  --color-line: #293654;
+  --color-control-line: #3d4f75;
+
+  --color-ink: #f1f5f9;
+  --color-secondary: #cbd5e1;
+  --color-muted-ink: #94a3b8;
+  --color-subtle: #94a3b8;
+
+  --color-accent: #2563eb;
+  --color-accent-strong: #1d4ed8;
+  --color-accent-soft: #172554;
+  --color-accent-line: #1e40af;
+  --color-accent-ink: #bfdbfe;
+
+  --color-success: #6ee7b7;
+  --color-success-soft: #052e23;
+  --color-success-line: #065f46;
+
+  --color-warning: #fde68a;
+  --color-warning-soft: #2e1f00;
+  --color-warning-line: #92400e;
+
+  --color-danger: #fecdd3;
+  --color-danger-action: #e11d48;
+  --color-danger-action-strong: #be123c;
+  --color-danger-soft: #2f0d18;
+  --color-danger-line: #9f1239;
+
+  --color-critical: #fb7185;
+  --color-critical-soft: #3b0819;
+  --color-critical-line: #be123c;
+  --color-critical-ink: #ffe4e6;
+
+  --color-info: #7dd3fc;
+  --color-info-soft: #082f49;
+  --color-info-line: #0369a1;
+
+  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.28), 0 1px 3px 0 rgb(0 0 0 / 0.36);
+  --shadow-raised: 0 16px 36px -14px rgb(0 0 0 / 0.65);
+}
+
+[data-theme='light'] {
+  --color-canvas: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-muted: #f1f5f9;
+  --color-line: #e2e8f0;
+  --color-control-line: #cbd5e1;
+  --color-ink: #0f172a;
+  --color-secondary: #334155;
+  --color-muted-ink: #475569;
+  --color-subtle: #64748b;
+  --color-accent: #1d4ed8;
+  --color-accent-strong: #1e40af;
+  --color-accent-soft: #eff6ff;
+  --color-accent-line: #bfdbfe;
+  --color-accent-ink: #1e3a8a;
+  --color-success: #065f46;
+  --color-success-soft: #ecfdf5;
+  --color-success-line: #a7f3d0;
+  --color-warning: #92400e;
+  --color-warning-soft: #fffbeb;
+  --color-warning-line: #fde68a;
+  --color-danger: #9f1239;
+  --color-danger-action: #e11d48;
+  --color-danger-action-strong: #be123c;
+  --color-danger-soft: #fff1f2;
+  --color-danger-line: #fecdd3;
+  --color-critical: #9f1239;
+  --color-critical-soft: #ffe4e6;
+  --color-critical-line: #fda4af;
+  --color-critical-ink: #881337;
+  --color-info: #075985;
+  --color-info-soft: #f0f9ff;
+  --color-info-line: #bae6fd;
+  --shadow-card:
+    0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
+  --shadow-raised: 0 12px 32px -16px rgb(15 23 42 / 0.24);
 }
 
 @layer base {
@@ -45,9 +167,52 @@
     height: 100%;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-padding-top: 4.5rem;
+  }
+
   body {
     @apply bg-canvas text-ink antialiased;
     font-family: var(--font-sans);
+    line-height: 1.75;
+  }
+
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-line);
+  }
+
+  h1,
+  h2,
+  h3 {
+    line-height: 1.4;
+    text-wrap: balance;
+    overflow-wrap: anywhere;
+  }
+
+  p,
+  dd,
+  a {
+    overflow-wrap: anywhere;
+  }
+
+  input,
+  select,
+  textarea {
+    min-width: 0;
+    accent-color: var(--color-accent);
+  }
+
+  input[type='checkbox'] {
+    flex-shrink: 0;
+    width: 1rem;
+    height: 1rem;
+  }
+
+  fieldset {
+    min-inline-size: 0;
   }
 
   /* Numbers stay readable (and aligned) inside an RTL document. */
@@ -63,78 +228,73 @@
     direction: ltr;
     unicode-bidi: isolate;
     text-align: start;
+    overflow-wrap: anywhere;
   }
 
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-accent;
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
-}
 
-@layer base {
-  body {
-    line-height: 1.75;
-  }
-  *,
-  *::before,
-  *::after {
-    border-color: var(--color-line);
-  }
-  h1,
-  h2,
-  h3,
-  p,
-  dd,
-  a {
-    overflow-wrap: anywhere;
-  }
-  input,
-  select,
-  textarea {
-    min-width: 0;
-    accent-color: var(--color-accent);
-  }
-  input[type='checkbox'] {
-    flex-shrink: 0;
-    width: 1rem;
-    height: 1rem;
-  }
-  fieldset {
-    min-inline-size: 0;
-  }
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
-      animation: none !important;
-      transition: none !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
     }
   }
 }
 
 @layer components {
   .owner-control {
-    @apply h-10 w-full rounded-md border border-control-line bg-surface px-3 text-sm text-ink;
-    @apply placeholder:text-muted-ink focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-accent;
-    @apply disabled:cursor-not-allowed disabled:bg-muted disabled:text-secondary aria-[invalid=true]:border-danger;
+    @apply h-9 w-full rounded-control border border-control-line bg-surface px-3 text-sm text-ink transition-colors;
+    @apply placeholder:text-subtle/80 hover:border-subtle/70;
+    @apply focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-accent;
+    @apply disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-ink;
+    @apply aria-[invalid=true]:border-danger-action aria-[invalid=true]:focus-visible:outline-danger-action;
   }
   .owner-panel {
-    @apply rounded-lg border border-line bg-surface;
+    @apply rounded-card border border-line bg-surface shadow-card;
   }
   .owner-toolbar {
-    @apply grid gap-3 rounded-lg border border-line bg-surface p-4;
+    @apply grid gap-3 rounded-card border border-line bg-surface p-3.5 shadow-card;
   }
   .owner-success {
-    @apply block rounded-md border border-success-line bg-success-soft p-3 text-sm text-success;
+    @apply block rounded-control border border-success-line bg-success-soft px-3.5 py-2.5 text-sm font-medium text-success;
   }
   .owner-status {
-    @apply inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-xs font-semibold;
+    @apply inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap;
   }
 }
 
-@font-face {
-  font-family: 'Vazirmatn';
-  src: url('/fonts/Vazirmatn.woff2') format('woff2');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
+@layer utilities {
+  .animate-rise-in {
+    animation: owner-rise-in 170ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .animate-fade-in {
+    animation: owner-fade-in 180ms ease both;
+  }
+}
+
+@keyframes owner-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes owner-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }

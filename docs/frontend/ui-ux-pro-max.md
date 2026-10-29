@@ -131,6 +131,7 @@ python3 .claude/skills/ui-ux-pro-max/scripts/search.py "data table density" --st
 | متن / لحن | همۀ رشته‌ها از دیکشنری i18n فارسی با لحن رسمی-ساده و فرمول «چه شد + چه کنید» (standards §۱۹)؛ ارقام تاریخ/زمان فارسی و قرارداد BusinessDate/Instant طبق AR-32. |
 | `--persist` / پوشۀ `design-system/` | **بدون تصمیم صریح مالک ممنوع.** منبع حقیقت بصری [design-system.md](./design-system.md) است؛ `MASTER.md` تولیدی اسکیل commit نمی‌شود. |
 | تم روشن/تاریک | خروجی اسکیل فقط مرجع است؛ قرارداد `data-theme` فعلی و contrast AA در هر دو تم الزامی است. |
+| لندمارک جست‌وجو (`role="search"`) | در Vardena طبق قاعدۀ ماشینی `oxlint jsx-a11y/prefer-tag-over-role` از تگ معنایی `<search>` به‌جای `<div role="search">` استفاده می‌شود. |
 | چهار حالت + DoD | توصیه‌های اسکیل جایگزین DoD بخش ۲۰ standards.md نمی‌شوند؛ هر تسک UI همچنان چهار حالت + اسکرین‌شات + gateهای سبز می‌خواهد. |
 
 ## ۶) گردش کار هر تسک UI/فرانت

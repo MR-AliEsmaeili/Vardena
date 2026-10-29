@@ -5,7 +5,7 @@ export function Card({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       className={cn(
-        'rounded-lg border border-line bg-surface shadow-sm',
+        'rounded-card border border-line bg-surface shadow-card',
         className,
       )}
       {...props}
@@ -16,7 +16,7 @@ export function Card({ className, ...props }: ComponentProps<'div'>) {
 export function CardHeader({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
-      className={cn('flex flex-col gap-1 border-b border-muted p-4', className)}
+      className={cn('flex flex-col gap-1 border-b border-line p-4', className)}
       {...props}
     />
   );
@@ -49,7 +49,7 @@ export function CardFooter({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       className={cn(
-        'flex items-center gap-2 border-t border-muted p-4',
+        'flex items-center gap-2 border-t border-line p-4',
         className,
       )}
       {...props}

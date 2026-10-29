@@ -28,6 +28,7 @@ import {
   CardTitle,
 } from '@/ui/card';
 import { Input } from '@/ui/input';
+import { PasswordInput } from '@/ui/password-input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { Definition, DefinitionList } from '@/ui/patterns/definition-list';
 import { FormField } from '@/ui/patterns/form-field';
@@ -315,9 +316,8 @@ export function ProfilePage() {
                 error={passwordForm.formState.errors.currentPassword?.message}
               >
                 {(fieldProps) => (
-                  <Input
+                  <PasswordInput
                     {...fieldProps}
-                    type="password"
                     autoComplete="current-password"
                     dir="ltr"
                     disabled={isPasswordBusy}
@@ -334,9 +334,8 @@ export function ProfilePage() {
                 error={passwordForm.formState.errors.newPassword?.message}
               >
                 {(fieldProps) => (
-                  <Input
+                  <PasswordInput
                     {...fieldProps}
-                    type="password"
                     autoComplete="new-password"
                     dir="ltr"
                     disabled={isPasswordBusy}
@@ -352,9 +351,8 @@ export function ProfilePage() {
                 error={passwordForm.formState.errors.confirmPassword?.message}
               >
                 {(fieldProps) => (
-                  <Input
+                  <PasswordInput
                     {...fieldProps}
-                    type="password"
                     autoComplete="new-password"
                     dir="ltr"
                     disabled={isPasswordBusy}

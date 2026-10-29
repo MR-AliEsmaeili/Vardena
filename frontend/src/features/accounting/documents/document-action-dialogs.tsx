@@ -4,6 +4,7 @@ import { normalizeApiError } from '@/api/errors';
 import { t } from '@/lib/i18n';
 import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
 import { useToast } from '@/ui/patterns/toast';
+import { Textarea } from '@/ui/textarea';
 import {
   documentErrorMessage,
   type DocumentErrorMessage,
@@ -47,7 +48,7 @@ function ErrorBody({ error }: { error: DocumentErrorMessage }): ReactElement {
     <>
       <p>{error.message}</p>
       {error.correlationId !== undefined && (
-        <p className="mt-2 text-xs text-rose-800/80">
+        <p className="mt-2 text-xs text-danger-ink/85">
           {t.errors.correlationId}:{' '}
           <span className="code">{error.correlationId}</span>
         </p>
@@ -266,8 +267,7 @@ export function DocumentActionDialog({
             <span className="text-xs font-medium text-ink-muted">
               {t.documents.reverseReason}
             </span>
-            <textarea
-              className="w-full rounded-md border border-line-strong px-3 py-2 text-sm text-ink focus-visible:border-indigo-500 focus-visible:outline-2 focus-visible:outline-indigo-500 aria-[invalid=true]:border-rose-400"
+            <Textarea
               rows={3}
               value={reason}
               aria-invalid={reasonError !== null}

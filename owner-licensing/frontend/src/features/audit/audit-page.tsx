@@ -12,6 +12,7 @@ import { queryKeys } from '@/api/query-keys';
 import type { AuditEvent } from '@/api/contracts';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { o } from '@/lib/owner-i18n';
+import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { DateInput } from '@/ui/patterns/date-input';
@@ -70,27 +71,21 @@ function AuditEventCard({ event }: { event: AuditEvent }) {
     [o.reason, event.reason],
   ];
   return (
-    <li className="space-y-2 owner-panel p-4">
+    <li className="space-y-3 owner-panel p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold">{eventLabel(event.eventType)}</h2>
-        <div className="flex flex-wrap gap-2">
+        <h2 className="text-sm font-semibold text-ink">
+          {eventLabel(event.eventType)}
+        </h2>
+        <div className="flex flex-wrap gap-1.5">
           {isSecurityIncident ? (
-            <span className="rounded bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger">
-              {o.auditSecurityIncidentHoldBadge}
-            </span>
+            <Badge variant="critical">{o.auditSecurityIncidentHoldBadge}</Badge>
           ) : null}
           {event.archived !== undefined ? (
-            <span
-              className={`rounded px-2 py-0.5 text-xs font-medium ${
-                event.archived
-                  ? 'bg-success-soft text-success'
-                  : 'bg-muted text-secondary'
-              }`}
-            >
+            <Badge variant={event.archived ? 'success' : 'neutral'}>
               {event.archived
                 ? `${o.auditArchivedBadge}${event.archiveBatchId ? ` (${event.archiveBatchId})` : ''}`
                 : o.auditUnarchivedBadge}
-            </span>
+            </Badge>
           ) : null}
         </div>
       </div>
@@ -98,24 +93,33 @@ function AuditEventCard({ event }: { event: AuditEvent }) {
         {event.eventType}
       </p>
       {observedAuditEventTypes.includes(event.eventType) ? (
-        <p className="text-sm text-warning">{o.auditObservedNote}</p>
+        <p className="text-xs font-medium text-warning">
+          {o.auditObservedNote}
+        </p>
       ) : null}
-      <dl className="grid gap-2 text-sm sm:grid-cols-2">
+      <dl className="grid gap-2.5 rounded-control border border-line bg-muted/40 p-3 text-xs sm:grid-cols-2">
         {rows.map(([label, value, canonical]) => (
-          <div key={label}>
+          <div key={label} className="space-y-0.5">
             <dt className="text-muted-ink">{label}</dt>
-            <dd title={canonical} dir="auto" className="break-all">
+            <dd
+              title={canonical}
+              dir="auto"
+              className="font-medium break-all text-ink"
+            >
               {value ?? '—'}
             </dd>
           </div>
         ))}
       </dl>
-      <details>
-        <summary>
+      <details className="rounded-control border border-line bg-canvas p-2.5 text-xs">
+        <summary className="cursor-pointer font-medium text-secondary select-none hover:text-ink">
           {o.before} / {o.after}
         </summary>
-        <p className="text-xs text-muted-ink">{o.auditBeforeAfterHint}</p>
-        <pre dir="ltr" className="overflow-auto text-xs">
+        <p className="mt-2 text-xs text-muted-ink">{o.auditBeforeAfterHint}</p>
+        <pre
+          dir="ltr"
+          className="mt-2 overflow-auto rounded-control border border-line bg-surface p-2.5 font-mono text-xs text-ink"
+        >
           {JSON.stringify(
             { before: event.beforeState, after: event.afterState },
             null,
@@ -262,11 +266,29 @@ function AuditArchiveControlSection() {
               {statusQuery.data.counts.pastMinimumRetentionFloorCount}
             </dd>
           </div>
-          <div className="rounded border bg-danger-soft p-3">
-            <dt className="text-xs text-danger">
+          <div
+            className={
+              statusQuery.data.counts.unresolvedSecurityIncidentCount > 0
+                ? 'rounded-control border border-critical-line bg-critical-soft p-3'
+                : 'rounded-control border bg-canvas p-3'
+            }
+          >
+            <dt
+              className={
+                statusQuery.data.counts.unresolvedSecurityIncidentCount > 0
+                  ? 'text-xs text-critical-ink'
+                  : 'text-xs text-muted-ink'
+              }
+            >
               {o.auditArchiveIncidentHolds}
             </dt>
-            <dd className="font-semibold text-danger">
+            <dd
+              className={
+                statusQuery.data.counts.unresolvedSecurityIncidentCount > 0
+                  ? 'font-semibold text-critical-ink'
+                  : 'font-semibold text-ink'
+              }
+            >
               {statusQuery.data.counts.unresolvedSecurityIncidentCount}
             </dd>
           </div>

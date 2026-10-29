@@ -29,6 +29,7 @@ import {
 } from '@/ui/card';
 import { Input } from '@/ui/input';
 import { Label } from '@/ui/label';
+import { Textarea } from '@/ui/textarea';
 import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
 import { EmptyState, LoadingState } from '@/ui/patterns/states';
 import {
@@ -1097,16 +1098,16 @@ function ArtifactPanel({
   onDownload: () => void;
 }) {
   return (
-    <section className="mt-4 space-y-2 rounded-md border border-brand/30 bg-indigo-50/40 p-3">
+    <section className="mt-4 space-y-2 rounded-control border border-brand/30 bg-brand-soft/60 p-3">
       <h3 className="text-sm font-semibold text-ink">{title}</h3>
       <Label htmlFor="device-artifact-text">{label}</Label>
-      <textarea
+      <Textarea
         id="device-artifact-text"
         readOnly
         value={text}
         dir="ltr"
         spellCheck={false}
-        className="min-h-28 w-full rounded-md border border-line-strong bg-surface p-3 font-mono text-xs text-ink"
+        className="min-h-28 p-3 font-mono text-xs"
       />
       <p className="text-xs leading-5 text-ink-muted">{hint}</p>
       <div className="flex flex-wrap gap-2">
@@ -1219,13 +1220,13 @@ function EnrollmentPanel({
               <Label htmlFor="enrollment-canonical-payload">
                 {t.deviceLicensing.challenge}
               </Label>
-              <textarea
+              <Textarea
                 id="enrollment-canonical-payload"
                 readOnly
                 value={challenge.canonicalPayload}
                 dir="ltr"
                 spellCheck={false}
-                className="min-h-36 w-full rounded-md border border-line-strong bg-sunken p-3 font-mono text-xs"
+                className="min-h-36 bg-sunken p-3 font-mono text-xs"
               />
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1405,13 +1406,13 @@ function ReplacementPanel({
               <Label htmlFor="replacement-canonical-payload">
                 {t.deviceLicensing.replacementChallenge}
               </Label>
-              <textarea
+              <Textarea
                 id="replacement-canonical-payload"
                 readOnly
                 value={challenge.canonicalPayload}
                 dir="ltr"
                 spellCheck={false}
-                className="min-h-36 w-full rounded-md border border-line-strong bg-sunken p-3 font-mono text-xs"
+                className="min-h-36 bg-sunken p-3 font-mono text-xs"
               />
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1536,14 +1537,14 @@ function ResponseImportPanel({
             <Label htmlFor="replacement-response-document">
               {t.deviceLicensing.responseDocument}
             </Label>
-            <textarea
+            <Textarea
               id="replacement-response-document"
               value={responseDocument}
               onChange={(event) => onDocumentChange(event.target.value)}
               maxLength={DEVICE_RESPONSE_MAX_LENGTH}
               dir="ltr"
               spellCheck={false}
-              className="min-h-36 w-full rounded-md border border-line-strong bg-surface p-3 font-mono text-xs"
+              className="min-h-36 p-3 font-mono text-xs"
             />
           </div>
           {inputError !== null && inputError !== undefined && (

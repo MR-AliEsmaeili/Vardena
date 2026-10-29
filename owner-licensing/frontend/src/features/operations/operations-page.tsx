@@ -7,6 +7,7 @@ import * as api from '@/api/owner.api';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { o } from '@/lib/owner-i18n';
+import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { EmptyState, LoadingState } from '@/ui/patterns/states';
@@ -26,10 +27,10 @@ export function SigningKeySafetyLine({
     NEEDS_REVIEW: o.signingKeySafetyNeedsReview,
     UNKNOWN: o.signingKeySafetyUnknown,
   };
-  const classes: Record<typeof safety, string> = {
-    SAFE: 'bg-success-soft text-success',
-    NEEDS_REVIEW: 'bg-danger-soft text-danger',
-    UNKNOWN: 'bg-muted text-secondary',
+  const variants: Record<typeof safety, 'success' | 'critical' | 'neutral'> = {
+    SAFE: 'success',
+    NEEDS_REVIEW: 'critical',
+    UNKNOWN: 'neutral',
   };
   const helpMap: Record<typeof safety, string> = {
     SAFE: o.signingKeySafetySafeHelp,
@@ -37,7 +38,7 @@ export function SigningKeySafetyLine({
     UNKNOWN: o.signingKeySafetyUnknownHelp,
   };
   return (
-    <p className="text-xs">
+    <p className="flex flex-wrap items-center gap-1.5 text-xs">
       <span className="text-muted-ink">{o.operationsSigningKeyColumn}: </span>
       {signingKeyId ? (
         <span className="code text-secondary" dir="ltr">
@@ -46,12 +47,9 @@ export function SigningKeySafetyLine({
       ) : (
         <span className="text-subtle">—</span>
       )}
-      <span
-        className={`ms-2 inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${classes[safety]}`}
-        title={helpMap[safety]}
-      >
+      <Badge variant={variants[safety]} title={helpMap[safety]}>
         {labelMap[safety]}
-      </span>
+      </Badge>
     </p>
   );
 }
@@ -162,11 +160,14 @@ export function OperationsPage() {
           description={o.emptyOperationsHelp}
         />
       ) : (
-        <ul className="divide-y owner-panel">
+        <ul className="divide-y owner-panel overflow-hidden">
           {query.data.items.map((item) => (
-            <li key={item.id} className="space-y-1 p-4">
+            <li
+              key={item.id}
+              className="space-y-1.5 p-4 transition-colors hover:bg-muted/50"
+            >
               <Link
-                className="font-semibold text-accent-strong underline"
+                className="text-sm font-semibold text-accent-ink underline-offset-4 hover:underline"
                 to={`/app/operations/${item.id}`}
               >
                 {item.displayName}

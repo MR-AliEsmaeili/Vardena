@@ -13,6 +13,7 @@ import {
 } from '@/ui/card';
 import { FormField } from '@/ui/patterns/form-field';
 import { useToast } from '@/ui/patterns/toast';
+import { Textarea } from '@/ui/textarea';
 import {
   licenseImportErrorMessage,
   type LicenseImportErrorMessage,
@@ -165,7 +166,7 @@ export function LicenseImportForm(): ReactElement {
               key={fileInputKey}
               type="file"
               dir="ltr"
-              className="block w-full cursor-pointer rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink-muted file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:text-slate-800 hover:file:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+              className="block w-full cursor-pointer rounded-control border border-line-strong bg-surface px-3 py-2 text-sm text-ink-muted file:me-3 file:rounded-control file:border-0 file:bg-sunken file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink hover:file:bg-line/70 disabled:cursor-not-allowed disabled:opacity-60"
               accept={LICENSE_FILE_ACCEPT}
               autoComplete="off"
               aria-required="true"
@@ -215,13 +216,13 @@ export function LicenseImportForm(): ReactElement {
             hint={t.license.importDocumentHint}
           >
             {(fieldProps) => (
-              <textarea
+              <Textarea
                 {...fieldProps}
                 rows={6}
                 dir="ltr"
                 spellCheck={false}
                 autoComplete="off"
-                className="w-full rounded-md border border-line-strong px-3 py-2 font-mono text-xs text-ink focus-visible:border-indigo-500 focus-visible:outline-2 focus-visible:outline-indigo-500 aria-[invalid=true]:border-rose-400"
+                className="font-mono text-xs"
                 disabled={mutation.isPending}
                 aria-required="true"
                 {...form.register('document')}

@@ -7,7 +7,7 @@ import type { ReactElement } from 'react';
  */
 export function SparkLine({
   points,
-  className = 'text-indigo-500',
+  className = 'text-brand',
 }: {
   points: number[];
   className?: string;

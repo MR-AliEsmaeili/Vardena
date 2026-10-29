@@ -1,5 +1,6 @@
 import { PageHeading } from '@/ui/patterns/page-heading';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { LogOut, ShieldCheck } from 'lucide-react';
 import { useForm, type UseFormSetError } from 'react-hook-form';
 import { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
@@ -7,7 +8,7 @@ import { normalizeApiError } from '@/api/errors';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import { Card, CardContent, CardHeader } from '@/ui/card';
-import { Input } from '@/ui/input';
+import { PasswordInput } from '@/ui/password-input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { FormField } from '@/ui/patterns/form-field';
 import { FullPageLoading } from '@/ui/patterns/states';
@@ -214,29 +215,35 @@ export function ChangePasswordPage() {
   const isBusy = session.isChangingPassword || session.isLoggingOut;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted px-4 py-10">
-      <div className="w-full max-w-md space-y-4">
-        <div className="text-center">
-          <p className="text-2xl font-bold text-accent-strong">{t.app.name}</p>
-          <p className="mt-1 text-sm text-secondary">{t.app.tagline}</p>
-        </div>
+    <main className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
+      <div className="w-full max-w-md space-y-5">
+        <header className="text-center">
+          <span
+            aria-hidden="true"
+            className="mx-auto flex h-11 w-11 items-center justify-center rounded-card bg-accent text-white shadow-raised"
+          >
+            <ShieldCheck className="h-5 w-5" />
+          </span>
+          <p className="mt-3 text-xl font-bold text-ink">{t.app.name}</p>
+          <p className="mt-1 text-xs text-secondary">{t.app.tagline}</p>
+        </header>
 
-        <Card>
-          <CardHeader>
+        <Card className="shadow-raised">
+          <CardHeader className="space-y-1 p-5">
             <PageHeading className="text-lg sm:text-xl">
               {t.auth.changePasswordTitle}
             </PageHeading>
-            <p className="text-sm text-secondary">
+            <p className="text-xs leading-6 text-secondary">
               {t.auth.changePasswordSubtitle}
             </p>
             <p className="text-xs text-muted-ink">
               {t.auth.signedInAs}:{' '}
-              <span className="font-medium text-secondary">
+              <span className="font-medium text-ink" dir="ltr">
                 {session.user.username}
               </span>
             </p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-5">
             <form className="space-y-4" onSubmit={onSubmit} noValidate>
               <FormField
                 id="currentPassword"
@@ -244,9 +251,8 @@ export function ChangePasswordPage() {
                 error={currentPasswordError}
               >
                 {(fieldProps) => (
-                  <Input
+                  <PasswordInput
                     {...fieldProps}
-                    type="password"
                     autoComplete="current-password"
                     dir="ltr"
                     disabled={isBusy}
@@ -262,9 +268,8 @@ export function ChangePasswordPage() {
                 error={newPasswordError}
               >
                 {(fieldProps) => (
-                  <Input
+                  <PasswordInput
                     {...fieldProps}
-                    type="password"
                     autoComplete="new-password"
                     dir="ltr"
                     disabled={isBusy}
@@ -279,9 +284,8 @@ export function ChangePasswordPage() {
                 error={confirmPasswordError}
               >
                 {(fieldProps) => (
-                  <Input
+                  <PasswordInput
                     {...fieldProps}
-                    type="password"
                     autoComplete="new-password"
                     dir="ltr"
                     disabled={isBusy}
@@ -318,6 +322,7 @@ export function ChangePasswordPage() {
                   disabled={isBusy}
                   onClick={() => void handleLogout()}
                 >
+                  <LogOut className="h-4 w-4" aria-hidden />
                   {session.isLoggingOut ? t.auth.loggingOut : t.auth.logout}
                 </Button>
               </div>

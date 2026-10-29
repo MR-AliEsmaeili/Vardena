@@ -18,6 +18,7 @@ import {
   CardTitle,
 } from '@/ui/card';
 import { Input } from '@/ui/input';
+import { Textarea } from '@/ui/textarea';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
 import { FormField } from '@/ui/patterns/form-field';
@@ -389,12 +390,11 @@ function ValuationMethodCreateFormBody({
                 className="sm:col-span-2"
               >
                 {(fieldProps) => (
-                  <textarea
+                  <Textarea
                     {...fieldProps}
                     rows={3}
                     maxLength={500}
                     disabled={submitting}
-                    className="w-full rounded-control border border-line-strong bg-surface px-3 py-2 text-sm text-ink transition-colors placeholder:text-ink-subtle/70 hover:border-ink-subtle/60 focus-visible:border-brand focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-brand disabled:cursor-not-allowed disabled:bg-sunken disabled:text-ink-muted aria-[invalid=true]:border-danger aria-[invalid=true]:focus-visible:outline-danger"
                     {...form.register('note')}
                   />
                 )}

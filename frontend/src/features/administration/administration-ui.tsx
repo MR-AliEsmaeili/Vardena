@@ -10,7 +10,7 @@ import type { ReactNode } from 'react';
 
 export function DefinitionList({ children }: { children: ReactNode }) {
   return (
-    <dl className="grid gap-px overflow-hidden rounded-lg border border-line bg-slate-200 sm:grid-cols-2">
+    <dl className="grid gap-px overflow-hidden rounded-card border border-line bg-line sm:grid-cols-2">
       {children}
     </dl>
   );

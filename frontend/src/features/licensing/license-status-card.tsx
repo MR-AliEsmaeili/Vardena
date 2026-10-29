@@ -102,9 +102,14 @@ export function LicenseStatusCard(): ReactElement | null {
               variant={
                 !state.licensed
                   ? 'neutral'
-                  : state.active
-                    ? 'success'
-                    : 'warning'
+                  : state.inactiveReason === 'revoked'
+                    ? 'critical'
+                    : state.accessMode === 'GRACE' ||
+                        state.accessMode === 'READ_ONLY'
+                      ? 'warning'
+                      : state.active
+                        ? 'success'
+                        : 'danger'
               }
             >
               {!state.licensed
@@ -206,7 +211,7 @@ export function LicenseStatusCard(): ReactElement | null {
               )}
 
             {scheduled !== null && (
-              <div className="rounded-md border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-xs text-brand-ink">
+              <div className="rounded-control border border-brand/25 bg-brand-soft px-3 py-2 text-xs text-brand-ink">
                 <p className="font-medium">{t.license.statusScheduled}</p>
                 {/*
                   `effectiveFrom`, not `validFrom`: a renewal is issued early
@@ -218,7 +223,7 @@ export function LicenseStatusCard(): ReactElement | null {
                   {t.license.statusEffectiveFrom}:{' '}
                   {windowLabel(scheduled.effectiveFrom, scheduled.validUntil)}
                 </p>
-                <p className="mt-1 text-indigo-800">
+                <p className="mt-1 text-brand-ink/85">
                   {t.license.statusScheduledHint}
                 </p>
               </div>

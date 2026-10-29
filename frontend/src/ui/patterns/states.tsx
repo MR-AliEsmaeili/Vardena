@@ -1,4 +1,4 @@
-import { AlertCircle, Inbox } from 'lucide-react';
+import { AlertCircle, Inbox, Lock } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -102,12 +102,18 @@ export function UnavailableState({
   return (
     <div
       className={cn(
-        'rounded-card border border-dashed border-line-strong bg-surface px-6 py-6 text-center text-xs text-ink-subtle',
+        'flex flex-col items-center justify-center gap-2.5 rounded-card border border-dashed border-line-strong bg-surface px-6 py-7 text-center text-xs leading-6 text-ink-muted',
         className,
       )}
       data-testid="unavailable-state"
     >
-      {description}
+      <span
+        aria-hidden="true"
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-sunken text-ink-subtle"
+      >
+        <Lock className="h-4 w-4" />
+      </span>
+      <p className="max-w-md">{description}</p>
     </div>
   );
 }

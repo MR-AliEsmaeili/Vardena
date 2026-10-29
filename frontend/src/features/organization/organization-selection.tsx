@@ -86,7 +86,7 @@ export function OrganizationSelection({ invalid }: { invalid: boolean }) {
                       value={item.id}
                       checked={checked}
                       onChange={() => setChosenId(item.id)}
-                      className="h-4 w-4 accent-indigo-600"
+                      className="h-4 w-4 accent-brand"
                     />
                     <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
                       {item.name}

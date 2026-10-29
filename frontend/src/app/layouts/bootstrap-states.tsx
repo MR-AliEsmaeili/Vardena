@@ -1,7 +1,8 @@
-import { LogOut } from 'lucide-react';
+import { AlertTriangle, Lock, LogOut, ShieldOff } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useSession } from '@/features/auth/use-session';
 import { t } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import { Button } from '@/ui/button';
 import { ThinkingOrbIndicator } from '@/ui/thinking-orb';
 import {
@@ -70,6 +71,33 @@ export function LogoutButton() {
   );
 }
 
+export type BlockedStateTone = 'neutral' | 'warning' | 'critical';
+
+const BLOCKED_TONE_STYLES: Record<
+  BlockedStateTone,
+  {
+    card: string;
+    iconBox: string;
+    Icon: typeof Lock;
+  }
+> = {
+  neutral: {
+    card: 'border-line',
+    iconBox: 'bg-sunken text-ink-muted',
+    Icon: Lock,
+  },
+  warning: {
+    card: 'border-warn-line',
+    iconBox: 'bg-warn-soft text-warn-ink',
+    Icon: AlertTriangle,
+  },
+  critical: {
+    card: 'border-critical-line border-s-4 border-s-critical',
+    iconBox: 'bg-critical-soft text-critical-ink',
+    Icon: ShieldOff,
+  },
+};
+
 /**
  * Terminal blocked state (inactive installation license, no organization, no
  * permission to read the organization list).
@@ -81,15 +109,31 @@ export function LogoutButton() {
 export function BlockedState({
   title,
   description,
+  tone = 'neutral',
 }: {
   title: string;
   description: string;
+  tone?: BlockedStateTone;
 }) {
+  const { card, iconBox, Icon } = BLOCKED_TONE_STYLES[tone];
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
+    <Card className={cn('shadow-raised', card)}>
+      <CardHeader className="space-y-3">
+        <div className="flex items-start gap-3">
+          <span
+            aria-hidden="true"
+            className={cn(
+              'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-glyph',
+              iconBox,
+            )}
+          >
+            <Icon className="h-4.5 w-4.5" />
+          </span>
+          <div className="min-w-0 space-y-1.5">
+            <CardTitle>{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         <LogoutButton />

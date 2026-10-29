@@ -9,8 +9,10 @@ export function labelOf(code: string | null | undefined) {
 }
 export function ManualNotice() {
   return (
-    <div className="space-y-2 rounded border border-warning-line bg-warning-soft p-3 text-sm">
-      <p role="note">{o.manualBanner}</p>
+    <div className="space-y-1.5 rounded-control border border-warning-line border-s-4 border-s-warning bg-warning-soft p-3.5 text-xs leading-6 text-warning">
+      <p role="note" className="font-semibold">
+        {o.manualBanner}
+      </p>
       <p>{o.notReceipt}</p>
       <p>{o.deviceOutOfScope}</p>
       <p>{o.limitation}</p>

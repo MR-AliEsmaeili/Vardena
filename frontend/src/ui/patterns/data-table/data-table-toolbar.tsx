@@ -123,7 +123,7 @@ export function DataTableToolbar<TData>({
         {hasActiveFilters && activeColumnFilters > 0
           ? ` · ${t.table.filters.activeCount.replace(
               '{count}',
-              String(activeColumnFilters),
+              formatCount(activeColumnFilters),
             )}`
           : ''}
       </p>
