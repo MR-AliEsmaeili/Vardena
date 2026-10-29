@@ -65,7 +65,7 @@ export function ReconciliationEmptyCard({
       <span className="mb-2.5 grid h-11 w-11 place-items-center rounded-2xl border border-line bg-surface text-ink-subtle">
         <Landmark className="h-5 w-5" aria-hidden />
       </span>
-      <h3 className="text-sm font-bold text-ink">
+      <h3 className="text-sm font-semibold text-ink">
         {t.dashboard.reconciliationTitle}
       </h3>
       <p className="mt-1 max-w-60 text-xs leading-5 text-ink-muted">

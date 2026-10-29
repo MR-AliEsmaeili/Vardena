@@ -26,6 +26,7 @@ import { todayBusinessDay, useTimeZone } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import { sortingFromParam, sortingToParam } from '@/lib/sort-param';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
+import { PageHeader } from '@/ui/patterns/page-header';
 import {
   WorkspaceCardGrid,
   type WorkspaceCardGroup,
@@ -307,16 +308,10 @@ export function DashboardPage(): ReactElement {
 
   return (
     <div className="w-full min-w-0 space-y-5">
-      <header className="flex flex-wrap items-center gap-3">
-        <div>
-          <h1 className="text-lg font-extrabold text-ink">
-            {t.dashboard.title}
-          </h1>
-          <span className="text-xs text-ink-subtle">
-            {t.dashboard.subtitle}
-          </span>
-        </div>
-      </header>
+      <PageHeader
+        title={t.dashboard.title}
+        description={t.dashboard.subtitle}
+      />
 
       {quickAccessGroups.length > 0 && (
         <section

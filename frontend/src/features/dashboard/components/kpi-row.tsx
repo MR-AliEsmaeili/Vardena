@@ -3,6 +3,7 @@ import { formatCount } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Card } from '@/ui/card';
 import { Skeleton } from '@/ui/skeleton';
+import { UnavailableState } from '@/ui/patterns/states';
 import { SparkLine } from './charts/spark-line';
 import { aggregateKpis, presentKpis } from '../lib/kpis';
 
@@ -28,9 +29,11 @@ export function KpiRow({
   if (!isPermitted || scopeMissing) {
     return (
       <section aria-label={t.dashboard.kpiSectionLabel}>
-        <p className="rounded-card border border-dashed border-line-strong bg-surface px-6 py-6 text-center text-xs text-ink-subtle">
-          {scopeMissing ? t.dashboard.scopeMissing : t.dashboard.noPermission}
-        </p>
+        <UnavailableState
+          description={
+            scopeMissing ? t.dashboard.scopeMissing : t.dashboard.noPermission
+          }
+        />
       </section>
     );
   }
