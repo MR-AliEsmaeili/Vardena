@@ -1,4 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  Cpu,
+  FileCheck2,
+  FileClock,
+  KeyRound,
+  PackageCheck,
+  ShieldAlert,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import * as dashboardApi from '@/api/dashboard.api';
 import type { DashboardSummary } from '@/api/dashboard.api';
@@ -13,19 +26,6 @@ import { EmptyState, LoadingState } from '@/ui/patterns/states';
  * Owner dashboard (TS-8.2). It renders ONE server payload — the counts the
  * backend just took from the Owner database — and never computes a number of
  * its own.
- *
- * That constraint is the point of the component. A dashboard that added,
- * averaged or "estimated" locally would become a second source of truth that
- * silently disagrees with the list pages; instead every figure below is either
- * printed verbatim or is a sum of two printed figures that partition the same
- * set (`preparedRequests.eligible + expired === issuances.prepared`, which the
- * backend suite also asserts). The "needs action" list is derived by testing
- * those counts against zero — a presentation decision, not a new fact.
- *
- * States are explicit: loading (with the real layout), a normalized retryable
- * error, and the genuine empty case (a fresh installation with nothing
- * recorded yet). Nothing here is a permission decision: `licenses.view` gates
- * the page and the backend re-authorizes the read.
  */
 export function DashboardPage() {
   const permissions = usePermissions();
@@ -36,15 +36,15 @@ export function DashboardPage() {
   });
 
   if (!permissions.loaded) return <LoadingState />;
-  // A session without the licensing read scope gets no summary at all rather
-  // than a "forbidden" wall on its home page: the dashboard is an addition to
-  // the workspace, not a screen that owns a route.
   if (!permissions.has('licenses.view')) return null;
 
   return (
-    <section className="space-y-3" aria-labelledby="owner-dashboard-title">
-      <div>
-        <h2 id="owner-dashboard-title" className="text-lg font-bold text-ink">
+    <section className="space-y-4" aria-labelledby="owner-dashboard-title">
+      <div className="space-y-1">
+        <h2
+          id="owner-dashboard-title"
+          className="text-base font-bold text-ink sm:text-lg"
+        >
           {o.dashboard.title}
         </h2>
         <p className="text-sm text-secondary">{o.dashboard.help}</p>
@@ -79,8 +79,6 @@ function DashboardBody({ summary }: { summary: DashboardSummary }) {
     summary.signingKeys.active === 0 &&
     summary.signingKeys.needsReview === 0;
 
-  // Every condition below is "the count is not zero", so the list can never
-  // name an action the counts do not support.
   const attention: string[] = [];
   if (summary.preparedRequests.eligible > 0)
     attention.push(o.dashboard.attentionPrepared);
@@ -97,12 +95,13 @@ function DashboardBody({ summary }: { summary: DashboardSummary }) {
     attention.push(o.dashboard.attentionArtifacts);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {nothingRecorded ? (
         <EmptyState title={o.dashboard.empty} />
       ) : (
         <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Stat
+            icon={Users}
             label={o.dashboard.customers}
             value={summary.customers.active}
             hint={`${o.dashboard.customersHint}${summary.customers.inactive}`}
@@ -110,11 +109,13 @@ function DashboardBody({ summary }: { summary: DashboardSummary }) {
             linkLabel={o.dashboard.openCustomers}
           />
           <Stat
+            icon={Cpu}
             label={o.dashboard.identities}
             value={summary.installationIdentities.active}
             hint={`${o.dashboard.identitiesHint}${summary.installationIdentities.retired}`}
           />
           <Stat
+            icon={FileClock}
             label={o.dashboard.prepared}
             value={summary.issuances.prepared}
             hint={`${o.dashboard.preparedEligible}: ${summary.preparedRequests.eligible} · ${o.dashboard.preparedExpired}: ${summary.preparedRequests.expired}`}
@@ -122,6 +123,7 @@ function DashboardBody({ summary }: { summary: DashboardSummary }) {
             linkLabel={o.dashboard.openLicenses}
           />
           <Stat
+            icon={FileCheck2}
             label={o.dashboard.signed}
             value={summary.issuances.signed}
             hint={`${o.dashboard.abandoned}: ${summary.issuances.abandoned}`}
@@ -129,6 +131,7 @@ function DashboardBody({ summary }: { summary: DashboardSummary }) {
             linkLabel={o.dashboard.openLicenses}
           />
           <Stat
+            icon={ShieldAlert}
             label={o.dashboard.revocationsRecorded}
             value={summary.revocations.recorded}
             hint={`${o.dashboard.revocationsRequested}: ${summary.revocations.requested}`}
@@ -136,6 +139,7 @@ function DashboardBody({ summary }: { summary: DashboardSummary }) {
             linkLabel={o.dashboard.openLicenses}
           />
           <Stat
+            icon={KeyRound}
             label={o.dashboard.signingKeysActive}
             value={summary.signingKeys.active}
             hint={`${o.dashboard.signingKeysReview}: ${summary.signingKeys.needsReview}`}
@@ -143,6 +147,7 @@ function DashboardBody({ summary }: { summary: DashboardSummary }) {
             linkLabel={o.dashboard.openSigningKeys}
           />
           <Stat
+            icon={PackageCheck}
             label={o.dashboard.artifactsPending}
             value={summary.licenseArtifacts.pending}
             hint={`${o.dashboard.artifactsQuarantined}: ${summary.licenseArtifacts.quarantined}`}
@@ -151,19 +156,36 @@ function DashboardBody({ summary }: { summary: DashboardSummary }) {
       )}
 
       <section
-        className="owner-panel space-y-2 p-4"
+        className={cn(
+          'owner-panel space-y-2.5 p-4',
+          attention.length > 0 &&
+            'border-warning-line border-s-4 border-s-warning bg-warning-soft/40',
+        )}
         aria-labelledby="owner-dashboard-attention"
       >
-        <h3
-          id="owner-dashboard-attention"
-          className="text-sm font-bold text-ink"
-        >
-          {o.dashboard.attention}
-        </h3>
+        <div className="flex items-center gap-2">
+          {attention.length > 0 ? (
+            <AlertTriangle
+              aria-hidden="true"
+              className="size-4 shrink-0 text-warning"
+            />
+          ) : (
+            <CheckCircle2
+              aria-hidden="true"
+              className="size-4 shrink-0 text-success"
+            />
+          )}
+          <h3
+            id="owner-dashboard-attention"
+            className="text-sm font-bold text-ink"
+          >
+            {o.dashboard.attention}
+          </h3>
+        </div>
         {attention.length === 0 ? (
           <p className="text-sm text-secondary">{o.dashboard.attentionNone}</p>
         ) : (
-          <ul className="list-inside list-disc space-y-1 text-sm text-secondary">
+          <ul className="list-inside list-disc space-y-1 text-sm text-ink">
             {attention.map((item) => (
               <li key={item}>{item}</li>
             ))}
@@ -184,12 +206,14 @@ function DashboardBody({ summary }: { summary: DashboardSummary }) {
 }
 
 function Stat({
+  icon: Icon,
   label,
   value,
   hint,
   to,
   linkLabel,
 }: {
+  icon: LucideIcon;
   label: string;
   value: number;
   hint?: string;
@@ -197,19 +221,30 @@ function Stat({
   linkLabel?: string;
 }) {
   return (
-    <div className="owner-panel p-4">
-      <dt className="text-sm text-secondary">{label}</dt>
-      <dd className="mt-1 space-y-1">
-        <span className={cn('num text-2xl font-bold text-ink')}>{value}</span>
+    <div className="owner-panel flex flex-col justify-between gap-2 p-4">
+      <dt className="flex items-center justify-between gap-2 text-xs font-medium text-secondary">
+        <span>{label}</span>
+        <span
+          aria-hidden="true"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line bg-muted text-accent-ink"
+        >
+          <Icon className="size-3.5" />
+        </span>
+      </dt>
+      <dd className="space-y-1.5">
+        <span className={cn('num text-2xl font-bold tracking-tight text-ink')}>
+          {value}
+        </span>
         {hint !== undefined && (
           <p className="num text-xs text-muted-ink">{hint}</p>
         )}
         {to !== undefined && linkLabel !== undefined && (
           <Link
-            className="inline-block text-sm font-medium text-accent underline-offset-2 hover:underline"
+            className="inline-flex items-center gap-1 pt-0.5 text-xs font-semibold text-accent-ink underline-offset-4 hover:underline"
             to={to}
           >
             {linkLabel}
+            <ArrowLeft aria-hidden="true" className="size-3.5" />
           </Link>
         )}
       </dd>

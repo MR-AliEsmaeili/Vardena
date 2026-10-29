@@ -2,14 +2,16 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 
-const alertVariants = cva('rounded-md border p-4 text-sm', {
+const alertVariants = cva('rounded-control border p-3.5 text-sm leading-6', {
   variants: {
     variant: {
-      info: 'border-accent-line bg-accent-soft text-accent-strong',
+      info: 'border-accent-line bg-accent-soft text-accent-ink',
       success: 'border-success-line bg-success-soft text-success',
       warning: 'border-warning-line bg-warning-soft text-warning',
       danger: 'border-danger-line bg-danger-soft text-danger',
-      neutral: 'border-line bg-canvas text-ink',
+      critical:
+        'border-critical-line border-s-4 border-s-critical bg-critical-soft text-critical-ink',
+      neutral: 'border-line bg-muted text-ink',
     },
   },
   defaultVariants: { variant: 'info' },

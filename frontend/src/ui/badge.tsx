@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
  * the colour is a redundant cue rather than the only one (WCAG 1.4.1).
  */
 const badgeVariants = cva(
-  'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+  'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap [&_svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -18,6 +18,8 @@ const badgeVariants = cva(
         success: 'border-ok-line bg-ok-soft text-ok-ink',
         warning: 'border-warn-line bg-warn-soft text-warn-ink',
         danger: 'border-danger-line bg-danger-soft text-danger-ink',
+        critical:
+          'border-critical-line bg-critical-soft font-semibold text-critical-ink',
       },
     },
     defaultVariants: { variant: 'neutral' },

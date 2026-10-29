@@ -17,6 +17,8 @@ const alertVariants = cva('rounded-control border p-3.5 text-sm leading-6', {
       success: 'border-ok-line bg-ok-soft text-ok-ink',
       warning: 'border-warn-line bg-warn-soft text-warn-ink',
       danger: 'border-danger-line bg-danger-soft text-danger-ink',
+      critical:
+        'border-critical-line border-s-4 border-s-critical bg-critical-soft text-critical-ink',
       neutral: 'border-line bg-sunken text-ink-muted',
     },
   },

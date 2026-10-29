@@ -13,8 +13,10 @@ import * as api from '@/api/owner.api';
 import type { SigningKey } from '@/api/contracts';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { o } from '@/lib/owner-i18n';
+import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
+import { Textarea } from '@/ui/textarea';
 import { FormField } from '@/ui/patterns/form-field';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { EmptyState, LoadingState } from '@/ui/patterns/states';
@@ -213,23 +215,20 @@ export function SigningKeysPage() {
 }
 
 function StatusBadge({ status }: { status: SigningKey['status'] }) {
-  const classes: Record<SigningKey['status'], string> = {
-    ACTIVE: 'bg-success-soft text-success',
-    COMPROMISED: 'bg-danger-soft text-danger',
-    REVOKED: 'bg-warning-soft text-warning',
+  const variants: Record<
+    SigningKey['status'],
+    'success' | 'critical' | 'danger'
+  > = {
+    ACTIVE: 'success',
+    COMPROMISED: 'critical',
+    REVOKED: 'danger',
   };
   const label: Record<SigningKey['status'], string> = {
     ACTIVE: o.signingKeyStatusActive,
     COMPROMISED: o.signingKeyStatusCompromised,
     REVOKED: o.signingKeyStatusRevoked,
   };
-  return (
-    <span
-      className={`inline-flex items-center rounded px-2 py-1 text-xs font-medium ${classes[status]}`}
-    >
-      {label[status]}
-    </span>
-  );
+  return <Badge variant={variants[status]}>{label[status]}</Badge>;
 }
 
 function RegisterKeyForm() {
@@ -292,12 +291,7 @@ function RegisterKeyForm() {
         error={form.formState.errors.notes?.message}
       >
         {(props) => (
-          <textarea
-            {...props}
-            {...form.register('notes')}
-            className="w-full rounded border p-2"
-            rows={3}
-          />
+          <Textarea {...props} {...form.register('notes')} rows={3} />
         )}
       </FormField>
       <FormField

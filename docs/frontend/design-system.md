@@ -1,9 +1,9 @@
 # استاندارد طراحی و Design System فرانت‌اند Vardena
 
 **وضعیت:** ACTIVE — مرجع اجرایی لایۀ بصری و سیستم طراحی
-**نسخه:** ۲.۰
-**تاریخ به‌روزرسانی:** ۲۰۲۶-۱۰-۲۳
-**وابستگی:** [standards.md](./standards.md) · [ADR-0002](../adr/0002-technology-stack.md) · [ADR-0051](../adr/0051-global-request-loading-system.md) · [ADR-0052](../adr/0052-frontend-modernization-shell-theme-operational-forms.md)
+**نسخه:** ۲.۱
+**تاریخ به‌روزرسانی:** ۲۰۲۶-۱۰-۲۹
+**وابستگی:** [standards.md](./standards.md) · [ADR-0002](../adr/0002-technology-stack.md) · [ADR-0048](../adr/0048-owner-side-licensing-separation-boundary.md) · [ADR-0051](../adr/0051-global-request-loading-system.md) · [ADR-0052](../adr/0052-frontend-modernization-shell-theme-operational-forms.md)
 
 مستندات مرتبط:
 - [استاندارد Layout و Navigation](./layout-and-navigation.md)
@@ -44,21 +44,29 @@
 | `--color-ink` | `#0f172a` | `#f1f5f9` | عنوان‌ها، اعداد اصلی و متن اولیه |
 | `--color-ink-muted` | `#475569` | `#cbd5e1` | متن توضیحی، سلول‌های جدول و برچسب فیلدها |
 | `--color-ink-subtle` | `#64748b` | `#94a3b8` | متادیتا، راهنما (`hint`) و آیکون‌های خنثی |
-| `--color-brand` | `#4f46e5` | `#6366f1` | دکمۀ اصلی، نوار آیتم فعال، حلقۀ فوکوس |
-| `--color-brand-strong` | `#4338ca` | `#818cf8` | حالت hover/active دکمۀ اصلی |
+| `--color-brand` | `#4f46e5` | `#615cf0` | دکمۀ اصلی، نوار آیتم فعال، حلقۀ فوکوس (تضاد WCAG AA با متن سفید در هر دو تم) |
+| `--color-brand-strong` | `#4338ca` | `#5850ec` | حالت hover/active دکمۀ اصلی (تضاد `5.56:1` با متن سفید در تم تاریک) |
 | `--color-brand-soft` | `#eef2ff` | `#1e1b4b` | پس‌زمینۀ آیتم فعال منو و ردیف انتخاب‌شده |
 | `--color-brand-ink` | `#3730a3` | `#c7d2fe` | متن خوانا روی `brand-soft` |
 
-### ۲.۳ رنگ‌های وضعیت (Status Triads)
+### ۲.۳ رنگ‌های وضعیت (Status Hierarchy — ۵ سطح معنایی)
 
-هر وضعیت سه توکن هماهنگ (`soft` پس‌زمینه، `line` کادر، `ink` متن) دارد و هرگز بدون متن یا آیکون همراه به کار نمی‌رود (انطباق با WCAG 1.4.1):
+هر وضعیت سه توکن هماهنگ (`soft` پس‌زمینه، `line` کادر، `ink` متن) دارد و هرگز بدون متن یا آیکون همراه به کار نمی‌رود (انطباق با WCAG 1.4.1). تفکیک صریح میان وضعیت‌های عادی، هشداری، مخرب و بحرانی الزامی است:
 
-| وضعیت | پس‌زمینه | کادر | متن |
-| --- | --- | --- | --- |
-| موفقیت (`ok`) | `--color-ok-soft` | `--color-ok-line` | `--color-ok-ink` |
-| هشدار (`warn`) | `--color-warn-soft` | `--color-warn-line` | `--color-warn-ink` |
-| خطا / خطر (`danger`) | `--color-danger-soft` | `--color-danger-line` | `--color-danger-ink` (+ `--color-danger` و `--color-danger-strong` برای دکمۀ مخرب) |
-| اطلاع (`info`) | `--color-info-soft` | `--color-info-line` | `--color-info-ink` |
+| وضعیت | پس‌زمینه | کادر | متن | کاربرد معنایی |
+| --- | --- | --- | --- | --- |
+| موفقیت (`ok`) | `--color-ok-soft` | `--color-ok-line` | `--color-ok-ink` | مجوز فعال، سند نهایی‌شده، تراز معتبر |
+| اطلاع (`info`) | `--color-info-soft` | `--color-info-line` | `--color-info-ink` | راهنمای عملیاتی، نسخۀ برنامه‌ریزی‌شده، وضعیت خنثای خبری |
+| هشدار (`warn`) | `--color-warn-soft` | `--color-warn-line` | `--color-warn-ink` | مهلت مجوز (`GRACE`)، حالت فقط‌خواندنی (`READ_ONLY`)، ردیف تغییریافته |
+| خطا / خطر (`danger`) | `--color-danger-soft` | `--color-danger-line` | `--color-danger-ink` (+ `--color-danger: #e11d48` و `--color-danger-strong: #be123c`) | خطای اعتبارسنجی/سرور، عملیات مخرب قابل‌تأیید (حذف/ابطال سند) |
+| بحرانی (`critical`) | `--color-critical-soft` | `--color-critical-line` | `--color-critical-ink` (+ `--color-critical`) | وضعیت‌های برگشت‌ناپذیر یا امنیتی: ابطال مجوز استقرار، افشای کلید امضا (`COMPROMISED`)، نگهداشت رخداد امنیتی |
+
+### ۲.۵ کنسول مدیریت مجوز مالک (`owner-licensing/frontend`)
+
+طبق مرز جداسازی [ADR-0048](../adr/0048-owner-side-licensing-separation-boundary.md)، اپلیکیشن مالک هیچ کد یا استایلی را از `frontend/` وارد (`import`) نمی‌کند، اما از همان اصول Swiss Minimalism، فونت محلی `Vazirmatn` و لایۀ توکن معنایی مستقل در `owner-licensing/frontend/src/styles/index.css` پیروی می‌کند:
+- رنگ محوری متمایز مرجع صدور مجوز (`--color-accent: #1d4ed8` در تم روشن و `#2563eb` در تم تاریک با `--color-accent-ink` دارای کنتراست AA).
+- پشتیبانی کامل از تم روشن و تاریک (`vardena-owner:appearance:v1`) بدون پرش نوری پیش از رندر در `owner-licensing/frontend/index.html`.
+- همان پنج سطح معنایی وضعیت (`success`, `info`, `warning`, `danger`, `critical`) برای تفکیک کلیدهای `COMPROMISED` از `REVOKED` و هشدارهای عادی.
 
 ### ۲.۴ تون‌های دامنه (Domain Tones) و تخصیص tone ماژول‌ها
 
@@ -118,7 +126,7 @@
 | کامپوننت | فایل | توضیح و حالت‌های تعاملی |
 | --- | --- | --- |
 | `Button` | `button.tsx` | گونه‌های `default`, `outline`, `ghost`, `subtle`, `danger`؛ اندازه‌های `sm`, `md`, `icon`؛ پشتیبانی از `loading` (نمایش Thinking Orb + جلوگیری از ارسال مجدد) |
-| `Input` / `Select` / `Label` | `input.tsx`, `select.tsx`, `label.tsx` | کنترل‌های یکپارچه فرم با پشتیبانی از `aria-invalid`, `disabled`, و حلقۀ فوکوس استاندارد |
+| `Input` / `Textarea` / `PasswordInput` / `Select` / `Label` | `input.tsx`, `textarea.tsx`, `password-input.tsx`, `select.tsx`, `label.tsx` | کنترل‌های یکپارچه فرم با پشتیبانی از `aria-invalid`, `disabled`, حلقۀ فوکوس استاندارد و کلید نمایش/پنهان‌کردن دسترس‌پذیر گذرواژه در ظرف `dir="ltr"` |
 | `Dialog` | `dialog.tsx` | دیالوگ مودال دسترس‌پذیر (`<dialog open>`) با حبس فوکوس (Focus Trap)، بستن با `Escape`، قفل اسکرول بدنه و بازگردانی فوکوس |
 | `DropdownMenu` / `DropdownMenuItem` | `dropdown-menu.tsx` | منوی بازشونده با ناوبری کیبورد (`ArrowUp`/`ArrowDown`/`Home`/`End`/`Escape`) و تراز منطقی RTL |
 | `Tooltip` | `tooltip.tsx` | راهنمای شناور در hover و focus کیبورد با پشتیبانی از `side="top" \| "bottom" \| "end"` |
@@ -146,7 +154,7 @@
 ## ۶) حالت‌های تعاملی و چهار حالت صفحه
 
 1. **Focus / Hover / Active / Disabled:**
-   - `:focus-visible` سراسری با `outline: 2px solid var(--color-brand)` و `outline-offset: 2px` فعال است؛ حذف حلقه فوکوس بدون جایگزین ممنوع است.
+   - `:focus-visible` سراسری با `outline: 2px solid var(--color-brand)` و `outline-offset: 2px` فعال است و `html { scroll-padding-top: 6.25rem }` مانع پوشانده‌شدن کنترل فوکوس‌شده زیر هدر چسبان و نوار پنجره‌ها (WCAG 2.2 Focus Not Obscured) می‌شود؛ حذف حلقه فوکوس بدون جایگزین ممنوع است.
    - کنترل‌های غیرفعال (`disabled` / `aria-disabled`) با کاهش شفافیت کنترل‌شده نمایش داده می‌شوند؛ در عملیات وابسته به مجوز در صفحه جزئیات سند، دلیل عدم دسترسی از طریق `title` و `aria-describedby` توضیح داده می‌شود.
 2. **Loading / Empty / Error / Success:**
    - **Loading:** اسکلت هم‌شکل محتوا (`LoadingState`) + نشانگر فعالیت شبکه (`ADR-0051`)؛ اسپینر تمام‌صفحه برای بارگذاری بخش‌ها ممنوع است.
@@ -166,4 +174,4 @@
 node scripts/check-frontend-design-tokens.mjs
 ```
 
-این گارد عدم وجود مقادیر رنگ خام در کل `src/`، توکنی‌بودن کامل لایۀ مشترک (`src/ui/**` و `src/app/**`) و حضور تمام توکن‌های الزامی در `src/styles/index.css` را تضمین می‌کند.
+این گارد در هر دو اپلیکیشن (`frontend` و `owner-licensing/frontend`) عدم وجود مقادیر رنگ خام (`#hex`/`rgb`/`hsl`)، توکنی‌بودن کامل کل لایه‌های `src/ui/**`، `src/app/**` و `src/features/**` (بدون کلاس پالت خام Tailwind)، استفاده از ویژگی‌های منطقی RTL و حضور تمام توکن‌های الزامی در `src/styles/index.css` را تضمین می‌کند.

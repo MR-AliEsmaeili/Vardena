@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect } from 'react';
 import { o } from '@/lib/owner-i18n';
 import { Button } from '@/ui/button';
@@ -17,25 +18,31 @@ export function Pagination({
   return (
     <nav
       aria-label={o.page}
-      className="flex flex-wrap items-center gap-3 border-t border-line pt-4 text-sm text-secondary"
+      className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3.5 text-xs text-secondary"
     >
-      <Button
-        variant="outline"
-        disabled={page <= 1}
-        onClick={() => setPage(page - 1)}
-      >
-        {o.previous}
-      </Button>
-      <span>
-        {o.page} {page}
-      </span>
-      <Button
-        variant="outline"
-        disabled={!canGoNext}
-        onClick={() => setPage(page + 1)}
-      >
-        {o.next}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page <= 1}
+          onClick={() => setPage(page - 1)}
+        >
+          <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+          {o.previous}
+        </Button>
+        <span className="rounded-control border border-line bg-muted/60 px-2.5 py-1 font-medium text-ink">
+          {o.page} {page}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!canGoNext}
+          onClick={() => setPage(page + 1)}
+        >
+          {o.next}
+          <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+        </Button>
+      </div>
     </nav>
   );
 }

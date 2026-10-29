@@ -122,7 +122,7 @@ export function BackdateDialogs({
             <legend className="sr-only">
               {t.inventory.backdateStep2Title}
             </legend>
-            <label className="flex items-start gap-2 rounded-md border border-line p-3 text-sm has-[:checked]:border-indigo-400 has-[:checked]:bg-indigo-50/50">
+            <label className="flex items-start gap-2 rounded-control border border-line p-3 text-sm transition-colors has-[:checked]:border-brand has-[:checked]:bg-brand-soft">
               <input
                 type="radio"
                 name="backdate-repricing"
@@ -136,7 +136,7 @@ export function BackdateDialogs({
               />
               <span>{t.inventory.backdateStep2Recalculate}</span>
             </label>
-            <label className="flex items-start gap-2 rounded-md border border-line p-3 text-sm has-[:checked]:border-indigo-400 has-[:checked]:bg-indigo-50/50">
+            <label className="flex items-start gap-2 rounded-control border border-line p-3 text-sm transition-colors has-[:checked]:border-brand has-[:checked]:bg-brand-soft">
               <input
                 type="radio"
                 name="backdate-repricing"

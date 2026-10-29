@@ -13,6 +13,7 @@ import { PageHeader } from '@/ui/patterns/page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import { Select } from '@/ui/select';
+import { Textarea } from '@/ui/textarea';
 import {
   applyServerValidation,
   masterDataErrorMessage,
@@ -407,11 +408,10 @@ function ItemForm({
         className="sm:col-span-2"
       >
         {(fieldProps) => (
-          <textarea
+          <Textarea
             {...fieldProps}
             rows={3}
             disabled={submitting}
-            className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
             {...form.register('description')}
           />
         )}

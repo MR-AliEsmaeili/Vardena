@@ -81,6 +81,10 @@
   --color-danger-soft: #fff1f2;
   --color-danger-line: #fecdd3;
   --color-danger-ink: #9f1239;
+  --color-critical: #9f1239;
+  --color-critical-soft: #ffe4e6;
+  --color-critical-line: #fda4af;
+  --color-critical-ink: #881337;
   --color-info-soft: #eff6ff;
   --color-info-line: #bfdbfe;
   --color-info-ink: #1e40af;
@@ -186,8 +190,8 @@
   --color-ink-muted: #cbd5e1;
   --color-ink-subtle: #94a3b8;
 
-  --color-brand: #6366f1;
-  --color-brand-strong: #818cf8;
+  --color-brand: #615cf0;
+  --color-brand-strong: #5850ec;
   --color-brand-soft: #1e1b4b;
   --color-brand-ink: #c7d2fe;
 
@@ -197,11 +201,15 @@
   --color-warn-soft: #2e1f00;
   --color-warn-line: #92400e;
   --color-warn-ink: #fde68a;
-  --color-danger: #f43f5e;
-  --color-danger-strong: #e11d48;
+  --color-danger: #e11d48;
+  --color-danger-strong: #be123c;
   --color-danger-soft: #2f0d18;
   --color-danger-line: #9f1239;
   --color-danger-ink: #fecdd3;
+  --color-critical: #fb7185;
+  --color-critical-soft: #3b0819;
+  --color-critical-line: #be123c;
+  --color-critical-ink: #ffe4e6;
   --color-info-soft: #0c1e3a;
   --color-info-line: #1e40af;
   --color-info-ink: #bfdbfe;
@@ -282,6 +290,34 @@
   --color-ink-muted: #475569;
   --color-ink-subtle: #64748b;
 
+  --color-brand: #4f46e5;
+  --color-brand-strong: #4338ca;
+  --color-brand-soft: #eef2ff;
+  --color-brand-ink: #3730a3;
+
+  --color-ok-soft: #ecfdf5;
+  --color-ok-line: #a7f3d0;
+  --color-ok-ink: #065f46;
+  --color-warn-soft: #fffbeb;
+  --color-warn-line: #fde68a;
+  --color-warn-ink: #92400e;
+  --color-danger: #e11d48;
+  --color-danger-strong: #be123c;
+  --color-danger-soft: #fff1f2;
+  --color-danger-line: #fecdd3;
+  --color-danger-ink: #9f1239;
+  --color-critical: #9f1239;
+  --color-critical-soft: #ffe4e6;
+  --color-critical-line: #fda4af;
+  --color-critical-ink: #881337;
+  --color-info-soft: #eff6ff;
+  --color-info-line: #bfdbfe;
+  --color-info-ink: #1e40af;
+
+  --shadow-card:
+    0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
+  --shadow-raised: 0 12px 32px -16px rgb(15 23 42 / 0.24);
+
   --color-tone-src-workspace-soft: #f8fafc;
   --color-tone-src-workspace-line: #cbd5e1;
   --color-tone-src-workspace-ink: #475569;
@@ -360,6 +396,15 @@
 
   html {
     -webkit-text-size-adjust: 100%;
+    /* Prevents sticky AppHeader (3.5rem) + WorkspaceDock (2.25rem) from
+     * obscuring keyboard-focused controls (WCAG 2.2 Focus Not Obscured). */
+    scroll-padding-top: 6.25rem;
+  }
+
+  input,
+  select,
+  textarea {
+    accent-color: var(--color-brand);
   }
 
   body {
@@ -564,6 +609,7 @@
 @media print {
   [data-testid='app-header'],
   [data-testid='app-sidebar'],
+  [data-testid='workspace-dock'],
   [data-testid='operational-toolbar'],
   [data-testid='document-list-toolbar'],
   .no-print {

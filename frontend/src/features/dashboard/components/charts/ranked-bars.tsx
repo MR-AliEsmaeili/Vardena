@@ -10,11 +10,11 @@ import { formatAmount } from '@/lib/format';
  */
 
 const ROW_CLASS = [
-  'bg-indigo-500/85',
-  'bg-sky-500/85',
-  'bg-emerald-500/85',
-  'bg-amber-500/85',
-  'bg-slate-400/85',
+  'bg-tone-accounting-strong',
+  'bg-tone-licensing-strong',
+  'bg-tone-inventory-strong',
+  'bg-tone-organization-strong',
+  'bg-tone-workspace-strong',
 ] as const;
 
 export interface RankedBar {
@@ -41,7 +41,9 @@ export function RankedBars({
     <figure className="m-0 space-y-3">
       <figcaption className="sr-only">{description}</figcaption>
       {items.length === 0 ? (
-        <p className="py-8 text-center text-xs text-slate-500">{description}</p>
+        <p className="py-8 text-center text-xs text-ink-subtle">
+          {description}
+        </p>
       ) : (
         <ul className="space-y-3">
           {items.map((item, index) => {
@@ -51,18 +53,18 @@ export function RankedBars({
             return (
               <li key={item.label} className="space-y-1">
                 <div className="flex items-center justify-between gap-2 text-xs">
-                  <span className="truncate font-medium text-slate-700">
+                  <span className="truncate font-medium text-ink">
                     {item.label}
                   </span>
                   <span
-                    className="num font-semibold text-slate-700"
+                    className="num font-semibold text-ink"
                     title={item.value}
                   >
                     {formatAmount(item.value)}
                   </span>
                 </div>
                 <div
-                  className="h-2 w-full overflow-hidden rounded-full bg-slate-100"
+                  className="h-2 w-full overflow-hidden rounded-full bg-sunken"
                   role="presentation"
                 >
                   <div
@@ -97,7 +99,7 @@ export function ShareBars({
     <figure className="m-0 space-y-3">
       <figcaption className="sr-only">{description}</figcaption>
       <div
-        className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100"
+        className="flex h-3 w-full overflow-hidden rounded-full bg-sunken"
         role="presentation"
       >
         {items.map((item, index) => {
@@ -121,8 +123,8 @@ export function ShareBars({
               className={`inline-block h-2 w-2 rounded-full ${ROW_CLASS[index % ROW_CLASS.length]}`}
               aria-hidden
             />
-            <span className="truncate text-slate-600">{item.label}</span>
-            <span className="num ms-auto font-semibold text-slate-700">
+            <span className="truncate text-ink-muted">{item.label}</span>
+            <span className="num ms-auto font-semibold text-ink">
               {formatAmount(item.value)}
             </span>
           </li>

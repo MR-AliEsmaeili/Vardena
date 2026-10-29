@@ -9,6 +9,14 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  Info,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -104,7 +112,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div
-        className="pointer-events-none fixed bottom-20 start-4 z-50 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2"
+        className="pointer-events-none fixed bottom-4 end-4 z-[70] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2"
         aria-label={t.toasts.regionLabel}
       >
         {toasts.map((toast) => (
@@ -130,9 +138,16 @@ export function useToast(): ToastContextValue {
 
 const KIND_STYLES: Record<ToastKind, string> = {
   success: 'border-success-line bg-success-soft text-success',
-  info: 'border-accent-line bg-accent-soft text-accent-strong',
+  info: 'border-accent-line bg-accent-soft text-accent-ink',
   warning: 'border-warning-line bg-warning-soft text-warning',
   error: 'border-danger-line bg-danger-soft text-danger',
+};
+
+const KIND_ICONS: Record<ToastKind, LucideIcon> = {
+  success: CheckCircle2,
+  info: Info,
+  warning: AlertTriangle,
+  error: AlertCircle,
 };
 
 function ToastCard({
@@ -187,11 +202,13 @@ function ToastCard({
     }
   };
 
+  const StatusIcon = KIND_ICONS[toast.kind];
+
   return (
     <div
       role={role}
       className={cn(
-        'pointer-events-auto flex items-start gap-2 rounded-md border p-3 text-sm shadow-sm',
+        'animate-rise-in pointer-events-auto flex items-start gap-2.5 rounded-control border p-3 text-sm shadow-raised',
         KIND_STYLES[toast.kind],
       )}
     >
@@ -205,11 +222,12 @@ function ToastCard({
         onBlur={resumeTimer}
         onKeyDown={onKeyDown}
       >
+        <StatusIcon className="mt-1 h-4 w-4 shrink-0" aria-hidden />
         <p className="min-w-0 flex-1 leading-6">{toast.message}</p>
         {toast.action !== undefined && (
           <button
             type="button"
-            className="shrink-0 rounded px-2 py-0.5 text-xs font-semibold underline underline-offset-2"
+            className="shrink-0 rounded-control px-2 py-0.5 text-xs font-semibold underline underline-offset-2"
             onClick={() => {
               toast.action?.onAction();
               onDismiss();
@@ -220,11 +238,11 @@ function ToastCard({
         )}
         <button
           type="button"
-          className="shrink-0 rounded px-1 py-0.5 text-xs font-semibold hover:bg-black/5"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control hover:bg-surface/60"
           aria-label={t.toasts.dismiss}
           onClick={onDismiss}
         >
-          ✕
+          <X className="h-3.5 w-3.5" aria-hidden />
         </button>
       </div>
     </div>

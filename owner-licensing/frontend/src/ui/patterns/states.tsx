@@ -1,3 +1,4 @@
+import { Inbox } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -55,12 +56,22 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-control-line bg-surface px-6 py-10 text-center',
+        'flex flex-col items-center justify-center gap-3 rounded-card border border-dashed border-control-line bg-surface px-6 py-10 text-center',
         className,
       )}
     >
-      <p className="text-sm font-semibold text-ink">{title}</p>
-      <p className="max-w-md text-sm text-secondary">{description}</p>
+      <span
+        aria-hidden="true"
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-subtle"
+      >
+        <Inbox className="h-5 w-5" />
+      </span>
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-ink">{title}</p>
+        <p className="mx-auto max-w-md text-xs leading-6 text-secondary">
+          {description}
+        </p>
+      </div>
       {action}
     </div>
   );

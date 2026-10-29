@@ -11,8 +11,10 @@ import * as api from '@/api/owner.api';
 import type { AuthenticatedUser } from '@/api/contracts';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { o } from '@/lib/owner-i18n';
+import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
+import { PasswordInput } from '@/ui/password-input';
 import { FormField } from '@/ui/patterns/form-field';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { EmptyState, LoadingState } from '@/ui/patterns/states';
@@ -68,17 +70,25 @@ export function UsersPage() {
       ) : query.data.items.length === 0 ? (
         <EmptyState />
       ) : (
-        <ul className="divide-y owner-panel">
+        <ul className="divide-y owner-panel overflow-hidden">
           {query.data.items.map((u) => (
             <li
               key={u.id}
-              className="flex flex-wrap items-center justify-between gap-3 p-4"
+              className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
             >
-              <span>
-                {u.username} — {o.roles[u.role]} (
-                {u.isActive ? o.active : o.inactive})
-              </span>
-              <Button variant="outline" onClick={() => setSelected(u)}>
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-medium text-ink">
+                  {u.username} — {o.roles[u.role]}
+                </span>
+                <Badge variant={u.isActive ? 'success' : 'neutral'}>
+                  {u.isActive ? o.active : o.inactive}
+                </Badge>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelected(u)}
+              >
                 {o.editAccess}
               </Button>
             </li>
@@ -91,8 +101,15 @@ export function UsersPage() {
         setPage={(p) => setParams({ page: String(p) })}
       />
       {selected && (
-        <section key={selected.id} className="space-y-4 owner-panel p-4">
-          <h2 className="font-bold">{selected.username}</h2>
+        <section key={selected.id} className="space-y-4 owner-panel p-5">
+          <div className="flex items-center justify-between gap-2 border-b border-line pb-3">
+            <h2 className="text-base font-bold text-ink" dir="ltr">
+              {selected.username}
+            </h2>
+            <Badge variant={selected.isActive ? 'success' : 'neutral'}>
+              {selected.isActive ? o.active : o.inactive}
+            </Badge>
+          </div>
           <AccessForm user={selected} onDone={() => setSelected(null)} />
           <ResetForm user={selected} />
         </section>
@@ -102,7 +119,7 @@ export function UsersPage() {
 }
 function RoleSelect({ register }: { register: UseFormRegisterReturn<'role'> }) {
   return (
-    <label className="block space-y-2">
+    <label className="block space-y-1.5 text-sm font-medium text-ink">
       <span>{o.role}</span>
       <Select {...register}>
         {Object.entries(o.roles).map(([value, label]) => (
@@ -131,31 +148,43 @@ function CreateUser() {
   });
   return (
     <form
-      className="max-w-xl space-y-3 owner-panel p-4"
+      className="max-w-xl space-y-3.5 owner-panel p-5"
       onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
     >
-      <h2 className="font-semibold">{o.createUser}</h2>
-      {(['username', 'password'] as const).map((key) => (
-        <FormField
-          key={key}
-          id={`new-${key}`}
-          label={key === 'username' ? o.username : o.password}
-          error={form.formState.errors[key]?.message}
-        >
-          {(props) => (
-            <Input
-              {...props}
-              {...form.register(key)}
-              type={key === 'password' ? 'password' : 'text'}
-              autoComplete={key === 'password' ? 'new-password' : 'off'}
-              aria-required
-              dir="ltr"
-            />
-          )}
-        </FormField>
-      ))}
+      <h2 className="text-base font-semibold text-ink">{o.createUser}</h2>
+      <FormField
+        id="new-username"
+        label={o.username}
+        error={form.formState.errors.username?.message}
+      >
+        {(props) => (
+          <Input
+            {...props}
+            {...form.register('username')}
+            type="text"
+            autoComplete="off"
+            aria-required
+            dir="ltr"
+          />
+        )}
+      </FormField>
+      <FormField
+        id="new-password"
+        label={o.password}
+        error={form.formState.errors.password?.message}
+      >
+        {(props) => (
+          <PasswordInput
+            {...props}
+            {...form.register('password')}
+            autoComplete="new-password"
+            aria-required
+            dir="ltr"
+          />
+        )}
+      </FormField>
       <RoleSelect register={form.register('role')} />
-      <p className="text-sm text-muted-ink">{o.mustChange}</p>
+      <p className="text-xs text-muted-ink">{o.mustChange}</p>
       {mutation.isError && <ApiErrorAlert error={mutation.error} />}
       {mutation.isSuccess && (
         <output className="owner-success">{o.success}</output>
@@ -194,7 +223,7 @@ function AccessForm({
       onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
       className="max-w-xl space-y-3"
     >
-      <label className="block space-y-2">
+      <label className="block space-y-1.5 text-sm font-medium text-ink">
         <span>{o.role}</span>
         <Select {...form.register('role')}>
           {Object.entries(o.roles).map(([value, label]) => (
@@ -204,7 +233,7 @@ function AccessForm({
           ))}
         </Select>
       </label>
-      <label className="flex gap-2">
+      <label className="flex items-center gap-2 text-sm text-ink">
         <input type="checkbox" {...form.register('isActive')} />
         {o.enabled}
       </label>
@@ -238,20 +267,19 @@ function ResetForm({ user }: { user: AuthenticatedUser }) {
   });
   return (
     <form
-      className="max-w-xl space-y-3 border-t pt-4"
+      className="max-w-xl space-y-3 border-t border-line pt-4"
       onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
     >
-      <h3 className="font-semibold">{o.resetPassword}</h3>
+      <h3 className="text-sm font-semibold text-ink">{o.resetPassword}</h3>
       <FormField
         id="reset-password"
         label={o.newPassword}
         error={form.formState.errors.password?.message}
       >
         {(props) => (
-          <Input
+          <PasswordInput
             {...props}
             {...form.register('password')}
-            type="password"
             autoComplete="new-password"
             aria-required
             dir="ltr"

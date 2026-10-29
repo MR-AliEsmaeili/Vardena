@@ -58,7 +58,7 @@ function buildKardexColumns(): ColumnDef<InventoryKardexRow, unknown>[] {
           className={
             row.original.signedQuantity.startsWith('-')
               ? 'num text-danger-ink'
-              : 'num text-emerald-700'
+              : 'num text-ok-ink'
           }
         >
           {formatQuantity(row.original.signedQuantity)}

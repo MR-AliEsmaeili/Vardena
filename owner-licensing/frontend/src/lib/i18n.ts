@@ -17,6 +17,8 @@ export const t = {
     notFoundBody: 'نشانی درخواست‌شده در این سامانه وجود ندارد.',
     backToHome: 'بازگشت به صفحه اصلی',
     skipToContent: 'رفتن به محتوای اصلی',
+    themeLight: 'پوسته روشن',
+    themeDark: 'پوسته تیره',
   },
   // Request-loading feedback (Thinking Orbs). Owned by the activity registry.
   loading: {
@@ -33,6 +35,8 @@ export const t = {
     loginSubtitle: 'برای ادامه، با نام کاربری و گذرواژه سازمانی وارد شوید.',
     username: 'نام کاربری',
     password: 'گذرواژه',
+    showPassword: 'نمایش گذرواژه',
+    hidePassword: 'پنهان‌کردن گذرواژه',
     submit: 'ورود',
     submitting: 'در حال ورود…',
     logout: 'خروج',

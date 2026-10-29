@@ -1,5 +1,6 @@
 import { PageHeading } from '@/ui/patterns/page-heading';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { ShieldCheck } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { Navigate, useLocation } from 'react-router-dom';
 import { normalizeApiError } from '@/api/errors';
@@ -8,6 +9,7 @@ import { Alert, AlertBody } from '@/ui/alert';
 import { Button } from '@/ui/button';
 import { Card, CardContent, CardHeader } from '@/ui/card';
 import { Input } from '@/ui/input';
+import { PasswordInput } from '@/ui/password-input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { FormField } from '@/ui/patterns/form-field';
 import { FullPageLoading } from '@/ui/patterns/states';
@@ -94,12 +96,18 @@ export function LoginPage() {
   const passwordError = form.formState.errors.password?.message;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted px-4 py-10">
-      <div className="w-full max-w-md space-y-4">
-        <div className="text-center">
-          <p className="text-2xl font-bold text-accent-strong">{t.app.name}</p>
-          <p className="mt-1 text-sm text-secondary">{t.app.tagline}</p>
-        </div>
+    <main className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
+      <div className="w-full max-w-md space-y-5">
+        <header className="text-center">
+          <span
+            aria-hidden="true"
+            className="mx-auto flex h-11 w-11 items-center justify-center rounded-card bg-accent text-white shadow-raised"
+          >
+            <ShieldCheck className="h-5 w-5" />
+          </span>
+          <p className="mt-3 text-xl font-bold text-ink">{t.app.name}</p>
+          <p className="mt-1 text-xs text-secondary">{t.app.tagline}</p>
+        </header>
 
         {session.sessionExpired && (
           <Alert variant="warning">
@@ -107,14 +115,16 @@ export function LoginPage() {
           </Alert>
         )}
 
-        <Card>
-          <CardHeader>
+        <Card className="shadow-raised">
+          <CardHeader className="space-y-1 p-5">
             <PageHeading className="text-lg sm:text-xl">
               {t.auth.loginTitle}
             </PageHeading>
-            <p className="text-sm text-secondary">{t.auth.loginSubtitle}</p>
+            <p className="text-xs leading-6 text-secondary">
+              {t.auth.loginSubtitle}
+            </p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-5">
             <form className="space-y-4" onSubmit={onSubmit} noValidate>
               <FormField
                 id="username"
@@ -139,9 +149,8 @@ export function LoginPage() {
                 error={passwordError}
               >
                 {(fieldProps) => (
-                  <Input
+                  <PasswordInput
                     {...fieldProps}
-                    type="password"
                     autoComplete="current-password"
                     dir="ltr"
                     disabled={session.isLoggingIn}

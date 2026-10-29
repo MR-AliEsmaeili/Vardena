@@ -58,7 +58,7 @@ export function ChartTreeNodeRow({
         {hasChildren ? (
           <button
             type="button"
-            className="flex h-6 w-6 items-center justify-center rounded text-ink-subtle hover:bg-slate-200"
+            className="flex h-6 w-6 items-center justify-center rounded-control text-ink-subtle hover:bg-line/70 hover:text-ink"
             aria-expanded={isExpanded}
             aria-label={
               isExpanded ? t.chartTree.collapseAll : t.chartTree.expandAll

@@ -1,3 +1,4 @@
+import { AlertTriangle } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { LicenseImportCard } from '@/features/licensing/license-import-form';
 import { useLicenseState } from '@/features/licensing/use-license-state';
@@ -98,6 +99,7 @@ export function LicenseGate({ children }: { children: ReactNode }) {
         return (
           <BootstrapScreen>
             <BlockedState
+              tone="critical"
               title={t.license.revokedTitle}
               description={
                 installationId === null
@@ -133,6 +135,7 @@ export function LicenseGate({ children }: { children: ReactNode }) {
       return (
         <BootstrapScreen>
           <BlockedState
+            tone={unlicensed ? 'neutral' : 'warning'}
             title={
               unlicensed ? t.license.unlicensedTitle : t.license.inactiveTitle
             }
@@ -160,20 +163,23 @@ export function LicenseGate({ children }: { children: ReactNode }) {
           <>
             <output
               aria-live="polite"
-              className="block border-b border-warn-line bg-warn-soft px-4 py-2 text-center text-xs text-warn-ink"
+              className="flex flex-wrap items-center justify-center gap-1.5 border-b border-warn-line bg-warn-soft px-4 py-2 text-center text-xs font-medium text-warn-ink"
             >
-              {mode === 'GRACE'
-                ? t.license.graceNotice
-                : t.license.readOnlyNotice}
-              {graceEndsAt !== null && (
-                <>
-                  {' '}
-                  {t.license.graceEndsAtLabel}:{' '}
-                  <span className="num" dir="ltr">
-                    {formatDateTime(graceEndsAt)}
-                  </span>
-                </>
-              )}
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span>
+                {mode === 'GRACE'
+                  ? t.license.graceNotice
+                  : t.license.readOnlyNotice}
+                {graceEndsAt !== null && (
+                  <>
+                    {' '}
+                    {t.license.graceEndsAtLabel}:{' '}
+                    <span className="num font-semibold" dir="ltr">
+                      {formatDateTime(graceEndsAt)}
+                    </span>
+                  </>
+                )}
+              </span>
             </output>
             {children}
           </>

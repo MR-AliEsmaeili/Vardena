@@ -61,6 +61,8 @@ export const fa = {
     loginSubtitle: 'برای ادامه، با نام کاربری و گذرواژه سازمانی وارد شوید.',
     username: 'نام کاربری',
     password: 'گذرواژه',
+    showPassword: 'نمایش گذرواژه',
+    hidePassword: 'پنهان‌کردن گذرواژه',
     submit: 'ورود',
     submitting: 'در حال ورود…',
     logout: 'خروج',

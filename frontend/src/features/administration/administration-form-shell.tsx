@@ -90,7 +90,7 @@ export function AdministrationFormShell({
             <AlertBody>
               <p>{error.message}</p>
               {error.correlationId !== undefined && (
-                <p className="mt-2 text-xs text-rose-800/80">
+                <p className="mt-2 text-xs text-danger-ink/85">
                   {t.errors.correlationId}:{' '}
                   <span className="code">{error.correlationId}</span>
                 </p>

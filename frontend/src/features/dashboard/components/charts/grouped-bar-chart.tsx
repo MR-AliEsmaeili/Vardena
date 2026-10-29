@@ -84,13 +84,13 @@ export function GroupedBarChart({
                 x2={WIDTH - PADDING.end}
                 y1={y}
                 y2={y}
-                className="stroke-slate-200"
+                className="stroke-line"
                 strokeDasharray="4 4"
               />
               <text
                 x={WIDTH - PADDING.end + 6}
                 y={y + 4}
-                className="fill-slate-400 text-[10px]"
+                className="fill-ink-subtle text-[10px]"
               >
                 <tspan className="num">
                   {formatAxisAmount(String(max * tick))}
@@ -117,7 +117,7 @@ export function GroupedBarChart({
                 width={barWidth}
                 height={Math.max(1, heightA)}
                 rx={4}
-                className="fill-emerald-500/85"
+                className="fill-tone-inventory-strong"
               >
                 <title>{titleA}</title>
               </rect>
@@ -127,7 +127,7 @@ export function GroupedBarChart({
                 width={barWidth}
                 height={Math.max(1, heightB)}
                 rx={4}
-                className="fill-rose-500/85"
+                className="fill-danger"
               >
                 <title>{titleB}</title>
               </rect>
@@ -135,7 +135,7 @@ export function GroupedBarChart({
                 x={groupStart + groupWidth / 2}
                 y={HEIGHT - 8}
                 textAnchor="middle"
-                className="fill-slate-500 text-[10px]"
+                className="fill-ink-subtle text-[10px]"
               >
                 {category}
               </text>
@@ -143,17 +143,17 @@ export function GroupedBarChart({
           );
         })}
       </svg>
-      <div className="mt-1 flex items-center justify-center gap-4 text-xs text-slate-600">
-        <span className="flex items-center gap-1">
+      <div className="mt-1 flex items-center justify-center gap-4 text-xs text-ink-muted">
+        <span className="flex items-center gap-1.5">
           <span
-            className="inline-block h-2 w-2 rounded-full bg-emerald-500"
+            className="inline-block h-2 w-2 rounded-full bg-tone-inventory-strong"
             aria-hidden
           />
           {labelA}
         </span>
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1.5">
           <span
-            className="inline-block h-2 w-2 rounded-full bg-rose-500"
+            className="inline-block h-2 w-2 rounded-full bg-danger"
             aria-hidden
           />
           {labelB}

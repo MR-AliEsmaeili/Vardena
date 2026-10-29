@@ -601,7 +601,7 @@ function WorkspaceDockView({
       <div
         data-testid="workspace-dock"
         data-density={density}
-        className="sticky top-14 z-20 no-print -mx-3 bg-canvas px-3 sm:-mx-5 sm:px-5 lg:-mx-6 lg:px-6"
+        className="sticky top-14 z-20 no-print -mx-3 border-b border-line/80 bg-canvas/95 px-3 backdrop-blur-xs sm:-mx-5 sm:px-5 lg:-mx-6 lg:px-6"
       >
         <div className="relative flex h-9 items-center gap-1">
           {density === 'single' ? (

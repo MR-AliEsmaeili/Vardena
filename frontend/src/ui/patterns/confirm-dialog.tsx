@@ -6,6 +6,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
@@ -121,7 +122,7 @@ export function ConfirmDialog({
   return (
     <div
       role="presentation"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4"
+      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4"
       onMouseDown={(event) => {
         // Backdrop dismissal is a cancel, but never while a request runs.
         if (event.target === event.currentTarget && !loading) onCancel();
@@ -131,7 +132,10 @@ export function ConfirmDialog({
         open
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className="m-0 w-full max-w-md rounded-card border-0 bg-surface p-5 shadow-raised"
+        className={cn(
+          'animate-rise-in m-0 w-full max-w-md rounded-card border bg-surface p-5 text-ink shadow-raised',
+          danger ? 'border-danger-line' : 'border-line',
+        )}
       >
         {/* The focus trap keyboard handler lives on this presentation
             wrapper (display:contents — no layout of its own). */}
@@ -141,9 +145,22 @@ export function ConfirmDialog({
           className="contents"
           onKeyDown={onKeyDown}
         >
-          <h2 id={titleId} className="text-base font-semibold text-ink">
-            {title}
-          </h2>
+          <div className="flex items-start gap-2.5">
+            {danger && (
+              <span
+                aria-hidden="true"
+                className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger-ink"
+              >
+                <AlertTriangle className="h-4 w-4" />
+              </span>
+            )}
+            <h2
+              id={titleId}
+              className="min-w-0 text-base font-semibold text-ink"
+            >
+              {title}
+            </h2>
+          </div>
           <div
             id={descriptionId}
             className="mt-2 space-y-2 text-sm leading-6 text-ink-muted"
