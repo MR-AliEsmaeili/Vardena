@@ -478,6 +478,33 @@ export const queryKeys = {
     valuationStatesPrefix: (organizationId: string) =>
       ['inventory', organizationId, 'valuation-states'] as const,
 
+    valuationMethodsPrefix: (organizationId: string) =>
+      ['inventory', organizationId, 'valuation-methods'] as const,
+
+    valuationMethods: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+    ) =>
+      [
+        'inventory',
+        organizationId,
+        'valuation-methods',
+        'list',
+        filters,
+      ] as const,
+
+    valuationMethodResolve: (
+      organizationId: string,
+      query: { itemId: string; asOf: string },
+    ) =>
+      [
+        'inventory',
+        organizationId,
+        'valuation-methods',
+        'resolve',
+        query,
+      ] as const,
+
     /** Business-document workspace (filtered list). */
     documents: (organizationId: string, filters: Record<string, unknown>) =>
       ['inventory', organizationId, 'documents', 'list', filters] as const,

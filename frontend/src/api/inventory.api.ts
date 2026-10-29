@@ -1,6 +1,7 @@
 import { apiDelete, apiGet, apiPatch, apiPost, cleanParams } from './client';
 import type {
   CancelInventoryDocumentInput,
+  ConfigureValuationMethodInput,
   CreateInventoryDocumentInput,
   FinalizeInventoryDocumentInput,
   InventoryBackdateCheck,
@@ -20,13 +21,17 @@ import type {
   InventoryValuationStateListQuery,
   InventoryWarehouse,
   InventoryWarehouseListQuery,
+  ItemValuationMethod,
   Paginated,
   PostInventoryMovementInput,
   PostInventoryTransferInput,
   RecalculateValuationInput,
+  ResolvedValuationMethod,
+  ResolveValuationMethodQuery,
   ReverseInventoryMovementInput,
   RecalculationResult,
   UpdateInventoryDocumentInput,
+  ValuationMethodListQuery,
 } from './contracts';
 
 /**
@@ -181,6 +186,51 @@ export function readInventoryKardex(
 // ---------------------------------------------------------------------------
 // Valuation (ADR-0039) — the Inventory Accounting reads and commands
 // ---------------------------------------------------------------------------
+
+/** Effective-dated valuation-method versions (`GET /inventory/valuation/methods`). */
+export function listInventoryValuationMethods(
+  query: ValuationMethodListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<ItemValuationMethod>> {
+  return apiGet<Paginated<ItemValuationMethod>>(
+    '/inventory/valuation/methods',
+    {
+      params: cleanParams({ ...query }),
+      ...(signal ? { signal } : {}),
+    },
+  );
+}
+
+/**
+ * Resolve the effective valuation method of one item on one business date
+ * (`GET /inventory/valuation/methods/resolve`).
+ */
+export function resolveInventoryValuationMethod(
+  query: ResolveValuationMethodQuery,
+  signal?: AbortSignal,
+): Promise<ResolvedValuationMethod> {
+  return apiGet<ResolvedValuationMethod>(
+    '/inventory/valuation/methods/resolve',
+    {
+      params: cleanParams({ ...query }),
+      ...(signal ? { signal } : {}),
+    },
+  );
+}
+
+/**
+ * Configure a new effective-dated valuation-method version for an item
+ * (`POST /inventory/valuation/methods`). Closes the previous open-ended
+ * version automatically; versions are never edited or deleted.
+ */
+export function configureInventoryValuationMethod(
+  body: ConfigureValuationMethodInput,
+): Promise<ItemValuationMethod> {
+  return apiPost<ItemValuationMethod, ConfigureValuationMethodInput>(
+    '/inventory/valuation/methods',
+    body,
+  );
+}
 
 /** Valuation-state worklist (`GET /inventory/valuation/states`). */
 export function listInventoryValuationStates(

@@ -7,7 +7,12 @@ import {
   listWarehousesAdmin,
   resolveUnitConversion,
 } from './inventory-master.api';
-import { listInventoryUnits } from './inventory.api';
+import {
+  configureInventoryValuationMethod,
+  listInventoryUnits,
+  listInventoryValuationMethods,
+  resolveInventoryValuationMethod,
+} from './inventory.api';
 
 vi.mock('./client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./client')>()),
@@ -67,6 +72,58 @@ describe('backend-mounted inventory routes', () => {
     });
     expect(vi.mocked(client.apiPost).mock.calls[0]?.[0]).toBe(
       '/inventory/unit-conversions',
+    );
+  });
+
+  it('calls valuation-method list, resolve, and configure endpoints under /inventory/valuation/methods', async () => {
+    await listInventoryValuationMethods({
+      organizationId: org,
+      itemId: from,
+      activeAt: '2026-10-29',
+      sort: 'validFrom:desc',
+    });
+    expect(client.apiGet).toHaveBeenLastCalledWith(
+      '/inventory/valuation/methods',
+      {
+        params: {
+          organizationId: org,
+          itemId: from,
+          activeAt: '2026-10-29',
+          sort: 'validFrom:desc',
+        },
+      },
+    );
+
+    await resolveInventoryValuationMethod({
+      organizationId: org,
+      itemId: from,
+      asOf: '2026-10-29',
+    });
+    expect(client.apiGet).toHaveBeenLastCalledWith(
+      '/inventory/valuation/methods/resolve',
+      {
+        params: {
+          organizationId: org,
+          itemId: from,
+          asOf: '2026-10-29',
+        },
+      },
+    );
+
+    await configureInventoryValuationMethod({
+      organizationId: org,
+      itemId: from,
+      method: 'moving_weighted_average',
+      validFrom: '2026-10-29',
+    });
+    expect(client.apiPost).toHaveBeenLastCalledWith(
+      '/inventory/valuation/methods',
+      {
+        organizationId: org,
+        itemId: from,
+        method: 'moving_weighted_average',
+        validFrom: '2026-10-29',
+      },
     );
   });
 });

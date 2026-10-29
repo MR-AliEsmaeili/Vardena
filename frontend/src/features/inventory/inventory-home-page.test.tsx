@@ -72,6 +72,7 @@ describe('Inventory home — module licensing surfaces as filtered permissions',
       [t.inventory.movementsTitle, '/app/inventory/movements'],
       [t.inventory.kardexTitle, '/app/inventory/kardex'],
       [t.inventory.valuationTitle, '/app/inventory/valuation'],
+      [t.inventoryValuationMethods.title, '/app/inventory/valuation-methods'],
     ];
     const headingWaiters = expected.map(([title]) =>
       screen.findByRole('heading', { name: title }),
