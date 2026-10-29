@@ -8,7 +8,7 @@ import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import {
@@ -39,7 +39,7 @@ export function WarehouseDetailPage() {
   if (query.isError) {
     return (
       <div className="space-y-4">
-        <PageHeader title={t.inventoryMaster.warehouses} />
+        <FormPageHeader title={t.inventoryMaster.warehouses} />
         <ApiErrorAlert
           error={query.error}
           title={t.table.errorTitle}
@@ -55,7 +55,7 @@ export function WarehouseDetailPage() {
 
   return (
     <div className="space-y-4" data-testid="warehouse-detail-page">
-      <PageHeader
+      <FormPageHeader
         title={warehouse.name}
         description={warehouse.code}
         actions={

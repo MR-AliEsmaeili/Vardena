@@ -1,23 +1,20 @@
+import { useParams } from 'react-router-dom';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Link, useParams } from 'react-router-dom';
 import type { AccountingConfigurationLevel } from '@/api/contracts';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { formatInstant, useTimeZone } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
-import { Button } from '@/ui/button';
 import { Card, CardContent } from '@/ui/card';
 import { DataTable } from '@/ui/patterns/data-table';
 import { Definition, DefinitionList } from '@/ui/patterns/definition-list';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { ConfigurationActions } from './configuration-actions';
 import { configurationErrorMessage } from './configuration-error-messages';
 import { useAccountingConfigurationDetail } from './configuration-hooks';
 import { configurationLevelKindLabel } from './configuration-levels-editor';
-
-const LIST_PATH = '/app/accounting/configurations';
 
 const levelColumns: ColumnDef<AccountingConfigurationLevel, unknown>[] = [
   {
@@ -61,16 +58,13 @@ export function ConfigurationDetailPage() {
   if (query.isError) {
     return (
       <div className="space-y-4">
-        <PageHeader title={t.accountingConfig.detailTitle} />
+        <FormPageHeader title={t.accountingConfig.detailTitle} />
         <ApiErrorAlert
           error={query.error}
           title={t.table.errorTitle}
           description={configurationErrorMessage('load', query.error)}
           onRetry={() => void query.refetch()}
         />
-        <Button asChild variant="outline">
-          <Link to={LIST_PATH}>{t.accountingConfig.backToList}</Link>
-        </Button>
       </div>
     );
   }
@@ -80,7 +74,7 @@ export function ConfigurationDetailPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={`${t.accountingConfig.detailTitle} — ${configuration.code}`}
         description={t.accountingConfig.subtitle}
         actions={
@@ -90,16 +84,11 @@ export function ConfigurationDetailPage() {
           />
         }
       />
-      <div className="flex flex-wrap items-center gap-2">
-        <Button asChild variant="ghost" size="sm">
-          <Link to={LIST_PATH}>{t.accountingConfig.backToList}</Link>
-        </Button>
-        {!isDraft && (
-          <p className="text-xs text-ink-subtle">
-            {t.accountingConfig.readOnlyPublished}
-          </p>
-        )}
-      </div>
+      {!isDraft && (
+        <p className="text-xs text-ink-subtle">
+          {t.accountingConfig.readOnlyPublished}
+        </p>
+      )}
 
       <DefinitionList>
         <Definition label={t.accountingConfig.code}>

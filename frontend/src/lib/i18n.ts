@@ -40,6 +40,11 @@ export const fa = {
     profile: 'حساب کاربری',
     viewProfile: 'مشاهده پروفایل',
   },
+  // Compact form/detail header (design-system.md §5.2). One label for the one
+  // Back control every form and record page shares.
+  formHeader: {
+    back: 'بازگشت',
+  },
   toasts: {
     regionLabel: 'اعلان‌ها',
     dismiss: 'بستن اعلان',

@@ -43,6 +43,7 @@ import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
 import { DataTable } from '@/ui/patterns/data-table';
 import { FormField } from '@/ui/patterns/form-field';
 import { LoadingState } from '@/ui/patterns/states';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { PageHeader } from '@/ui/patterns/page-header';
 import { useToast } from '@/ui/patterns/toast';
 
@@ -607,7 +608,7 @@ export function DetailFormPage({ mode }: { mode: 'create' | 'edit' | 'view' }) {
         : (detail?.title ?? t.nav.details);
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={titleText}
         meta={
           mode !== 'create' && detail ? (

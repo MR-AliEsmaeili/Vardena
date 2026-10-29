@@ -7,7 +7,7 @@ import { formatDateTimeWithZone } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import { adminErrorMessage } from '../admin-error-messages';
@@ -29,7 +29,7 @@ export function BranchDetailPage() {
   if (query.isError) {
     return (
       <div className="space-y-4">
-        <PageHeader title={t.orgAdmin.branchDetail} />
+        <FormPageHeader title={t.orgAdmin.branchDetail} />
         <ApiErrorAlert
           error={query.error}
           title={t.table.errorTitle}
@@ -44,7 +44,7 @@ export function BranchDetailPage() {
 
   return (
     <div className="space-y-4" data-testid="branch-detail-page">
-      <PageHeader
+      <FormPageHeader
         title={t.orgAdmin.branchDetail}
         description={`${branch.code} — ${branch.name}`}
         actions={

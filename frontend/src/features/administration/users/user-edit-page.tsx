@@ -7,7 +7,7 @@ import { t } from '@/lib/i18n';
 import { Input } from '@/ui/input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { FormField } from '@/ui/patterns/form-field';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import {
@@ -34,7 +34,7 @@ export function UserEditPage(): ReactElement {
   if (query.isError) {
     return (
       <div className="space-y-4">
-        <PageHeader title={t.usersAdmin.editUser} />
+        <FormPageHeader title={t.usersAdmin.editUser} />
         <ApiErrorAlert
           error={query.error}
           title={t.table.errorTitle}

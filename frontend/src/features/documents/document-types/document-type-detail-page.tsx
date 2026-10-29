@@ -1,12 +1,11 @@
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
-import { Button } from '@/ui/button';
 import { Card, CardContent } from '@/ui/card';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { Definition, DefinitionList } from '@/ui/patterns/definition-list';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { DocumentTypeConfigurationForm } from './document-type-configuration-form';
 import { documentTypeErrorMessage } from './document-type-error-messages';
@@ -15,7 +14,6 @@ import {
   documentTypeStatesLabel,
 } from './document-type-labels';
 import { useDocumentType } from './use-document-types';
-import { DOCUMENT_TYPES_PATH } from './document-types-page';
 
 /**
  * One registered document type (DOC-01).
@@ -38,16 +36,13 @@ export function DocumentTypeDetailPage() {
   if (query.isError) {
     return (
       <div className="space-y-4">
-        <PageHeader title={t.documentTypes.detailTitle} />
+        <FormPageHeader title={t.documentTypes.detailTitle} />
         <ApiErrorAlert
           error={query.error}
           title={t.table.errorTitle}
           description={documentTypeErrorMessage('load', query.error)}
           onRetry={() => void query.refetch()}
         />
-        <Button asChild variant="outline">
-          <Link to={DOCUMENT_TYPES_PATH}>{t.documentTypes.backToList}</Link>
-        </Button>
       </div>
     );
   }
@@ -56,15 +51,10 @@ export function DocumentTypeDetailPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={`${t.documentTypes.detailTitle} — ${documentType.code}`}
         description={t.documentTypes.subtitle}
       />
-      <div>
-        <Button asChild variant="ghost" size="sm">
-          <Link to={DOCUMENT_TYPES_PATH}>{t.documentTypes.backToList}</Link>
-        </Button>
-      </div>
 
       <DefinitionList>
         <Definition label={t.documentTypes.code}>

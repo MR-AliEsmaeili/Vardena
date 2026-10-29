@@ -1,11 +1,6 @@
-import { ArrowRight, FileSpreadsheet, Plus, Printer } from 'lucide-react';
+import { FileSpreadsheet, Plus, Printer } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import {
-  Link,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -39,7 +34,7 @@ import {
   type SummaryRow,
 } from '@/ui/patterns/operational-form';
 import { LoadingState } from '@/ui/patterns/states';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { useToast } from '@/ui/patterns/toast';
 import { useInventoryReferences } from '../use-inventory-references';
 import { DocumentHeaderFields } from './document-header-fields';
@@ -469,20 +464,12 @@ function DocumentForm({
 
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={`${isEdit ? t.inventoryDocuments.editTitle : t.inventoryDocuments.createTitle} — ${documentKindLabel(kind)}`}
         description={
           isEdit
             ? t.inventoryDocuments.editDescription
             : t.inventoryDocuments.createDescription
-        }
-        actions={
-          <Button asChild variant="outline" size="sm">
-            <Link to="/app/inventory/documents">
-              {t.inventoryDocuments.backToList}
-              <ArrowRight className="h-4 w-4" aria-hidden />
-            </Link>
-          </Button>
         }
       />
 

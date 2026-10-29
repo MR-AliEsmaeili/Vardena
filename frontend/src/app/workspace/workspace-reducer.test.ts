@@ -78,6 +78,37 @@ describe('computeOpen — §4.5 steps 1–6', () => {
     expect(created?.mounted).toBe(false);
   });
 
+  it('records the window a record was opened from as its parent (step 6)', () => {
+    let state = freshWorkspaceState('home', '/app');
+    state = open(state, '/app/accounting/documents', 'auto', 'list').state;
+    const { state: next } = open(
+      state,
+      '/app/accounting/documents/doc-1',
+      'auto',
+      'record',
+    );
+    // The list that was active becomes the record window's parent screen.
+    expect(next.windows[2]?.openedFrom).toBe('/app/accounting/documents');
+    // A window opened from the hub keeps the hub — never a bogus self-parent.
+    expect(state.windows[1]?.openedFrom).toBe('/app');
+  });
+
+  it('never parents a duplicate window to itself (step 2 duplicate)', () => {
+    const state = open(
+      freshWorkspaceState('home', '/app'),
+      '/app/accounting/documents',
+      'auto',
+      'w2',
+    ).state;
+    const { state: next } = open(
+      state,
+      '/app/accounting/documents',
+      'new',
+      'w3',
+    );
+    expect(next.windows[2]?.openedFrom).toBeNull();
+  });
+
   it('reuses by basePath without touching the window path (step 4 — filters survive)', () => {
     let state = freshWorkspaceState('home', '/app');
     state = open(state, '/app/accounting/documents', 'auto', 'w2').state;
@@ -629,6 +660,7 @@ describe('window factory invariants', () => {
       mounted: false,
       mountPath: null,
       titleOverride: null,
+      openedFrom: null,
     });
   });
 });

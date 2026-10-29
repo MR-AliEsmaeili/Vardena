@@ -13,7 +13,7 @@ import { Card, CardContent } from '@/ui/card';
 import { Input } from '@/ui/input';
 import { DataTable } from '@/ui/patterns/data-table';
 import { FilterBar, FilterField } from '@/ui/patterns/filter-bar';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { Definition, DefinitionList } from '@/ui/patterns/definition-list';
 import { LoadingState } from '@/ui/patterns/states';
@@ -27,8 +27,6 @@ import {
   useNumberingAllocations,
   useNumberingSeriesDetail,
 } from './use-numbering-series';
-
-const LIST_PATH = '/app/documents/numbering-series';
 
 function allocationColumns(
   timeZone: string,
@@ -102,7 +100,7 @@ export function NumberingSeriesDetailPage() {
   if (detailQuery.isError) {
     return (
       <div className="space-y-4">
-        <PageHeader
+        <FormPageHeader
           title={t.numberingSeries.detailTitle}
           description={t.numberingSeries.detailSubtitle}
         />
@@ -120,14 +118,11 @@ export function NumberingSeriesDetailPage() {
 
   return (
     <div className="space-y-6" data-testid="numbering-series-detail-page">
-      <PageHeader
+      <FormPageHeader
         title={series.name}
         description={t.numberingSeries.detailSubtitle}
         actions={
           <div className="flex gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link to={LIST_PATH}>{t.numberingSeries.backToList}</Link>
-            </Button>
             <PermissionGate
               permission={PERMISSIONS.documents.numberingSeriesEdit}
             >

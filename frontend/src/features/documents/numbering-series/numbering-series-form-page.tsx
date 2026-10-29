@@ -16,7 +16,7 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { FormField } from '@/ui/patterns/form-field';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import { useWorkspaceWindowDirty } from '@/app/workspace/workspace-context';
@@ -112,7 +112,7 @@ export function NumberingSeriesFormPage({
     if (detailQuery.isError) {
       return (
         <div className="space-y-4">
-          <PageHeader title={t.numberingSeries.editTitle} />
+          <FormPageHeader title={t.numberingSeries.editTitle} />
           <ApiErrorAlert
             error={detailQuery.error}
             title={t.table.errorTitle}
@@ -208,7 +208,7 @@ function NumberingSeriesCreateForm({
 
   return (
     <div className="space-y-4" data-testid="numbering-series-form-page">
-      <PageHeader
+      <FormPageHeader
         title={t.numberingSeries.createTitle}
         description={t.numberingSeries.subtitle}
       />
@@ -458,7 +458,7 @@ function NumberingSeriesEditForm({
 
   return (
     <div className="space-y-4" data-testid="numbering-series-form-page">
-      <PageHeader
+      <FormPageHeader
         title={t.numberingSeries.editTitle}
         description={t.numberingSeries.subtitle}
       />

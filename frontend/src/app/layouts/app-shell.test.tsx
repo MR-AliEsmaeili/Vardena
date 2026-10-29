@@ -466,8 +466,8 @@ describe('organization switch cache isolation (security)', () => {
   });
 });
 
-describe('shell navigation and breadcrumb', () => {
-  it('marks the active route and renders the real breadcrumb hierarchy', async () => {
+describe('shell navigation chrome', () => {
+  it('marks the active route and renders no page-level breadcrumb', async () => {
     renderWithProviders(<AppRoutes />, {
       initialEntries: ['/app/accounting/chart'],
     });
@@ -479,30 +479,20 @@ describe('shell navigation and breadcrumb', () => {
     const activeLink = screen.getByRole('link', { name: t.nav.chartTree });
     expect(activeLink).toHaveAttribute('aria-current', 'page');
 
-    const breadcrumb = screen.getByRole('navigation', {
-      name: t.breadcrumb.label,
-    });
+    // ADR-0054 + design-system.md §4: the dock tab names the screen, the page
+    // carries its own compact header — no duplicate breadcrumb block above it.
     expect(
-      within(breadcrumb).getByRole('link', { name: t.nav.dashboard }),
-    ).toHaveAttribute('href', '/app');
-    expect(
-      within(breadcrumb).getByRole('link', { name: t.accounting.title }),
-    ).toHaveAttribute('href', '/app/accounting');
-    expect(within(breadcrumb).getByText(t.nav.chartTree)).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
+      screen.queryByRole('navigation', { name: t.breadcrumb.label }),
+    ).not.toBeInTheDocument();
   });
 
-  it('does not render a breadcrumb for a single-level route', async () => {
+  it('keeps the Open Windows bar above the routed content', async () => {
     renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
 
     expect(
       await screen.findByRole('heading', { level: 1, name: t.dashboard.title }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('navigation', { name: t.breadcrumb.label }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('workspace-dock')).toBeInTheDocument();
   });
 
   it('hides navigation entries the session has no permission for', async () => {

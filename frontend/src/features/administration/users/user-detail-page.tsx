@@ -17,7 +17,7 @@ import {
 import { Input } from '@/ui/input';
 import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import { Definition, DefinitionList } from '../administration-ui';
@@ -51,7 +51,7 @@ export function UserDetailPage(): ReactElement {
   if (query.isError) {
     return (
       <div className="space-y-4">
-        <PageHeader title={t.usersAdmin.userDetail} />
+        <FormPageHeader title={t.usersAdmin.userDetail} />
         <ApiErrorAlert
           error={query.error}
           title={t.table.errorTitle}
@@ -67,7 +67,7 @@ export function UserDetailPage(): ReactElement {
 
   return (
     <div className="space-y-4" data-testid="user-detail-page">
-      <PageHeader
+      <FormPageHeader
         title={t.usersAdmin.userDetail}
         description={t.usersAdmin.subtitle}
         actions={

@@ -6,7 +6,7 @@ import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
 import { Button } from '@/ui/button';
 import { Card, CardContent } from '@/ui/card';
 import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import type { AdminErrorMessage } from './admin-error-messages';
 
 /**
@@ -77,7 +77,7 @@ export function AdminFormShell({
 
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={title}
         {...(description !== undefined ? { description } : {})}
       />

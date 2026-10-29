@@ -8,7 +8,7 @@ import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import { adminErrorMessage } from '../admin-error-messages';
@@ -32,7 +32,7 @@ export function PartyDetailPage() {
   if (query.isError) {
     return (
       <div className="space-y-4">
-        <PageHeader title={t.orgAdmin.partyDetail} />
+        <FormPageHeader title={t.orgAdmin.partyDetail} />
         <ApiErrorAlert
           error={query.error}
           title={t.table.errorTitle}
@@ -47,7 +47,7 @@ export function PartyDetailPage() {
 
   return (
     <div className="space-y-4" data-testid="party-detail-page">
-      <PageHeader
+      <FormPageHeader
         title={t.orgAdmin.partyDetail}
         description={`${party.code} — ${party.displayName}`}
         actions={

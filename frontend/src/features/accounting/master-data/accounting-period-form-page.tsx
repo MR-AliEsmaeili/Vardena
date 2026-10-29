@@ -7,7 +7,7 @@ import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { EmptyState, LoadingState } from '@/ui/patterns/states';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { PeriodCreateForm } from './period-create-form';
 
 export function AccountingPeriodFormPage() {
@@ -20,7 +20,7 @@ export function AccountingPeriodFormPage() {
     permissions.has(PERMISSIONS.accounting.fiscalYearView);
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={t.accountingPeriod.createTitle}
         actions={
           <Button asChild variant="outline">

@@ -46,6 +46,7 @@ import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
 import { DataTable } from '@/ui/patterns/data-table';
 import { FormField } from '@/ui/patterns/form-field';
 import { LoadingState } from '@/ui/patterns/states';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { PageHeader } from '@/ui/patterns/page-header';
 import { useToast } from '@/ui/patterns/toast';
 import { Select } from '@/ui/select';
@@ -445,7 +446,7 @@ export function StructureDetailPage({ kind }: { kind: StructureKind }) {
   const title = versionTitle(structure);
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={title}
         meta={
           <Badge variant={STATUS_VARIANTS[structure.status]}>
@@ -812,7 +813,7 @@ export function StructureFormPage({
 
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={
           mode === 'create'
             ? t.structureAdmin.newVersion

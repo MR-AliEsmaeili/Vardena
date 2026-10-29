@@ -11,7 +11,7 @@ import { formatDateTimeWithZone } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { LoadingState } from '@/ui/patterns/states';
 import { useToast } from '@/ui/patterns/toast';
 import { adminErrorMessage } from '../admin-error-messages';
@@ -35,7 +35,7 @@ export function EmployeeDetailPage() {
   if (query.isError) {
     return (
       <div className="space-y-4">
-        <PageHeader title={t.orgAdmin.employeeDetail} />
+        <FormPageHeader title={t.orgAdmin.employeeDetail} />
         <ApiErrorAlert
           error={query.error}
           title={t.table.errorTitle}
@@ -87,7 +87,7 @@ function EmployeeDetailView({
 
   return (
     <div className="space-y-4" data-testid="employee-detail-page">
-      <PageHeader
+      <FormPageHeader
         title={t.orgAdmin.employeeDetail}
         description={`${employee.employeeCode} — ${employee.firstName} ${employee.lastName}`}
         actions={

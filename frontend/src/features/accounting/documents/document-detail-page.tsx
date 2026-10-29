@@ -19,7 +19,8 @@ import { Button } from '@/ui/button';
 import { AmountCell } from '@/ui/patterns/amount-cell';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { LoadingState } from '@/ui/patterns/states';
-import { PageHeader } from '@/ui/patterns/page-header';
+import { FormPageHeader } from '@/app/layouts/form-page-header';
+import { FormSection } from '@/ui/patterns/form-section';
 import {
   Table,
   TableBody,
@@ -84,7 +85,7 @@ export function DocumentDetailPage(): ReactElement {
     if (apiError.isNotFound) {
       return (
         <div className="space-y-4">
-          <PageHeader title={t.documents.detailTitle} />
+          <FormPageHeader title={t.documents.detailTitle} />
           <Alert variant="warning" role="alert">
             <AlertTitle>{t.documents.notFoundTitle}</AlertTitle>
             <AlertBody>
@@ -101,7 +102,7 @@ export function DocumentDetailPage(): ReactElement {
     }
     return (
       <div className="space-y-4">
-        <PageHeader title={t.documents.detailTitle} />
+        <FormPageHeader title={t.documents.detailTitle} />
         <ApiErrorAlert
           error={query.error}
           title={t.documents.loadDocumentFailed}
@@ -129,13 +130,13 @@ export function DocumentDetailPage(): ReactElement {
 
   return (
     <div className="space-y-4">
-      <PageHeader
+      <FormPageHeader
         title={
           document.documentNumber !== null
             ? `${t.documents.detailTitle} ${document.documentNumber}`
             : t.documents.detailTitle
         }
-        description={
+        meta={
           state !== null ? (
             <Badge variant={documentStatePresentation[state].variant}>
               {documentStatePresentation[state].label}
@@ -341,7 +342,7 @@ function DocumentFacts({
   );
 
   return (
-    <section aria-label={t.documents.headerSection} className="space-y-3">
+    <FormSection title={t.documents.headerSection}>
       <DefinitionList>
         <Definition label={t.documents.number}>
           {document.documentNumber !== null ? (
@@ -434,7 +435,7 @@ function DocumentFacts({
           )}
         </section>
       )}
-    </section>
+    </FormSection>
   );
 }
 
@@ -465,8 +466,7 @@ function DocumentLines({
   totalCredit: string;
 }): ReactElement {
   return (
-    <section aria-label={t.documents.linesSection} className="space-y-2">
-      <h2 className="text-sm font-bold text-ink">{t.documents.linesSection}</h2>
+    <FormSection title={t.documents.linesSection}>
       <TableWrapper>
         <Table>
           <TableHead>
@@ -542,6 +542,6 @@ function DocumentLines({
           </TableFooter>
         </Table>
       </TableWrapper>
-    </section>
+    </FormSection>
   );
 }

@@ -154,12 +154,14 @@ const WindowSection = memo(function WindowSection({
       basePath: workspaceWindow.basePath,
       path: workspaceWindow.path,
       dirty: workspaceWindow.dirty,
+      openedFrom: workspaceWindow.openedFrom,
     }),
     [
       workspaceWindow.id,
       workspaceWindow.basePath,
       workspaceWindow.path,
       workspaceWindow.dirty,
+      workspaceWindow.openedFrom,
     ],
   );
   const { title } = resolveWindowMeta(workspaceWindow.path);
@@ -240,12 +242,14 @@ const InjectedWindowSection = memo(function InjectedWindowSection({
       basePath: workspaceWindow.basePath,
       path: workspaceWindow.path,
       dirty: workspaceWindow.dirty,
+      openedFrom: workspaceWindow.openedFrom,
     }),
     [
       workspaceWindow.id,
       workspaceWindow.basePath,
       workspaceWindow.path,
       workspaceWindow.dirty,
+      workspaceWindow.openedFrom,
     ],
   );
   return (
