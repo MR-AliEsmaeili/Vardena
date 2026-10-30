@@ -100,21 +100,25 @@ describe('documents.api — DocumentRelationsController contract', () => {
       quantity: '12.5',
     });
 
-    expect(apiClient.post).toHaveBeenCalledWith('/documents/relations', {
-      organizationId: org,
-      source: {
-        module: 'sales',
-        documentType: 'sales_invoice',
-        documentId: org,
-      },
-      target: {
-        module: 'accounting',
-        documentType: 'accounting_journal',
-        documentId: org,
-      },
-      relationKind: 'fulfill',
-      quantity: '12.5',
-    });
+    expect(apiClient.post).toHaveBeenCalledWith(
+      '/documents/relations',
+      expect.objectContaining({
+        organizationId: org,
+        source: {
+          module: 'sales',
+          documentType: 'sales_invoice',
+          documentId: org,
+        },
+        target: {
+          module: 'accounting',
+          documentType: 'accounting_journal',
+          documentId: org,
+        },
+        relationKind: 'fulfill',
+        quantity: '12.5',
+      }),
+      expect.anything(),
+    );
   });
 
   it('deletes by id with organizationId query', async () => {

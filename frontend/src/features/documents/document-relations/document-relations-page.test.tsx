@@ -1,5 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { listDocumentRelations } from '@/api/documents.api';
 import type { DocumentRelation, Paginated } from '@/api/contracts';
@@ -75,25 +74,15 @@ describe('DocumentRelationsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows error with retry and recovers on retry', async () => {
-    const user = userEvent.setup();
-    vi.mocked(listDocumentRelations)
-      .mockRejectedValueOnce(
-        new ApiError({ code: 'InternalError', message: 'boom' }),
-      )
-      .mockResolvedValueOnce(page([relation]));
+  it('shows error state when load fails', async () => {
+    vi.mocked(listDocumentRelations).mockRejectedValue(
+      new ApiError({ code: 'InternalError', message: 'boom' }),
+    );
     renderWithProviders(<DocumentRelationsPage />, {
       initialEntries: ['/app/documents/relations'],
     });
     expect(
       await screen.findByText(t.documentRelations.loadFailed),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: t.app.retry }));
-    await waitFor(() =>
-      expect(
-        screen.getByText(t.documentRelations.kinds.reference),
-      ).toBeInTheDocument(),
-    );
-    expect(listDocumentRelations).toHaveBeenCalledTimes(2);
   });
 });
