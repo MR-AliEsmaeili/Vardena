@@ -82,7 +82,7 @@ export function DocumentRelationDetailPage() {
         actions={
           <PermissionGate permission={PERMISSIONS.documents.relationDelete}>
             <Button
-              variant="destructive"
+              variant="danger"
               size="sm"
               onClick={() => setConfirmOpen(true)}
               data-testid="document-relation-delete-button"

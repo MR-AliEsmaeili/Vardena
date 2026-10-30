@@ -16,30 +16,30 @@ describe('documentRelationErrorMessage', () => {
 
   it('maps 422 self_link_not_allowed to Persian copy', () => {
     const err = new ApiError({
-      code: 'UnprocessableEntity',
-      message: 'self_link_not_allowed',
+      code: 'BusinessRuleViolation',
+      message: 'A document cannot be linked to itself.',
       status: 422,
-      details: { message: 'self_link_not_allowed' },
+      details: { message: 'A document cannot be linked to itself.' },
     });
     expect(documentRelationErrorMessage('create', err)).toBe(t.documentRelations.errors.selfLinkNotAllowed);
   });
 
   it('maps 422 quantity_required_for_fulfill', () => {
     const err = new ApiError({
-      code: 'UnprocessableEntity',
-      message: 'quantity_required_for_fulfill',
+      code: 'BusinessRuleViolation',
+      message: 'The \"fulfill\" relation kind requires a positive base-unit quantity.',
       status: 422,
-      details: { message: 'quantity_required_for_fulfill' },
+      details: { message: 'The \"fulfill\" relation kind requires a positive base-unit quantity.' },
     });
     expect(documentRelationErrorMessage('create', err)).toBe(t.documentRelations.errors.quantityRequiredForFulfill);
   });
 
   it('maps 422 quantity_forbidden', () => {
     const err = new ApiError({
-      code: 'UnprocessableEntity',
-      message: 'quantity_forbidden',
+      code: 'BusinessRuleViolation',
+      message: 'Only the \"fulfill\" relation kind carries a quantity.',
       status: 422,
-      details: { message: 'quantity_forbidden' },
+      details: { message: 'Only the \"fulfill\" relation kind carries a quantity.' },
     });
     expect(documentRelationErrorMessage('create', err)).toBe(t.documentRelations.errors.quantityForbidden);
   });

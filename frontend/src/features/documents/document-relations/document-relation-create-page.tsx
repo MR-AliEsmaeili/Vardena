@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useOrganizationId } from '@/features/organization/use-organization';
-import { DOCUMENT_RELATION_KINDS } from '@/api/contracts';
+import { DOCUMENT_RELATION_KINDS, type DocumentRelationKind } from '@/api/contracts';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import { Card, CardContent } from '@/ui/card';
@@ -45,7 +45,7 @@ export function DocumentRelationCreatePage() {
   const navigate = useNavigate();
   const createMutation = useCreateDocumentRelationMutation(organizationId ?? 'none');
 
-  const [relationKind, setRelationKind] = useState('reference');
+  const [relationKind, setRelationKind] = useState<DocumentRelationKind>('reference');
   const [quantity, setQuantity] = useState('');
   const [sourceModule, setSourceModule] = useState('');
   const [sourceDocumentType, setSourceDocumentType] = useState('');
@@ -248,7 +248,9 @@ export function DocumentRelationCreatePage() {
                 <Select
                   id="relationKind"
                   value={relationKind}
-                  onChange={(ev) => setRelationKind((ev.target as HTMLSelectElement).value)}
+                  onChange={(ev) =>
+                    setRelationKind((ev.target as HTMLSelectElement).value as DocumentRelationKind)
+                  }
                   data-testid="document-relation-kind"
                 >
                   {DOCUMENT_RELATION_KINDS.map((k) => (

@@ -1453,13 +1453,22 @@ export type NumberingAllocation = NullableString<
  * The backend declares `quantity` as `string | null`; the generated file
  * renders it as `Record<string, never> | null` (refinement 1).
  */
-export type DocumentRelation = NullableString<
+export type DocumentRelation = Omit<
   Schemas['DocumentRelationResponseDto'],
-  'quantity'
->;
+  'quantity' | 'source' | 'target'
+> & {
+  quantity: string | null;
+  source: DocumentEndpoint;
+  target: DocumentEndpoint;
+};
 
 /** Document endpoint as stored (`DocumentEndpointResponseDto`). */
-export type DocumentEndpoint = Schemas['DocumentEndpointResponseDto'];
+export type DocumentEndpoint = Omit<
+  Schemas['DocumentEndpointResponseDto'],
+  'lineId'
+> & {
+  lineId: string | null;
+};
 
 /** `GET /documents/relations` query (`ListDocumentRelationsQueryDto`). */
 export type DocumentRelationListQuery =

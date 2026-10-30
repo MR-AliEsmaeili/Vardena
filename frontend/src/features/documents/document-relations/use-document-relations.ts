@@ -113,8 +113,10 @@ export function useDocumentRelations(
           organizationId,
           page: state.page,
           pageSize: state.pageSize,
-          sort: state.sort,
-          ...(state.relationKind !== '' ? { relationKind: state.relationKind } : {}),
+          sort: state.sort as DocumentRelationListState['sort'],
+          ...(state.relationKind !== ''
+            ? { relationKind: state.relationKind as DocumentRelationListState['relationKind'] }
+            : {}),
           ...(state.sourceModule !== '' ? { sourceModule: state.sourceModule } : {}),
           ...(state.sourceDocumentType !== ''
             ? { sourceDocumentType: state.sourceDocumentType }
@@ -129,7 +131,7 @@ export function useDocumentRelations(
           ...(state.targetDocumentId !== ''
             ? { targetDocumentId: state.targetDocumentId }
             : {}),
-        },
+        } as Parameters<typeof listDocumentRelations>[0],
         signal,
       );
     },

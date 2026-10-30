@@ -21,12 +21,18 @@ export type DocumentRelationOperation = 'load' | 'create' | 'delete';
 
 function business422Message(error: unknown): string | null {
   const apiError = normalizeApiError(error);
-  if (apiError.code !== 'UnprocessableEntity' && apiError.status !== 422) return null;
-  const msg = (apiError.details?.message as string | undefined) ?? apiError.message ?? '';
-  if (msg.includes('self_link_not_allowed')) return t.documentRelations.errors.selfLinkNotAllowed;
-  if (msg.includes('quantity_required_for_fulfill')) return t.documentRelations.errors.quantityRequiredForFulfill;
-  if (msg.includes('quantity_forbidden')) return t.documentRelations.errors.quantityForbidden;
-  if (msg.includes('invalid_quantity')) return t.documentRelations.errors.invalidQuantity;
+  if (apiError.code !== 'BusinessRuleViolation' && apiError.status !== 422) return null;
+  const details = apiError.details as { message?: string } | undefined;
+  const msg = details?.message ?? apiError.message ?? '';
+  // Backend messages are human sentences; match stable fragments
+  if (msg.includes('A document cannot be linked to itself') || msg.includes('self_link_not_allowed'))
+    return t.documentRelations.errors.selfLinkNotAllowed;
+  if (msg.includes('requires a positive base-unit quantity') || msg.includes('quantity_required_for_fulfill'))
+    return t.documentRelations.errors.quantityRequiredForFulfill;
+  if (msg.includes('Only the \"fulfill\"') || msg.includes('quantity_forbidden'))
+    return t.documentRelations.errors.quantityForbidden;
+  if (msg.includes('must be a positive decimal') || msg.includes('invalid_quantity'))
+    return t.documentRelations.errors.invalidQuantity;
   return t.errors.businessRule;
 }
 

@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react';
+import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDocumentRelation } from '@/api/documents.api';
 import type { DocumentRelation } from '@/api/contracts';
@@ -35,12 +36,20 @@ beforeEach(() => {
   vi.mocked(getDocumentRelation).mockResolvedValue(relation);
 });
 
+function renderDetail(id = relation.id) {
+  const routes = (
+    <Routes>
+      <Route path="/app/documents/relations/:relationId" element={<DocumentRelationDetailPage />} />
+    </Routes>
+  );
+  renderWithProviders(routes, {
+    initialEntries: [`/app/documents/relations/${id}`],
+  });
+}
+
 describe('DocumentRelationDetailPage', () => {
   it('renders source/target and quantity from server', async () => {
-    renderWithProviders(<DocumentRelationDetailPage />, {
-      initialEntries: ['/app/documents/relations/01ARZ3NDEKTSV4RRFFQ69G5FAV'],
-      routePath: '/app/documents/relations/:relationId',
-    });
+    renderDetail();
     expect(await screen.findByText(relation.source.module)).toBeInTheDocument();
     expect(screen.getByText(relation.target.module)).toBeInTheDocument();
     expect(screen.getByText('10.5000')).toBeInTheDocument();
@@ -48,10 +57,7 @@ describe('DocumentRelationDetailPage', () => {
 
   it('shows load error with retry description', async () => {
     vi.mocked(getDocumentRelation).mockRejectedValue(new ApiError({ code: 'EntityNotFound', message: 'not found' }));
-    renderWithProviders(<DocumentRelationDetailPage />, {
-      initialEntries: ['/app/documents/relations/missing'],
-      routePath: '/app/documents/relations/:relationId',
-    });
+    renderDetail('missing');
     expect(await screen.findByText(t.documentRelations.errors.notFound)).toBeInTheDocument();
   });
 });
