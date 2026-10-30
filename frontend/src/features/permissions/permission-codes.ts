@@ -193,12 +193,15 @@ export const PERMISSIONS = {
     warehouseEnable: 'Inventory.Warehouse.Enable',
     warehouseDisable: 'Inventory.Warehouse.Disable',
 
-    // Movement ledger (post/read) and transfers
+    // Movement ledger (post/read), transfers and reservation lifecycle
     // (`inventory-core-permissions.ts`).
     movementView: 'Inventory.Movement.View',
     movementCreate: 'Inventory.Movement.Create',
     movementReverse: 'Inventory.Movement.Reverse',
     transferCreate: 'Inventory.Transfer.Create',
+    reservationView: 'Inventory.Reservation.View',
+    reservationCreate: 'Inventory.Reservation.Create',
+    reservationRelease: 'Inventory.Reservation.Release',
 
     // Business documents — receipt / issue / transfer (C-58,
     // `inventory-document-permissions.ts`). These authorize the DOCUMENT

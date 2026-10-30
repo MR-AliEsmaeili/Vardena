@@ -151,6 +151,28 @@ describe('visibleNavigationSections', () => {
     expect(accounting?.tone).toBe('accounting');
   });
 
+  it('shows reservations to View holders and routes Create-only sessions through the inventory hub', () => {
+    const viewSections = visibleNavigationSections(
+      checks([PERMISSIONS.inventory.reservationView]),
+    );
+    const viewInventory = viewSections.find(
+      (section) => section.id === 'inventory',
+    );
+    expect(viewInventory?.items.map((item) => item.to)).toContain(
+      '/app/inventory/reservations',
+    );
+
+    const createSections = visibleNavigationSections(
+      checks([PERMISSIONS.inventory.reservationCreate]),
+    );
+    const createInventory = createSections.find(
+      (section) => section.id === 'inventory',
+    );
+    expect(createInventory?.items.map((item) => item.to)).toEqual([
+      '/app/inventory',
+    ]);
+  });
+
   it('never returns an empty domain (no orphan category header)', () => {
     const visible = visibleNavigationSections(
       checks([PERMISSIONS.users.view, PERMISSIONS.inventory.itemView]),

@@ -516,6 +516,23 @@ export const queryKeys = {
     document: (organizationId: string, documentId: string) =>
       ['inventory', organizationId, 'documents', 'detail', documentId] as const,
 
+    /** Server-paged reservation worklist. */
+    reservations: (organizationId: string, filters: Record<string, unknown>) =>
+      ['inventory', organizationId, 'reservations', 'list', filters] as const,
+
+    /** Every reservation read of one organization (list + detail). */
+    reservationsPrefix: (organizationId: string) =>
+      ['inventory', organizationId, 'reservations'] as const,
+
+    reservationDetail: (organizationId: string, reservationId: string) =>
+      [
+        'inventory',
+        organizationId,
+        'reservations',
+        'detail',
+        reservationId,
+      ] as const,
+
     // Reference reads (active warehouses / stockable items / units). Kept as
     // ONE key per entity per organization — they are small, slow-moving
     // master-data lists, not filtered workspaces.

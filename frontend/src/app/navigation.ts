@@ -4,6 +4,7 @@ import {
   Boxes,
   Building2,
   CalendarDays,
+  ClipboardCheck,
   Contact,
   FileSpreadsheet,
   FileStack,
@@ -260,6 +261,8 @@ export const navigationSections: readonly NavigationSection[] = [
           PERMISSIONS.inventory.transferCreate,
           PERMISSIONS.inventory.movementView,
           PERMISSIONS.inventory.valuationView,
+          PERMISSIONS.inventory.reservationView,
+          PERMISSIONS.inventory.reservationCreate,
         ],
       },
       {
@@ -273,6 +276,12 @@ export const navigationSections: readonly NavigationSection[] = [
         label: t.nav.inventoryDocumentLines,
         icon: FileSpreadsheet,
         permissions: [PERMISSIONS.inventory.documentView],
+      },
+      {
+        to: '/app/inventory/reservations',
+        label: t.nav.inventoryReservations,
+        icon: ClipboardCheck,
+        permissions: [PERMISSIONS.inventory.reservationView],
       },
       {
         to: '/app/inventory/movements',

@@ -40,6 +40,8 @@ const inventoryPermissions = [
   PERMISSIONS.inventory.movementView,
   PERMISSIONS.inventory.movementCreate,
   PERMISSIONS.inventory.transferCreate,
+  PERMISSIONS.inventory.reservationView,
+  PERMISSIONS.inventory.reservationCreate,
   PERMISSIONS.inventory.valuationView,
 ];
 
@@ -69,6 +71,8 @@ describe('Inventory home — module licensing surfaces as filtered permissions',
       [t.inventory.newReceipt, '/app/inventory/movements/new?type=receipt'],
       [t.inventory.newIssue, '/app/inventory/movements/new?type=issue'],
       [t.inventory.newTransfer, '/app/inventory/transfers/new'],
+      [t.reservations.newReservation, '/app/inventory/reservations/new'],
+      [t.reservations.title, '/app/inventory/reservations'],
       [t.inventory.movementsTitle, '/app/inventory/movements'],
       [t.inventory.kardexTitle, '/app/inventory/kardex'],
       [t.inventory.valuationTitle, '/app/inventory/valuation'],
@@ -113,6 +117,29 @@ describe('Inventory home — module licensing surfaces as filtered permissions',
     expect(
       screen.queryByRole('link', { name: t.home.openSection }),
     ).not.toBeInTheDocument();
+  });
+
+  it('keeps the create-only reservation entry available without exposing the list', async () => {
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [
+        PERMISSIONS.organization.view,
+        PERMISSIONS.inventory.reservationCreate,
+      ],
+    });
+    renderHome();
+
+    expect(
+      await screen.findByRole('heading', {
+        name: t.reservations.newReservation,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: t.reservations.title }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: t.home.openSection }),
+    ).toHaveAttribute('href', '/app/inventory/reservations/new');
   });
 
   it('hides only the surfaces the session is missing codes for', async () => {
