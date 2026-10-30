@@ -203,6 +203,17 @@ export const PERMISSIONS = {
     reservationCreate: 'Inventory.Reservation.Create',
     reservationRelease: 'Inventory.Reservation.Release',
 
+    // Material Request authoring (C-50, `material-request-permissions.ts`).
+    // Only the authoring half is registered here: `Approve`/`Reject`/
+    // `ReturnForCorrection`/`ReverseApproval`/`Cancel` belong to INV-07 and
+    // `Invoke` is blocked by `task/OUT-OF-SCOPE.md`, so no code without a
+    // consumer is added.
+    materialRequestView: 'Inventory.MaterialRequest.View',
+    materialRequestCreate: 'Inventory.MaterialRequest.Create',
+    materialRequestEdit: 'Inventory.MaterialRequest.Edit',
+    materialRequestDelete: 'Inventory.MaterialRequest.Delete',
+    materialRequestSubmit: 'Inventory.MaterialRequest.Submit',
+
     // Business documents — receipt / issue / transfer (C-58,
     // `inventory-document-permissions.ts`). These authorize the DOCUMENT
     // operation only: finalize and cancel additionally require the ledger

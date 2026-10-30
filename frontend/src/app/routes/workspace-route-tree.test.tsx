@@ -19,6 +19,9 @@ import { DocumentCreatePage } from '@/features/accounting/documents/document-for
 import { AccountingHomePage } from '@/features/accounting/accounting-home-page';
 import { ProfilePage } from '@/features/auth/profile-page';
 import { MovementFormPage } from '@/features/inventory/movement-form-page';
+import { MaterialRequestDetailPage } from '@/features/inventory/material-requests/material-request-detail-page';
+import { MaterialRequestFormPage } from '@/features/inventory/material-requests/material-request-form-page';
+import { MaterialRequestsPage } from '@/features/inventory/material-requests/material-requests-page';
 import { ReservationDetailPage } from '@/features/inventory/reservations/reservation-detail-page';
 import { ReservationFormPage } from '@/features/inventory/reservations/reservation-form-page';
 import { ReservationsPage } from '@/features/inventory/reservations/reservations-page';
@@ -109,11 +112,12 @@ describe('tree inventory — verbatim extraction snapshot (§10.3)', () => {
     // The whole /app subtree as it stood in router.tsx at extraction time
     // (99 leaves / 72 gates) PLUS the DOC-01 document-types block merged
     // from main afterwards (+3 leaves, +1 gate) PLUS DOC-02 numbering-series
-    // (+4 leaves, +3 gates) PLUS INV-04 valuation-methods (+2 leaves, +1 gate)
-    // and INV-08 reservations (+3 leaves, +2 gates): 111 leaf routes behind
-    // 79 RequirePermission gates (+ the pathless shells). Update ONLY together
-    // with a deliberate route change.
-    expect(inventory(WORKSPACE_ROUTES)).toEqual({ leaves: 111, gates: 79 });
+    // (+4 leaves, +3 gates) PLUS INV-04 valuation-methods (+2 leaves, +1 gate),
+    // INV-08 reservations (+3 leaves, +2 gates) and INV-06 material requests
+    // (+4 leaves, +3 gates): 115 leaf routes behind 82 RequirePermission gates
+    // (+ the pathless shells). Update ONLY together with a deliberate route
+    // change.
+    expect(inventory(WORKSPACE_ROUTES)).toEqual({ leaves: 115, gates: 82 });
   });
 
   it('is rooted at /app with a single top-level route object', () => {
@@ -138,6 +142,18 @@ describe('leaf parity — same component as the old inline tree', () => {
     );
     expect(leafType('/app/inventory/reservations/rsv-1')).toBe(
       ReservationDetailPage,
+    );
+    expect(leafType('/app/inventory/material-requests')).toBe(
+      MaterialRequestsPage,
+    );
+    expect(leafType('/app/inventory/material-requests/new')).toBe(
+      MaterialRequestFormPage,
+    );
+    expect(leafType('/app/inventory/material-requests/mr-1')).toBe(
+      MaterialRequestDetailPage,
+    );
+    expect(leafType('/app/inventory/material-requests/mr-1/edit')).toBe(
+      MaterialRequestFormPage,
     );
     expect(leafType('/app/profile')).toBe(ProfilePage);
     expect(leafType('/app/admin/users')).toBe(UsersPage);
@@ -234,6 +250,24 @@ describe('permission gates stayed inside the tree (§6.3 rule b, AR-21)', () => 
     ]);
   });
 
+  it('material-request list/detail use View, create only Create, and edit View+Edit', () => {
+    expect(gatePermissions('/app/inventory/material-requests')).toEqual([
+      PERMISSIONS.inventory.materialRequestView,
+    ]);
+    expect(gatePermissions('/app/inventory/material-requests/mr-1')).toEqual([
+      PERMISSIONS.inventory.materialRequestView,
+    ]);
+    expect(gatePermissions('/app/inventory/material-requests/new')).toEqual([
+      PERMISSIONS.inventory.materialRequestCreate,
+    ]);
+    expect(
+      allGatePermissions('/app/inventory/material-requests/mr-1/edit'),
+    ).toEqual([
+      PERMISSIONS.inventory.materialRequestView,
+      PERMISSIONS.inventory.materialRequestEdit,
+    ]);
+  });
+
   it('the profile route needs no permission gate (session only)', () => {
     expect(gatePermissions('/app/profile')).toBeNull();
   });
@@ -282,6 +316,17 @@ describe('matchRestorableWorkspaceRoute — strict restore predicate (FDR-01 §3
     ).toBe(true);
     expect(
       matchRestorableWorkspaceRoute('/app/inventory/reservations/rsv-1'),
+    ).toBe(true);
+    expect(
+      matchRestorableWorkspaceRoute('/app/inventory/material-requests'),
+    ).toBe(true);
+    expect(
+      matchRestorableWorkspaceRoute('/app/inventory/material-requests/mr-1'),
+    ).toBe(true);
+    expect(
+      matchRestorableWorkspaceRoute(
+        '/app/inventory/material-requests/mr-1/edit',
+      ),
     ).toBe(true);
   });
 

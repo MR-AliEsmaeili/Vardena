@@ -9,13 +9,20 @@ import {
 } from './inventory-master.api';
 import {
   configureInventoryValuationMethod,
+  createMaterialRequest,
   createReservation,
+  deleteMaterialRequest,
+  getMaterialRequest,
   getReservation,
   listInventoryUnits,
   listInventoryValuationMethods,
+  listMaterialRequestEvents,
+  listMaterialRequests,
   listReservations,
   releaseReservation,
   resolveInventoryValuationMethod,
+  submitMaterialRequest,
+  updateMaterialRequest,
 } from './inventory.api';
 
 vi.mock('./client', async (importOriginal) => ({
@@ -23,6 +30,7 @@ vi.mock('./client', async (importOriginal) => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
   apiPatch: vi.fn(),
+  apiDelete: vi.fn(),
 }));
 const client = await import('./client');
 const org = '01ARZ3NDEKTSV4RRFFQ69G5FAV';
@@ -182,6 +190,92 @@ describe('backend-mounted inventory routes', () => {
         method: 'moving_weighted_average',
         validFrom: '2026-10-29',
       },
+    );
+  });
+
+  it('calls the material-request authoring endpoints with their declared scope', async () => {
+    await listMaterialRequests({
+      organizationId: org,
+      page: 1,
+      pageSize: 50,
+      sort: 'createdAt:desc',
+      status: 'draft',
+      requestedBy: from,
+    });
+    expect(client.apiGet).toHaveBeenLastCalledWith(
+      '/inventory/material-requests',
+      {
+        params: {
+          organizationId: org,
+          page: 1,
+          pageSize: 50,
+          sort: 'createdAt:desc',
+          status: 'draft',
+          requestedBy: from,
+        },
+      },
+    );
+
+    await getMaterialRequest(org, to);
+    expect(client.apiGet).toHaveBeenLastCalledWith(
+      `/inventory/material-requests/${to}`,
+      { params: { organizationId: org } },
+    );
+
+    await listMaterialRequestEvents(org, to);
+    expect(client.apiGet).toHaveBeenLastCalledWith(
+      `/inventory/material-requests/${to}/events`,
+      { params: { organizationId: org } },
+    );
+
+    const createBody = {
+      organizationId: org,
+      description: 'line demand',
+      lines: [
+        {
+          itemId: from,
+          warehouseId: to,
+          quantity: '9007199254740993.0001',
+          unitId: from,
+          reservationRequested: true,
+        },
+      ],
+    };
+    await createMaterialRequest(createBody);
+    expect(client.apiPost).toHaveBeenLastCalledWith(
+      '/inventory/material-requests',
+      createBody,
+    );
+
+    const updateBody = {
+      description: null,
+      lines: [
+        {
+          itemId: from,
+          warehouseId: to,
+          quantity: '5.0000',
+          unitId: from,
+        },
+      ],
+    };
+    await updateMaterialRequest(org, to, updateBody);
+    expect(client.apiPatch).toHaveBeenLastCalledWith(
+      `/inventory/material-requests/${to}`,
+      updateBody,
+      { params: { organizationId: org } },
+    );
+
+    await deleteMaterialRequest(org, to);
+    expect(client.apiDelete).toHaveBeenLastCalledWith(
+      `/inventory/material-requests/${to}`,
+      { params: { organizationId: org } },
+    );
+
+    await submitMaterialRequest(org, to);
+    expect(client.apiPost).toHaveBeenLastCalledWith(
+      `/inventory/material-requests/${to}/submit`,
+      {},
+      { params: { organizationId: org } },
     );
   });
 });
