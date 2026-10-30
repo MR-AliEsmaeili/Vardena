@@ -3,6 +3,7 @@ import type {
   CancelInventoryDocumentInput,
   ConfigureValuationMethodInput,
   CreateInventoryDocumentInput,
+  CreateMaterialRequestInput,
   FinalizeInventoryDocumentInput,
   InventoryBackdateCheck,
   InventoryBackdateCheckQuery,
@@ -26,6 +27,10 @@ import type {
   InventoryWarehouse,
   InventoryWarehouseListQuery,
   ItemValuationMethod,
+  MaterialRequest,
+  MaterialRequestDetail,
+  MaterialRequestEvent,
+  MaterialRequestListQuery,
   Paginated,
   PostInventoryMovementInput,
   PostInventoryTransferInput,
@@ -35,6 +40,7 @@ import type {
   ReverseInventoryMovementInput,
   RecalculationResult,
   UpdateInventoryDocumentInput,
+  UpdateMaterialRequestInput,
   ValuationMethodListQuery,
 } from './contracts';
 
@@ -214,6 +220,103 @@ export function releaseReservation(
   return apiPost<InventoryReservation>(
     `${RESERVATIONS_PATH}/${encodeURIComponent(reservationId)}/release`,
     body,
+    { params: cleanParams({ organizationId }) },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Material Requests (C-50) — draft authoring only
+//
+// The endpoints below are the authoring half of `MaterialRequestsController`:
+// list/get/events plus create, edit, delete and submit. Approve/reject/return/
+// reverse/cancel belong to INV-07, and `PUT …/lines/invoke` is deliberately
+// ABSENT (it is BLOCKED in `task/OUT-OF-SCOPE.md`: no consumer process exists
+// yet). `PATCH` REPLACES the whole line set — there is no per-line endpoint and
+// this layer must not pretend there is one.
+// ---------------------------------------------------------------------------
+
+const MATERIAL_REQUESTS_PATH = '/inventory/material-requests';
+
+/** Material Requests list (`GET /inventory/material-requests`). */
+export function listMaterialRequests(
+  query: MaterialRequestListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<MaterialRequest>> {
+  return apiGet<Paginated<MaterialRequest>>(MATERIAL_REQUESTS_PATH, {
+    params: cleanParams({ ...query }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+/** One request with its lines (`GET …/:id`). */
+export function getMaterialRequest(
+  organizationId: string,
+  requestId: string,
+  signal?: AbortSignal,
+): Promise<MaterialRequestDetail> {
+  return apiGet<MaterialRequestDetail>(
+    `${MATERIAL_REQUESTS_PATH}/${encodeURIComponent(requestId)}`,
+    { params: cleanParams({ organizationId }), ...(signal ? { signal } : {}) },
+  );
+}
+
+/** The request's append-only lifecycle narrative (`GET …/:id/events`). */
+export function listMaterialRequestEvents(
+  organizationId: string,
+  requestId: string,
+  signal?: AbortSignal,
+): Promise<MaterialRequestEvent[]> {
+  return apiGet<MaterialRequestEvent[]>(
+    `${MATERIAL_REQUESTS_PATH}/${encodeURIComponent(requestId)}/events`,
+    { params: cleanParams({ organizationId }), ...(signal ? { signal } : {}) },
+  );
+}
+
+/** Create a DRAFT (`POST …`): no number yet, no reservation, no stock effect. */
+export function createMaterialRequest(
+  body: CreateMaterialRequestInput,
+): Promise<MaterialRequestDetail> {
+  return apiPost<MaterialRequestDetail>(MATERIAL_REQUESTS_PATH, body);
+}
+
+/**
+ * Edit a draft/returned request (`PATCH …/:id`).
+ * Providing `lines` replaces the whole line set.
+ */
+export function updateMaterialRequest(
+  organizationId: string,
+  requestId: string,
+  body: UpdateMaterialRequestInput,
+): Promise<MaterialRequestDetail> {
+  return apiPatch<MaterialRequestDetail>(
+    `${MATERIAL_REQUESTS_PATH}/${encodeURIComponent(requestId)}`,
+    body,
+    { params: cleanParams({ organizationId }) },
+  );
+}
+
+/** Delete a DRAFT only (`DELETE …/:id`) — `204`, no body. */
+export function deleteMaterialRequest(
+  organizationId: string,
+  requestId: string,
+): Promise<void> {
+  return apiDelete<void>(
+    `${MATERIAL_REQUESTS_PATH}/${encodeURIComponent(requestId)}`,
+    { params: cleanParams({ organizationId }) },
+  );
+}
+
+/**
+ * Submit for approval (`POST …/:id/submit`): allocates the request number and
+ * moves it into the approval queue. No body; the transition is a command.
+ */
+export function submitMaterialRequest(
+  organizationId: string,
+  requestId: string,
+): Promise<MaterialRequestDetail> {
+  return apiPost<MaterialRequestDetail>(
+    `${MATERIAL_REQUESTS_PATH}/${encodeURIComponent(requestId)}/submit`,
+    {},
     { params: cleanParams({ organizationId }) },
   );
 }

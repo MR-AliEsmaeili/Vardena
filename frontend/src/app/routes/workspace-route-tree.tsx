@@ -46,6 +46,9 @@ import { InventoryDocumentFormPage } from '@/features/inventory/documents/invent
 import { InventoryDocumentLinesPage } from '@/features/inventory/documents/inventory-document-lines-page';
 import { InventoryDocumentsPage } from '@/features/inventory/documents/inventory-documents-page';
 import { InventoryHomePage } from '@/features/inventory/inventory-home-page';
+import { MaterialRequestDetailPage } from '@/features/inventory/material-requests/material-request-detail-page';
+import { MaterialRequestFormPage } from '@/features/inventory/material-requests/material-request-form-page';
+import { MaterialRequestsPage } from '@/features/inventory/material-requests/material-requests-page';
 import { ReservationDetailPage } from '@/features/inventory/reservations/reservation-detail-page';
 import { ReservationFormPage } from '@/features/inventory/reservations/reservation-form-page';
 import { ReservationsPage } from '@/features/inventory/reservations/reservations-page';
@@ -772,6 +775,61 @@ export const workspaceRouteTree: ReactElement = (
         }
       >
         <Route path="reservations/new" element={<ReservationFormPage />} />
+      </Route>
+
+      {/*
+        Material Requests (C-50, INV-06): the AUTHORING surfaces only.
+
+        - the list/detail group is gated by `MaterialRequest.View` (the code
+          both GET endpoints enforce);
+        - `…/new` is a SIBLING behind only `MaterialRequest.Create`, because
+          `POST /inventory/material-requests` enforces exactly that — a
+          Create-only principal must not be blocked by a View gate;
+        - `…/:requestId/edit` is nested INSIDE the View group and adds only
+          the Edit code, so it requires View AND Edit (the edit screen first
+          reads the record) — the documented third route shape.
+
+        The approval commands (approve/reject/return/reverse/cancel) belong to
+        INV-07 and line invocation is BLOCKED (`task/OUT-OF-SCOPE.md`), so no
+        route and no permission code for them exists here.
+      */}
+      <Route
+        element={
+          <RequirePermission
+            permissions={[PERMISSIONS.inventory.materialRequestView]}
+          />
+        }
+      >
+        <Route path="material-requests" element={<MaterialRequestsPage />} />
+        <Route
+          path="material-requests/:requestId"
+          element={<MaterialRequestDetailPage />}
+        />
+        <Route
+          element={
+            <RequirePermission
+              permissions={[PERMISSIONS.inventory.materialRequestEdit]}
+            />
+          }
+        >
+          <Route
+            path="material-requests/:requestId/edit"
+            element={<MaterialRequestFormPage mode="edit" />}
+          />
+        </Route>
+      </Route>
+
+      <Route
+        element={
+          <RequirePermission
+            permissions={[PERMISSIONS.inventory.materialRequestCreate]}
+          />
+        }
+      >
+        <Route
+          path="material-requests/new"
+          element={<MaterialRequestFormPage mode="create" />}
+        />
       </Route>
 
       {/*

@@ -900,6 +900,7 @@ export const fa = {
     inventoryDocuments: 'اسناد انبار',
     inventoryDocumentLines: 'ردیف‌های اسناد انبار',
     inventoryReservations: 'رزروهای موجودی',
+    inventoryMaterialRequests: 'درخواست‌های کالا',
     inventoryMovements: 'گردش‌های انبار',
     inventoryKardex: 'کاردکس',
     inventoryValuation: 'ارزش‌گذاری موجودی',
@@ -1873,6 +1874,147 @@ export const fa = {
         'آزادسازی انجام نشد. وضعیت رزرو و مالک چرخهٔ آن را بررسی کنید.',
       balanceDrift:
         'ماندهٔ ثبت‌شده با این آزادسازی سازگار نیست. پیش از تلاش دوباره، گزارش تطبیق موجودی را بررسی کنید.',
+    },
+  },
+
+  // Material Request authoring (C-50, INV-06). Vocabulary follows the backend
+  // aggregate: a request records DEMAND; a draft has no number until submit;
+  // `lines` is replaced wholesale on edit. The approval lifecycle copy lives in
+  // INV-07 — this namespace only names the authoring surfaces.
+  materialRequests: {
+    title: 'درخواست‌های کالا',
+    subtitle:
+      'ثبت نیاز به کالا در انبار؛ درخواست شماره نمی‌گیرد تا هنگام ارسال برای تأیید.',
+    newRequest: 'درخواست کالای جدید',
+    detailTitle: 'جزئیات درخواست کالا',
+    createTitle: 'ثبت درخواست کالا',
+    createDescription:
+      'درخواست تا زمان ارسال، پیش‌نویس است: شماره ندارد و هیچ رزروی ایجاد نمی‌کند.',
+    editTitle: 'ویرایش درخواست کالا',
+    editDescription:
+      'ویرایش، کل ردیف‌ها را جایگزین می‌کند؛ پس از ذخیره، ارسال دوباره انجام می‌شود.',
+    number: 'شمارهٔ درخواست',
+    draftNumber: 'پیش‌نویس',
+    status: 'وضعیت',
+    allStatuses: 'همهٔ وضعیت‌ها',
+    statuses: {
+      draft: 'پیش‌نویس',
+      submitted: 'ارسال‌شده',
+      returned: 'برگشتی برای اصلاح',
+      approved: 'تأییدشده',
+      rejected: 'ردشده',
+      cancelled: 'لغوشده',
+    },
+    filtersTitle: 'فیلتر درخواست‌های کالا',
+    description: 'توضیح',
+    descriptionHint: 'یادداشت اختیاری؛ حداکثر ۱۰۰۰ نویسه.',
+    descriptionTooLong: 'توضیح نباید بیش از ۱۰۰۰ نویسه باشد.',
+    requestedBy: 'درخواست‌کننده',
+    requestedByHint: 'شناسهٔ کاربر درخواست‌کننده (ULID).',
+    requestedByInvalid: 'شناسهٔ درخواست‌کننده باید یک ULID معتبر باشد.',
+    createdAt: 'زمان ایجاد',
+    updatedAt: 'آخرین به‌روزرسانی',
+    lines: 'ردیف‌های درخواست',
+    lineNumber: 'ردیف',
+    item: 'کالا',
+    warehouse: 'انبار',
+    quantity: 'مقدار',
+    quantityHint:
+      'مقدار مثبت را با حداکثر چهار رقم اعشار وارد کنید؛ متن دقیق همان‌طور که وارد شده ارسال می‌شود.',
+    unit: 'واحد',
+    baseQuantity: 'مقدار پایه',
+    baseUnit: 'واحد پایه',
+    conversionFactor: 'ضریب تبدیل',
+    reservationRequested: 'رزرو موجودی در تأیید',
+    reservationHint:
+      'با فعال‌بودن این گزینه، هنگام تأیید به‌اندازهٔ این ردیف رزرو می‌شود؛ اگر موجودی کافی نباشد، کل تأیید رد می‌شود.',
+    reservationYes: 'درخواست رزرو',
+    reservationNo: 'بدون رزرو',
+    reservationId: 'شناسهٔ رزرو',
+    invoked: 'فراخوانی‌شده',
+    remaining: 'باقی‌مانده',
+    invocationLocked:
+      'این ردیف به فرایند بعدی فراخوانی شده است و قابل حذف یا تغییر مقدار نیست.',
+    addLine: 'افزودن ردیف',
+    removeLine: 'حذف ردیف',
+    lastLineNote: 'درخواست باید دست‌کم یک ردیف داشته باشد.',
+    events: 'تاریخچهٔ رویدادها',
+    eventsEmpty: 'هنوز رویدادی برای این درخواست ثبت نشده است.',
+    eventsLoadFailed: 'دریافت تاریخچهٔ رویدادها انجام نشد.',
+    eventTypes: {
+      created: 'ایجاد',
+      submitted: 'ارسال برای تأیید',
+      returned_for_correction: 'برگشت برای اصلاح',
+      approved: 'تأیید',
+      rejected: 'رد',
+      approval_reversed: 'برگشت تأیید',
+      cancelled: 'لغو',
+      line_invoked: 'فراخوانی ردیف',
+    },
+    fromStatus: 'از وضعیت',
+    toStatus: 'به وضعیت',
+    actor: 'بازیگر',
+    reason: 'دلیل',
+    occurredAt: 'زمان رویداد',
+    submit: 'ارسال برای تأیید',
+    submitConfirmTitle: 'ارسال درخواست برای تأیید',
+    submitConfirmBody:
+      'با ارسال، درخواست برای تأیید در صف قرار می‌گیرد و شمارهٔ رسمی به آن تخصیص می‌یابد. تا پیش از تأیید، رزروی ایجاد نمی‌شود.',
+    submitting: 'در حال ارسال…',
+    submitted: 'درخواست کالا برای تأیید ارسال شد.',
+    submittedNumber: 'درخواست با شمارهٔ {number} ارسال شد.',
+    delete: 'حذف پیش‌نویس',
+    deleteConfirmTitle: 'حذف پیش‌نویس درخواست کالا',
+    deleteConfirmBody:
+      'این عملیات پیش‌نویس درخواست و همهٔ ردیف‌های آن را برای همیشه حذف می‌کند و قابل بازگشت نیست.',
+    deleting: 'در حال حذف…',
+    deleted: 'پیش‌نویس درخواست کالا حذف شد.',
+    notEditable:
+      'فقط پیش‌نویس و درخواست برگشتی برای اصلاح، قابل ویرایش، ارسال یا حذف است.',
+    readonlyTitle: 'این درخواست قابل ویرایش نیست',
+    emptyTitle: 'درخواستی برای نمایش وجود ندارد',
+    emptyBody:
+      'برای فیلترهای انتخاب‌شده یا در سازمان جاری هنوز درخواست کالایی ثبت نشده است.',
+    loadFailed: 'دریافت فهرست درخواست‌های کالا انجام نشد. دوباره تلاش کنید.',
+    detailLoadFailed: 'دریافت جزئیات درخواست کالا انجام نشد. دوباره تلاش کنید.',
+    detailNotFound: 'درخواست کالای موردنظر در این سازمان پیدا نشد.',
+    saveFailed: 'ذخیرهٔ درخواست کالا انجام نشد. اطلاعات را بررسی کنید.',
+    createdSuccess: 'پیش‌نویس درخواست کالا ثبت شد.',
+    updatedSuccess: 'تغییرات درخواست کالا ذخیره شد.',
+    validationSummary: 'پیش از ثبت، خطاهای زیر را برطرف کنید:',
+    referencesUnavailable:
+      'فهرست کالا، انبار یا واحد در دسترس نیست. مجوزهای مشاهدهٔ اطلاعات پایه را بررسی کنید.',
+    referencesEmpty:
+      'برای ثبت درخواست کالا، دست‌کم یک کالا، انبار و واحد فعال لازم است.',
+    itemRequired: 'انتخاب کالا الزامی است.',
+    warehouseRequired: 'انتخاب انبار الزامی است.',
+    quantityRequired: 'وارد کردن مقدار الزامی است.',
+    quantityInvalid:
+      'مقدار باید یک عدد اعشاری مثبت با حداکثر چهار رقم اعشار باشد.',
+    unitRequired: 'انتخاب واحد الزامی است.',
+    atLeastOneLine: 'درخواست کالا باید دست‌کم یک ردیف داشته باشد.',
+    openDetails: 'مشاهدهٔ درخواست',
+    edit: 'ویرایش درخواست',
+    errors: {
+      createRejected:
+        'سامانه درخواست کالا را نپذیرفت. کالا، انبار، واحد و تبدیل واحد را بررسی کنید.',
+      updateRejected:
+        'ذخیرهٔ تغییرات پذیرفته نشد. وضعیت درخواست و ردیف‌های فراخوانی‌شده را بررسی کنید.',
+      submitRejected:
+        'ارسال برای تأیید انجام نشد. وضعیت درخواست و مجوزهای خود را بررسی کنید.',
+      deleteRejected: 'حذف پیش‌نویس انجام نشد. فقط پیش‌نویس‌ها قابل حذف‌اند.',
+      notEditable:
+        'وضعیت این درخواست اجازهٔ این عملیات را نمی‌دهد؛ فقط پیش‌نویس و برگشتی قابل تغییر، ارسال یا حذف است.',
+      statusChanged:
+        'وضعیت درخواست هم‌زمان تغییر کرده است. صفحه را تازه کنید و دوباره تلاش کنید.',
+      atLeastOneLine: 'درخواست کالا باید دست‌کم یک ردیف داشته باشد.',
+      conversionUnavailable:
+        'برای واحد انتخاب‌شده، تبدیل معتبر به واحد پایه در روز کاری جاری سازمان ثبت نشده است. واحد پایه را انتخاب کنید یا تبدیل را بررسی کنید.',
+      itemNotPostable:
+        'این کالا قابل نگهداری در انبار نیست یا ردیابی سری/بچ دارد و درخواست کالا برای آن مجاز نیست.',
+      quantityInvalid:
+        'مقدار باید یک عدد اعشاری مثبت با حداکثر چهارده رقم صحیح و چهار رقم اعشار باشد.',
+      referenceNotFound: 'کالا، انبار، واحد یا سازمان انتخاب‌شده معتبر نیست.',
     },
   },
 

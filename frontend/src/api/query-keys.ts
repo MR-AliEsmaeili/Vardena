@@ -533,6 +533,42 @@ export const queryKeys = {
         reservationId,
       ] as const,
 
+    /** Server-paged Material Request worklist (C-50). */
+    materialRequests: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+    ) =>
+      [
+        'inventory',
+        organizationId,
+        'material-requests',
+        'list',
+        filters,
+      ] as const,
+
+    /** Every Material Request read of one organization (invalidation scope). */
+    materialRequestsPrefix: (organizationId: string) =>
+      ['inventory', organizationId, 'material-requests'] as const,
+
+    materialRequestDetail: (organizationId: string, requestId: string) =>
+      [
+        'inventory',
+        organizationId,
+        'material-requests',
+        'detail',
+        requestId,
+      ] as const,
+
+    /** The append-only lifecycle narrative of one request (no pagination). */
+    materialRequestEvents: (organizationId: string, requestId: string) =>
+      [
+        'inventory',
+        organizationId,
+        'material-requests',
+        'events',
+        requestId,
+      ] as const,
+
     // Reference reads (active warehouses / stockable items / units). Kept as
     // ONE key per entity per organization — they are small, slow-moving
     // master-data lists, not filtered workspaces.

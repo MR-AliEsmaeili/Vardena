@@ -4,6 +4,7 @@ import {
   ArrowUpFromLine,
   Boxes,
   ClipboardCheck,
+  ClipboardList,
   FileSpreadsheet,
   FileStack,
   FolderTree,
@@ -69,6 +70,20 @@ const OPERATIONS_SURFACES: readonly InventorySurface[] = [
     description: t.reservations.subtitle,
     icon: ClipboardCheck,
     permission: PERMISSIONS.inventory.reservationView,
+  },
+  {
+    to: '/app/inventory/material-requests/new',
+    label: t.materialRequests.newRequest,
+    description: t.materialRequests.createDescription,
+    icon: ClipboardList,
+    permission: PERMISSIONS.inventory.materialRequestCreate,
+  },
+  {
+    to: '/app/inventory/material-requests',
+    label: t.materialRequests.title,
+    description: t.materialRequests.subtitle,
+    icon: ClipboardList,
+    permission: PERMISSIONS.inventory.materialRequestView,
   },
   {
     to: '/app/inventory/documents',

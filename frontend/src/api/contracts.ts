@@ -765,6 +765,134 @@ export type CreateInventoryReservationInput =
 export type ReleaseInventoryReservationInput =
   Schemas['ReleaseInventoryReservationDto'];
 
+// ---------------------------------------------------------------------------
+// Inventory — Material Request authoring (C-50, INV-06)
+//
+// The backend aggregate (`MaterialRequestsController` + `material-request.dto`)
+// is the source of truth. Two verified Swagger limitations are narrowed here,
+// never widened:
+//
+// 1. every nullable column of `MaterialRequestResponseDto` /
+//    `MaterialRequestDetailResponseDto` (`number`, `description`, the six
+//    lifecycle timestamp/actor/reason triples) emits as
+//    `Record<string, never> | null`, because the DTO annotates them without a
+//    `type`; the backend TypeScript declaration is `string | null`;
+// 2. `MaterialRequestLineInputDto.reservationRequested` is generated as
+//    REQUIRED although the DTO marks it `@IsOptional()` and defaults it to
+//    `false`, and `CreateMaterialRequestDto.description` emits as
+//    `Record<string, never>`. The hand-written input shapes below restate
+//    exactly the backend declaration (optional flag, nullable description) so
+//    the UI never has to invent a value the server would default.
+//
+// `quantity` stays an exact decimal STRING end to end: the UI never parses,
+// rounds or re-derives it (standards.md §7).
+// ---------------------------------------------------------------------------
+
+/**
+ * Closed status list of `material-request.ts` (`MATERIAL_REQUEST_STATUSES`) —
+ * runtime tuple + derived union, so filters and exhaustive switches read the
+ * contract instead of re-typing the list.
+ */
+export const MATERIAL_REQUEST_STATUSES = [
+  'draft',
+  'submitted',
+  'returned',
+  'approved',
+  'rejected',
+  'cancelled',
+] as const;
+
+export type MaterialRequestStatus = (typeof MATERIAL_REQUEST_STATUSES)[number];
+
+/** The append-only lifecycle narrative's event kinds. */
+export const MATERIAL_REQUEST_EVENT_TYPES = [
+  'created',
+  'submitted',
+  'returned_for_correction',
+  'approved',
+  'rejected',
+  'approval_reversed',
+  'cancelled',
+  'line_invoked',
+] as const;
+
+export type MaterialRequestEventType =
+  (typeof MATERIAL_REQUEST_EVENT_TYPES)[number];
+
+/** One Material Request header (`MaterialRequestResponseDto`). */
+export type MaterialRequest = NullableString<
+  Schemas['MaterialRequestResponseDto'],
+  | 'number'
+  | 'description'
+  | 'submittedAt'
+  | 'submittedBy'
+  | 'returnedAt'
+  | 'returnedBy'
+  | 'returnReason'
+  | 'approvedAt'
+  | 'approvedBy'
+  | 'rejectedAt'
+  | 'rejectedBy'
+  | 'rejectionReason'
+  | 'approvalReversedAt'
+  | 'approvalReversedBy'
+  | 'approvalReversalReason'
+  | 'cancelledAt'
+  | 'cancelledBy'
+  | 'cancellationReason'
+>;
+
+/** One line of a Material Request (`MaterialRequestLineResponseDto`). */
+export type MaterialRequestLine = NullableString<
+  Schemas['MaterialRequestLineResponseDto'],
+  'reservationId'
+>;
+
+/** Header plus its lines (`MaterialRequestDetailResponseDto`). */
+export type MaterialRequestDetail = MaterialRequest & {
+  lines: MaterialRequestLine[];
+};
+
+/** One lifecycle event (`MaterialRequestEventResponseDto`). */
+export type MaterialRequestEvent = Omit<
+  NullableString<
+    Schemas['MaterialRequestEventResponseDto'],
+    'fromStatus' | 'toStatus' | 'actorId' | 'reason' | 'referenceId'
+  >,
+  'eventType'
+> & {
+  eventType: MaterialRequestEventType;
+  fromStatus: MaterialRequestStatus | null;
+  toStatus: MaterialRequestStatus | null;
+};
+
+/** One line as the write DTO accepts it (`MaterialRequestLineInputDto`). */
+export interface MaterialRequestLineInput {
+  itemId: string;
+  warehouseId: string;
+  /** Positive decimal magnitude in `unitId`, as a string. */
+  quantity: string;
+  unitId: string;
+  /** Backend default is `false`; omitted fields keep that default. */
+  reservationRequested?: boolean;
+}
+
+/** `CreateMaterialRequestDto` with its real, optional description field. */
+export interface CreateMaterialRequestInput {
+  organizationId: string;
+  description?: string | null;
+  lines: MaterialRequestLineInput[];
+}
+
+/** `UpdateMaterialRequestDto`; `lines` REPLACES the whole line set. */
+export interface UpdateMaterialRequestInput {
+  description?: string | null;
+  lines?: MaterialRequestLineInput[];
+}
+
+export type MaterialRequestListQuery =
+  operations['MaterialRequestsController_list_v1']['parameters']['query'];
+
 /** Workflow binding/instance row (`WorkflowInstanceResponseDto`). */
 export type WorkflowInstance = Schemas['WorkflowInstanceResponseDto'];
 export type WorkflowInstanceListQuery =
