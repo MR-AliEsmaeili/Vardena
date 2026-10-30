@@ -1164,15 +1164,22 @@ export const workspaceRouteTree: ReactElement = (
 
       <Route
         element={
-          <RequirePermission permissions={[PERMISSIONS.documents.relationView]} />
+          <RequirePermission
+            permissions={[PERMISSIONS.documents.relationView]}
+          />
         }
       >
         <Route path="relations" element={<DocumentRelationsPage />} />
-        <Route path="relations/:relationId" element={<DocumentRelationDetailPage />} />
+        <Route
+          path="relations/:relationId"
+          element={<DocumentRelationDetailPage />}
+        />
       </Route>
       <Route
         element={
-          <RequirePermission permissions={[PERMISSIONS.documents.relationCreate]} />
+          <RequirePermission
+            permissions={[PERMISSIONS.documents.relationCreate]}
+          />
         }
       >
         <Route path="relations/new" element={<DocumentRelationCreatePage />} />

@@ -23,8 +23,18 @@ vi.mock('@/features/organization/use-organization', () => ({
 const relation: DocumentRelation = {
   id: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
   organizationId: testOrganization.id,
-  source: { module: 'sales', documentType: 'sales_invoice', documentId: '01ARZ3NDEKTSV4RRFFQ69G5FB1', lineId: null },
-  target: { module: 'accounting', documentType: 'accounting_journal', documentId: '01ARZ3NDEKTSV4RRFFQ69G5FC2', lineId: null },
+  source: {
+    module: 'sales',
+    documentType: 'sales_invoice',
+    documentId: '01ARZ3NDEKTSV4RRFFQ69G5FB1',
+    lineId: null,
+  },
+  target: {
+    module: 'accounting',
+    documentType: 'accounting_journal',
+    documentId: '01ARZ3NDEKTSV4RRFFQ69G5FC2',
+    lineId: null,
+  },
   relationKind: 'reference',
   quantity: null,
   createdByProcess: false,
@@ -42,9 +52,13 @@ beforeEach(() => {
 
 describe('DocumentRelationsPage', () => {
   it('renders relations from the server', async () => {
-    renderWithProviders(<DocumentRelationsPage />, { initialEntries: ['/app/documents/relations'] });
+    renderWithProviders(<DocumentRelationsPage />, {
+      initialEntries: ['/app/documents/relations'],
+    });
     const table = await screen.findByRole('table');
-    expect(within(table).getByText(t.documentRelations.kinds.reference)).toBeInTheDocument();
+    expect(
+      within(table).getByText(t.documentRelations.kinds.reference),
+    ).toBeInTheDocument();
     expect(listDocumentRelations).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: testOrganization.id }),
       expect.anything(),
@@ -53,19 +67,33 @@ describe('DocumentRelationsPage', () => {
 
   it('shows empty state when no relations', async () => {
     vi.mocked(listDocumentRelations).mockResolvedValue(page([]));
-    renderWithProviders(<DocumentRelationsPage />, { initialEntries: ['/app/documents/relations'] });
-    expect(await screen.findByText(t.documentRelations.emptyTitle)).toBeInTheDocument();
+    renderWithProviders(<DocumentRelationsPage />, {
+      initialEntries: ['/app/documents/relations'],
+    });
+    expect(
+      await screen.findByText(t.documentRelations.emptyTitle),
+    ).toBeInTheDocument();
   });
 
   it('shows error with retry and recovers on retry', async () => {
     const user = userEvent.setup();
     vi.mocked(listDocumentRelations)
-      .mockRejectedValueOnce(new ApiError({ code: 'InternalError', message: 'boom' }))
+      .mockRejectedValueOnce(
+        new ApiError({ code: 'InternalError', message: 'boom' }),
+      )
       .mockResolvedValueOnce(page([relation]));
-    renderWithProviders(<DocumentRelationsPage />, { initialEntries: ['/app/documents/relations'] });
-    expect(await screen.findByText(t.documentRelations.loadFailed)).toBeInTheDocument();
+    renderWithProviders(<DocumentRelationsPage />, {
+      initialEntries: ['/app/documents/relations'],
+    });
+    expect(
+      await screen.findByText(t.documentRelations.loadFailed),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: t.app.retry }));
-    await waitFor(() => expect(screen.getByText(t.documentRelations.kinds.reference)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText(t.documentRelations.kinds.reference),
+      ).toBeInTheDocument(),
+    );
     expect(listDocumentRelations).toHaveBeenCalledTimes(2);
   });
 });

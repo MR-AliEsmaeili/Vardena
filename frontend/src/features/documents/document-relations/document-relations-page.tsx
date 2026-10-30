@@ -39,13 +39,18 @@ function relationKindLabel(kind: string): string {
   return map[kind] ?? kind;
 }
 
-function createColumns(timeZone: string): ColumnDef<DocumentRelation, unknown>[] {
+function createColumns(
+  timeZone: string,
+): ColumnDef<DocumentRelation, unknown>[] {
   return [
     {
       accessorKey: 'relationKind',
       header: t.documentRelations.relationKind,
       cell: ({ row }) => (
-        <Badge variant="neutral" data-testid={`relation-kind-${row.original.relationKind}`}>
+        <Badge
+          variant="neutral"
+          data-testid={`relation-kind-${row.original.relationKind}`}
+        >
           {relationKindLabel(row.original.relationKind)}
         </Badge>
       ),
@@ -56,7 +61,9 @@ function createColumns(timeZone: string): ColumnDef<DocumentRelation, unknown>[]
       cell: ({ row }) => (
         <span dir="ltr" className="text-xs">
           {row.original.source.module}/{row.original.source.documentType}/
-          <span className="code">{row.original.source.documentId.slice(0, 8)}…</span>
+          <span className="code">
+            {row.original.source.documentId.slice(0, 8)}…
+          </span>
         </span>
       ),
     },
@@ -66,7 +73,9 @@ function createColumns(timeZone: string): ColumnDef<DocumentRelation, unknown>[]
       cell: ({ row }) => (
         <span dir="ltr" className="text-xs">
           {row.original.target.module}/{row.original.target.documentType}/
-          <span className="code">{row.original.target.documentId.slice(0, 8)}…</span>
+          <span className="code">
+            {row.original.target.documentId.slice(0, 8)}…
+          </span>
         </span>
       ),
     },
@@ -94,7 +103,9 @@ function createColumns(timeZone: string): ColumnDef<DocumentRelation, unknown>[]
       enableSorting: false,
       cell: ({ row }) => (
         <Button asChild variant="ghost" size="sm">
-          <Link to={documentRelationDetailPath(row.original.id)}>{t.documentRelations.view}</Link>
+          <Link to={documentRelationDetailPath(row.original.id)}>
+            {t.documentRelations.view}
+          </Link>
         </Button>
       ),
     },
@@ -146,13 +157,22 @@ export function DocumentRelationsPage() {
         description={t.documentRelations.subtitle}
         actions={
           <PermissionGate permission={PERMISSIONS.documents.relationCreate}>
-            <Button asChild size="sm" data-testid="document-relations-new-button">
-              <Link to={`${DOCUMENT_RELATIONS_PATH}/new`}>{t.documentRelations.newRelation}</Link>
+            <Button
+              asChild
+              size="sm"
+              data-testid="document-relations-new-button"
+            >
+              <Link to={`${DOCUMENT_RELATIONS_PATH}/new`}>
+                {t.documentRelations.newRelation}
+              </Link>
             </Button>
           </PermissionGate>
         }
       />
-      <p className="text-xs text-ink-subtle" data-testid="document-relations-note">
+      <p
+        className="text-xs text-ink-subtle"
+        data-testid="document-relations-note"
+      >
         {t.documentRelations.registryNote}
       </p>
 
@@ -246,8 +266,12 @@ export function DocumentRelationsPage() {
             defaultValue={state.sort}
             data-testid="document-relations-sort-filter"
           >
-            <option value="createdAt:desc">{t.documentRelations.sortCreatedAtDesc}</option>
-            <option value="createdAt:asc">{t.documentRelations.sortCreatedAtAsc}</option>
+            <option value="createdAt:desc">
+              {t.documentRelations.sortCreatedAtDesc}
+            </option>
+            <option value="createdAt:asc">
+              {t.documentRelations.sortCreatedAtAsc}
+            </option>
           </Select>
         </FilterField>
       </FilterBar>
@@ -265,20 +289,28 @@ export function DocumentRelationsPage() {
           : {})}
         onRetry={() => void query.refetch()}
         emptyTitle={
-          hasActiveFilter ? t.documentRelations.emptyFilteredTitle : t.documentRelations.emptyTitle
+          hasActiveFilter
+            ? t.documentRelations.emptyFilteredTitle
+            : t.documentRelations.emptyTitle
         }
         emptyDescription={
-          hasActiveFilter ? t.documentRelations.emptyFilteredBody : t.documentRelations.emptyBody
+          hasActiveFilter
+            ? t.documentRelations.emptyFilteredBody
+            : t.documentRelations.emptyBody
         }
         pagination={{
           page: query.data?.page ?? state.page,
           pageSize: query.data?.pageSize ?? state.pageSize,
           total: query.data?.total ?? 0,
           onPageChange: (page) => state.update({ page }),
-          onPageSizeChange: (pageSize) => state.update({ pageSize, page: null }),
+          onPageSizeChange: (pageSize) =>
+            state.update({ pageSize, page: null }),
         }}
       />
-      <p className="text-xs text-ink-subtle" data-testid="document-relations-no-delete-note">
+      <p
+        className="text-xs text-ink-subtle"
+        data-testid="document-relations-no-delete-note"
+      >
         {t.documentRelations.noDeleteNote}
       </p>
     </div>

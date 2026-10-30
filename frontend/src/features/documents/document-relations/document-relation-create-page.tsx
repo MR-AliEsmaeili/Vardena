@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useOrganizationId } from '@/features/organization/use-organization';
-import { DOCUMENT_RELATION_KINDS, type DocumentRelationKind } from '@/api/contracts';
+import {
+  DOCUMENT_RELATION_KINDS,
+  type DocumentRelationKind,
+} from '@/api/contracts';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import { Card, CardContent } from '@/ui/card';
@@ -43,9 +46,12 @@ interface FieldErrors {
 export function DocumentRelationCreatePage() {
   const organizationId = useOrganizationId();
   const navigate = useNavigate();
-  const createMutation = useCreateDocumentRelationMutation(organizationId ?? 'none');
+  const createMutation = useCreateDocumentRelationMutation(
+    organizationId ?? 'none',
+  );
 
-  const [relationKind, setRelationKind] = useState<DocumentRelationKind>('reference');
+  const [relationKind, setRelationKind] =
+    useState<DocumentRelationKind>('reference');
   const [quantity, setQuantity] = useState('');
   const [sourceModule, setSourceModule] = useState('');
   const [sourceDocumentType, setSourceDocumentType] = useState('');
@@ -59,26 +65,46 @@ export function DocumentRelationCreatePage() {
 
   const validate = (): boolean => {
     const next: FieldErrors = {};
-    if (sourceModule.trim() === '') next.sourceModule = t.documentRelations.validation.moduleRequired;
-    else if (sourceModule.trim().length > 64) next.sourceModule = t.documentRelations.validation.moduleTooLong;
-    if (sourceDocumentType.trim() === '') next.sourceDocumentType = t.documentRelations.validation.documentTypeRequired;
-    else if (sourceDocumentType.trim().length > 64) next.sourceDocumentType = t.documentRelations.validation.documentTypeTooLong;
-    if (!isValidUlid(sourceDocumentId.trim())) next.sourceDocumentId = t.documentRelations.validation.documentIdInvalid;
-    if (sourceLineId.trim() !== '' && !isValidUlid(sourceLineId.trim())) next.sourceLineId = t.documentRelations.validation.lineIdInvalid;
+    if (sourceModule.trim() === '')
+      next.sourceModule = t.documentRelations.validation.moduleRequired;
+    else if (sourceModule.trim().length > 64)
+      next.sourceModule = t.documentRelations.validation.moduleTooLong;
+    if (sourceDocumentType.trim() === '')
+      next.sourceDocumentType =
+        t.documentRelations.validation.documentTypeRequired;
+    else if (sourceDocumentType.trim().length > 64)
+      next.sourceDocumentType =
+        t.documentRelations.validation.documentTypeTooLong;
+    if (!isValidUlid(sourceDocumentId.trim()))
+      next.sourceDocumentId = t.documentRelations.validation.documentIdInvalid;
+    if (sourceLineId.trim() !== '' && !isValidUlid(sourceLineId.trim()))
+      next.sourceLineId = t.documentRelations.validation.lineIdInvalid;
 
-    if (targetModule.trim() === '') next.targetModule = t.documentRelations.validation.moduleRequired;
-    else if (targetModule.trim().length > 64) next.targetModule = t.documentRelations.validation.moduleTooLong;
-    if (targetDocumentType.trim() === '') next.targetDocumentType = t.documentRelations.validation.documentTypeRequired;
-    else if (targetDocumentType.trim().length > 64) next.targetDocumentType = t.documentRelations.validation.documentTypeTooLong;
-    if (!isValidUlid(targetDocumentId.trim())) next.targetDocumentId = t.documentRelations.validation.documentIdInvalid;
-    if (targetLineId.trim() !== '' && !isValidUlid(targetLineId.trim())) next.targetLineId = t.documentRelations.validation.lineIdInvalid;
+    if (targetModule.trim() === '')
+      next.targetModule = t.documentRelations.validation.moduleRequired;
+    else if (targetModule.trim().length > 64)
+      next.targetModule = t.documentRelations.validation.moduleTooLong;
+    if (targetDocumentType.trim() === '')
+      next.targetDocumentType =
+        t.documentRelations.validation.documentTypeRequired;
+    else if (targetDocumentType.trim().length > 64)
+      next.targetDocumentType =
+        t.documentRelations.validation.documentTypeTooLong;
+    if (!isValidUlid(targetDocumentId.trim()))
+      next.targetDocumentId = t.documentRelations.validation.documentIdInvalid;
+    if (targetLineId.trim() !== '' && !isValidUlid(targetLineId.trim()))
+      next.targetLineId = t.documentRelations.validation.lineIdInvalid;
 
-    if (!DOCUMENT_RELATION_KINDS.includes(relationKind as never)) next.relationKind = t.documentRelations.validation.relationKindInvalid;
+    if (!DOCUMENT_RELATION_KINDS.includes(relationKind as never))
+      next.relationKind = t.documentRelations.validation.relationKindInvalid;
 
     const trimmedQty = quantity.trim();
     if (relationKind === 'fulfill') {
-      if (trimmedQty === '') next.quantity = t.documentRelations.validation.quantityRequiredForFulfill;
-      else if (!/^\d{1,14}(\.\d{1,4})?$/.test(trimmedQty)) next.quantity = t.documentRelations.validation.quantityInvalid;
+      if (trimmedQty === '')
+        next.quantity =
+          t.documentRelations.validation.quantityRequiredForFulfill;
+      else if (!/^\d{1,14}(\.\d{1,4})?$/.test(trimmedQty))
+        next.quantity = t.documentRelations.validation.quantityInvalid;
     } else if (trimmedQty !== '') {
       next.quantity = t.documentRelations.validation.quantityForbidden;
     }
@@ -100,19 +126,24 @@ export function DocumentRelationCreatePage() {
           module: sourceModule.trim(),
           documentType: sourceDocumentType.trim(),
           documentId: sourceDocumentId.trim(),
-          ...(sourceLineId.trim() !== '' ? { lineId: sourceLineId.trim() } : {}),
+          ...(sourceLineId.trim() !== ''
+            ? { lineId: sourceLineId.trim() }
+            : {}),
         },
         target: {
           module: targetModule.trim(),
           documentType: targetDocumentType.trim(),
           documentId: targetDocumentId.trim(),
-          ...(targetLineId.trim() !== '' ? { lineId: targetLineId.trim() } : {}),
+          ...(targetLineId.trim() !== ''
+            ? { lineId: targetLineId.trim() }
+            : {}),
         },
         relationKind,
         ...(trimmedQty !== '' ? { quantity: trimmedQty } : {}),
       },
       {
-        onSuccess: (saved) => navigate(`/app/documents/relations/${encodeURIComponent(saved.id)}`),
+        onSuccess: (saved) =>
+          navigate(`/app/documents/relations/${encodeURIComponent(saved.id)}`),
       },
     );
   };
@@ -130,10 +161,14 @@ export function DocumentRelationCreatePage() {
       <form onSubmit={handleSubmit} noValidate className="space-y-6">
         <Card>
           <CardContent className="space-y-4 pt-6">
-            <h3 className="text-sm font-semibold">{t.documentRelations.source}</h3>
+            <h3 className="text-sm font-semibold">
+              {t.documentRelations.source}
+            </h3>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="sourceModule">{t.documentRelations.module}</Label>
+                <Label htmlFor="sourceModule">
+                  {t.documentRelations.module}
+                </Label>
                 <Input
                   id="sourceModule"
                   value={sourceModule}
@@ -142,10 +177,16 @@ export function DocumentRelationCreatePage() {
                   dir="ltr"
                   data-testid="document-relation-source-module"
                 />
-                {fieldErrors.sourceModule ? <p className="text-xs text-danger">{fieldErrors.sourceModule}</p> : null}
+                {fieldErrors.sourceModule ? (
+                  <p className="text-xs text-danger">
+                    {fieldErrors.sourceModule}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="sourceDocumentType">{t.documentRelations.documentType}</Label>
+                <Label htmlFor="sourceDocumentType">
+                  {t.documentRelations.documentType}
+                </Label>
                 <Input
                   id="sourceDocumentType"
                   value={sourceDocumentType}
@@ -154,10 +195,16 @@ export function DocumentRelationCreatePage() {
                   dir="ltr"
                   data-testid="document-relation-source-document-type"
                 />
-                {fieldErrors.sourceDocumentType ? <p className="text-xs text-danger">{fieldErrors.sourceDocumentType}</p> : null}
+                {fieldErrors.sourceDocumentType ? (
+                  <p className="text-xs text-danger">
+                    {fieldErrors.sourceDocumentType}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="sourceDocumentId">{t.documentRelations.documentId}</Label>
+                <Label htmlFor="sourceDocumentId">
+                  {t.documentRelations.documentId}
+                </Label>
                 <Input
                   id="sourceDocumentId"
                   value={sourceDocumentId}
@@ -166,10 +213,16 @@ export function DocumentRelationCreatePage() {
                   dir="ltr"
                   data-testid="document-relation-source-document-id"
                 />
-                {fieldErrors.sourceDocumentId ? <p className="text-xs text-danger">{fieldErrors.sourceDocumentId}</p> : null}
+                {fieldErrors.sourceDocumentId ? (
+                  <p className="text-xs text-danger">
+                    {fieldErrors.sourceDocumentId}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="sourceLineId">{t.documentRelations.lineId} ({t.documentRelations.optional})</Label>
+                <Label htmlFor="sourceLineId">
+                  {t.documentRelations.lineId} ({t.documentRelations.optional})
+                </Label>
                 <Input
                   id="sourceLineId"
                   value={sourceLineId}
@@ -178,7 +231,11 @@ export function DocumentRelationCreatePage() {
                   dir="ltr"
                   data-testid="document-relation-source-line-id"
                 />
-                {fieldErrors.sourceLineId ? <p className="text-xs text-danger">{fieldErrors.sourceLineId}</p> : null}
+                {fieldErrors.sourceLineId ? (
+                  <p className="text-xs text-danger">
+                    {fieldErrors.sourceLineId}
+                  </p>
+                ) : null}
               </div>
             </div>
           </CardContent>
@@ -186,10 +243,14 @@ export function DocumentRelationCreatePage() {
 
         <Card>
           <CardContent className="space-y-4 pt-6">
-            <h3 className="text-sm font-semibold">{t.documentRelations.target}</h3>
+            <h3 className="text-sm font-semibold">
+              {t.documentRelations.target}
+            </h3>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="targetModule">{t.documentRelations.module}</Label>
+                <Label htmlFor="targetModule">
+                  {t.documentRelations.module}
+                </Label>
                 <Input
                   id="targetModule"
                   value={targetModule}
@@ -198,10 +259,16 @@ export function DocumentRelationCreatePage() {
                   dir="ltr"
                   data-testid="document-relation-target-module"
                 />
-                {fieldErrors.targetModule ? <p className="text-xs text-danger">{fieldErrors.targetModule}</p> : null}
+                {fieldErrors.targetModule ? (
+                  <p className="text-xs text-danger">
+                    {fieldErrors.targetModule}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="targetDocumentType">{t.documentRelations.documentType}</Label>
+                <Label htmlFor="targetDocumentType">
+                  {t.documentRelations.documentType}
+                </Label>
                 <Input
                   id="targetDocumentType"
                   value={targetDocumentType}
@@ -210,10 +277,16 @@ export function DocumentRelationCreatePage() {
                   dir="ltr"
                   data-testid="document-relation-target-document-type"
                 />
-                {fieldErrors.targetDocumentType ? <p className="text-xs text-danger">{fieldErrors.targetDocumentType}</p> : null}
+                {fieldErrors.targetDocumentType ? (
+                  <p className="text-xs text-danger">
+                    {fieldErrors.targetDocumentType}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="targetDocumentId">{t.documentRelations.documentId}</Label>
+                <Label htmlFor="targetDocumentId">
+                  {t.documentRelations.documentId}
+                </Label>
                 <Input
                   id="targetDocumentId"
                   value={targetDocumentId}
@@ -222,10 +295,16 @@ export function DocumentRelationCreatePage() {
                   dir="ltr"
                   data-testid="document-relation-target-document-id"
                 />
-                {fieldErrors.targetDocumentId ? <p className="text-xs text-danger">{fieldErrors.targetDocumentId}</p> : null}
+                {fieldErrors.targetDocumentId ? (
+                  <p className="text-xs text-danger">
+                    {fieldErrors.targetDocumentId}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="targetLineId">{t.documentRelations.lineId} ({t.documentRelations.optional})</Label>
+                <Label htmlFor="targetLineId">
+                  {t.documentRelations.lineId} ({t.documentRelations.optional})
+                </Label>
                 <Input
                   id="targetLineId"
                   value={targetLineId}
@@ -234,7 +313,11 @@ export function DocumentRelationCreatePage() {
                   dir="ltr"
                   data-testid="document-relation-target-line-id"
                 />
-                {fieldErrors.targetLineId ? <p className="text-xs text-danger">{fieldErrors.targetLineId}</p> : null}
+                {fieldErrors.targetLineId ? (
+                  <p className="text-xs text-danger">
+                    {fieldErrors.targetLineId}
+                  </p>
+                ) : null}
               </div>
             </div>
           </CardContent>
@@ -244,12 +327,17 @@ export function DocumentRelationCreatePage() {
           <CardContent className="space-y-4 pt-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="relationKind">{t.documentRelations.relationKind}</Label>
+                <Label htmlFor="relationKind">
+                  {t.documentRelations.relationKind}
+                </Label>
                 <Select
                   id="relationKind"
                   value={relationKind}
                   onChange={(ev) =>
-                    setRelationKind((ev.target as HTMLSelectElement).value as DocumentRelationKind)
+                    setRelationKind(
+                      (ev.target as HTMLSelectElement)
+                        .value as DocumentRelationKind,
+                    )
                   }
                   data-testid="document-relation-kind"
                 >
@@ -257,12 +345,20 @@ export function DocumentRelationCreatePage() {
                     <option key={k} value={k}>
                       {k === 'transfer_of'
                         ? t.documentRelations.kinds.transferOf
-                        : t.documentRelations.kinds[k as keyof typeof t.documentRelations.kinds] ?? k}
+                        : (t.documentRelations.kinds[
+                            k as keyof typeof t.documentRelations.kinds
+                          ] ?? k)}
                     </option>
                   ))}
                 </Select>
-                {fieldErrors.relationKind ? <p className="text-xs text-danger">{fieldErrors.relationKind}</p> : null}
-                <p className="text-xs text-ink-subtle">{t.documentRelations.relationKindHint}</p>
+                {fieldErrors.relationKind ? (
+                  <p className="text-xs text-danger">
+                    {fieldErrors.relationKind}
+                  </p>
+                ) : null}
+                <p className="text-xs text-ink-subtle">
+                  {t.documentRelations.relationKindHint}
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="quantity">
@@ -273,14 +369,22 @@ export function DocumentRelationCreatePage() {
                   id="quantity"
                   value={quantity}
                   onChange={(ev) => setQuantity(ev.target.value)}
-                  placeholder={isFulfill ? '12.5000' : t.documentRelations.quantityPlaceholder}
+                  placeholder={
+                    isFulfill
+                      ? '12.5000'
+                      : t.documentRelations.quantityPlaceholder
+                  }
                   dir="ltr"
                   data-testid="document-relation-quantity"
                   aria-describedby="quantity-hint"
                 />
-                {fieldErrors.quantity ? <p className="text-xs text-danger">{fieldErrors.quantity}</p> : null}
+                {fieldErrors.quantity ? (
+                  <p className="text-xs text-danger">{fieldErrors.quantity}</p>
+                ) : null}
                 <p id="quantity-hint" className="text-xs text-ink-subtle">
-                  {isFulfill ? t.documentRelations.quantityFulfillHint : t.documentRelations.quantityForbiddenHint}
+                  {isFulfill
+                    ? t.documentRelations.quantityFulfillHint
+                    : t.documentRelations.quantityForbiddenHint}
                 </p>
               </div>
             </div>
@@ -291,16 +395,29 @@ export function DocumentRelationCreatePage() {
           <ApiErrorAlert
             error={createMutation.error}
             title={t.table.errorTitle}
-            description={documentRelationErrorMessage('create', createMutation.error)}
+            description={documentRelationErrorMessage(
+              'create',
+              createMutation.error,
+            )}
           />
         ) : null}
 
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => navigate('/app/documents/relations')}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => navigate('/app/documents/relations')}
+          >
             {t.app.cancel}
           </Button>
-          <Button type="submit" disabled={createMutation.isPending} data-testid="document-relation-submit">
-            {createMutation.isPending ? t.documentRelations.creating : t.documentRelations.create}
+          <Button
+            type="submit"
+            disabled={createMutation.isPending}
+            data-testid="document-relation-submit"
+          >
+            {createMutation.isPending
+              ? t.documentRelations.creating
+              : t.documentRelations.create}
           </Button>
         </div>
       </form>

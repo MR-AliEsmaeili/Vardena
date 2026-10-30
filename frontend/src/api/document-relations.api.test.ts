@@ -86,16 +86,32 @@ describe('documents.api — DocumentRelationsController contract', () => {
   it('creates with organizationId + source/target + relationKind + quantity', async () => {
     await createDocumentRelation({
       organizationId: org,
-      source: { module: 'sales', documentType: 'sales_invoice', documentId: org },
-      target: { module: 'accounting', documentType: 'accounting_journal', documentId: org },
+      source: {
+        module: 'sales',
+        documentType: 'sales_invoice',
+        documentId: org,
+      },
+      target: {
+        module: 'accounting',
+        documentType: 'accounting_journal',
+        documentId: org,
+      },
       relationKind: 'fulfill',
       quantity: '12.5',
     });
 
     expect(apiClient.post).toHaveBeenCalledWith('/documents/relations', {
       organizationId: org,
-      source: { module: 'sales', documentType: 'sales_invoice', documentId: org },
-      target: { module: 'accounting', documentType: 'accounting_journal', documentId: org },
+      source: {
+        module: 'sales',
+        documentType: 'sales_invoice',
+        documentId: org,
+      },
+      target: {
+        module: 'accounting',
+        documentType: 'accounting_journal',
+        documentId: org,
+      },
       relationKind: 'fulfill',
       quantity: '12.5',
     });
@@ -112,6 +128,8 @@ describe('documents.api — DocumentRelationsController contract', () => {
 
   it('encodes relation id in detail and delete paths', async () => {
     await getDocumentRelation(org, 'id/with slash');
-    expect(vi.mocked(apiClient.get).mock.calls[0]?.[0]).toBe('/documents/relations/id%2Fwith%20slash');
+    expect(vi.mocked(apiClient.get).mock.calls[0]?.[0]).toBe(
+      '/documents/relations/id%2Fwith%20slash',
+    );
   });
 });

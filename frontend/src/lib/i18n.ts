@@ -2999,7 +2999,8 @@ export const fa = {
   },
   documentRelations: {
     title: 'روابط اسناد',
-    subtitle: 'پیوندهای منطقی بین اسناد؛ هر پیوند مبدأ، مقصد، نوع رابطه و مقدار اختیاری دارد.',
+    subtitle:
+      'پیوندهای منطقی بین اسناد؛ هر پیوند مبدأ، مقصد، نوع رابطه و مقدار اختیاری دارد.',
     registryNote:
       'پیوندها فقط ارتباط منطقی‌اند و اسناد را dereference نمی‌کنند؛ وجود سند مبدأ یا مقصد بررسی نمی‌شود.',
     newRelation: 'پیوند جدید',
@@ -3029,29 +3030,36 @@ export const fa = {
     sortCreatedAtDesc: 'زمان ایجاد — نزولی',
     noDeleteNote: 'پیوندها با حذف پاک می‌شوند؛ خود اسناد دست‌نخورده می‌مانند.',
     detailTitle: 'جزئیات پیوند سند',
-    detailSubtitle: 'اطلاعات مبدأ، مقصد و نوع رابطه؛ حذف پیوند سندی را تغییر نمی‌دهد.',
+    detailSubtitle:
+      'اطلاعات مبدأ، مقصد و نوع رابطه؛ حذف پیوند سندی را تغییر نمی‌دهد.',
     detailNote: 'حذف پیوند فقط ارتباط را برمی‌دارد و اثری بر اسناد ندارد.',
     delete: 'حذف پیوند',
     deleteTitle: 'حذف پیوند سند',
-    deleteDescription: 'این پیوند به‌صورت قطعی حذف می‌شود و قابل بازیابی نیست. خود اسناد حذف یا تغییر نمی‌کنند.',
+    deleteDescription:
+      'این پیوند به‌صورت قطعی حذف می‌شود و قابل بازیابی نیست. خود اسناد حذف یا تغییر نمی‌کنند.',
     deleteConfirm: 'حذف پیوند',
     deleting: 'در حال حذف…',
     createTitle: 'ایجاد پیوند سند',
-    createSubtitle: 'مبدأ و مقصد منطقی را وارد کنید؛ اعتبارسنجی وجود سند انجام نمی‌شود.',
+    createSubtitle:
+      'مبدأ و مقصد منطقی را وارد کنید؛ اعتبارسنجی وجود سند انجام نمی‌شود.',
     create: 'ایجاد پیوند',
     creating: 'در حال ایجاد…',
-    relationKindHint: 'شش نوع مجاز: reference، derive، fulfill، settle، reverse، transfer_of.',
+    relationKindHint:
+      'شش نوع مجاز: reference، derive، fulfill، settle، reverse، transfer_of.',
     quantityPlaceholder: 'مثلاً 12.5000 — فقط برای fulfill',
-    quantityFulfillHint: 'برای نوع fulfill مقدار الزامی است؛ حداکثر ۱۴ رقم صحیح و ۴ رقم اعشار.',
+    quantityFulfillHint:
+      'برای نوع fulfill مقدار الزامی است؛ حداکثر ۱۴ رقم صحیح و ۴ رقم اعشار.',
     quantityForbiddenHint: 'برای انواع غیر fulfill مقدار فرستاده نمی‌شود.',
     loadFailed: 'دریافت روابط اسناد انجام نشد. دوباره تلاش کنید.',
     detailLoadFailed: 'دریافت جزئیات پیوند انجام نشد. دوباره تلاش کنید.',
     createFailed: 'ایجاد پیوند انجام نشد. دوباره تلاش کنید.',
     deleteFailed: 'حذف پیوند انجام نشد. دوباره تلاش کنید.',
     emptyTitle: 'پیوندی ثبت نشده است',
-    emptyBody: 'برای این سازمان هنوز پیوند سندی ثبت نشده است. نخستین پیوند را بسازید.',
+    emptyBody:
+      'برای این سازمان هنوز پیوند سندی ثبت نشده است. نخستین پیوند را بسازید.',
     emptyFilteredTitle: 'پیوندی با این فیلتر یافت نشد',
-    emptyFilteredBody: 'فیلتر دیگری انتخاب کنید یا عبارت جست‌وجو را تغییر دهید.',
+    emptyFilteredBody:
+      'فیلتر دیگری انتخاب کنید یا عبارت جست‌وجو را تغییر دهید.',
     kinds: {
       reference: 'ارجاع',
       derive: 'اشتقاق',
@@ -3066,7 +3074,8 @@ export const fa = {
       selfLinkNotAllowed: 'مبدأ و مقصد نمی‌توانند یکسان باشند.',
       quantityRequiredForFulfill: 'برای نوع fulfill مقدار الزامی است.',
       quantityForbidden: 'برای این نوع رابطه مقدار مجاز نیست.',
-      invalidQuantity: 'مقدار باید عددی با حداکثر ۱۴ رقم صحیح و ۴ رقم اعشار باشد.',
+      invalidQuantity:
+        'مقدار باید عددی با حداکثر ۱۴ رقم صحیح و ۴ رقم اعشار باشد.',
     },
     validation: {
       moduleRequired: 'نام ماژول الزامی است.',
@@ -3077,7 +3086,8 @@ export const fa = {
       lineIdInvalid: 'شناسهٔ ردیف باید ULID معتبر باشد.',
       relationKindInvalid: 'نوع رابطه نامعتبر است.',
       quantityRequiredForFulfill: 'برای نوع fulfill مقدار الزامی است.',
-      quantityInvalid: 'مقدار باید عددی با حداکثر ۱۴ رقم صحیح و ۴ رقم اعشار باشد.',
+      quantityInvalid:
+        'مقدار باید عددی با حداکثر ۱۴ رقم صحیح و ۴ رقم اعشار باشد.',
       quantityForbidden: 'برای این نوع رابطه مقدار نباید وارد شود.',
     },
   },

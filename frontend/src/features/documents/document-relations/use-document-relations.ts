@@ -106,7 +106,9 @@ export function useDocumentRelations(
     }),
     queryFn: ({ signal }) => {
       if (organizationId === null) {
-        throw new Error('Document relations list query requires an organization.');
+        throw new Error(
+          'Document relations list query requires an organization.',
+        );
       }
       return listDocumentRelations(
         {
@@ -115,16 +117,23 @@ export function useDocumentRelations(
           pageSize: state.pageSize,
           sort: state.sort as DocumentRelationListState['sort'],
           ...(state.relationKind !== ''
-            ? { relationKind: state.relationKind as DocumentRelationListState['relationKind'] }
+            ? {
+                relationKind:
+                  state.relationKind as DocumentRelationListState['relationKind'],
+              }
             : {}),
-          ...(state.sourceModule !== '' ? { sourceModule: state.sourceModule } : {}),
+          ...(state.sourceModule !== ''
+            ? { sourceModule: state.sourceModule }
+            : {}),
           ...(state.sourceDocumentType !== ''
             ? { sourceDocumentType: state.sourceDocumentType }
             : {}),
           ...(state.sourceDocumentId !== ''
             ? { sourceDocumentId: state.sourceDocumentId }
             : {}),
-          ...(state.targetModule !== '' ? { targetModule: state.targetModule } : {}),
+          ...(state.targetModule !== ''
+            ? { targetModule: state.targetModule }
+            : {}),
           ...(state.targetDocumentType !== ''
             ? { targetDocumentType: state.targetDocumentType }
             : {}),
@@ -145,10 +154,15 @@ export function useDocumentRelation(
   relationId: string | undefined,
 ) {
   return useQuery<DocumentRelation, Error>({
-    queryKey: queryKeys.documents.relation(organizationId ?? 'none', relationId ?? 'none'),
+    queryKey: queryKeys.documents.relation(
+      organizationId ?? 'none',
+      relationId ?? 'none',
+    ),
     queryFn: ({ signal }) => {
       if (organizationId === null || relationId === undefined) {
-        throw new Error('Document relation detail query requires an organization and id.');
+        throw new Error(
+          'Document relation detail query requires an organization and id.',
+        );
       }
       return getDocumentRelation(organizationId, relationId, signal);
     },
@@ -162,7 +176,10 @@ export function useCreateDocumentRelationMutation(organizationId: string) {
     mutationKey: ['documents', organizationId, 'document-relations', 'create'],
     mutationFn: (body) => createDocumentRelation(body),
     onSuccess: (saved) => {
-      queryClient.setQueryData(queryKeys.documents.relation(organizationId, saved.id), saved);
+      queryClient.setQueryData(
+        queryKeys.documents.relation(organizationId, saved.id),
+        saved,
+      );
       void queryClient
         .invalidateQueries({
           queryKey: queryKeys.documents.relationsPrefix(organizationId),
@@ -175,10 +192,19 @@ export function useCreateDocumentRelationMutation(organizationId: string) {
   });
 }
 
-export function useDeleteDocumentRelationMutation(organizationId: string, relationId: string) {
+export function useDeleteDocumentRelationMutation(
+  organizationId: string,
+  relationId: string,
+) {
   const queryClient = useQueryClient();
   return useMutation<DocumentRelation, Error, void>({
-    mutationKey: ['documents', organizationId, 'document-relations', 'delete', relationId],
+    mutationKey: [
+      'documents',
+      organizationId,
+      'document-relations',
+      'delete',
+      relationId,
+    ],
     mutationFn: () => deleteDocumentRelation(organizationId, relationId),
     onSuccess: () => {
       queryClient.removeQueries({

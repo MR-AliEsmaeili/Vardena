@@ -1475,7 +1475,8 @@ export type DocumentRelationListQuery =
   operations['DocumentRelationsController_list_v1']['parameters']['query'];
 
 /** `POST /documents/relations` body (`CreateDocumentRelationDto`). */
-export type CreateDocumentRelationRequest = Schemas['CreateDocumentRelationDto'];
+export type CreateDocumentRelationRequest =
+  Schemas['CreateDocumentRelationDto'];
 
 /** Closed relation-kind vocabulary (backend `RELATION_KINDS`). */
 export const DOCUMENT_RELATION_KINDS = [
@@ -1487,8 +1488,7 @@ export const DOCUMENT_RELATION_KINDS = [
   'transfer_of',
 ] as const;
 
-export type DocumentRelationKind =
-  (typeof DOCUMENT_RELATION_KINDS)[number];
+export type DocumentRelationKind = (typeof DOCUMENT_RELATION_KINDS)[number];
 
 /** `GET /documents/numbering-series` query (`ListNumberingSeriesQueryDto`). */
 export type NumberingSeriesListQuery =

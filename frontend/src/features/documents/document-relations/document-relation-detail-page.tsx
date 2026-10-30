@@ -14,7 +14,10 @@ import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
 import { Definition, DefinitionList } from '@/ui/patterns/definition-list';
 import { LoadingState } from '@/ui/patterns/states';
 import { documentRelationErrorMessage } from './document-relations-error-messages';
-import { useDeleteDocumentRelationMutation, useDocumentRelation } from './use-document-relations';
+import {
+  useDeleteDocumentRelationMutation,
+  useDocumentRelation,
+} from './use-document-relations';
 
 function kindLabel(kind: string): string {
   const map: Record<string, string> = {
@@ -41,7 +44,10 @@ export function DocumentRelationDetailPage() {
   const timeZone = useTimeZone();
   const detailQuery = useDocumentRelation(organizationId, relationId);
 
-  const deleteMutation = useDeleteDocumentRelationMutation(organizationId ?? 'none', relationId ?? 'none');
+  const deleteMutation = useDeleteDocumentRelationMutation(
+    organizationId ?? 'none',
+    relationId ?? 'none',
+  );
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (organizationId === null || relationId === undefined) {
@@ -55,7 +61,10 @@ export function DocumentRelationDetailPage() {
   if (detailQuery.isError) {
     return (
       <div className="space-y-4">
-        <FormPageHeader title={t.documentRelations.detailTitle} description={t.documentRelations.detailSubtitle} />
+        <FormPageHeader
+          title={t.documentRelations.detailTitle}
+          description={t.documentRelations.detailSubtitle}
+        />
         <ApiErrorAlert
           error={detailQuery.error}
           title={t.table.errorTitle}
@@ -97,7 +106,9 @@ export function DocumentRelationDetailPage() {
         <CardContent>
           <DefinitionList>
             <Definition label={t.documentRelations.relationKind}>
-              <Badge variant="neutral">{kindLabel(relation.relationKind)}</Badge>
+              <Badge variant="neutral">
+                {kindLabel(relation.relationKind)}
+              </Badge>
             </Definition>
             <Definition label={t.documentRelations.quantity}>
               <span dir="ltr" className="num">
@@ -105,7 +116,9 @@ export function DocumentRelationDetailPage() {
               </span>
             </Definition>
             <Definition label={t.documentRelations.createdAt}>
-              <span dir="ltr">{formatInstant(relation.createdAt, timeZone)}</span>
+              <span dir="ltr">
+                {formatInstant(relation.createdAt, timeZone)}
+              </span>
             </Definition>
             <Definition label={t.documentRelations.createdByProcess}>
               {relation.createdByProcess ? t.app.yes : t.app.no}
@@ -116,7 +129,9 @@ export function DocumentRelationDetailPage() {
 
       <Card>
         <CardContent>
-          <h3 className="text-sm font-semibold mb-3">{t.documentRelations.source}</h3>
+          <h3 className="text-sm font-semibold mb-3">
+            {t.documentRelations.source}
+          </h3>
           <DefinitionList>
             <Definition label={t.documentRelations.module}>
               <span dir="ltr">{relation.source.module}</span>
@@ -142,7 +157,9 @@ export function DocumentRelationDetailPage() {
 
       <Card>
         <CardContent>
-          <h3 className="text-sm font-semibold mb-3">{t.documentRelations.target}</h3>
+          <h3 className="text-sm font-semibold mb-3">
+            {t.documentRelations.target}
+          </h3>
           <DefinitionList>
             <Definition label={t.documentRelations.module}>
               <span dir="ltr">{relation.target.module}</span>
@@ -166,7 +183,10 @@ export function DocumentRelationDetailPage() {
         </CardContent>
       </Card>
 
-      <p className="text-xs text-ink-subtle" data-testid="document-relation-detail-note">
+      <p
+        className="text-xs text-ink-subtle"
+        data-testid="document-relation-detail-note"
+      >
         {t.documentRelations.detailNote}
       </p>
 
@@ -181,7 +201,9 @@ export function DocumentRelationDetailPage() {
         loadingLabel={t.documentRelations.deleting}
         danger
         error={
-          deleteMutation.isError ? documentRelationErrorMessage('delete', deleteMutation.error) : undefined
+          deleteMutation.isError
+            ? documentRelationErrorMessage('delete', deleteMutation.error)
+            : undefined
         }
       />
     </div>

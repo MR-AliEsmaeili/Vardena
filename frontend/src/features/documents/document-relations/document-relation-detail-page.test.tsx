@@ -23,8 +23,18 @@ vi.mock('@/features/organization/use-organization', () => ({
 const relation: DocumentRelation = {
   id: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
   organizationId: testOrganization.id,
-  source: { module: 'sales', documentType: 'sales_invoice', documentId: '01ARZ3NDEKTSV4RRFFQ69G5FB1', lineId: null },
-  target: { module: 'accounting', documentType: 'accounting_journal', documentId: '01ARZ3NDEKTSV4RRFFQ69G5FC2', lineId: '01ARZ3NDEKTSV4RRFFQ69G5FD3' },
+  source: {
+    module: 'sales',
+    documentType: 'sales_invoice',
+    documentId: '01ARZ3NDEKTSV4RRFFQ69G5FB1',
+    lineId: null,
+  },
+  target: {
+    module: 'accounting',
+    documentType: 'accounting_journal',
+    documentId: '01ARZ3NDEKTSV4RRFFQ69G5FC2',
+    lineId: '01ARZ3NDEKTSV4RRFFQ69G5FD3',
+  },
   relationKind: 'fulfill',
   quantity: '10.5000',
   createdByProcess: true,
@@ -39,7 +49,10 @@ beforeEach(() => {
 function renderDetail(id = relation.id) {
   const routes = (
     <Routes>
-      <Route path="/app/documents/relations/:relationId" element={<DocumentRelationDetailPage />} />
+      <Route
+        path="/app/documents/relations/:relationId"
+        element={<DocumentRelationDetailPage />}
+      />
     </Routes>
   );
   renderWithProviders(routes, {
@@ -56,8 +69,12 @@ describe('DocumentRelationDetailPage', () => {
   });
 
   it('shows load error with retry description', async () => {
-    vi.mocked(getDocumentRelation).mockRejectedValue(new ApiError({ code: 'EntityNotFound', message: 'not found' }));
+    vi.mocked(getDocumentRelation).mockRejectedValue(
+      new ApiError({ code: 'EntityNotFound', message: 'not found' }),
+    );
     renderDetail('missing');
-    expect(await screen.findByText(t.documentRelations.errors.notFound)).toBeInTheDocument();
+    expect(
+      await screen.findByText(t.documentRelations.errors.notFound),
+    ).toBeInTheDocument();
   });
 });

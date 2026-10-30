@@ -715,9 +715,21 @@ export const queryKeys = {
     relationsPrefix: (organizationId: string) =>
       ['documents', organizationId, 'document-relations'] as const,
     relations: (organizationId: string, filters: Record<string, unknown>) =>
-      ['documents', organizationId, 'document-relations', 'list', filters] as const,
+      [
+        'documents',
+        organizationId,
+        'document-relations',
+        'list',
+        filters,
+      ] as const,
     relation: (organizationId: string, relationId: string) =>
-      ['documents', organizationId, 'document-relations', 'detail', relationId] as const,
+      [
+        'documents',
+        organizationId,
+        'document-relations',
+        'detail',
+        relationId,
+      ] as const,
   },
 } as const;
 

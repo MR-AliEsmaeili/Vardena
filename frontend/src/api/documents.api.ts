@@ -1,4 +1,11 @@
-import { apiDelete, apiGet, apiPatch, apiPost, apiPut, cleanParams } from './client';
+import {
+  apiDelete,
+  apiGet,
+  apiPatch,
+  apiPost,
+  apiPut,
+  cleanParams,
+} from './client';
 import type {
   ConfigureDocumentTypeRequest,
   CreateDocumentRelationRequest,
