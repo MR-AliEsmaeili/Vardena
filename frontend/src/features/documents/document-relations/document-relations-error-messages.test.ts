@@ -27,9 +27,9 @@ describe('documentRelationErrorMessage', () => {
   it('maps 422 quantity_required_for_fulfill', () => {
     const err = new ApiError({
       code: 'BusinessRuleViolation',
-      message: 'The \"fulfill\" relation kind requires a positive base-unit quantity.',
+      message: 'The "fulfill" relation kind requires a positive base-unit quantity.',
       status: 422,
-      details: { message: 'The \"fulfill\" relation kind requires a positive base-unit quantity.' },
+      details: { message: 'The "fulfill" relation kind requires a positive base-unit quantity.' },
     });
     expect(documentRelationErrorMessage('create', err)).toBe(t.documentRelations.errors.quantityRequiredForFulfill);
   });
@@ -37,9 +37,9 @@ describe('documentRelationErrorMessage', () => {
   it('maps 422 quantity_forbidden', () => {
     const err = new ApiError({
       code: 'BusinessRuleViolation',
-      message: 'Only the \"fulfill\" relation kind carries a quantity.',
+      message: 'Only the "fulfill" relation kind carries a quantity.',
       status: 422,
-      details: { message: 'Only the \"fulfill\" relation kind carries a quantity.' },
+      details: { message: 'Only the "fulfill" relation kind carries a quantity.' },
     });
     expect(documentRelationErrorMessage('create', err)).toBe(t.documentRelations.errors.quantityForbidden);
   });

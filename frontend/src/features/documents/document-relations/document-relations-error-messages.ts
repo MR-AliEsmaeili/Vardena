@@ -29,7 +29,7 @@ function business422Message(error: unknown): string | null {
     return t.documentRelations.errors.selfLinkNotAllowed;
   if (msg.includes('requires a positive base-unit quantity') || msg.includes('quantity_required_for_fulfill'))
     return t.documentRelations.errors.quantityRequiredForFulfill;
-  if (msg.includes('Only the \"fulfill\"') || msg.includes('quantity_forbidden'))
+  if (msg.includes('Only the "fulfill"') || msg.includes('quantity_forbidden'))
     return t.documentRelations.errors.quantityForbidden;
   if (msg.includes('must be a positive decimal') || msg.includes('invalid_quantity'))
     return t.documentRelations.errors.invalidQuantity;
