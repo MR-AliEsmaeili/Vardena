@@ -657,7 +657,7 @@ export const queryKeys = {
   },
 
   /**
-   * Document Foundation (`documents` root, DOC-01/DOC-02). The registry
+   * Document Foundation (`documents` root, DOC-01/DOC-02/DOC-03). The registry
    * metadata is read-only but `draftRequired`/`configured` belong to ONE
    * organization, so every key carries the organization id at index 1 like
    * every other scoped read. `documentTypesPrefix` is a prefix of both the
@@ -665,6 +665,9 @@ export const queryKeys = {
    * refreshes both. Numbering-series keys (DOC-02) follow the same rule —
    * `numberingSeriesPrefix` covers the list and the detail, and
    * `numberingAllocations` is scoped to one series within the organization.
+   * Document relations (DOC-03) follow the same prefix/list/detail shape;
+   * `relationsPrefix` is the narrow invalidation target after a create or
+   * delete so the list does not need to enumerate filters.
    */
   documents: {
     documentTypesPrefix: (organizationId: string) =>
@@ -708,6 +711,13 @@ export const queryKeys = {
         'allocations',
         filters,
       ] as const,
+
+    relationsPrefix: (organizationId: string) =>
+      ['documents', organizationId, 'document-relations'] as const,
+    relations: (organizationId: string, filters: Record<string, unknown>) =>
+      ['documents', organizationId, 'document-relations', 'list', filters] as const,
+    relation: (organizationId: string, relationId: string) =>
+      ['documents', organizationId, 'document-relations', 'detail', relationId] as const,
   },
 } as const;
 
