@@ -46,6 +46,9 @@ import { InventoryDocumentFormPage } from '@/features/inventory/documents/invent
 import { InventoryDocumentLinesPage } from '@/features/inventory/documents/inventory-document-lines-page';
 import { InventoryDocumentsPage } from '@/features/inventory/documents/inventory-documents-page';
 import { InventoryHomePage } from '@/features/inventory/inventory-home-page';
+import { ReservationDetailPage } from '@/features/inventory/reservations/reservation-detail-page';
+import { ReservationFormPage } from '@/features/inventory/reservations/reservation-form-page';
+import { ReservationsPage } from '@/features/inventory/reservations/reservations-page';
 import { BalancesPage } from '@/features/inventory/master-data/balances/balances-page';
 import { ItemGroupDetailPage } from '@/features/inventory/master-data/item-groups/item-group-detail-page';
 import {
@@ -745,6 +748,30 @@ export const workspaceRouteTree: ReactElement = (
         }
       >
         <Route path="transfers/new" element={<TransferFormPage />} />
+      </Route>
+
+      <Route
+        element={
+          <RequirePermission
+            permissions={[PERMISSIONS.inventory.reservationView]}
+          />
+        }
+      >
+        <Route path="reservations" element={<ReservationsPage />} />
+        <Route
+          path="reservations/:reservationId"
+          element={<ReservationDetailPage />}
+        />
+      </Route>
+
+      <Route
+        element={
+          <RequirePermission
+            permissions={[PERMISSIONS.inventory.reservationCreate]}
+          />
+        }
+      >
+        <Route path="reservations/new" element={<ReservationFormPage />} />
       </Route>
 
       {/*

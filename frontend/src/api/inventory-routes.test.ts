@@ -9,8 +9,12 @@ import {
 } from './inventory-master.api';
 import {
   configureInventoryValuationMethod,
+  createReservation,
+  getReservation,
   listInventoryUnits,
   listInventoryValuationMethods,
+  listReservations,
+  releaseReservation,
   resolveInventoryValuationMethod,
 } from './inventory.api';
 
@@ -72,6 +76,60 @@ describe('backend-mounted inventory routes', () => {
     });
     expect(vi.mocked(client.apiPost).mock.calls[0]?.[0]).toBe(
       '/inventory/unit-conversions',
+    );
+  });
+
+  it('calls reservation list, detail, create and release endpoints with the declared scope and body keys', async () => {
+    await listReservations({
+      organizationId: org,
+      page: 2,
+      pageSize: 100,
+      sort: 'status:asc',
+      warehouseId: from,
+      itemId: to,
+      status: 'active',
+    });
+    expect(client.apiGet).toHaveBeenLastCalledWith('/inventory/reservations', {
+      params: {
+        organizationId: org,
+        page: 2,
+        pageSize: 100,
+        sort: 'status:asc',
+        warehouseId: from,
+        itemId: to,
+        status: 'active',
+      },
+    });
+
+    await getReservation(org, to);
+    expect(client.apiGet).toHaveBeenLastCalledWith(
+      `/inventory/reservations/${to}`,
+      { params: { organizationId: org } },
+    );
+
+    const createBody = {
+      organizationId: org,
+      warehouseId: from,
+      itemId: to,
+      quantity: '9007199254740993.0001',
+      unitId: from,
+      operationKey: 'reservation-create-op-1',
+      reason: 'cycle count',
+      referenceType: 'external_order',
+      referenceId: 'ORDER-7',
+    };
+    await createReservation(createBody);
+    expect(client.apiPost).toHaveBeenLastCalledWith(
+      '/inventory/reservations',
+      createBody,
+    );
+
+    const releaseBody = { operationKey: 'reservation-release-op-1' };
+    await releaseReservation(org, to, releaseBody);
+    expect(client.apiPost).toHaveBeenLastCalledWith(
+      `/inventory/reservations/${to}/release`,
+      releaseBody,
+      { params: { organizationId: org } },
     );
   });
 

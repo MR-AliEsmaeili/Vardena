@@ -746,6 +746,25 @@ export type InventoryBalance = NullableString<
 export type InventoryBalanceListQuery =
   operations['InventoryBalancesController_list_v1']['parameters']['query'];
 
+/** One reservation response (`InventoryReservationResponseDto`). */
+export type InventoryReservation = NullableString<
+  Schemas['InventoryReservationResponseDto'],
+  | 'referenceType'
+  | 'referenceId'
+  | 'reason'
+  | 'releasedAt'
+  | 'releasedBy'
+  | 'releaseOperationKey'
+>;
+
+export type InventoryReservationStatus = InventoryReservation['status'];
+export type InventoryReservationListQuery =
+  operations['InventoryReservationsController_list_v1']['parameters']['query'];
+export type CreateInventoryReservationInput =
+  Schemas['CreateInventoryReservationDto'];
+export type ReleaseInventoryReservationInput =
+  Schemas['ReleaseInventoryReservationDto'];
+
 /** Workflow binding/instance row (`WorkflowInstanceResponseDto`). */
 export type WorkflowInstance = Schemas['WorkflowInstanceResponseDto'];
 export type WorkflowInstanceListQuery =

@@ -14,6 +14,10 @@ import type {
   InventoryKardexResponse,
   InventoryMovement,
   InventoryMovementListQuery,
+  InventoryReservation,
+  InventoryReservationListQuery,
+  CreateInventoryReservationInput,
+  ReleaseInventoryReservationInput,
   InventoryTransferResult,
   InventoryUnit,
   InventoryUnitListQuery,
@@ -163,6 +167,55 @@ export function postInventoryTransfer(
   body: PostInventoryTransferInput,
 ): Promise<InventoryTransferResult> {
   return apiPost<InventoryTransferResult>('/inventory/transfers', body);
+}
+
+// ---------------------------------------------------------------------------
+// Inventory reservations — soft claims on availability
+// ---------------------------------------------------------------------------
+
+const RESERVATIONS_PATH = '/inventory/reservations';
+
+/** Reservations list (`GET /inventory/reservations`). */
+export function listReservations(
+  query: InventoryReservationListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<InventoryReservation>> {
+  return apiGet<Paginated<InventoryReservation>>(RESERVATIONS_PATH, {
+    params: cleanParams({ ...query }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+/** One reservation (`GET /inventory/reservations/:id`). */
+export function getReservation(
+  organizationId: string,
+  reservationId: string,
+  signal?: AbortSignal,
+): Promise<InventoryReservation> {
+  return apiGet<InventoryReservation>(
+    `${RESERVATIONS_PATH}/${encodeURIComponent(reservationId)}`,
+    { params: cleanParams({ organizationId }), ...(signal ? { signal } : {}) },
+  );
+}
+
+/** Create a soft claim (`POST /inventory/reservations`); key stays in body. */
+export function createReservation(
+  body: CreateInventoryReservationInput,
+): Promise<InventoryReservation> {
+  return apiPost<InventoryReservation>(RESERVATIONS_PATH, body);
+}
+
+/** Release one active, generic reservation (`POST …/:id/release`). */
+export function releaseReservation(
+  organizationId: string,
+  reservationId: string,
+  body: ReleaseInventoryReservationInput,
+): Promise<InventoryReservation> {
+  return apiPost<InventoryReservation>(
+    `${RESERVATIONS_PATH}/${encodeURIComponent(reservationId)}/release`,
+    body,
+    { params: cleanParams({ organizationId }) },
+  );
 }
 
 // ---------------------------------------------------------------------------
