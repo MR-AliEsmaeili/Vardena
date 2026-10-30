@@ -54,10 +54,13 @@ export function ReservationDetailPage(): ReactElement {
   const warehouse = references.warehouseById(reservation.warehouseId);
   const enteredUnit = references.unitById(reservation.enteredUnitId);
   const baseUnit = references.unitById(reservation.baseUnitId);
+  const createdAtInstant = reservation.createdAt;
+  const updatedAtInstant = reservation.updatedAt;
+  const releasedAtInstant = reservation.releasedAt;
   const releasedAt =
-    reservation.releasedAt === null
+    releasedAtInstant === null
       ? t.app.none
-      : formatDateTimeWithZone(reservation.releasedAt);
+      : formatDateTimeWithZone(releasedAtInstant);
   const releasedBy = reservation.releasedBy ?? t.app.none;
   const releasedSummary = t.reservations.releasedBannerBody
     .replace('{releasedAt}', releasedAt)
@@ -175,16 +178,16 @@ export function ReservationDetailPage(): ReactElement {
           <TechnicalValue value={reservation.operationKey} />
         </Definition>
         <Definition label={t.reservations.createdAt}>
-          <Timestamp value={reservation.createdAt} />
+          <Timestamp value={createdAtInstant} />
         </Definition>
         <Definition label={t.reservations.updatedAt}>
-          <Timestamp value={reservation.updatedAt} />
+          <Timestamp value={updatedAtInstant} />
         </Definition>
         <Definition label={t.reservations.releasedAt}>
-          {reservation.releasedAt === null ? (
+          {releasedAtInstant === null ? (
             t.app.none
           ) : (
-            <Timestamp value={reservation.releasedAt} />
+            <Timestamp value={releasedAtInstant} />
           )}
         </Definition>
         <Definition label={t.reservations.releasedBy}>
