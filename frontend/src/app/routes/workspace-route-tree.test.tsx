@@ -114,10 +114,10 @@ describe('tree inventory — verbatim extraction snapshot (§10.3)', () => {
     // from main afterwards (+3 leaves, +1 gate) PLUS DOC-02 numbering-series
     // (+4 leaves, +3 gates) PLUS INV-04 valuation-methods (+2 leaves, +1 gate),
     // INV-08 reservations (+3 leaves, +2 gates) and INV-06 material requests
-    // (+4 leaves, +3 gates): 115 leaf routes behind 82 RequirePermission gates
-    // (+ the pathless shells). Update ONLY together with a deliberate route
-    // change.
-    expect(inventory(WORKSPACE_ROUTES)).toEqual({ leaves: 115, gates: 82 });
+    // (+4 leaves, +3 gates) PLUS DOC-03 document-relations (+3 leaves, +2 gates):
+    // 118 leaf routes behind 84 RequirePermission gates (+ the pathless shells).
+    // Update ONLY together with a deliberate route change.
+    expect(inventory(WORKSPACE_ROUTES)).toEqual({ leaves: 118, gates: 84 });
   });
 
   it('is rooted at /app with a single top-level route object', () => {
