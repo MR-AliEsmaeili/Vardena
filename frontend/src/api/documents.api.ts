@@ -1,7 +1,17 @@
-import { apiGet, apiPatch, apiPost, apiPut, cleanParams } from './client';
+import {
+  apiDelete,
+  apiGet,
+  apiPatch,
+  apiPost,
+  apiPut,
+  cleanParams,
+} from './client';
 import type {
   ConfigureDocumentTypeRequest,
+  CreateDocumentRelationRequest,
   CreateNumberingSeriesRequest,
+  DocumentRelation,
+  DocumentRelationListQuery,
   DocumentType,
   DocumentTypeListQuery,
   NumberingAllocation,
@@ -138,5 +148,54 @@ export function listNumberingAllocations(
       params: cleanParams({ ...query }),
       ...(signal ? { signal } : {}),
     },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Document relations (DOC-03)
+// ---------------------------------------------------------------------------
+
+const DOCUMENT_RELATIONS_PATH = '/documents/relations';
+
+export function listDocumentRelations(
+  query: DocumentRelationListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<DocumentRelation>> {
+  return apiGet<Paginated<DocumentRelation>>(DOCUMENT_RELATIONS_PATH, {
+    params: cleanParams({ ...query }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+export function getDocumentRelation(
+  organizationId: string,
+  relationId: string,
+  signal?: AbortSignal,
+): Promise<DocumentRelation> {
+  return apiGet<DocumentRelation>(
+    `${DOCUMENT_RELATIONS_PATH}/${encodeURIComponent(relationId)}`,
+    {
+      params: { organizationId },
+      ...(signal ? { signal } : {}),
+    },
+  );
+}
+
+export function createDocumentRelation(
+  body: CreateDocumentRelationRequest,
+): Promise<DocumentRelation> {
+  return apiPost<DocumentRelation, CreateDocumentRelationRequest>(
+    DOCUMENT_RELATIONS_PATH,
+    body,
+  );
+}
+
+export function deleteDocumentRelation(
+  organizationId: string,
+  relationId: string,
+): Promise<DocumentRelation> {
+  return apiDelete<DocumentRelation>(
+    `${DOCUMENT_RELATIONS_PATH}/${encodeURIComponent(relationId)}`,
+    { params: { organizationId } },
   );
 }

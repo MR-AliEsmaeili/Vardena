@@ -421,11 +421,12 @@ export const navigationSections: readonly NavigationSection[] = [
   },
   {
     /**
-     * Document Foundation (DOC-01 + DOC-02). Uses an EXISTING `NavTone` and
-     * existing glyphs — no new tint is invented for these configuration
-     * surfaces. The Numbering Series entry is gated by the exact backend code
-     * `Document.NumberingSeries.View` (DOC-02), just as the Document Types
-     * entry is gated by `Document.DocumentType.View`.
+     * Document Foundation (DOC-01 + DOC-02 + DOC-03). Uses an EXISTING
+     * `NavTone` and existing glyphs — no new tint is invented for these
+     * configuration surfaces. The Numbering Series entry is gated by the
+     * exact backend code `Document.NumberingSeries.View` (DOC-02), just as
+     * the Document Types entry is gated by `Document.DocumentType.View` and
+     * the Relations entry by `Document.Relation.View` (DOC-03).
      */
     id: 'documents-foundation',
     label: t.nav.documentsFoundationGroup,
@@ -443,6 +444,12 @@ export const navigationSections: readonly NavigationSection[] = [
         label: t.nav.numberingSeries,
         icon: ScrollText,
         permissions: [PERMISSIONS.documents.numberingSeriesView],
+      },
+      {
+        to: '/app/documents/relations',
+        label: t.nav.documentRelations,
+        icon: Network,
+        permissions: [PERMISSIONS.documents.relationView],
       },
     ],
   },

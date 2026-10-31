@@ -85,6 +85,9 @@ import { DocumentTypesPage } from '@/features/documents/document-types/document-
 import { NumberingSeriesPage } from '@/features/documents/numbering-series/numbering-series-page';
 import { NumberingSeriesDetailPage } from '@/features/documents/numbering-series/numbering-series-detail-page';
 import { NumberingSeriesFormPage } from '@/features/documents/numbering-series/numbering-series-form-page';
+import { DocumentRelationsPage } from '@/features/documents/document-relations/document-relations-page';
+import { DocumentRelationDetailPage } from '@/features/documents/document-relations/document-relation-detail-page';
+import { DocumentRelationCreatePage } from '@/features/documents/document-relations/document-relation-create-page';
 import { KardexPage } from '@/features/inventory/kardex-page';
 import { MovementFormPage } from '@/features/inventory/movement-form-page';
 import { MovementsPage } from '@/features/inventory/movements-page';
@@ -1157,6 +1160,29 @@ export const workspaceRouteTree: ReactElement = (
           path="numbering-series/new"
           element={<NumberingSeriesFormPage mode="create" />}
         />
+      </Route>
+
+      <Route
+        element={
+          <RequirePermission
+            permissions={[PERMISSIONS.documents.relationView]}
+          />
+        }
+      >
+        <Route path="relations" element={<DocumentRelationsPage />} />
+        <Route
+          path="relations/:relationId"
+          element={<DocumentRelationDetailPage />}
+        />
+      </Route>
+      <Route
+        element={
+          <RequirePermission
+            permissions={[PERMISSIONS.documents.relationCreate]}
+          />
+        }
+      >
+        <Route path="relations/new" element={<DocumentRelationCreatePage />} />
       </Route>
     </Route>
 

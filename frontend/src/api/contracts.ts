@@ -1443,6 +1443,53 @@ export type NumberingAllocation = NullableString<
   'referenceModule' | 'referenceDocumentType' | 'referenceDocumentId'
 >;
 
+// ---------------------------------------------------------------------------
+// Document Foundation — document relations (DOC-03)
+// ---------------------------------------------------------------------------
+
+/**
+ * One document relation (`DocumentRelationResponseDto`).
+ *
+ * The backend declares `quantity` as `string | null`; the generated file
+ * renders it as `Record<string, never> | null` (refinement 1).
+ */
+export type DocumentRelation = Omit<
+  Schemas['DocumentRelationResponseDto'],
+  'quantity' | 'source' | 'target'
+> & {
+  quantity: string | null;
+  source: DocumentEndpoint;
+  target: DocumentEndpoint;
+};
+
+/** Document endpoint as stored (`DocumentEndpointResponseDto`). */
+export type DocumentEndpoint = Omit<
+  Schemas['DocumentEndpointResponseDto'],
+  'lineId'
+> & {
+  lineId: string | null;
+};
+
+/** `GET /documents/relations` query (`ListDocumentRelationsQueryDto`). */
+export type DocumentRelationListQuery =
+  operations['DocumentRelationsController_list_v1']['parameters']['query'];
+
+/** `POST /documents/relations` body (`CreateDocumentRelationDto`). */
+export type CreateDocumentRelationRequest =
+  Schemas['CreateDocumentRelationDto'];
+
+/** Closed relation-kind vocabulary (backend `RELATION_KINDS`). */
+export const DOCUMENT_RELATION_KINDS = [
+  'reference',
+  'derive',
+  'fulfill',
+  'settle',
+  'reverse',
+  'transfer_of',
+] as const;
+
+export type DocumentRelationKind = (typeof DOCUMENT_RELATION_KINDS)[number];
+
 /** `GET /documents/numbering-series` query (`ListNumberingSeriesQueryDto`). */
 export type NumberingSeriesListQuery =
   operations['NumberingSeriesController_list_v1']['parameters']['query'];
