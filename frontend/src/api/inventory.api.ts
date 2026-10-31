@@ -225,14 +225,14 @@ export function releaseReservation(
 }
 
 // ---------------------------------------------------------------------------
-// Material Requests (C-50) — draft authoring only
+// Material Requests (C-50)
 //
-// The endpoints below are the authoring half of `MaterialRequestsController`:
-// list/get/events plus create, edit, delete and submit. Approve/reject/return/
-// reverse/cancel belong to INV-07, and `PUT …/lines/invoke` is deliberately
-// ABSENT (it is BLOCKED in `task/OUT-OF-SCOPE.md`: no consumer process exists
-// yet). `PATCH` REPLACES the whole line set — there is no per-line endpoint and
-// this layer must not pretend there is one.
+// The endpoints below are `MaterialRequestsController`: list/get/events,
+// create, edit, delete, submit (INV-06), and the five approval-cycle commands
+// (INV-07). `PUT …/lines/invoke` is deliberately ABSENT (it is BLOCKED in
+// `task/OUT-OF-SCOPE.md`: no consumer process exists yet). `PATCH` REPLACES
+// the whole line set — there is no per-line endpoint and this layer must not
+// pretend there is one.
 // ---------------------------------------------------------------------------
 
 const MATERIAL_REQUESTS_PATH = '/inventory/material-requests';
@@ -317,6 +317,82 @@ export function submitMaterialRequest(
   return apiPost<MaterialRequestDetail>(
     `${MATERIAL_REQUESTS_PATH}/${encodeURIComponent(requestId)}/submit`,
     {},
+    { params: cleanParams({ organizationId }) },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Material Request approval lifecycle (INV-07)
+//
+// Five decision commands, mapped 1:1 onto `MaterialRequestsController`. Every
+// one answers `MaterialRequestDetailResponseDto`, so the server's view of the
+// request is the only authority after a decision. `POST …/approve` declares NO
+// request body in the backend (`@Body()` is absent) — it is called with no
+// body at all, never with a placeholder `{}` that could drift into a DTO.
+// `PUT …/lines/invoke` is deliberately ABSENT: it is BLOCKED in
+// `task/OUT-OF-SCOPE.md` (no consumer process exists yet).
+// ---------------------------------------------------------------------------
+
+/** Approve a submitted request (`POST …/:id/approve`) — no body, only query. */
+export function approveMaterialRequest(
+  organizationId: string,
+  requestId: string,
+): Promise<MaterialRequestDetail> {
+  return apiPost<MaterialRequestDetail>(
+    `${MATERIAL_REQUESTS_PATH}/${encodeURIComponent(requestId)}/approve`,
+    undefined,
+    { params: cleanParams({ organizationId }) },
+  );
+}
+
+/** Reject a submitted request (`POST …/:id/reject`) — reason is required. */
+export function rejectMaterialRequest(
+  organizationId: string,
+  requestId: string,
+  body: { reason: string },
+): Promise<MaterialRequestDetail> {
+  return apiPost<MaterialRequestDetail>(
+    `${MATERIAL_REQUESTS_PATH}/${encodeURIComponent(requestId)}/reject`,
+    body,
+    { params: cleanParams({ organizationId }) },
+  );
+}
+
+/** Return a submitted request for correction (`POST …/return-for-correction`). */
+export function returnMaterialRequestForCorrection(
+  organizationId: string,
+  requestId: string,
+  body: { reason: string },
+): Promise<MaterialRequestDetail> {
+  return apiPost<MaterialRequestDetail>(
+    `${MATERIAL_REQUESTS_PATH}/${encodeURIComponent(requestId)}/return-for-correction`,
+    body,
+    { params: cleanParams({ organizationId }) },
+  );
+}
+
+/** Reverse an approval (`POST …/:id/reverse-approval`) — reason is optional. */
+export function reverseMaterialRequestApproval(
+  organizationId: string,
+  requestId: string,
+  body: { reason?: string | null },
+): Promise<MaterialRequestDetail> {
+  return apiPost<MaterialRequestDetail>(
+    `${MATERIAL_REQUESTS_PATH}/${encodeURIComponent(requestId)}/reverse-approval`,
+    body,
+    { params: cleanParams({ organizationId }) },
+  );
+}
+
+/** Cancel an APPROVED request (`POST …/:id/cancel`) — reason is optional. */
+export function cancelMaterialRequest(
+  organizationId: string,
+  requestId: string,
+  body: { reason?: string | null },
+): Promise<MaterialRequestDetail> {
+  return apiPost<MaterialRequestDetail>(
+    `${MATERIAL_REQUESTS_PATH}/${encodeURIComponent(requestId)}/cancel`,
+    body,
     { params: cleanParams({ organizationId }) },
   );
 }

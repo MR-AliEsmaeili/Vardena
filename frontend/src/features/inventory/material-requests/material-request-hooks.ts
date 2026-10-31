@@ -11,11 +11,16 @@ import type {
   UpdateMaterialRequestInput,
 } from '@/api/contracts';
 import {
+  approveMaterialRequest,
+  cancelMaterialRequest,
   createMaterialRequest,
   deleteMaterialRequest,
   getMaterialRequest,
   listMaterialRequestEvents,
   listMaterialRequests,
+  rejectMaterialRequest,
+  returnMaterialRequestForCorrection,
+  reverseMaterialRequestApproval,
   submitMaterialRequest,
   updateMaterialRequest,
 } from '@/api/inventory.api';
@@ -106,19 +111,30 @@ export function useMaterialRequestEvents(
 
 /**
  * Every read a write can invalidate: the paged list prefix, the request's own
- * detail and its event narrative. Nothing else listens to a request, and no
- * balance/availability changes here — a draft/submission reserves nothing
- * (reservation happens at approval, in INV-07).
+ * detail and its event narrative.
+ *
+ * `touchesStock` adds the availability-bearing reads. Approval creates a
+ * reservation for every flagged line and reversal/cancellation releases those
+ * reservations, so `reserved`/`available` move — but `on_hand` never does
+ * (a Material Request is demand, never a movement). No optimistic update
+ * anywhere: the server response is the only authority.
  */
 async function invalidateMaterialRequestReads(
   organizationId: string,
   requestId: string,
   queryClient: ReturnType<typeof useQueryClient>,
+  options: { touchesStock?: boolean } = {},
 ): Promise<void> {
   const keys = [
     queryKeys.inventory.materialRequestsPrefix(organizationId),
     queryKeys.inventory.materialRequestDetail(organizationId, requestId),
     queryKeys.inventory.materialRequestEvents(organizationId, requestId),
+    ...(options.touchesStock === true
+      ? [
+          queryKeys.inventory.balancesPrefix(organizationId),
+          queryKeys.inventory.reservationsPrefix(organizationId),
+        ]
+      : []),
   ];
   await Promise.all(
     keys.map((queryKey) =>
@@ -196,5 +212,132 @@ export function useSubmitMaterialRequestMutation(
     mutationFn: (requestId) => submitMaterialRequest(organizationId, requestId),
     onSuccess: (submitted) =>
       invalidateMaterialRequestReads(organizationId, submitted.id, queryClient),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Approval cycle (INV-07) — five decision commands
+//
+// Each mutation answers the full detail DTO, so the page re-reads status,
+// decision timestamps and lines from the server. No optimistic update: these
+// commands create/release reservations atomically on the backend.
+// ---------------------------------------------------------------------------
+
+export interface MaterialRequestReasonVariables {
+  requestId: string;
+  /** Trimmed reason, or `null`/omitted for the optional-reason commands. */
+  reason?: string | null;
+}
+
+function stockAwareInvalidation(
+  organizationId: string,
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
+  return (updated: MaterialRequestDetail) =>
+    invalidateMaterialRequestReads(organizationId, updated.id, queryClient, {
+      touchesStock: true,
+    });
+}
+
+function plainInvalidation(
+  organizationId: string,
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
+  return (updated: MaterialRequestDetail) =>
+    invalidateMaterialRequestReads(organizationId, updated.id, queryClient);
+}
+
+/** Approve (no body); reserves every flagged line, so stock reads move too. */
+export function useApproveMaterialRequestMutation(
+  organizationId: string,
+): UseMutationResult<MaterialRequestDetail, Error, string> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ['inventory', organizationId, 'material-requests', 'approve'],
+    mutationFn: (requestId) =>
+      approveMaterialRequest(organizationId, requestId),
+    onSuccess: stockAwareInvalidation(organizationId, queryClient),
+  });
+}
+
+/** Reject with a REQUIRED reason; no reservation exists, so stock is untouched. */
+export function useRejectMaterialRequestMutation(
+  organizationId: string,
+): UseMutationResult<
+  MaterialRequestDetail,
+  Error,
+  MaterialRequestReasonVariables & { reason: string }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ['inventory', organizationId, 'material-requests', 'reject'],
+    mutationFn: ({ requestId, reason }) =>
+      rejectMaterialRequest(organizationId, requestId, { reason }),
+    onSuccess: plainInvalidation(organizationId, queryClient),
+  });
+}
+
+/** Return for correction with a REQUIRED reason. */
+export function useReturnMaterialRequestForCorrectionMutation(
+  organizationId: string,
+): UseMutationResult<
+  MaterialRequestDetail,
+  Error,
+  MaterialRequestReasonVariables & { reason: string }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: [
+      'inventory',
+      organizationId,
+      'material-requests',
+      'return-for-correction',
+    ],
+    mutationFn: ({ requestId, reason }) =>
+      returnMaterialRequestForCorrection(organizationId, requestId, { reason }),
+    onSuccess: plainInvalidation(organizationId, queryClient),
+  });
+}
+
+/** Reverse an approval with an OPTIONAL reason; released reservations move stock. */
+export function useReverseMaterialRequestApprovalMutation(
+  organizationId: string,
+): UseMutationResult<
+  MaterialRequestDetail,
+  Error,
+  MaterialRequestReasonVariables
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: [
+      'inventory',
+      organizationId,
+      'material-requests',
+      'reverse-approval',
+    ],
+    mutationFn: ({ requestId, reason }) =>
+      reverseMaterialRequestApproval(organizationId, requestId, {
+        reason: reason ?? null,
+      }),
+    onSuccess: stockAwareInvalidation(organizationId, queryClient),
+  });
+}
+
+/** Cancel an approved request (terminal) with an OPTIONAL reason. */
+export function useCancelMaterialRequestMutation(
+  organizationId: string,
+): UseMutationResult<
+  MaterialRequestDetail,
+  Error,
+  MaterialRequestReasonVariables
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ['inventory', organizationId, 'material-requests', 'cancel'],
+    mutationFn: ({ requestId, reason }) =>
+      cancelMaterialRequest(organizationId, requestId, {
+        reason: reason ?? null,
+      }),
+    onSuccess: stockAwareInvalidation(organizationId, queryClient),
   });
 }

@@ -13,6 +13,7 @@ import { EmptyState, LoadingState } from '@/ui/patterns/states';
 import { FormPageHeader } from '@/app/layouts/form-page-header';
 import { useInventoryReferences } from '../use-inventory-references';
 import { MaterialRequestActions } from './material-request-actions';
+import { MaterialRequestDecisionActions } from './material-request-decision-actions';
 import { MaterialRequestEvents } from './material-request-events-table';
 import { useMaterialRequest } from './material-request-hooks';
 import { MaterialRequestLinesTable } from './material-request-lines-table';
@@ -31,9 +32,13 @@ const STATUS_VARIANT: Record<
 };
 
 /**
- * One request, read-only record: identity, lifecycle timestamps, lines exactly
- * as the server stored them, and the append-only event narrative. The only
- * commands are the AUTHORING ones (INV-06) — approval lives in INV-07.
+ * One request, read-only record: identity, the decision trail (who approved,
+ * rejected, returned or reversed, when, and why), lines exactly as the server
+ * stored them, and the append-only event narrative.
+ *
+ * The commands are the AUTHORING ones (INV-06) plus the five approval-cycle
+ * decisions (INV-07); each area decides its own visibility from the status,
+ * the held permissions and the domain rules.
  */
 export function MaterialRequestDetailPage(): ReactElement {
   const organizationId = useOrganizationId();
@@ -83,10 +88,16 @@ export function MaterialRequestDetailPage(): ReactElement {
           </Badge>
         }
         actions={
-          <MaterialRequestActions
-            organizationId={organizationId}
-            request={request}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <MaterialRequestDecisionActions
+              organizationId={organizationId}
+              request={request}
+            />
+            <MaterialRequestActions
+              organizationId={organizationId}
+              request={request}
+            />
+          </div>
         }
       />
 
@@ -160,25 +171,39 @@ export function MaterialRequestDetailPage(): ReactElement {
         {request.returnedAt === null ? null : (
           <Definition label={t.materialRequests.statuses.returned} span>
             <Timestamp dateTime={request.returnedAt} />
+            <DecisionActor
+              label={t.materialRequests.decisions.returnedBy}
+              actorId={request.returnedBy}
+            />
             {request.returnReason === null ? null : (
-              <span className="block text-xs text-ink-subtle">
-                {t.materialRequests.reason}: {request.returnReason}
-              </span>
+              <DecisionReason
+                label={t.materialRequests.decisions.returnReason}
+                value={request.returnReason}
+              />
             )}
           </Definition>
         )}
         {request.approvedAt === null ? null : (
-          <Definition label={t.materialRequests.eventTypes.approved}>
+          <Definition label={t.materialRequests.eventTypes.approved} span>
             <Timestamp dateTime={request.approvedAt} />
+            <DecisionActor
+              label={t.materialRequests.decisions.approvedBy}
+              actorId={request.approvedBy}
+            />
           </Definition>
         )}
         {request.rejectedAt === null ? null : (
           <Definition label={t.materialRequests.statuses.rejected} span>
             <Timestamp dateTime={request.rejectedAt} />
+            <DecisionActor
+              label={t.materialRequests.decisions.rejectedBy}
+              actorId={request.rejectedBy}
+            />
             {request.rejectionReason === null ? null : (
-              <span className="block text-xs text-ink-subtle">
-                {t.materialRequests.reason}: {request.rejectionReason}
-              </span>
+              <DecisionReason
+                label={t.materialRequests.decisions.rejectionReason}
+                value={request.rejectionReason}
+              />
             )}
           </Definition>
         )}
@@ -188,20 +213,30 @@ export function MaterialRequestDetailPage(): ReactElement {
             span
           >
             <Timestamp dateTime={request.approvalReversedAt} />
+            <DecisionActor
+              label={t.materialRequests.decisions.reversedBy}
+              actorId={request.approvalReversedBy}
+            />
             {request.approvalReversalReason === null ? null : (
-              <span className="block text-xs text-ink-subtle">
-                {t.materialRequests.reason}: {request.approvalReversalReason}
-              </span>
+              <DecisionReason
+                label={t.materialRequests.decisions.reversalReason}
+                value={request.approvalReversalReason}
+              />
             )}
           </Definition>
         )}
         {request.cancelledAt === null ? null : (
           <Definition label={t.materialRequests.statuses.cancelled} span>
             <Timestamp dateTime={request.cancelledAt} />
+            <DecisionActor
+              label={t.materialRequests.decisions.cancelledBy}
+              actorId={request.cancelledBy}
+            />
             {request.cancellationReason === null ? null : (
-              <span className="block text-xs text-ink-subtle">
-                {t.materialRequests.reason}: {request.cancellationReason}
-              </span>
+              <DecisionReason
+                label={t.materialRequests.decisions.cancellationReason}
+                value={request.cancellationReason}
+              />
             )}
           </Definition>
         )}
@@ -233,6 +268,37 @@ function Timestamp({ dateTime }: { dateTime: string }) {
   return (
     <span dir="ltr" title={dateTime}>
       {formatDateTimeWithZone(dateTime)}
+    </span>
+  );
+}
+
+/**
+ * Who performed a decision. `Instant` formatting is the row's job; the actor is
+ * the server's user id, shown verbatim (LTR) like `requestedBy`.
+ */
+function DecisionActor({
+  label,
+  actorId,
+}: {
+  label: string;
+  actorId: string | null;
+}) {
+  if (actorId === null) return null;
+  return (
+    <span className="block text-xs text-ink-subtle">
+      {label}:{' '}
+      <code className="code break-all select-all" dir="ltr">
+        {actorId}
+      </code>
+    </span>
+  );
+}
+
+/** Why a decision was taken — the server's stored text, never re-derived. */
+function DecisionReason({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="block text-xs text-ink-subtle">
+      {label}: {value}
     </span>
   );
 }
