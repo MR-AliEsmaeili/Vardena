@@ -8,8 +8,13 @@ import {
   materialRequestsResponse,
 } from './material-request-test-fixtures';
 import {
+  useApproveMaterialRequestMutation,
+  useCancelMaterialRequestMutation,
   useCreateMaterialRequestMutation,
   useDeleteMaterialRequestMutation,
+  useRejectMaterialRequestMutation,
+  useReturnMaterialRequestForCorrectionMutation,
+  useReverseMaterialRequestApprovalMutation,
   useSubmitMaterialRequestMutation,
   useUpdateMaterialRequestMutation,
 } from './material-request-hooks';
@@ -22,6 +27,11 @@ vi.mock('@/api/inventory.api', () => ({
   updateMaterialRequest: vi.fn(),
   deleteMaterialRequest: vi.fn(),
   submitMaterialRequest: vi.fn(),
+  approveMaterialRequest: vi.fn(),
+  rejectMaterialRequest: vi.fn(),
+  returnMaterialRequestForCorrection: vi.fn(),
+  reverseMaterialRequestApproval: vi.fn(),
+  cancelMaterialRequest: vi.fn(),
 }));
 
 const inventoryApi = await import('@/api/inventory.api');
@@ -51,11 +61,23 @@ function setup() {
     'org-1',
     'request-1',
   );
+  const balancesKey = queryKeys.inventory.balancesPrefix('org-1');
+  const reservationsKey = queryKeys.inventory.reservationsPrefix('org-1');
   queryClient.setQueryData(listKey, materialRequestsResponse());
   queryClient.setQueryData(detailKey, materialRequestDetail());
   queryClient.setQueryData(eventsKey, []);
+  queryClient.setQueryData(balancesKey, []);
+  queryClient.setQueryData(reservationsKey, []);
 
-  return { queryClient, Wrapper, listKey, detailKey, eventsKey };
+  return {
+    queryClient,
+    Wrapper,
+    listKey,
+    detailKey,
+    eventsKey,
+    balancesKey,
+    reservationsKey,
+  };
 }
 
 function expectInvalidated(
@@ -157,6 +179,176 @@ describe('material request mutations', () => {
       'request-1',
     );
     expectInvalidated(queryClient, [listKey, detailKey, eventsKey]);
+    queryClient.clear();
+  });
+
+  it('approve sends NO body and also invalidates the availability reads', async () => {
+    vi.mocked(inventoryApi.approveMaterialRequest).mockResolvedValue(
+      materialRequestDetail({ status: 'approved', number: 'MR-1404-0001' }),
+    );
+    const {
+      queryClient,
+      Wrapper,
+      listKey,
+      detailKey,
+      eventsKey,
+      balancesKey,
+      reservationsKey,
+    } = setup();
+
+    const { result } = renderHook(
+      () => useApproveMaterialRequestMutation('org-1'),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.mutateAsync('request-1');
+    });
+
+    // Exactly (organizationId, requestId): the endpoint declares no body.
+    expect(
+      vi.mocked(inventoryApi.approveMaterialRequest).mock.calls[0],
+    ).toHaveLength(2);
+    expect(inventoryApi.approveMaterialRequest).toHaveBeenCalledWith(
+      'org-1',
+      'request-1',
+    );
+    expectInvalidated(queryClient, [
+      listKey,
+      detailKey,
+      eventsKey,
+      balancesKey,
+      reservationsKey,
+    ]);
+    queryClient.clear();
+  });
+
+  it('reject sends the required reason and leaves stock reads alone', async () => {
+    vi.mocked(inventoryApi.rejectMaterialRequest).mockResolvedValue(
+      materialRequestDetail({ status: 'rejected' }),
+    );
+    const { queryClient, Wrapper, listKey, detailKey, eventsKey, balancesKey } =
+      setup();
+
+    const { result } = renderHook(
+      () => useRejectMaterialRequestMutation('org-1'),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.mutateAsync({
+        requestId: 'request-1',
+        reason: 'مقدار اشتباه',
+      });
+    });
+
+    expect(inventoryApi.rejectMaterialRequest).toHaveBeenCalledWith(
+      'org-1',
+      'request-1',
+      { reason: 'مقدار اشتباه' },
+    );
+    expectInvalidated(queryClient, [listKey, detailKey, eventsKey]);
+    expect(queryClient.getQueryState(balancesKey)?.isInvalidated).toBe(false);
+    queryClient.clear();
+  });
+
+  it('return-for-correction sends the required reason', async () => {
+    vi.mocked(
+      inventoryApi.returnMaterialRequestForCorrection,
+    ).mockResolvedValue(materialRequestDetail({ status: 'returned' }));
+    const { queryClient, Wrapper, listKey, detailKey, eventsKey } = setup();
+
+    const { result } = renderHook(
+      () => useReturnMaterialRequestForCorrectionMutation('org-1'),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.mutateAsync({
+        requestId: 'request-1',
+        reason: 'ردیف اصلاح شود',
+      });
+    });
+
+    expect(
+      inventoryApi.returnMaterialRequestForCorrection,
+    ).toHaveBeenCalledWith('org-1', 'request-1', { reason: 'ردیف اصلاح شود' });
+    expectInvalidated(queryClient, [listKey, detailKey, eventsKey]);
+    queryClient.clear();
+  });
+
+  it('reverse-approval sends an optional reason (null) and releases availability', async () => {
+    vi.mocked(inventoryApi.reverseMaterialRequestApproval).mockResolvedValue(
+      materialRequestDetail({ status: 'submitted' }),
+    );
+    const {
+      queryClient,
+      Wrapper,
+      listKey,
+      detailKey,
+      eventsKey,
+      balancesKey,
+      reservationsKey,
+    } = setup();
+
+    const { result } = renderHook(
+      () => useReverseMaterialRequestApprovalMutation('org-1'),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.mutateAsync({ requestId: 'request-1' });
+    });
+
+    expect(inventoryApi.reverseMaterialRequestApproval).toHaveBeenCalledWith(
+      'org-1',
+      'request-1',
+      { reason: null },
+    );
+    expectInvalidated(queryClient, [
+      listKey,
+      detailKey,
+      eventsKey,
+      balancesKey,
+      reservationsKey,
+    ]);
+    queryClient.clear();
+  });
+
+  it('cancel sends an optional reason and also invalidates availability', async () => {
+    vi.mocked(inventoryApi.cancelMaterialRequest).mockResolvedValue(
+      materialRequestDetail({ status: 'cancelled' }),
+    );
+    const {
+      queryClient,
+      Wrapper,
+      listKey,
+      detailKey,
+      eventsKey,
+      balancesKey,
+      reservationsKey,
+    } = setup();
+
+    const { result } = renderHook(
+      () => useCancelMaterialRequestMutation('org-1'),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.mutateAsync({
+        requestId: 'request-1',
+        reason: '  توقف تولید  ',
+      });
+    });
+
+    // The hook passes the reason through untouched; the PAGE trims it.
+    expect(inventoryApi.cancelMaterialRequest).toHaveBeenCalledWith(
+      'org-1',
+      'request-1',
+      { reason: '  توقف تولید  ' },
+    );
+    expectInvalidated(queryClient, [
+      listKey,
+      detailKey,
+      eventsKey,
+      balancesKey,
+      reservationsKey,
+    ]);
     queryClient.clear();
   });
 

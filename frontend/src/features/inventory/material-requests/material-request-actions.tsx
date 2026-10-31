@@ -23,9 +23,12 @@ import {
 
 /**
  * The AUTHORING actions of one request (INV-06): edit, submit for approval,
- * delete a draft. Approval, rejection, return-for-correction, approval
- * reversal, cancellation (INV-07) and line invocation (BLOCKED in
- * `task/OUT-OF-SCOPE.md`) are deliberately absent — not even disabled.
+ * delete a draft.
+ *
+ * The approval cycle — approve, reject, return-for-correction, approval
+ * reversal and cancellation — lives in `MaterialRequestDecisionActions`
+ * (INV-07). Line invocation stays BLOCKED in `task/OUT-OF-SCOPE.md` and is
+ * deliberately absent — not even disabled.
  */
 export function MaterialRequestActions({
   organizationId,

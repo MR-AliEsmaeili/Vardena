@@ -1,7 +1,7 @@
 # ماتریس پوشش بک‌اند ↔ فرانت‌اند
 
 **وضعیت:** ACTIVE — ممیزی نقطه‌به‌نقطه
-**تاریخ ممیزی:** ۲۰۲۶-۱۰-۲۶؛ به‌روزرسانی ACC-04/07/08/09 و نوارهای کار: ۲۰۲۶-۱۰-۲۶؛ DOC-01: ۲۰۲۶-۱۰-۲۶؛ DOC-02: ۲۰۲۶-۱۰-۲۸؛ INV-08 (رزرو موجودی): ۲۰۲۶-۱۰-۳۰؛ INV-06 (نویسندگی درخواست کالا): ۲۰۲۶-۱۰-۳۰؛ DOC-03 (روابط اسناد): ۲۰۲۶-۱۰-۳۰
+**تاریخ ممیزی:** ۲۰۲۶-۱۰-۲۶؛ به‌روزرسانی ACC-04/07/08/09 و نوارهای کار: ۲۰۲۶-۱۰-۲۶؛ DOC-01: ۲۰۲۶-۱۰-۲۶؛ DOC-02: ۲۰۲۶-۱۰-۲۸؛ INV-08 (رزرو موجودی): ۲۰۲۶-۱۰-۳۰؛ INV-06 (نویسندگی درخواست کالا): ۲۰۲۶-۱۰-۳۰؛ DOC-03 (روابط اسناد): ۲۰۲۶-۱۰-۳۰؛ INV-07 (چرخهٔ تأیید درخواست کالا): ۲۰۲۶-۱۰-۳۱
 **مبنا:** `backend/src/modules/**/api/*.controller.ts` (۶۰ کنترلر) در برابر `frontend/src/app/router.tsx`، `frontend/src/api/*.api.ts` و هوک/صفحه‌های `frontend/src/features/**`.
 
 این سند فقط وضعیت را ثبت می‌کند؛ در این دور **هیچ endpoint، قرارداد یا قاعدۀ کسب‌وکار تغییر نکرده است**. هر جا «MISSING» است، یعنی UI وجود ندارد، نه اینکه بک‌اند ناقص باشد.
@@ -65,7 +65,7 @@
 | بازسازی/تطبیق موجودی | `POST /inventory/balances/reconcile                                                                                          | rebuild`                                                                                        | —                                                                                                                                                                                                                                                                               | **NOT_REQUIRED** — عملیات نگهداری/اپراتوری، نه کاربر نهایی |
 | ارزشیابی             | `valuation/methods`, `methods/resolve`, `states`, `states/current`, `backdate-check`, `movements/:id/cost`, `recalculations` | `valuation-states-page`, `valuation-methods/*`, `movement-form-page` (backdate)                 | **PARTIAL** — فهرست، resolve تاریخ‌دار و ثبت نسخهٔ روش‌های ارزشیابی کالا پیاده شده است (INV-04)؛ ثبت بهای یک حرکت (`POST /movements/:id/cost`، INV-05) و خوانش تکی `states/current` هنوز UI ندارد                                                                               |
 | انتقال بین انبار     | `POST /inventory/transfers`                                                                                                  | `transfer-form-page`                                                                            | **PARTIAL** — ثبت انتقال هست؛ endpoint فهرست انتقال وجود ندارد (نه UI)                                                                                                                                                                                                          |
-| درخواست کالا         | `material-requests` (list/detail/events/create/update/delete/submit؛ approve/reject/return/reverse/cancel در دامنهٔ BLOCKED) | `material-requests-page`, `material-request-detail-page`, `material-request-form-page` (INV-06) | **PARTIAL** (INV-06؛ چرخهٔ نویسندگی — فهرست/جزئیات/رویدادها/ایجاد/ویرایش/حذف/ارسال — کامل است. گذارهای گردش‌کاری `approve`/`reject`/`return`/`reverse`/`cancel` و اکشن `lines/invoke` طبق `OUT-OF-SCOPE.md` (BLOCKED: موتور گردش‌کار) عمداً ساخته نشدند، پس ردیف COMPLETE نیست) |
+| درخواست کالا         | `material-requests` (list/detail/events/create/update/delete/submit؛ approve/reject/return/reverse/cancel در دامنهٔ BLOCKED) | `material-requests-page`, `material-request-detail-page`, `material-request-form-page` (INV-06) | **COMPLETE** (INV-06 + INV-07؛ نویسندگی و چرخهٔ تأیید — فهرست/جزئیات/رویدادها/ایجاد/ویرایش/حذف/ارسال/تأیید/رد/برگشت برای اصلاح/برگشت تأیید/لغو — کامل است، با ماتریس دسترس‌پذیری وضعیت×مجوز×تأییدکنندهٔ اصلی. تنها `PUT …/lines/invoke` ساخته نشده و در UI هم جعل نشده است: طبق `OUT-OF-SCOPE.md` BLOCKED است چون مصرف‌کنندهٔ واقعی ندارد) |
 | رزرو موجودی          | `reservations` (list/detail/create/release)                                                                                  | `reservations-page`، `reservation-detail-page`، `reservation-form-page` (INV-08)                | **COMPLETE** (INV-08؛ آزادسازی رزروهای `material_request_line` فقط از INV-07)                                                                                                                                                                                                   |
 | اجرای قیمت‌گذاری     | `pricing/runs`, `runs/reverse`, `runs/:id`                                                                                   | —                                                                                               | **MISSING**                                                                                                                                                                                                                                                                     |
 
@@ -119,16 +119,16 @@
 
 | وضعیت        | تعداد گروه |
 | ------------ | ---------- |
-| COMPLETE     | ۳۷         |
-| PARTIAL      | ۷          |
+| COMPLETE     | ۳۸         |
+| PARTIAL      | ۶          |
 | MISSING      | ۶          |
 | NOT_REQUIRED | ۳          |
 
-> بازشماری ۲۰۲۶-۱۰-۳۰ روی ۵۳ گروه همین سند انجام شد؛ جمع قبلی (۳۲/۷/۱۱/۳) با محتوای جدول‌ها هم‌خوان نبود. با INV-06 ردیف «درخواست کالا» از MISSING به PARTIAL رفت (PARTIAL +۱، MISSING −۱).
+> بازشماری ۲۰۲۶-۱۰-۳۰ روی ۵۳ گروه همین سند انجام شد؛ جمع قبلی (۳۲/۷/۱۱/۳) با محتوای جدول‌ها هم‌خوان نبود. با INV-06 ردیف «درخواست کالا» از MISSING به PARTIAL رفت (PARTIAL +۱، MISSING −۱) و با INV-07 در ۲۰۲۶-۱۰-۳۱ به COMPLETE رسید (COMPLETE +۱، PARTIAL −۱).
 
 **اولویت‌های بعدی (به ترتیب ارزش کاربر):**
 
-1. **درخواست کالا و قیمت‌گذاری (`INV-07`, `INV-09`)** — `INV-06` (نویسندگی درخواست کالا: فهرست/جزئیات/رویدادها/ایجاد/ویرایش/حذف/ارسال) کامل شد و ردیفش PARTIAL است؛ باقی‌ماندهٔ آن (`approve`/`reject`/`return`/`reverse`/`cancel` و `lines/invoke`) طبق `OUT-OF-SCOPE.md` تا تصمیم موتور گردش‌کار BLOCKED است. گام بعدی `INV-07` است (چرخهٔ گردش‌کاری + لینک رزروهای `material_request_line`) و سپس قیمت‌گذاری `INV-09`.
+1. **قیمت‌گذاری (`INV-09`)** — `INV-06` (نویسندگی) و `INV-07` (چرخهٔ تأیید: تأیید/رد/برگشت برای اصلاح/برگشت تأیید/لغو) کامل شدند و ردیف «درخواست کالا» COMPLETE است؛ تنها `PUT …/lines/invoke` طبق `OUT-OF-SCOPE.md` BLOCKED مانده است. گام بعدی `INV-09` است (اجرای قیمت‌گذاری و برگشت آن).
 2. **الگوهای دفتر پایه و تراز حساب‌ها (`ACC-10`, `ACC-11`, `ACC-12`)** — الگو/نسخه/پذیرش و صفحهٔ اختصاصی تراز حساب‌ها هیچ سطحی ندارند.
 3. **روابط اسناد (DOC-03)** و **کاتالوگ سازمان‌ها (`ORG-01`)** — هر دو کوچک و مستقل‌اند؛ موج ۰ را می‌بندند.
 4. **PARTIALهای موجودی** — جزئیات مستقل حرکت و تبدیل واحد، ثبت بهای حرکت (`INV-05`) و فهرست انتقال (`INV-02`)؛ هرکدام باید در دامنهٔ تسک مستقل بماند.

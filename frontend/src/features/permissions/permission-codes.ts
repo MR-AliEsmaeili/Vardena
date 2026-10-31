@@ -203,16 +203,22 @@ export const PERMISSIONS = {
     reservationCreate: 'Inventory.Reservation.Create',
     reservationRelease: 'Inventory.Reservation.Release',
 
-    // Material Request authoring (C-50, `material-request-permissions.ts`).
-    // Only the authoring half is registered here: `Approve`/`Reject`/
-    // `ReturnForCorrection`/`ReverseApproval`/`Cancel` belong to INV-07 and
-    // `Invoke` is blocked by `task/OUT-OF-SCOPE.md`, so no code without a
-    // consumer is added.
+    // Material Request (C-50, `material-request-permissions.ts`).
+    // Authoring half (INV-06) plus the five approval-cycle authorities
+    // (INV-07), each of which mirrors a distinct backend permission code
+    // because the backend grants them independently. `Invoke` is blocked by
+    // `task/OUT-OF-SCOPE.md`, so no code without a consumer is added.
     materialRequestView: 'Inventory.MaterialRequest.View',
     materialRequestCreate: 'Inventory.MaterialRequest.Create',
     materialRequestEdit: 'Inventory.MaterialRequest.Edit',
     materialRequestDelete: 'Inventory.MaterialRequest.Delete',
     materialRequestSubmit: 'Inventory.MaterialRequest.Submit',
+    materialRequestApprove: 'Inventory.MaterialRequest.Approve',
+    materialRequestReject: 'Inventory.MaterialRequest.Reject',
+    materialRequestReturnForCorrection:
+      'Inventory.MaterialRequest.ReturnForCorrection',
+    materialRequestReverseApproval: 'Inventory.MaterialRequest.ReverseApproval',
+    materialRequestCancel: 'Inventory.MaterialRequest.Cancel',
 
     // Business documents — receipt / issue / transfer (C-58,
     // `inventory-document-permissions.ts`). These authorize the DOCUMENT

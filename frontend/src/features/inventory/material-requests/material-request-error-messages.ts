@@ -2,16 +2,30 @@ import { normalizeApiError } from '@/api/errors';
 import { t } from '@/lib/i18n';
 
 /**
- * Localized Material Request failure copy (INV-06).
+ * Localized Material Request failure copy (INV-06 authoring + INV-07 approval
+ * cycle).
  *
  * Same decision order as the rest of the Inventory domain: classify by the
  * STABLE error code first, and only then recognize the small set of verified
  * backend business phrases this aggregate emits (its transitions have no
- * structured subcodes yet). The raw English server message is never rendered.
+ * structured subcodes yet). The raw English server message is never rendered
+ * as the whole sentence — EXCEPT the one case where the message carries the
+ * server's own `available`/`requested` numbers: those digits are never
+ * reconstructed or rounded on the client (standards §7), so they are shown
+ * verbatim inside a localized sentence.
  */
 
 export type MaterialRequestOperation =
-  'load' | 'create' | 'update' | 'submit' | 'delete';
+  | 'load'
+  | 'create'
+  | 'update'
+  | 'submit'
+  | 'delete'
+  | 'approve'
+  | 'reject'
+  | 'returnForCorrection'
+  | 'reverseApproval'
+  | 'cancel';
 
 export interface MaterialRequestErrorMessage {
   message: string;
@@ -32,6 +46,20 @@ const QUANTITY_NOT_POSITIVE = 'Quantity must be greater than zero.';
 const QUANTITY_PRECISION_PREFIX =
   'The converted base quantity needs more than 4 decimal places.';
 
+// ---- INV-07 approval-cycle phrases (verified against the backend) ----------
+
+const NOT_SUBMITTED_MESSAGE =
+  'The request must be submitted (awaiting approval) for this action.';
+const NOT_APPROVED_MESSAGE = 'The request is not approved.';
+const LINES_INVOKED_PREFIX = 'This action cannot be completed:';
+const INSUFFICIENT_STOCK_PREFIX = 'Insufficient available stock';
+const BALANCE_DRIFT_PREFIX =
+  'The stored stock balance contradicts this operation.';
+const REJECTION_REASON_REQUIRED = 'A rejection reason is required.';
+const RETURN_REASON_REQUIRED = 'A return reason is required.';
+const REASON_TOO_LONG_PREFIX = 'Reason must be at most';
+const DESCRIPTION_TOO_LONG_PREFIX = 'Description must be at most';
+
 function isStatusConflict(message: string): boolean {
   return message.startsWith(STATUS_PREFIX);
 }
@@ -45,7 +73,7 @@ function isItemRefusal(message: string): boolean {
   );
 }
 
-function mapBusinessRule(
+function mapAuthoringRule(
   operation: MaterialRequestOperation,
   message: string,
 ): string {
@@ -69,6 +97,58 @@ function mapBusinessRule(
   return fallbackFor(operation);
 }
 
+/**
+ * Approval-cycle `422` bodies. The request-level refusal ("not submitted",
+ * "not approved", "a line was invoked") is a business rule on the transition,
+ * and every one of them is reachable in the UI only through a race: the
+ * availability matrix already hides the command. The user still needs to know
+ * the state moved under them, so the copy names the rule.
+ */
+function mapDecisionRule(message: string): string | null {
+  if (message === NOT_SUBMITTED_MESSAGE) {
+    return t.materialRequests.actions.disabledNotSubmitted;
+  }
+  if (message === NOT_APPROVED_MESSAGE) {
+    return t.materialRequests.actions.disabledNotApproved;
+  }
+  if (message.startsWith(LINES_INVOKED_PREFIX)) {
+    return t.materialRequests.actions.disabledLinesInvoked;
+  }
+  if (message.startsWith(INSUFFICIENT_STOCK_PREFIX)) {
+    // Numbers come from the server, verbatim; only the lead-in is localized.
+    return t.materialRequests.errors.insufficientStock.replace(
+      '{details}',
+      message,
+    );
+  }
+  if (message.startsWith(BALANCE_DRIFT_PREFIX)) {
+    return t.materialRequests.errors.balanceDrift;
+  }
+  if (
+    message === REJECTION_REASON_REQUIRED ||
+    message === RETURN_REASON_REQUIRED
+  ) {
+    return t.materialRequests.actions.reasonRequired;
+  }
+  if (
+    message.startsWith(REASON_TOO_LONG_PREFIX) ||
+    message.startsWith(DESCRIPTION_TOO_LONG_PREFIX)
+  ) {
+    return t.materialRequests.actions.reasonTooLong;
+  }
+  return null;
+}
+
+function isDecisionOperation(operation: MaterialRequestOperation): boolean {
+  return (
+    operation === 'approve' ||
+    operation === 'reject' ||
+    operation === 'returnForCorrection' ||
+    operation === 'reverseApproval' ||
+    operation === 'cancel'
+  );
+}
+
 function fallbackFor(operation: MaterialRequestOperation): string {
   switch (operation) {
     case 'load':
@@ -81,6 +161,12 @@ function fallbackFor(operation: MaterialRequestOperation): string {
       return t.materialRequests.errors.submitRejected;
     case 'delete':
       return t.materialRequests.errors.deleteRejected;
+    case 'approve':
+    case 'reject':
+    case 'returnForCorrection':
+    case 'reverseApproval':
+    case 'cancel':
+      return t.materialRequests.errors.decisionRejected;
   }
 }
 
@@ -94,7 +180,12 @@ export function materialRequestErrorMessage(
 
   switch (apiError.code) {
     case 'PermissionDenied':
-      message = t.errors.forbidden;
+      // The original-approver rule is a domain 403, not a missing RBAC code;
+      // it needs its own explanation rather than the generic "no access".
+      message =
+        operation === 'reverseApproval'
+          ? t.materialRequests.errors.notOriginalApprover
+          : t.errors.forbidden;
       break;
     case 'EntityNotFound':
       message =
@@ -103,18 +194,32 @@ export function materialRequestErrorMessage(
           : t.materialRequests.errors.referenceNotFound;
       break;
     case 'Conflict':
-      message = t.materialRequests.errors.statusChanged;
+      // A projection-drift `409` is the only conflict a decision command can
+      // raise; authoring keeps the generic "state changed" copy.
+      message = isDecisionOperation(operation)
+        ? t.materialRequests.errors.balanceDrift
+        : t.materialRequests.errors.statusChanged;
       break;
     case 'BusinessRuleViolation':
-      message = mapBusinessRule(operation, apiError.message);
+      message = isDecisionOperation(operation)
+        ? (mapDecisionRule(apiError.message) ?? fallbackFor(operation))
+        : mapAuthoringRule(operation, apiError.message);
       break;
     case 'BadRequest':
-    case 'ValidationFailed':
+    case 'ValidationFailed': {
+      const decisionMessage = isDecisionOperation(operation)
+        ? mapDecisionRule(apiError.message)
+        : null;
+      if (decisionMessage !== null) {
+        message = decisionMessage;
+        break;
+      }
       message =
         apiError.message === AT_LEAST_ONE_LINE_MESSAGE
           ? t.materialRequests.errors.atLeastOneLine
           : t.errors.validation;
       break;
+    }
     case 'NetworkError':
       message = t.errors.network;
       break;
